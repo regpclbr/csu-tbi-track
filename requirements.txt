@@ -1,0 +1,21 @@
+# Web framework and database
+Django==6.1.2
+psycopg[binary]==3.3.6
+pgvector==0.5.1
+
+# Background tasks (database broker, no Redis)
+django-q2==1.11.1
+
+# AI: Gemini answers and embeddings
+google-genai==2.31.0
+
+# Files: PDF and Excel output
+weasyprint==70.0
+openpyxl==3.1.5
+
+# Configuration
+python-dotenv==1.2.4
+
+# Testing
+pytest==9.1.1
+pytest-django==4.14.0
