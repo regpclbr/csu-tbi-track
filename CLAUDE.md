@@ -24,7 +24,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Apps
 `accounts`, `activities`, `registrations`, `documents`, `certificates`, `reports`,
-`startups`, `assistant`. The project package is `config`.
+`startups`, `assistant`, `notifications`. The project package is `config`.
 
 ## Model decisions
 - TBI_MEMBER is the custom user model (`AUTH_USER_MODEL = "accounts.TBIMember"`, email login,
@@ -42,6 +42,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Checklist and Document Repository must use `Document.objects.activity_documents()`
   (excludes certificate files, i.e. `related_certificate` set).
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
+- Activities are never deleted (audit log FK is PROTECT); use status changes instead.
+- Certificate status: Generated → Pending Sign-off → Approved → Issued. Change it only through
+  `certificates.services.set_certificate_status()`, which enforces the rules.
+- File path columns use `max_length=255`.
 
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
@@ -69,7 +73,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Roadmap (one step at a time, only when asked)
 0. Project setup — done
-1. Models matching the ERD, constraints, admin — written, awaiting owner review
+1. Models matching the ERD, constraints, admin — done (review changes applied)
 2. Seed data command + fake demo data command (safe to run twice)
 3. Staff login, role permissions, first-sign-in password change
 4. Activities, status changes, audit log

@@ -96,7 +96,8 @@ class ActivityAuditLog(models.Model):
     """One row per changed field on an ACTIVITY, with readable old and new values."""
 
     log_id = models.BigAutoField(primary_key=True)
-    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="audit_logs")
+    # PROTECT: activities are never deleted, and their history must survive.
+    activity = models.ForeignKey(Activity, on_delete=models.PROTECT, related_name="audit_logs")
     changed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_changes"
     )

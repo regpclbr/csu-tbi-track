@@ -35,23 +35,37 @@
 25. ROLE, ACTIVITY_STATUS, PARTICIPANT_CATEGORY and DOCUMENT_STATUS have **no** `is_active`. They are never deleted (PROTECT) and the app depends on their fixed names. ACTIVITY_TYPE and DOCUMENT_TYPE keep `is_active`.
 26. DOCUMENT.related_certificate is a nullable FK to CERTIFICATE (PROTECT). Documents with it set belong to the Certificates tab and are excluded from the document checklist and the Document Repository: use `Document.objects.activity_documents()` there, and `Document.objects.certificate_documents()` in the Certificates tab.
 
-## Models (Step 1) — decisions made while building (please review)
+## Models (Step 1) — decisions made while building (reviewed by the owner)
 
-27. Primary keys use the ERD names (`member_id`, `activity_id`, ...), and every table uses the ERD name in lower case (`tbi_member`, `activity`, ...).
+27. Primary keys use the ERD names (`member_id`, `activity_id`, ...), and every table uses the ERD name in lower case (`tbi_member`, `activity`, ...). Keys are `bigint` (Django's default) instead of the ERD's `int`.
 28. ACTIVITY_RESOURCE_PERSON has no primary key in the ERD. It gets `activity_resource_person_id` as its key, plus the unique (activity, resource_person) constraint.
-29. The pgvector migration moved from `accounts` to `assistant`. Django's admin/auth migrations depend on the **first** migration of the user model's app, so `accounts/0001` must create TBI_MEMBER.
-30. App placement: NOTIFICATION lives in `documents` (its main use is document reminders, and this avoids a circular dependency between apps). DOCUMENT_EMBEDDING lives in `assistant`.
-31. ERD `string` columns that can hold long text (`options` on form fields, `answer_value`) are stored as unlimited text. Other strings get sensible lengths (names 255, contact numbers 30).
+29. The pgvector migration lives in `assistant`, not `accounts`. Django's admin/auth migrations depend on the **first** migration of the user model's app, so `accounts/0001` must create TBI_MEMBER.
+30. App placement: NOTIFICATION lives in its own `notifications` app (see 42). DOCUMENT_EMBEDDING lives in `assistant`.
+31. ERD `string` columns that can hold long text (`options` on form fields, `answer_value`, `chunk_text`) are stored as unlimited text. Other strings get set lengths (names/titles 255, contact numbers 30, emails 254). Optional strings are stored as an empty string, not NULL.
 32. `registration.email` is unique per activity **ignoring upper/lower case**.
-33. CERTIFICATE: `certificate_template`, `certificate_number` (unique), `file_path`, `reviewed_at`, `director_signed_at`, `vp_signed_at`, `issued_at` and `sent_at` are nullable. `status` is required and starts as "For Review" (choices: For Review, Approved; the sign-off steps are tracked by the timestamps and may be extended in Step 9). `vp_signatory` and `director_signatory` are required.
+33. CERTIFICATE nullability: see 41.
 34. Extra safety constraints not in the brief:
-    - one EVALUATION_SUBMISSION per registration;
     - a NOTIFICATION has exactly one recipient (member or startup);
     - a required DOCUMENT_TYPE must have `due_reference` and `due_offset_days`;
     - a CERTIFICATE's filled recipient column matches `recipient_type`;
     - ACTIVITY `end_date >= start_date` and `budget_amount >= 0`;
-    - one DOCUMENT_EMBEDDING per (document, chunk_index).
-35. Delete rules: **PROTECT** for lookups, members, signatories, templates and official records (an activity with registrations, documents or certificates cannot be deleted; a document cited by the assistant cannot be deleted). **CASCADE** only for rows that belong to one parent (audit log rows, resource-person links, form templates and fields, a registration's evaluation and answers, notifications, embeddings, chat messages). REGISTRATION.startup is SET_NULL.
+    - one DOCUMENT_EMBEDDING per (document, chunk_index);
+    - counts and positions (`max_slots`, `sort_order`, `file_size_kb`, `chunk_index`) cannot be negative.
+35. Delete rules: **PROTECT** for lookups, members, signatories, templates and official records (activities, registrations with certificates, documents, certificates; a document cited by the assistant). **CASCADE** only for rows that belong to one parent (resource-person links, form templates and fields, a registration's evaluation and answers, notifications, embeddings, chat messages). REGISTRATION.startup is SET_NULL.
 36. `registration.confirmation_method` is empty until attendance is confirmed.
 37. `manage.py createsuperuser` gives the new account the Admin role, so the roles must be loaded first (Step 2 seed command).
 38. In the Django admin, lookups, signatories and templates have no Delete button, and the activity audit log is read-only.
+39. Lookup tables (ROLE, ACTIVITY_STATUS, ACTIVITY_TYPE, PARTICIPANT_CATEGORY, DOCUMENT_STATUS, DOCUMENT_TYPE) have **unique names**, so the seed command and the code can look rows up by name. *(Confirmed by the owner.)*
+
+## Step 1 review — decisions confirmed by the owner
+
+40. **One evaluation per registration.** EVALUATION_SUBMISSION.registration is a one-to-one field (the ERD will be updated from one-to-many to one-to-one). DOCUMENT.reviewed_by is a nullable FK to TBI_MEMBER (the ERD type will be corrected from `string` to `int`).
+41. **CERTIFICATE columns.** A certificate row is only created when the certificate is generated, so `certificate_template` and `certificate_number` (unique) are **required**. `file_path` is nullable because the PDF is rendered later by a background job. `reviewed_at`, `director_signed_at`, `vp_signed_at`, `issued_at` and `sent_at` are nullable. `status` is required. `vp_signatory` and `director_signatory` are required.
+42. **Certificate status** has four stored values: `generated` (Generated, the default), `pending_signoff` (Pending Sign-off), `approved` (Approved), `issued` (Issued). The rules are enforced in `certificates.services.set_certificate_status()`, not in the database:
+    - Approved requires `reviewed_at`, `director_signed_at` and `vp_signed_at`.
+    - Issued requires the certificate to be Approved and, for participants (`recipient_type = registration`), a submitted evaluation. Resource persons (hard copy) do not need an evaluation.
+    - Issuing sets `issued_at`, and links the participant's evaluation to the certificate if it was not linked yet.
+    - Open question: other moves (for example Approved back to Generated) are not blocked yet. To be decided in Step 9.
+43. **File path columns are 255 characters** (`max_length=255` on every FileField/ImageField). Django's default of 100 was too short for long upload names.
+44. **NOTIFICATION is in its own `notifications` app** (moved out of `documents`).
+45. **Activities are never deleted.** ACTIVITY_AUDIT_LOG.activity is PROTECT, so an activity with history cannot be deleted. Cancelled or wrong activities should be handled through status changes, not deletion. (Other links to ACTIVITY that are still CASCADE — resource-person links, form templates, notifications — never fire because activities are not deleted.)

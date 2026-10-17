@@ -29,7 +29,7 @@ class GeneratedReport(models.Model):
         help_text="Optional filter.",
     )
     format = models.CharField(max_length=10, choices=Format.choices)
-    file_path = models.FileField(upload_to="reports/%Y/%m/")
+    file_path = models.FileField(upload_to="reports/%Y/%m/", max_length=255)
     generated_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

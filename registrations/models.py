@@ -131,15 +131,15 @@ class EvaluationSubmission(models.Model):
 
     submission_id = models.BigAutoField(primary_key=True)
     template = models.ForeignKey(FormTemplate, on_delete=models.PROTECT, related_name="evaluation_submissions")
-    registration = models.ForeignKey(Registration, on_delete=models.CASCADE, related_name="evaluation_submissions")
+    # One evaluation per registration (OneToOneField adds the unique constraint).
+    registration = models.OneToOneField(
+        Registration, on_delete=models.CASCADE, related_name="evaluation_submission"
+    )
     comments = models.TextField(blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "evaluation_submission"
-        constraints = [
-            models.UniqueConstraint(fields=["registration"], name="unique_evaluation_per_registration"),
-        ]
 
     def __str__(self) -> str:
         return f"Evaluation by {self.registration}"

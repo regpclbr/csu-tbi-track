@@ -2,24 +2,16 @@
 
 import pytest
 
-from certificates.models import Certificate, CertificateSignatory
 from documents.models import Document, DocumentStatus, DocumentType
 
 
 @pytest.mark.django_db
-def test_certificate_documents_are_excluded_from_activity_documents(activity, member, registration) -> None:
+def test_certificate_documents_are_excluded_from_activity_documents(
+    activity, member, registration, make_certificate
+) -> None:
     status = DocumentStatus.objects.create(status_name=DocumentStatus.APPROVED)
     doc_type = DocumentType.objects.create(name="Certificate")
-    vp = CertificateSignatory.objects.create(name="VP", position="vp", signature_image_path="s.png")
-    director = CertificateSignatory.objects.create(name="Dir", position="director", signature_image_path="s.png")
-    certificate = Certificate.objects.create(
-        recipient_type="registration",
-        registration=registration,
-        activity=activity,
-        vp_signatory=vp,
-        director_signatory=director,
-        delivery_method="email",
-    )
+    certificate = make_certificate(registration)
 
     def make(title: str, related_certificate=None) -> Document:
         return Document.objects.create(
@@ -41,3 +33,7 @@ def test_certificate_documents_are_excluded_from_activity_documents(activity, me
     assert list(Document.objects.activity_documents()) == [report]
     assert list(Document.objects.certificate_documents()) == [cert_file]
     assert set(Document.objects.approved()) == {report, cert_file}
+
+
+def test_document_file_path_allows_255_characters() -> None:
+    assert Document._meta.get_field("file_path").max_length == 255

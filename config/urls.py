@@ -15,6 +15,7 @@ urlpatterns = [
     path("reports/", include("reports.urls")),
     path("startups/", include("startups.urls")),
     path("assistant/", include("assistant.urls")),
+    path("notifications/", include("notifications.urls")),
 ]
 
 # Serve uploaded files during development only.

@@ -10,7 +10,7 @@ class CertificateTemplate(models.Model):
 
     certificate_template_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=255)
-    file_path = models.FileField(upload_to="certificate_templates/")
+    file_path = models.FileField(upload_to="certificate_templates/", max_length=255)
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="uploaded_certificate_templates"
     )
@@ -39,7 +39,7 @@ class CertificateSignatory(models.Model):
     signatory_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=255)
     position = models.CharField(max_length=20, choices=Position.choices)
-    signature_image_path = models.ImageField(upload_to="signatures/")
+    signature_image_path = models.ImageField(upload_to="signatures/", max_length=255)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -65,18 +65,23 @@ class Certificate(models.Model):
         RESOURCE_PERSON = "resource_person", "Resource person"
 
     class Status(models.TextChoices):
-        FOR_REVIEW = "for_review", "For Review"
+        """Rules for moving between statuses live in certificates/services.py."""
+
+        GENERATED = "generated", "Generated"
+        PENDING_SIGNOFF = "pending_signoff", "Pending Sign-off"
         APPROVED = "approved", "Approved"
+        ISSUED = "issued", "Issued"
 
     class DeliveryMethod(models.TextChoices):
         EMAIL = "email", "Email (participants)"
         HARD_COPY = "hard_copy", "Hard copy (resource persons)"
 
     certificate_id = models.BigAutoField(primary_key=True)
+    # A certificate row is only created when it is generated, so template and number are required.
     certificate_template = models.ForeignKey(
-        CertificateTemplate, on_delete=models.PROTECT, null=True, blank=True, related_name="certificates"
+        CertificateTemplate, on_delete=models.PROTECT, related_name="certificates"
     )
-    certificate_number = models.CharField(max_length=50, unique=True, null=True, blank=True)
+    certificate_number = models.CharField(max_length=50, unique=True)
     recipient_type = models.CharField(max_length=20, choices=RecipientType.choices)
     registration = models.ForeignKey(
         "registrations.Registration",
@@ -113,8 +118,9 @@ class Certificate(models.Model):
     director_signatory = models.ForeignKey(
         CertificateSignatory, on_delete=models.PROTECT, related_name="director_signed_certificates"
     )
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.FOR_REVIEW)
-    file_path = models.FileField(upload_to="certificates/", null=True, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.GENERATED)
+    # Null until the background job renders the PDF.
+    file_path = models.FileField(upload_to="certificates/", max_length=255, null=True, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     director_signed_at = models.DateTimeField(null=True, blank=True)
     vp_signed_at = models.DateTimeField(null=True, blank=True)
@@ -138,4 +144,4 @@ class Certificate(models.Model):
         ]
 
     def __str__(self) -> str:
-        return self.certificate_number or f"Certificate #{self.pk}"
+        return self.certificate_number

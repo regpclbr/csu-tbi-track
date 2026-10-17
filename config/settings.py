@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "reports",
     "startups",
     "assistant",
+    "notifications",
 ]
 
 # TBI_MEMBER is the login model. This must be set before the first `migrate`:

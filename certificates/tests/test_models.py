@@ -6,39 +6,31 @@ from django.db import IntegrityError
 from certificates.models import Certificate, CertificateSignatory, CertificateTemplate
 
 
-@pytest.fixture
-def signatories() -> tuple[CertificateSignatory, CertificateSignatory]:
-    vp = CertificateSignatory.objects.create(name="VP", position="vp", signature_image_path="signatures/vp.png")
-    director = CertificateSignatory.objects.create(
-        name="Director", position="director", signature_image_path="signatures/d.png"
-    )
-    return vp, director
-
-
-def make_certificate(registration, signatories, number: str) -> Certificate:
-    vp, director = signatories
-    return Certificate.objects.create(
-        certificate_number=number,
-        recipient_type="registration",
-        registration=registration,
-        activity=registration.activity,
-        vp_signatory=vp,
-        director_signatory=director,
-        delivery_method="email",
-    )
+@pytest.mark.django_db
+def test_new_certificate_starts_as_generated(registration, make_certificate) -> None:
+    assert make_certificate(registration).status == Certificate.Status.GENERATED
 
 
 @pytest.mark.django_db
-def test_one_participation_certificate_per_registration(registration, signatories) -> None:
-    make_certificate(registration, signatories, "TBI-0001")
+def test_one_participation_certificate_per_registration(registration, make_certificate) -> None:
+    make_certificate(registration, "TBI-0001")
     with pytest.raises(IntegrityError):
-        make_certificate(registration, signatories, "TBI-0002")
+        make_certificate(registration, "TBI-0002")
 
 
 @pytest.mark.django_db
-def test_one_active_certificate_template(member) -> None:
+def test_certificate_number_is_unique(registration, make_certificate, activity, registration_form) -> None:
+    from registrations.models import Registration
+
+    other = Registration.objects.create(activity=activity, template=registration_form, name="Ben", email="b@x.com")
+    make_certificate(registration, "TBI-0001")
+    with pytest.raises(IntegrityError):
+        make_certificate(other, "TBI-0001")
+
+
+@pytest.mark.django_db
+def test_one_active_certificate_template(member, certificate_template) -> None:
     CertificateTemplate.objects.create(name="Old", file_path="t/old.pdf", uploaded_by=member, is_active=False)
-    CertificateTemplate.objects.create(name="Current", file_path="t/a.pdf", uploaded_by=member, is_active=True)
     with pytest.raises(IntegrityError):
         CertificateTemplate.objects.create(name="Second", file_path="t/b.pdf", uploaded_by=member, is_active=True)
 
@@ -48,3 +40,9 @@ def test_one_active_signatory_per_position(signatories) -> None:
     CertificateSignatory.objects.create(name="Old VP", position="vp", signature_image_path="s.png", is_active=False)
     with pytest.raises(IntegrityError):
         CertificateSignatory.objects.create(name="New VP", position="vp", signature_image_path="s.png")
+
+
+def test_file_paths_allow_255_characters() -> None:
+    assert Certificate._meta.get_field("file_path").max_length == 255
+    assert CertificateTemplate._meta.get_field("file_path").max_length == 255
+    assert CertificateSignatory._meta.get_field("signature_image_path").max_length == 255

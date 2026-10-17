@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from accounts.admin import NoDeleteAdminMixin
 
-from .models import Document, DocumentStatus, DocumentType, Notification
+from .models import Document, DocumentStatus, DocumentType
 
 
 @admin.register(DocumentStatus)
@@ -22,8 +22,3 @@ class DocumentAdmin(admin.ModelAdmin):
     list_filter = ("status", "document_type")
     search_fields = ("title", "file_name")
 
-
-@admin.register(Notification)
-class NotificationAdmin(admin.ModelAdmin):
-    list_display = ("message", "type", "member", "startup", "activity", "is_read", "created_at")
-    list_filter = ("type", "is_read")

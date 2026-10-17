@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from accounts.models import Role, TBIMember
 from activities.models import Activity, ActivityStatus, ActivityType, ParticipantCategory
+from certificates.models import Certificate, CertificateSignatory, CertificateTemplate
 from registrations.models import FormTemplate, FormType, Registration
 
 
@@ -58,3 +59,39 @@ def registration(activity: Activity, registration_form: FormTemplate) -> Registr
     return Registration.objects.create(
         activity=activity, template=registration_form, name="Ana Cruz", email="ana@example.com"
     )
+
+
+@pytest.fixture
+def certificate_template(member: TBIMember) -> CertificateTemplate:
+    return CertificateTemplate.objects.create(
+        name="Default design", file_path="certificate_templates/default.pdf", uploaded_by=member, is_active=True
+    )
+
+
+@pytest.fixture
+def signatories() -> tuple[CertificateSignatory, CertificateSignatory]:
+    vp = CertificateSignatory.objects.create(name="VP", position="vp", signature_image_path="signatures/vp.png")
+    director = CertificateSignatory.objects.create(
+        name="Director", position="director", signature_image_path="signatures/director.png"
+    )
+    return vp, director
+
+
+@pytest.fixture
+def make_certificate(certificate_template, signatories):
+    """Factory: make_certificate(registration=..., number=...) creates a participant certificate."""
+
+    def make(registration: Registration, number: str = "TBI-0001") -> Certificate:
+        vp, director = signatories
+        return Certificate.objects.create(
+            certificate_template=certificate_template,
+            certificate_number=number,
+            recipient_type=Certificate.RecipientType.REGISTRATION,
+            registration=registration,
+            activity=registration.activity,
+            vp_signatory=vp,
+            director_signatory=director,
+            delivery_method=Certificate.DeliveryMethod.EMAIL,
+        )
+
+    return make

@@ -33,6 +33,13 @@ def evaluation(registration: Registration, member) -> EvaluationSubmission:
     return EvaluationSubmission.objects.create(template=form, registration=registration)
 
 
+@pytest.mark.django_db
+def test_one_evaluation_per_registration(evaluation: EvaluationSubmission) -> None:
+    assert evaluation.registration.evaluation_submission == evaluation
+    with pytest.raises(IntegrityError):
+        EvaluationSubmission.objects.create(template=evaluation.template, registration=evaluation.registration)
+
+
 @pytest.fixture
 def field(registration_form: FormTemplate) -> FormField:
     return FormField.objects.create(template=registration_form, field_label="Company", field_type=FieldType.SHORT_TEXT)
