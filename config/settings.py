@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.postgres",  # needed for the pgvector HNSW index
     # Third party
     "django_q",
     # Project apps
@@ -54,8 +55,9 @@ INSTALLED_APPS = [
     "assistant",
 ]
 
-# AUTH_USER_MODEL is set in Step 1 ("accounts.TBIMember"), BEFORE the first
-# full `migrate`. Changing the user model after the auth tables exist breaks Django.
+# TBI_MEMBER is the login model. This must be set before the first `migrate`:
+# changing the user model after the auth tables exist breaks Django.
+AUTH_USER_MODEL = "accounts.TBIMember"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

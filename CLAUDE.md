@@ -30,11 +30,18 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - TBI_MEMBER is the custom user model (`AUTH_USER_MODEL = "accounts.TBIMember"`, email login,
   unique). STARTUP is a separate model with its own login and is NOT a Django staff user.
 - `AUTH_USER_MODEL` must be set before the first full `migrate`.
-- `accounts/migrations/0001_enable_pgvector.py` enables the `vector` extension and must stay
-  the first migration.
+- TBI_MEMBER has no PermissionsMixin. `is_staff` is a property: True only when
+  `role.can_manage_users` (Admin). Passwords use Django's `password` field (also on STARTUP).
+- `assistant/migrations/0001_enable_pgvector.py` enables the `vector` extension. Don't move it
+  to `accounts`: accounts/0001 must create TBI_MEMBER (admin/auth depend on it).
 - Embedding size lives only in `settings.EMBEDDING_DIMENSIONS` (768).
 - Use `PROTECT` on foreign keys to lookup tables, signatories and templates. Never delete
-  those rows; deactivate them (`is_active = False`).
+  those rows; deactivate them (`is_active = False`) where the table has `is_active`.
+- ROLE, ACTIVITY_STATUS, PARTICIPANT_CATEGORY, DOCUMENT_STATUS have fixed names the code
+  relies on and no `is_active`.
+- Checklist and Document Repository must use `Document.objects.activity_documents()`
+  (excludes certificate files, i.e. `related_certificate` set).
+- Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
 
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
@@ -62,7 +69,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Roadmap (one step at a time, only when asked)
 0. Project setup — done
-1. Models matching the ERD, constraints, admin
+1. Models matching the ERD, constraints, admin — written, awaiting owner review
 2. Seed data command + fake demo data command (safe to run twice)
 3. Staff login, role permissions, first-sign-in password change
 4. Activities, status changes, audit log

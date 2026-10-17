@@ -12,6 +12,7 @@ google-genai==2.31.0
 # Files: PDF and Excel output
 weasyprint==70.0
 openpyxl==3.1.5
+pillow==13.0.0  # needed by ImageField (signature images)
 
 # Configuration
 python-dotenv==1.2.4
