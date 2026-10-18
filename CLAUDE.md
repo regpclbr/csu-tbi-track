@@ -43,7 +43,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (excludes certificate files, i.e. `related_certificate` set).
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
 - Activities are never deleted (audit log FK is PROTECT); use status changes instead.
-- Certificate status: Generated → Pending Sign-off → Approved → Issued. Change it only through
+- Certificate status: Generated → Pending Sign-off → Approved → Issued, one step at a time;
+  Pending Sign-off → Generated on rejection; Issued is final. Change it only through
   `certificates.services.set_certificate_status()`, which enforces the rules.
 - File path columns use `max_length=255`.
 
@@ -74,7 +75,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Roadmap (one step at a time, only when asked)
 0. Project setup — done
 1. Models matching the ERD, constraints, admin — done (review changes applied)
-2. Seed data command + fake demo data command (safe to run twice)
+2. Seed data command + fake demo data command (safe to run twice) — written, awaiting owner review
 3. Staff login, role permissions, first-sign-in password change
 4. Activities, status changes, audit log
 5. Public registration, attendance, evaluation flow
@@ -89,5 +90,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 .\.venv\Scripts\Activate.ps1
 docker compose up -d
 python manage.py migrate
+python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
+python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
 pytest
 ```

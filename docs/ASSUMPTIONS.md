@@ -65,7 +65,37 @@
     - Approved requires `reviewed_at`, `director_signed_at` and `vp_signed_at`.
     - Issued requires the certificate to be Approved and, for participants (`recipient_type = registration`), a submitted evaluation. Resource persons (hard copy) do not need an evaluation.
     - Issuing sets `issued_at`, and links the participant's evaluation to the certificate if it was not linked yet.
-    - Open question: other moves (for example Approved back to Generated) are not blocked yet. To be decided in Step 9.
+    - Which moves are allowed at all: see 46.
 43. **File path columns are 255 characters** (`max_length=255` on every FileField/ImageField). Django's default of 100 was too short for long upload names.
 44. **NOTIFICATION is in its own `notifications` app** (moved out of `documents`).
 45. **Activities are never deleted.** ACTIVITY_AUDIT_LOG.activity is PROTECT, so an activity with history cannot be deleted. Cancelled or wrong activities should be handled through status changes, not deletion. (Other links to ACTIVITY that are still CASCADE — resource-person links, form templates, notifications — never fire because activities are not deleted.)
+
+## Certificate status moves — pending validation by the TBI
+
+46. **Allowed certificate status moves** (enforced in `set_certificate_status()`, *to be validated with the TBI*):
+    - Forward, one step at a time: Generated → Pending Sign-off → Approved → Issued. Skipping a step (for example Generated → Approved) is refused.
+    - One backward move: Pending Sign-off → Generated, used when the reviewer **rejects** the certificate. It clears `reviewed_at`, `director_signed_at` and `vp_signed_at` (`reviewed_by` is kept).
+    - **Issued is final.** Nothing can leave it. A wrong certificate is replaced by a new certificate with a new number.
+    - Moving to the same status is refused.
+47. Activities cannot be deleted from the Django admin either (no Delete button, no bulk delete action). The other CASCADE links to ACTIVITY stay as they are.
+
+## Seed data (Step 2)
+
+48. `python manage.py seed_data` loads the lookups listed in the brief. Document type names are stored in Title Case: Invitation Letter, Activity Design, Request Letter, Attendance Sheet, Accomplishment Report, Pre-registration Form, Evaluation Form, Certificate. The code relies on these exact names.
+49. Running `seed_data` again never duplicates rows. It **resets only the fields it defines**:
+    - roles: `can_create_activity`, `can_manage_users`;
+    - document types: `is_required`, `due_reference`, `due_offset_days`.
+    Descriptions and `is_active` are only set when a row is first created, so an admin's edits survive. Statuses, categories and activity types are only created, never changed.
+50. The first Admin account comes from `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` and `SEED_ADMIN_NAME` (optional, default "TBI Admin") in `.env`.
+    - If email or password is missing, the account is skipped with a warning (lookups are still loaded).
+    - The password must pass Django's password validators, otherwise the command stops.
+    - The account is created with the Admin role, `is_superuser = True` and `must_change_password = False`.
+    - On later runs the password and `must_change_password` are **never** reset; only the Admin role is re-applied if it was changed.
+51. Both seed commands live in the `accounts` app (`accounts/management/commands/`); the lookup lists are in `accounts/seed.py`.
+52. `python manage.py seed_demo` is **demo-only**:
+    - It refuses to run when `DEBUG` is False.
+    - All people and companies are invented; every email ends in `@demo.example.com`. Demo staff accounts (one per non-Admin role) have unusable passwords and cannot log in.
+    - Activity dates are relative to the day it is run (three Conducted in the past, one Ongoing today, three Scheduled, one Draft). "Startup Pitch Competition" uses the Forum type because there is no Competition type.
+    - "Investor Networking" is deliberately full (10/10) to show a closed registration. Some required documents are deliberately missing to show checklist gaps.
+    - Documents are small placeholder `.txt` files saved under `media/demo/`.
+    - Safe to run twice: activities that already exist (by title) are skipped.

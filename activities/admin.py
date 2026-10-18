@@ -35,7 +35,9 @@ class ActivityResourcePersonInline(admin.TabularInline):
 
 
 @admin.register(Activity)
-class ActivityAdmin(admin.ModelAdmin):
+class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+    """Activities are never deleted; change their status instead."""
+
     list_display = ("title", "activity_type", "status", "start_date", "end_date", "max_slots", "created_by")
     list_filter = ("status", "activity_type", "participant_category")
     search_fields = ("title", "venue")

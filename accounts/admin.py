@@ -8,7 +8,8 @@ from .models import Role, TBIMember
 
 
 class NoDeleteAdminMixin:
-    """For lookups, signatories and templates: never delete these rows, deactivate them."""
+    """Hides Delete (button and bulk action) for rows that must never be deleted:
+    lookups, signatories, templates and activities."""
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
