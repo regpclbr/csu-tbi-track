@@ -2,3 +2,228 @@
 
 Views stay thin and call the functions in this module.
 """
+
+import logging
+import secrets
+
+from django.conf import settings
+from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.http import HttpRequest
+
+from .emails import send_invitation_email
+from .models import Role, TBIMember
+from .permissions import Permission, require_permission
+
+security_log = logging.getLogger("accounts.security")
+
+INVALID_LOGIN_MESSAGE = "Invalid email or password."
+
+
+# --- Login and brute-force lockout ------------------------------------------------
+
+
+class LoginError(Exception):
+    """Login refused. The message is safe to show: it never says whether the email exists."""
+
+
+def _client_ip(request: HttpRequest) -> str:
+    return request.META.get("REMOTE_ADDR", "unknown")
+
+
+def _counter_key(kind: str, value: str) -> str:
+    return f"login-failures:{kind}:{value}"
+
+
+def _lock_key(kind: str, value: str) -> str:
+    return f"login-locked:{kind}:{value}"
+
+
+def _lockout_seconds() -> int:
+    return settings.LOGIN_LOCKOUT_MINUTES * 60
+
+
+def is_locked_out(email: str, ip: str) -> bool:
+    """True if this email or this IP address is locked out right now."""
+    return bool(cache.get(_lock_key("email", email)) or cache.get(_lock_key("ip", ip)))
+
+
+def _record_failure(kind: str, value: str, limit: int, email: str, ip: str) -> None:
+    """Count one failed login; lock out `value` when it reaches `limit` failures."""
+    key = _counter_key(kind, value)
+    cache.add(key, 0, _lockout_seconds())  # start a new counting window if none
+    failures = cache.incr(key)
+    if failures >= limit:
+        cache.set(_lock_key(kind, value), True, _lockout_seconds())
+        cache.delete(key)
+        security_log.warning(
+            "Login lockout: %s=%s after %d failed attempts (email=%s, ip=%s), locked for %d minutes.",
+            kind, value, failures, email, ip, settings.LOGIN_LOCKOUT_MINUTES,
+        )
+
+
+def _clear_failures(email: str) -> None:
+    cache.delete(_counter_key("email", email))
+
+
+def authenticate_member(request: HttpRequest, email: str, password: str) -> TBIMember:
+    """Check staff credentials and return the member, or raise LoginError.
+
+    - Wrong password, unknown email and deactivated account all give the same message.
+    - Repeated failures lock the email (and, at a higher limit, the IP) for a short time.
+    - Only TBI_MEMBER accounts are checked; STARTUP accounts can never log in here.
+    """
+    email = email.strip().lower()
+    ip = _client_ip(request)
+    if is_locked_out(email, ip):
+        raise LoginError(
+            f"Too many failed attempts. Try again in {settings.LOGIN_LOCKOUT_MINUTES} minutes."
+        )
+
+    # Django's ModelBackend returns None for unknown emails, wrong passwords and
+    # inactive members alike, and takes about the same time for each.
+    member = authenticate(request, username=email, password=password)
+    if member is None:
+        _record_failure("email", email, settings.LOGIN_MAX_FAILED_ATTEMPTS, email, ip)
+        _record_failure("ip", ip, settings.LOGIN_MAX_FAILED_ATTEMPTS_PER_IP, email, ip)
+        raise LoginError(INVALID_LOGIN_MESSAGE)
+
+    _clear_failures(email)
+    return member
+
+
+# --- Passwords ------------------------------------------------------------------------
+
+
+def change_password(member: TBIMember, old_password: str, new_password: str) -> None:
+    """Change a member's own password and clear must_change_password.
+
+    Raises ValidationError if the old password is wrong, the new one is the same,
+    or the new one fails Django's password validators.
+    """
+    if not member.check_password(old_password):
+        raise ValidationError("Your current password is incorrect.")
+    if old_password == new_password:
+        raise ValidationError("The new password must be different from the current one.")
+    validate_password(new_password, member)
+    member.set_password(new_password)
+    member.must_change_password = False
+    member.save(update_fields=["password", "must_change_password", "updated_at"])
+    security_log.info("Password changed: member_id=%s", member.pk)
+
+
+def generate_temporary_password(member: TBIMember | None = None) -> str:
+    """A random temporary password (16 characters) that passes Django's password validators."""
+    while True:
+        password = secrets.token_urlsafe(12)
+        try:
+            validate_password(password, member)
+            return password
+        except ValidationError:
+            continue  # extremely rare; just draw another one
+
+
+# --- Admin Console: user management ------------------------------------------------
+
+
+class MemberManagementError(Exception):
+    """A user-management action was refused (for example, a guardrail)."""
+
+
+def _active_admins():
+    """Active members whose role can manage users (the Admins)."""
+    return TBIMember.objects.filter(is_active=True, role__can_manage_users=True)
+
+
+def _is_active_admin(member: TBIMember) -> bool:
+    return member.is_active and member.role.can_manage_users
+
+
+@transaction.atomic
+def ensure_another_admin_remains(member: TBIMember) -> None:
+    """Refuse if `member` is the last active Admin.
+
+    The admin rows are locked (SELECT ... FOR UPDATE) so two admins removing each
+    other at the same moment cannot leave the system with no Admin.
+    """
+    admin_ids = list(_active_admins().select_for_update().values_list("pk", flat=True))
+    if _is_active_admin(member) and admin_ids == [member.pk]:
+        raise MemberManagementError("At least one active Admin must always exist.")
+
+
+def save_new_member_with_invitation(member: TBIMember) -> TBIMember:
+    """Give an unsaved member a temporary password, save them, and email the invitation.
+
+    The password is hashed before saving and is only ever placed in the email.
+    """
+    temporary_password = generate_temporary_password(member)
+    member.set_password(temporary_password)
+    member.must_change_password = True
+    member.is_active = True
+    member.save()
+    send_invitation_email(member, temporary_password)
+    return member
+
+
+@transaction.atomic
+def create_member(acting_member: TBIMember, *, name: str, email: str, role: Role) -> TBIMember:
+    """Admin Console: create a staff member and email them a temporary password."""
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    email = TBIMember.objects.normalize_email(email.strip()).lower()
+    if TBIMember.objects.filter(email__iexact=email).exists():
+        raise MemberManagementError("A member with this email already exists.")
+
+    member = save_new_member_with_invitation(TBIMember(name=name.strip(), email=email, role=role))
+    security_log.info(
+        "Member created: member_id=%s role=%s by member_id=%s", member.pk, role.role_name, acting_member.pk
+    )
+    return member
+
+
+@transaction.atomic
+def change_member_role(acting_member: TBIMember, member: TBIMember, new_role: Role) -> TBIMember:
+    """Admin Console: give a member a different role.
+
+    Refused if it would take away the last active Admin.
+    """
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    if not new_role.can_manage_users:
+        ensure_another_admin_remains(member)
+    old_role = member.role.role_name
+    member.role = new_role
+    member.save(update_fields=["role", "updated_at"])
+    security_log.info(
+        "Role changed: member_id=%s %s -> %s by member_id=%s",
+        member.pk, old_role, new_role.role_name, acting_member.pk,
+    )
+    return member
+
+
+@transaction.atomic
+def deactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
+    """Admin Console: deactivate a member (members are never deleted).
+
+    An Admin cannot deactivate their own account, and the last active Admin
+    cannot be deactivated.
+    """
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    if member.pk == acting_member.pk:
+        raise MemberManagementError("You cannot deactivate your own account.")
+    ensure_another_admin_remains(member)
+    member.is_active = False
+    member.save(update_fields=["is_active", "updated_at"])
+    security_log.info("Member deactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
+    return member
+
+
+@transaction.atomic
+def reactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
+    """Admin Console: let a deactivated member log in again."""
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    member.is_active = True
+    member.save(update_fields=["is_active", "updated_at"])
+    security_log.info("Member reactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
+    return member

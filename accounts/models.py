@@ -29,6 +29,10 @@ class Role(models.Model):
 class TBIMemberManager(BaseUserManager):
     """Creates staff accounts. Email is the login."""
 
+    def get_by_natural_key(self, email: str) -> "TBIMember":
+        """Find a member for login; email is matched ignoring upper/lower case."""
+        return self.get(email__iexact=email)
+
     def create_user(
         self, email: str, name: str, role: Role, password: str | None = None, **extra_fields
     ) -> TBIMember:

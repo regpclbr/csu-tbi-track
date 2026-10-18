@@ -12,6 +12,12 @@ from certificates.models import Certificate, CertificateSignatory, CertificateTe
 from registrations.models import FormTemplate, FormType, Registration
 
 
+@pytest.fixture(autouse=True)
+def fast_password_hashing(settings) -> None:
+    """Tests only: a fast hasher. The real (slow, secure) PBKDF2 hasher is used everywhere else."""
+    settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+
 @pytest.fixture
 def admin_role() -> Role:
     return Role.objects.create(role_name="Admin", can_create_activity=True, can_manage_users=True)
@@ -95,3 +101,34 @@ def make_certificate(certificate_template, signatories):
         )
 
     return make
+
+
+# --- Staff accounts with the real seeded roles (Step 3) ------------------------------
+
+STRONG_PASSWORD = "Strong-Pass-2026!"
+
+
+@pytest.fixture
+def roles() -> dict[str, Role]:
+    """The five seeded roles, by name."""
+    from accounts.seed import load_lookups
+
+    load_lookups()
+    return {role.role_name: role for role in Role.objects.all()}
+
+
+@pytest.fixture
+def make_member(roles):
+    """Factory: make_member("Director", email=..., must_change_password=False) with STRONG_PASSWORD."""
+
+    def make(role_name: str, email: str | None = None, **extra) -> TBIMember:
+        email = email or f"{role_name.lower().replace(' ', '.')}@example.com"
+        extra.setdefault("must_change_password", False)
+        return TBIMember.objects.create_user(email, f"Test {role_name}", roles[role_name], STRONG_PASSWORD, **extra)
+
+    return make
+
+
+@pytest.fixture
+def admin_member(make_member) -> TBIMember:
+    return make_member("Admin")

@@ -66,6 +66,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.MustChangePasswordMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -114,6 +115,42 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+
+# --- Staff login -------------------------------------------------------------
+
+LOGIN_URL = "accounts:login"
+LOGIN_REDIRECT_URL = "home"
+LOGOUT_REDIRECT_URL = "accounts:login"
+
+# Brute-force protection: after this many failed logins for one email (or many more
+# from one IP address), that email/IP is locked out for LOGIN_LOCKOUT_MINUTES.
+LOGIN_MAX_FAILED_ATTEMPTS = 5
+LOGIN_MAX_FAILED_ATTEMPTS_PER_IP = 20
+LOGIN_LOCKOUT_MINUTES = 15
+
+# The failed-login counters live in Django's cache. A database cache is shared by
+# all server processes and survives restarts. Create its table once with:
+#   python manage.py createcachetable
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",
+    }
+}
+
+
+# --- Logging -------------------------------------------------------------------
+# Security events (lockouts, account changes) go to the "accounts.security" logger.
+# Never log passwords.
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
 
 
 # --- Internationalization ----------------------------------------------------

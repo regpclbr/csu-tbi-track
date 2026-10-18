@@ -99,3 +99,31 @@
     - "Investor Networking" is deliberately full (10/10) to show a closed registration. Some required documents are deliberately missing to show checklist gaps.
     - Documents are small placeholder `.txt` files saved under `media/demo/`.
     - Safe to run twice: activities that already exist (by title) are skipped.
+
+## Staff login and permissions (Step 3)
+
+53. **Login messages.** A wrong password, an unknown email and a deactivated account all get the same message: "Invalid email or password." Email is matched ignoring upper/lower case. A member who is deactivated while logged in loses access on their next request.
+54. **Brute-force lockout.**
+    - 5 failed logins for one email within 15 minutes lock that email for 15 minutes. 20 failed logins from one IP address lock that IP for 15 minutes (this catches someone guessing many emails).
+    - While locked, even the correct password is refused. A successful login resets that email's counter.
+    - Each lockout is logged as a WARNING on the `accounts.security` logger, with the email and IP (never the password).
+    - The lockout message is the same whether or not the email exists.
+    - Counters are kept in Django's database cache (table `django_cache`, created once with `python manage.py createcachetable`), so all server processes share them.
+    - The IP is `REMOTE_ADDR`. If the system is later put behind a reverse proxy, this must be changed to read the real client IP.
+    - Limits are settings: `LOGIN_MAX_FAILED_ATTEMPTS`, `LOGIN_MAX_FAILED_ATTEMPTS_PER_IP`, `LOGIN_LOCKOUT_MINUTES`.
+55. The Django admin's own login page (`/admin/login/`) redirects to the staff login, so the lockout also protects the admin site.
+56. Logout only accepts POST (a link on another site cannot log a member out).
+57. **First-sign-in password change.** While `must_change_password` is true, every URL — including the Django admin and the JSON API — redirects to the change-password page. Only the change-password page, logout and static files (CSS/JS) are reachable; uploaded files are not. The new password must pass Django's password validators and must differ from the current one.
+58. **Permissions** are written once in `accounts/permissions.py`: `has_permission()`, `require_permission()` (raises a 403), and the view decorators `staff_login_required` and `permission_required(Permission.X)`. Someone not logged in is sent to the login page; a logged-in member without the permission gets a 403 with the reason (JSON `{"error": ...}` for `/api/` URLs, plain text otherwise).
+59. **Admin guardrails.** "Admin" means an active member whose role has `can_manage_users` (not the role's name).
+    - An Admin cannot deactivate their own account.
+    - The last active Admin can be neither deactivated nor moved to a role without `can_manage_users` (the role-change check is how "at least one active Admin" is kept when only one Admin exists).
+    - The check locks the Admin rows, so two Admins cannot remove each other at the same moment.
+    - An Admin may change their own role if another active Admin exists.
+    - Members are never deleted (no delete in the API or the Django admin).
+60. **Temporary passwords** are 16 random characters (Python `secrets`). They are hashed before saving, appear only in the invitation email, are never logged, and are never returned by the API. During development the console email backend prints the email to the terminal (standard output, not the log). Real sending replaces `accounts.emails.send_invitation_email()` in Step 9.
+61. **Django admin member screen** uses the same services: adding a member asks only for email, name and role and sends the invitation; `is_active` and `must_change_password` are read-only; members are (de)activated with the "Deactivate/Reactivate selected members" actions; demoting the last Admin is refused. An Admin cannot yet reset another member's password (open item: add a "reset password" service if the TBI needs it).
+62. **Startups are never staff.** The staff login only checks TBI_MEMBER. A startup can never be `request.user`; the startup login (Step 7) will keep its id under the separate session key `startups.services.STARTUP_SESSION_KEY`. Staff views only admit an active TBI_MEMBER.
+63. The login, change-password and landing (`/`) pages are temporary plain forms until the frontend phase. The Admin Console is a small JSON API under `/accounts/api/`.
+64. Tests use a fast password hasher (MD5) so the suite runs in seconds. The real server always uses Django's default PBKDF2 hasher.
+65. **Open item for Step 6:** in development (`DEBUG=True`) uploaded files under `/media/` are served without a login check. Step 6 must serve documents through a view that checks permissions.

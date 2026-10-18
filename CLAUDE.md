@@ -48,6 +48,16 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `certificates.services.set_certificate_status()`, which enforces the rules.
 - File path columns use `max_length=255`.
 
+## Login and permissions
+- Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
+  `staff_login_required` on views, `require_permission()` in services. Never rely on hiding a button.
+- `Permission.CREATE_ACTIVITY` (create/edit activities), `Permission.MANAGE_USERS` (Admin Console:
+  users, roles, master data, certificate design and signatories).
+- Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
+  active Admin, never delete). Never log passwords; temporary passwords live only in the email.
+- A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
+- Uploaded files must be served through a permission-checked view (Step 6).
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -75,8 +85,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Roadmap (one step at a time, only when asked)
 0. Project setup — done
 1. Models matching the ERD, constraints, admin — done (review changes applied)
-2. Seed data command + fake demo data command (safe to run twice) — written, awaiting owner review
-3. Staff login, role permissions, first-sign-in password change
+2. Seed data command + fake demo data command (safe to run twice) — done
+3. Staff login, role permissions, first-sign-in password change — written, awaiting owner review
 4. Activities, status changes, audit log
 5. Public registration, attendance, evaluation flow
 6. Documents, checklist, reminders (Django-Q2 scheduled task)
@@ -90,6 +100,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 .\.venv\Scripts\Activate.ps1
 docker compose up -d
 python manage.py migrate
+python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
 pytest
