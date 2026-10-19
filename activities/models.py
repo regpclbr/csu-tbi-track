@@ -3,10 +3,19 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
+from django.db.models.functions import Lower, Trim
 
 
 class ActivityStatus(models.Model):
-    """Lookup: Draft, Scheduled, Ongoing, Conducted. Never deleted."""
+    """Lookup: Draft, Scheduled, Ongoing, Conducted. Never deleted.
+
+    The code relies on these exact names (see activities/services.py for allowed moves).
+    """
+
+    DRAFT = "Draft"
+    SCHEDULED = "Scheduled"
+    ONGOING = "Ongoing"
+    CONDUCTED = "Conducted"
 
     activity_status_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=50, unique=True)
@@ -38,7 +47,11 @@ class ActivityType(models.Model):
 
 
 class ParticipantCategory(models.Model):
-    """Lookup: Faculty, Incubatees, MSMEs. Never deleted."""
+    """Who an activity is for. Seeded: Faculty, Incubatees, MSMEs; the Admin may add more.
+
+    Rules (activities/services.py): seeded categories are never renamed or deleted; an
+    Admin-added category can be renamed, and deleted only while no activity uses it.
+    """
 
     participant_category_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=100, unique=True)
@@ -46,7 +59,16 @@ class ParticipantCategory(models.Model):
 
     class Meta:
         db_table = "participant_category"
+        ordering = ["name"]
         verbose_name_plural = "participant categories"
+        constraints = [
+            # "MSMEs", "msmes" and " MSMEs " count as the same name.
+            models.UniqueConstraint(
+                Lower(Trim("name")),
+                name="unique_participant_category_name_ci",
+                violation_error_message="A participant category with this name already exists.",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -92,8 +114,26 @@ class Activity(models.Model):
         return self.title
 
 
+class AuditLogIsAppendOnly(Exception):
+    """Raised on any attempt to change or delete an audit log row."""
+
+
+class ActivityAuditLogQuerySet(models.QuerySet):
+    """Bulk update/delete are blocked: the audit log is append-only."""
+
+    def update(self, **kwargs):
+        raise AuditLogIsAppendOnly("Audit log rows cannot be changed.")
+
+    def delete(self):
+        raise AuditLogIsAppendOnly("Audit log rows cannot be deleted.")
+
+
 class ActivityAuditLog(models.Model):
-    """One row per changed field on an ACTIVITY, with readable old and new values."""
+    """One row per changed field on an ACTIVITY, with readable old and new values.
+
+    Append-only: rows are only ever inserted (by activities/services.py). Saving an
+    existing row or deleting rows raises AuditLogIsAppendOnly.
+    """
 
     log_id = models.BigAutoField(primary_key=True)
     # PROTECT: activities are never deleted, and their history must survive.
@@ -106,12 +146,22 @@ class ActivityAuditLog(models.Model):
     new_value = models.TextField(blank=True)
     changed_at = models.DateTimeField(auto_now_add=True)
 
+    objects = ActivityAuditLogQuerySet.as_manager()
+
     class Meta:
         db_table = "activity_audit_log"
-        ordering = ["-changed_at"]
+        ordering = ["-changed_at", "-log_id"]
 
     def __str__(self) -> str:
         return f"{self.activity} - {self.field_changed}"
+
+    def save(self, *args, **kwargs) -> None:
+        if not self._state.adding:
+            raise AuditLogIsAppendOnly("Audit log rows cannot be changed.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise AuditLogIsAppendOnly("Audit log rows cannot be deleted.")
 
 
 class ResourcePerson(models.Model):

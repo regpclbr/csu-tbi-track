@@ -20,9 +20,58 @@ class NoDeleteAdminMixin:
         return False
 
 
+class ReadOnlyAdminMixin:
+    """View only: no add, change or delete. For lookups whose fixed names the code relies on."""
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+class RoleAdminForm(forms.ModelForm):
+    """Only the two permission flags can change. The last-Admin rule is checked here so the
+    error shows on the form; the save goes through accounts.services.update_role_permissions."""
+
+    class Meta:
+        model = Role
+        fields = ("can_create_activity", "can_manage_users")
+
+    def clean(self) -> dict:
+        cleaned = super().clean()
+        if self.instance.can_manage_users and not cleaned.get("can_manage_users"):
+            try:
+                services.ensure_admins_remain_without_role(self.instance)
+            except services.MemberManagementError as error:
+                raise forms.ValidationError(str(error)) from error
+        return cleaned
+
+
 @admin.register(Role)
 class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+    """Roles: only can_create_activity and can_manage_users can be edited.
+    No adding, renaming or deleting: the code relies on the five fixed role names."""
+
+    form = RoleAdminForm
     list_display = ("role_name", "can_create_activity", "can_manage_users", "created_at")
+    fields = ("role_name", "description", "can_create_activity", "can_manage_users", "created_at")
+    readonly_fields = ("role_name", "description", "created_at")
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def save_model(self, request, obj: Role, form, change: bool) -> None:
+        saved = Role.objects.get(pk=obj.pk)
+        services.update_role_permissions(
+            request.user,
+            saved,
+            can_create_activity=form.cleaned_data["can_create_activity"],
+            can_manage_users=form.cleaned_data["can_manage_users"],
+        )
 
 
 class TBIMemberAddForm(forms.ModelForm):

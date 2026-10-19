@@ -25,9 +25,9 @@ from django.utils.text import slugify
 
 from accounts.models import Role, TBIMember
 from accounts.seed import load_lookups
+from activities import services as activity_services
 from activities.models import (
     Activity,
-    ActivityResourcePerson,
     ActivityStatus,
     ActivityType,
     ParticipantCategory,
@@ -222,27 +222,35 @@ class Command(BaseCommand):
         end = start + timedelta(days=spec.length_days - 1)
         creator = self.staff["Community Development Head" if spec.category == "MSMEs" else "Incubation Project Head"]
 
-        activity = Activity.objects.create(
-            created_by=creator,
-            status=ActivityStatus.objects.get(name=spec.status),
-            activity_type=ActivityType.objects.get(name=spec.activity_type),
-            participant_category=ParticipantCategory.objects.get(name=spec.category),
-            title=spec.title,
-            description=f"[DEMO] {spec.title} for {spec.category.lower()} of the CSU Technology Business Incubator.",
-            start_date=start,
-            end_date=end,
-            time_schedule="8:00 AM - 5:00 PM",
-            venue=spec.venue,
-            max_slots=spec.max_slots,
-            registration_deadline=self.at(start - timedelta(days=2), 17),
-            evaluation_deadline=self.at(end + timedelta(days=7), 17),
-            budget_amount=Decimal(spec.budget),
+        # Created through the same services as real activities, so the demo has a real audit log.
+        activity = activity_services.create_activity(
+            creator,
+            {
+                "activity_type": ActivityType.objects.get(name=spec.activity_type),
+                "participant_category": ParticipantCategory.objects.get(name=spec.category),
+                "title": spec.title,
+                "description": f"[DEMO] {spec.title} for {spec.category.lower()} of the CSU Technology Business Incubator.",
+                "start_date": start,
+                "end_date": end,
+                "time_schedule": "8:00 AM - 5:00 PM",
+                "venue": spec.venue,
+                "max_slots": spec.max_slots,
+                "registration_deadline": self.at(start - timedelta(days=2), 17),
+                "evaluation_deadline": self.at(end + timedelta(days=7), 17),
+                "budget_amount": Decimal(spec.budget),
+            },
+            # Demo only: validate "as of" two weeks before the start, so past (Conducted)
+            # activities pass the "start date and deadline not in the past" rule.
+            now=self.at(start - timedelta(days=14), 8),
         )
-
         for index in spec.resource_persons:
-            ActivityResourcePerson.objects.create(
-                activity=activity, resource_person=self.resource_persons[index], topic=RESOURCE_PERSONS[index][1]
+            activity_services.add_resource_person(
+                creator, activity, self.resource_persons[index], RESOURCE_PERSONS[index][1]
             )
+        # Walk the allowed status moves up to the wanted status (Draft -> Scheduled -> Ongoing -> Conducted).
+        path = [ActivityStatus.SCHEDULED, ActivityStatus.ONGOING, ActivityStatus.CONDUCTED]
+        for status_name in path[: path.index(spec.status) + 1] if spec.status in path else []:
+            activity_services.change_status(creator, activity, status_name)
 
         if spec.status != "Draft":
             registration_form = self.create_registration_form(activity, creator)

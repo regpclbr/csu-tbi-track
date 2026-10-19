@@ -37,8 +37,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Embedding size lives only in `settings.EMBEDDING_DIMENSIONS` (768).
 - Use `PROTECT` on foreign keys to lookup tables, signatories and templates. Never delete
   those rows; deactivate them (`is_active = False`) where the table has `is_active`.
-- ROLE, ACTIVITY_STATUS, PARTICIPANT_CATEGORY, DOCUMENT_STATUS have fixed names the code
-  relies on and no `is_active`.
+- ROLE, ACTIVITY_STATUS, DOCUMENT_STATUS have fixed names the code relies on and no `is_active`.
+- Django admin: ACTIVITY_STATUS, DOCUMENT_STATUS are view only; ACTIVITY_TYPE, DOCUMENT_TYPE
+  editable but never deleted; ROLE only its two flags (through
+  `accounts.services.update_role_permissions`, which keeps at least one active Admin).
+- PARTICIPANT_CATEGORY is Admin-managed master data (no `is_active`): seeded names from
+  `accounts/seed.py` can't be renamed/deleted; added ones can be renamed and deleted while unused.
+  Names are unique ignoring case/outer spaces. Never assume a fixed number of categories.
 - Checklist and Document Repository must use `Document.objects.activity_documents()`
   (excludes certificate files, i.e. `related_certificate` set).
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
@@ -57,6 +62,20 @@ owner is a student, so explain important decisions briefly and keep the code sim
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
 - Uploaded files must be served through a permission-checked view (Step 6).
+
+## Activities
+- Every activity change goes through `activities/services.py` (create, update, change_status,
+  add/remove resource person), also from the Django admin and the demo seed. Never call
+  `Activity.objects.create()` / `.save()` directly for user edits: the audit log would be skipped.
+- Status is manual only (no automatic job). Moves: Draft→Scheduled→Ongoing→Conducted, plus
+  Scheduled→Draft when nobody has registered. Conducted is final and read-only.
+- The audit log is append-only (enforced in the model). Format values only with
+  `activities.formatting.format_audit_value()`.
+- Creating: start_date not before today and registration_deadline not in the past (Manila time).
+  Editing: those checks apply only to fields being changed. Only tests/demo pass `now=`.
+- Offer status choices with `allowed_next_statuses()`; change status only with `change_status()`.
+- Registration state is calculated, never stored: `registered_count()`, `slots_remaining()`,
+  `is_registration_open()` in activities/services.py (Step 5 must reuse them).
 
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
@@ -86,8 +105,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 0. Project setup — done
 1. Models matching the ERD, constraints, admin — done (review changes applied)
 2. Seed data command + fake demo data command (safe to run twice) — done
-3. Staff login, role permissions, first-sign-in password change — written, awaiting owner review
-4. Activities, status changes, audit log
+3. Staff login, role permissions, first-sign-in password change — done
+4. Activities, status changes, audit log — written, awaiting owner review
 5. Public registration, attendance, evaluation flow
 6. Documents, checklist, reminders (Django-Q2 scheduled task)
 7. Startups module with a mock StartupProvider

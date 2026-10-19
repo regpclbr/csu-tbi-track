@@ -1,12 +1,14 @@
 from django.contrib import admin
 
-from accounts.admin import NoDeleteAdminMixin
+from accounts.admin import NoDeleteAdminMixin, ReadOnlyAdminMixin
 
 from .models import Document, DocumentStatus, DocumentType
 
 
 @admin.register(DocumentStatus)
-class DocumentStatusAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+class DocumentStatusAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """View only: the app relies on the fixed names For Review and Approved."""
+
     list_display = ("status_name", "description")
 
 

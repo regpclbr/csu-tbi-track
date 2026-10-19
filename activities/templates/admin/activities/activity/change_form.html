@@ -1,0 +1,8 @@
+{% extends "admin/change_form.html" %}
+{# Adds a clearly labelled "Change status" button next to History on the activity edit page. #}
+{% block object-tools-items %}
+  {% if original %}
+    <li><a href="{% url 'admin:activities_activity_change_status' original.pk %}">Change status (now: {{ original.status.name }})</a></li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

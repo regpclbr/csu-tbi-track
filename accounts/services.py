@@ -227,3 +227,37 @@ def reactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
     member.save(update_fields=["is_active", "updated_at"])
     security_log.info("Member reactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
     return member
+
+
+# --- Admin Console: role permission flags -------------------------------------------------
+
+
+@transaction.atomic
+def update_role_permissions(
+    acting_member: TBIMember, role: Role, *, can_create_activity: bool, can_manage_users: bool
+) -> Role:
+    """Admin Console: change a role's two permission flags (roles are never renamed or deleted).
+
+    Refused if taking can_manage_users away from this role would leave no active Admin.
+    """
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    if role.can_manage_users and not can_manage_users:
+        ensure_admins_remain_without_role(role)
+    old = (role.can_create_activity, role.can_manage_users)
+    role.can_create_activity, role.can_manage_users = can_create_activity, can_manage_users
+    role.save(update_fields=["can_create_activity", "can_manage_users"])
+    security_log.info(
+        "Role permissions changed: role=%s (create_activity, manage_users) %s -> %s by member_id=%s",
+        role.role_name, old, (can_create_activity, can_manage_users), acting_member.pk,
+    )
+    return role
+
+
+@transaction.atomic
+def ensure_admins_remain_without_role(role: Role) -> None:
+    """Refuse if no active member outside `role` can manage users."""
+    others = _active_admins().exclude(role=role).select_for_update()
+    if not others.exists():
+        raise MemberManagementError(
+            f'At least one active Admin must always exist: no active member outside "{role.role_name}" can manage users.'
+        )

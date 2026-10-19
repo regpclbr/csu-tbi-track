@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+{# Small form: choose the new status. Only the allowed next statuses are offered. #}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url 'admin:activities_activity_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; <a href="{{ change_url }}">{{ activity.title }}</a>
+  &rsaquo; Change status
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <p>Current status: <strong>{{ current_status }}</strong></p>
+
+  {% if next_statuses %}
+    <form method="post">
+      {% csrf_token %}
+      <p>
+        <label for="id_status">New status:</label>
+        <select name="status" id="id_status" required>
+          {% for status in next_statuses %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
+        </select>
+      </p>
+      {% if current_status == "Scheduled" and registered %}
+        <p class="help">Draft is not offered: {{ registered }} {{ registered|pluralize:"person has,people have" }} already registered.</p>
+      {% endif %}
+      <div class="submit-row">
+        <input type="submit" class="default" value="Change status">
+        <a href="{{ change_url }}" class="closelink">Cancel</a>
+      </div>
+    </form>
+  {% else %}
+    <p>{{ current_status }} is final: the status of this activity cannot change.</p>
+    <p><a href="{{ change_url }}">Back to the activity</a></p>
+  {% endif %}
+</div>
+{% endblock %}

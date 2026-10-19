@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models.functions import Lower, Trim
 
 from activities.models import ActivityStatus, ActivityType, ParticipantCategory
 from documents.models import DocumentStatus, DocumentType
@@ -69,7 +70,11 @@ def load_lookups() -> SeedResult:
     for name in ACTIVITY_STATUSES:
         result.add(ActivityStatus.objects.get_or_create(name=name)[1])
     for name in PARTICIPANT_CATEGORIES:
-        result.add(ParticipantCategory.objects.get_or_create(name=name)[1])
+        # Match ignoring case and spaces (the Admin may have added "msmes " already); never overwrite.
+        existing = ParticipantCategory.objects.annotate(key=Lower(Trim("name"))).filter(key=name.lower()).exists()
+        if not existing:
+            ParticipantCategory.objects.create(name=name)
+        result.add(not existing)
     for name in ACTIVITY_TYPES:
         result.add(ActivityType.objects.get_or_create(name=name)[1])
     for name in DOCUMENT_STATUSES:

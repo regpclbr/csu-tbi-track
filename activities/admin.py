@@ -1,7 +1,15 @@
-from django.contrib import admin
+from django import forms
+from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.db.models import Count
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
 
-from accounts.admin import NoDeleteAdminMixin
+from accounts.admin import NoDeleteAdminMixin, ReadOnlyAdminMixin
 
+from . import services
 from .models import (
     Activity,
     ActivityAuditLog,
@@ -14,7 +22,9 @@ from .models import (
 
 
 @admin.register(ActivityStatus)
-class ActivityStatusAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+class ActivityStatusAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """View only: the app relies on the four fixed status names."""
+
     list_display = ("name", "description")
 
 
@@ -24,25 +34,233 @@ class ActivityTypeAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     list_filter = ("is_active",)
 
 
+class ParticipantCategoryForm(forms.ModelForm):
+    class Meta:
+        model = ParticipantCategory
+        fields = ("name", "description")
+
+    def clean_name(self) -> str:
+        """Trimmed, unique ignoring case; standard categories keep their name."""
+        try:
+            return services.validate_category_name(self.cleaned_data["name"], self.instance)
+        except ValidationError as error:
+            raise ValidationError(error.message_dict["name"]) from error
+
+
 @admin.register(ParticipantCategory)
-class ParticipantCategoryAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "description")
+class ParticipantCategoryAdmin(admin.ModelAdmin):
+    """The Admin can add categories and edit descriptions.
+
+    The standard ones (Faculty, Incubatees, MSMEs) cannot be renamed or deleted. An added
+    category can be renamed, and deleted only while no activity uses it.
+    """
+
+    form = ParticipantCategoryForm
+    list_display = ("name", "description", "standard", "activities_using")
+    actions = None  # no bulk delete: delete one at a time, so each gets its check
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(used_by=Count("activities"))
+
+    @admin.display(description="Standard", boolean=True)
+    def standard(self, obj: ParticipantCategory) -> bool:
+        return services.is_seeded_category(obj)
+
+    @admin.display(description="Activities using it", ordering="used_by")
+    def activities_using(self, obj: ParticipantCategory) -> int:
+        return obj.used_by
+
+    def get_readonly_fields(self, request, obj=None):
+        return ("name",) if obj is not None and services.is_seeded_category(obj) else ()
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return obj is not None and not services.is_seeded_category(obj)
+
+    def save_model(self, request, obj: ParticipantCategory, form, change: bool) -> None:
+        services.save_participant_category(request.user, obj, obj.name, obj.description)
+
+    def delete_view(self, request, object_id, extra_context=None):
+        """Explain clearly why a category in use cannot be deleted (instead of an error page)."""
+        category = self.get_object(request, object_id)
+        if category is not None and (reason := services.why_category_cannot_be_deleted(category)):
+            self.message_user(request, reason, level=messages.ERROR)
+            return redirect(reverse("admin:activities_participantcategory_change", args=[category.pk]))
+        return super().delete_view(request, object_id, extra_context)
+
+    def delete_model(self, request, obj: ParticipantCategory) -> None:
+        services.delete_participant_category(request.user, obj)
+
+
+def _is_conducted(activity: Activity | None) -> bool:
+    return activity is not None and activity.status.name == ActivityStatus.CONDUCTED
 
 
 class ActivityResourcePersonInline(admin.TabularInline):
+    """Add or remove resource persons (through services, so each change is audited).
+    Existing links are read-only; to change a topic, remove the person and add them again."""
+
     model = ActivityResourcePerson
     extra = 0
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return obj is not None and not _is_conducted(obj)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return obj is not None and not _is_conducted(obj)
+
+
+class ActivityAdminForm(forms.ModelForm):
+    """Runs the same validation as activities.services, so errors show on the form."""
+
+    class Meta:
+        model = Activity
+        fields = services.EDITABLE_FIELDS
+
+    def clean(self) -> dict:
+        cleaned = super().clean()
+        if self.errors:
+            return cleaned
+        saved = Activity.objects.get(pk=self.instance.pk) if self.instance.pk else None
+        values = services.activity_values(saved) if saved else {}
+        submitted = {field: cleaned[field] for field in services.EDITABLE_FIELDS if field in cleaned}
+        changed = {field for field, value in submitted.items() if saved is None or value != values[field]}
+        values.update(submitted)
+        try:
+            # Same rules as the service, including "not in the past" for changed dates only.
+            services.validate_activity_values(values, saved, changed_fields=changed)
+        except ValidationError as error:  # each message is shown under its own field
+            raise ValidationError(error.message_dict) from error
+        return cleaned
 
 
 @admin.register(Activity)
 class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
-    """Activities are never deleted; change their status instead."""
+    """Every change goes through activities.services, so the audit log is never skipped.
 
+    Activities are never deleted. Status is shown as text and changed with the
+    "Change status" button (on the edit page) or the list actions, never by editing.
+    """
+
+    change_form_template = "admin/activities/activity/change_form.html"
+
+    form = ActivityAdminForm
     list_display = ("title", "activity_type", "status", "start_date", "end_date", "max_slots", "created_by")
     list_filter = ("status", "activity_type", "participant_category")
     search_fields = ("title", "venue")
     date_hierarchy = "start_date"
-    inlines = [ActivityResourcePersonInline]
+    actions = ["move_to_scheduled", "move_to_ongoing", "move_to_conducted", "move_to_draft"]
+
+    def get_inlines(self, request, obj=None):
+        # Resource persons can only be linked once the activity exists.
+        return [ActivityResourcePersonInline] if obj is not None else []
+
+    def get_fields(self, request, obj=None):
+        if obj is None:
+            return services.EDITABLE_FIELDS
+        return ("current_status", *services.EDITABLE_FIELDS, "created_by")
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj is None:
+            return ()
+        if _is_conducted(obj):  # Conducted is read-only
+            return ("current_status", *services.EDITABLE_FIELDS, "created_by")
+        return ("current_status", "created_by")
+
+    @admin.display(description="Status")
+    def current_status(self, obj: Activity) -> str:
+        """Plain text, not a link to the status lookup row."""
+        return obj.status.name
+
+    # --- "Change status" page (button on the edit page) -----------------------------------
+
+    def get_urls(self):
+        custom = [
+            path(
+                "<path:object_id>/change-status/",
+                self.admin_site.admin_view(self.change_status_view),
+                name="activities_activity_change_status",
+            )
+        ]
+        return custom + super().get_urls()
+
+    def change_status_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        """A small form offering only the statuses this activity can move to right now."""
+        activity = get_object_or_404(Activity, pk=object_id)
+        change_url = reverse("admin:activities_activity_change", args=[activity.pk])
+        if request.method == "POST":
+            new_status = request.POST.get("status", "")
+            old_status = activity.status.name
+            try:
+                services.change_status(request.user, activity, new_status)
+            except services.ActivityError as error:
+                self.message_user(request, f"Status not changed: {error}", level=messages.ERROR)
+                return redirect(request.path)
+            self.message_user(
+                request, f'Status of "{activity.title}" changed from {old_status} to {new_status}.', messages.SUCCESS
+            )
+            return redirect(change_url)
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": f"Change status: {activity.title}",
+            "activity": activity,
+            "current_status": activity.status.name,
+            "next_statuses": services.allowed_next_statuses(activity),
+            "registered": services.registered_count(activity),
+            "change_url": change_url,
+        }
+        return TemplateResponse(request, "admin/activities/activity/change_status.html", context)
+
+    def save_model(self, request, obj: Activity, form, change: bool) -> None:
+        if not change:
+            services.save_new_activity(request.user, obj)
+            return
+        changed = {field: form.cleaned_data[field] for field in form.changed_data if field in services.EDITABLE_FIELDS}
+        if changed:
+            saved = Activity.objects.get(pk=obj.pk)
+            services.update_activity(request.user, saved, changed)
+
+    def save_formset(self, request, form, formset, change: bool) -> None:
+        if formset.model is not ActivityResourcePerson:
+            return super().save_formset(request, form, formset, change)
+        new_links = formset.save(commit=False)  # nothing is written yet
+        for link in formset.deleted_objects:
+            services.remove_resource_person(request.user, form.instance, link.resource_person)
+        for link in new_links:
+            services.add_resource_person(request.user, form.instance, link.resource_person, link.topic)
+
+    def _move(self, request, queryset, status_name: str) -> None:
+        """List action: try each selected activity and report every success and failure."""
+        moved = []
+        for activity in queryset:
+            try:
+                services.change_status(request.user, activity, status_name)
+                moved.append(activity.title)
+            except services.ActivityError as error:
+                self.message_user(request, f'"{activity.title}": {error}', level=messages.ERROR)
+        if moved:
+            titles = ", ".join(f'"{title}"' for title in moved)
+            self.message_user(request, f"Status changed to {status_name} for {titles}.", messages.SUCCESS)
+
+    @admin.action(description="Change status to Scheduled")
+    def move_to_scheduled(self, request, queryset) -> None:
+        self._move(request, queryset, ActivityStatus.SCHEDULED)
+
+    @admin.action(description="Change status to Ongoing")
+    def move_to_ongoing(self, request, queryset) -> None:
+        self._move(request, queryset, ActivityStatus.ONGOING)
+
+    @admin.action(description="Change status to Conducted")
+    def move_to_conducted(self, request, queryset) -> None:
+        self._move(request, queryset, ActivityStatus.CONDUCTED)
+
+    @admin.action(description="Change status back to Draft")
+    def move_to_draft(self, request, queryset) -> None:
+        self._move(request, queryset, ActivityStatus.DRAFT)
 
 
 @admin.register(ActivityAuditLog)
@@ -69,5 +287,7 @@ class ResourcePersonAdmin(admin.ModelAdmin):
 
 
 @admin.register(ActivityResourcePerson)
-class ActivityResourcePersonAdmin(admin.ModelAdmin):
+class ActivityResourcePersonAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """View only. Add or remove resource persons on the activity's page (audited)."""
+
     list_display = ("activity", "resource_person", "topic")
