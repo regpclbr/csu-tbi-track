@@ -81,7 +81,7 @@ RESOURCE_PERSONS = [
 class DemoActivity:
     title: str
     activity_type: str
-    category: str
+    categories: list[str]  # one or more participant categories
     status: str
     start_offset_days: int  # relative to today
     length_days: int
@@ -93,21 +93,21 @@ class DemoActivity:
 
 
 DEMO_ACTIVITIES = [
-    DemoActivity("Startup Pitch Competition", "Forum", "Incubatees", "Conducted", -30, 1, 40, 32, "25000.00",
+    DemoActivity("Startup Pitch Competition", "Forum", ["Incubatees", "MSMEs"], "Conducted", -30, 1, 40, 32, "25000.00",
                  "CSU Gonzaga Function Hall", [0, 5]),
-    DemoActivity("Business Model Training", "Training", "Incubatees", "Conducted", -21, 2, 30, 26, "18000.00",
+    DemoActivity("Business Model Training", "Training", ["Incubatees"], "Conducted", -21, 2, 30, 26, "18000.00",
                  "TBI Co-working Space", [3]),
-    DemoActivity("Intellectual Property Seminar", "Seminar", "Faculty", "Conducted", -10, 1, 50, 38, "12000.00",
+    DemoActivity("Intellectual Property Seminar", "Seminar", ["Faculty"], "Conducted", -10, 1, 50, 38, "12000.00",
                  "CSU Audio-Visual Room", [2]),
-    DemoActivity("Mentoring Session", "Mentoring", "Incubatees", "Ongoing", 0, 1, 15, 12, "5000.00",
+    DemoActivity("Mentoring Session", "Mentoring", ["Incubatees"], "Ongoing", 0, 1, 15, 12, "5000.00",
                  "TBI Meeting Room", [4]),
-    DemoActivity("Product Development Workshop", "Workshop", "MSMEs", "Scheduled", 7, 2, 25, 14, "20000.00",
+    DemoActivity("Product Development Workshop", "Workshop", ["MSMEs"], "Scheduled", 7, 2, 25, 14, "20000.00",
                  "CSU Engineering Laboratory", [1]),
-    DemoActivity("Market Research Training", "Training", "MSMEs", "Scheduled", 14, 1, 30, 9, "15000.00",
+    DemoActivity("Market Research Training", "Training", ["MSMEs"], "Scheduled", 14, 1, 30, 9, "15000.00",
                  "TBI Co-working Space", [4]),
-    DemoActivity("Investor Networking", "Networking", "Incubatees", "Scheduled", 25, 1, 10, 10, "30000.00",
+    DemoActivity("Investor Networking", "Networking", ["Incubatees"], "Scheduled", 25, 1, 10, 10, "30000.00",
                  "Hotel Ensenada Conference Room", [5]),  # full: shows "registration closed"
-    DemoActivity("Technology Forum", "Forum", "Faculty", "Draft", 40, 1, 60, 0, "35000.00",
+    DemoActivity("Technology Forum", "Forum", ["Faculty", "Incubatees"], "Draft", 40, 1, 60, 0, "35000.00",
                  "CSU Gymnasium", []),
 ]
 
@@ -220,16 +220,17 @@ class Command(BaseCommand):
     def create_activity(self, spec: DemoActivity) -> None:
         start = self.today + timedelta(days=spec.start_offset_days)
         end = start + timedelta(days=spec.length_days - 1)
-        creator = self.staff["Community Development Head" if spec.category == "MSMEs" else "Incubation Project Head"]
+        msme_only = spec.categories == ["MSMEs"]
+        creator = self.staff["Community Development Head" if msme_only else "Incubation Project Head"]
 
         # Created through the same services as real activities, so the demo has a real audit log.
         activity = activity_services.create_activity(
             creator,
             {
                 "activity_type": ActivityType.objects.get(name=spec.activity_type),
-                "participant_category": ParticipantCategory.objects.get(name=spec.category),
+                "participant_categories": list(ParticipantCategory.objects.filter(name__in=spec.categories)),
                 "title": spec.title,
-                "description": f"[DEMO] {spec.title} for {spec.category.lower()} of the CSU Technology Business Incubator.",
+                "description": f"[DEMO] {spec.title} for {' and '.join(spec.categories)} of the CSU Technology Business Incubator.",
                 "start_date": start,
                 "end_date": end,
                 "time_schedule": "8:00 AM - 5:00 PM",
@@ -297,7 +298,7 @@ class Command(BaseCommand):
         registrations = []
 
         # A few incubatee startups register while logged in.
-        linked_startups = self.startups[:3] if spec.category == "Incubatees" else []
+        linked_startups = self.startups[:3] if "Incubatees" in spec.categories else []
         people = [(s.name + " (representative)", s.email, s) for s in linked_startups]
         people += [(name, email, None) for name, email in self.fake_people(spec.registrations - len(people))]
 

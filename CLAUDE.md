@@ -44,6 +44,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - PARTICIPANT_CATEGORY is Admin-managed master data (no `is_active`): seeded names from
   `accounts/seed.py` can't be renamed/deleted; added ones can be renamed and deleted while unused.
   Names are unique ignoring case/outer spaces. Never assume a fixed number of categories.
+- An activity has ONE OR MORE participant categories: `Activity.participant_categories`, a
+  many-to-many through ACTIVITY_PARTICIPANT_CATEGORY (ERD change in the Step 4 review). Change
+  them only through `update_activity` (one audit row "Participant Categories"). Per-category
+  counts can exceed the total: always count distinct activities (filter with EXISTS, not a join).
 - Checklist and Document Repository must use `Document.objects.activity_documents()`
   (excludes certificate files, i.e. `related_certificate` set).
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).

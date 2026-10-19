@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from activities import services
 from activities.formatting import format_audit_value
-from activities.models import ActivityAuditLog, ActivityStatus, AuditLogIsAppendOnly, ResourcePerson
+from activities.models import ActivityAuditLog, ActivityStatus, AuditLogIsAppendOnly, ParticipantCategory, ResourcePerson
 
 from .conftest import TEST_NOW, at
 
@@ -136,7 +136,7 @@ def three_activities(director, valid_data, move_to, register):
             valid_data(
                 title=title,
                 activity_type=ActivityType.objects.get(name=type_name),
-                participant_category=ParticipantCategory.objects.get(name=category),
+                participant_categories=[ParticipantCategory.objects.get(name=category)],
                 start_date=start,
                 end_date=start + timedelta(days=1),
                 registration_deadline=at(start - timedelta(days=1)),
@@ -163,7 +163,8 @@ def test_list_search_filter_sort(three_activities) -> None:
     assert titles(services.list_activities({"search": "work"})) == ["Product Workshop"]
     assert titles(services.list_activities({"activity_type": seminar.activity_type_id})) == ["IP Seminar"]
     assert titles(services.list_activities({"status": workshop.status_id})) == ["Product Workshop"]
-    assert titles(services.list_activities({"participant_category": training.participant_category_id})) == ["Market Training"]
+    faculty = ParticipantCategory.objects.get(name="Faculty")
+    assert titles(services.list_activities({"participant_category": faculty.pk})) == ["Market Training"]
     assert titles(services.list_activities({"date_from": date(2026, 12, 1), "date_to": date(2026, 12, 31)})) == ["Product Workshop"]
     assert titles(services.list_activities({"sort": "-registered"}))[0] == "IP Seminar"
 

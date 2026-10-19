@@ -24,9 +24,9 @@ def create_payload(valid_data) -> dict:
     """valid_data() as JSON: IDs and ISO strings."""
     data = valid_data()
     return {
-        **{key: value for key, value in data.items() if key not in ("activity_type", "participant_category")},
+        **{key: value for key, value in data.items() if key not in ("activity_type", "participant_categories")},
         "activity_type": data["activity_type"].pk,
-        "participant_category": data["participant_category"].pk,
+        "participant_categories": [category.pk for category in data["participant_categories"]],
         "start_date": data["start_date"].isoformat(),
         "end_date": data["end_date"].isoformat(),
         "registration_deadline": data["registration_deadline"].isoformat(),

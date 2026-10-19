@@ -83,8 +83,10 @@ class Activity(models.Model):
     )
     status = models.ForeignKey(ActivityStatus, on_delete=models.PROTECT, related_name="activities")
     activity_type = models.ForeignKey(ActivityType, on_delete=models.PROTECT, related_name="activities")
-    participant_category = models.ForeignKey(
-        ParticipantCategory, on_delete=models.PROTECT, related_name="activities"
+    # Who the activity is for: one or more categories, stored in ACTIVITY_PARTICIPANT_CATEGORY.
+    # (A many-to-many through table adds no column to ACTIVITY.)
+    participant_categories = models.ManyToManyField(
+        ParticipantCategory, through="ActivityParticipantCategory", related_name="activities"
     )
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
@@ -112,6 +114,27 @@ class Activity(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+
+class ActivityParticipantCategory(models.Model):
+    """ACTIVITY_PARTICIPANT_CATEGORY: links an activity to each category it is for."""
+
+    activity_participant_category_id = models.BigAutoField(primary_key=True)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="category_links")
+    participant_category = models.ForeignKey(
+        ParticipantCategory, on_delete=models.PROTECT, related_name="activity_links"
+    )
+
+    class Meta:
+        db_table = "activity_participant_category"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["activity", "participant_category"], name="unique_category_per_activity"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.activity} - {self.participant_category}"
 
 
 class AuditLogIsAppendOnly(Exception):

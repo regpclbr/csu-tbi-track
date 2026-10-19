@@ -19,7 +19,7 @@
 
 ## Technical (Step 0)
 
-15. No separate tech-stack document was found in `docs/`; the tech stack in the project brief (copied into `CLAUDE.md`) is used as the source of truth.
+15. The tech-stack document is `docs/Tech Stack for TBI Activity Tracker.docx` (added after Step 0; read in the Step 4 review). It matches `CLAUDE.md`: PostgreSQL + pgvector (documents, form definitions **as JSON**, and embeddings in one database), Django, RAG in Python, Gemini Flash and the Gemini embedding model, Django Templates + HTMX + Alpine.js (React optional, only for the AI Assistant), local file storage, WeasyPrint and openpyxl, Django email with Django-Q2 on the database, and local login now with Navigatu SSO later. *(Updated in the Step 4 review; it changes nothing in the plan.)*
 16. Python 3.12 is used (3.14 is also installed, but some libraries may not have wheels for it yet).
 17. Django 6.1.2 (latest stable at setup time) and the `pgvector/pgvector:pg17` Docker image (PostgreSQL 17).
 18. Time zone is `Asia/Manila`. All datetimes are stored in UTC and shown in Manila time.
@@ -137,7 +137,7 @@
 70. Only Conducted activities are read-only. Draft, Scheduled and Ongoing activities can be edited, and every validation rule still applies.
 71. An empty description is stored as no description (NULL).
 72. **Audit log rows.**
-    - `field_changed` uses readable labels: Title, Description, Activity Type, Participant Category, Start Date, End Date, Time Schedule, Venue, Max Slots, Registration Deadline, Evaluation Deadline, Budget Amount, Status, Resource Person Added, Resource Person Removed.
+    - `field_changed` uses readable labels: Title, Description, Activity Type, Participant Categories, Start Date, End Date, Time Schedule, Venue, Max Slots, Registration Deadline, Evaluation Deadline, Budget Amount, Status, Resource Person Added, Resource Person Removed.
     - Values are formatted by one function, `activities.formatting.format_audit_value()`: dates "Oct 5, 2026"; date-times "Oct 15, 2026 5:00 PM" (Manila time); money "₱30,000.00"; lookups and resource persons by name; empty values "". The description is stored in full.
     - Creating an activity writes one row (Status: "" → "Draft"). A resource person row stores the name (in `new_value` when added, in `old_value` when removed).
 73. **The audit log is append-only**, enforced in the model: saving an existing row, deleting a row, and bulk update/delete all raise `AuditLogIsAppendOnly`. There is no service, endpoint or admin screen that edits or deletes it. Its default order is newest first (migration `activities/0002`, options only; no data change).
@@ -145,7 +145,7 @@
 75. **Resource persons.** A link's topic cannot be edited: remove the person and add them again (each step is audited). `create_resource_person` refuses an email that already exists (ignoring upper/lower case). People without an email are not checked for duplicates. Removing a link never deletes the person.
 76. **Registration open/closed.** Registration is still open at the exact deadline time. `registered_count` counts every registration (there is no cancellation yet).
 77. **Activity list cards.** "Conducted this month" means status Conducted with an end date in the current month (Manila time). "Open for registration" uses the same rule as `is_registration_open()`.
-78. **List and calendar.** List filters use IDs (activity type, status, category). The date range keeps activities that overlap it. Sort options: title, start_date, registered, created_at (prefix `-` for descending; the default is newest start date first). Pages hold 20 rows. The calendar shows every status, including Draft (staff only).
+78. **List and calendar.** List filters use IDs (activity type, status, category; an activity matches the category filter if the category is one of its categories). The date range keeps activities that overlap it. Sort options: title, start_date, registered, created_at (prefix `-` for descending; the default is newest start date first). Pages hold 20 rows. The calendar shows every status, including Draft (staff only).
 79. **JSON API** (`/activities/api/`): dates are `YYYY-MM-DD`; date-times are ISO 8601 (`2026-11-13T17:00`, Manila time if no offset); money is a string (`"30000.00"`). An update sends only the fields to change. Errors: 400 with `{"errors": {field: [...]}}` or `{"error": "..."}`; 403 with a clear message when `can_create_activity` is missing. As in Step 3, someone not logged in is redirected to the login page.
 80. **Django admin for activities** goes through the same services:
     - Adding and editing an activity both validate and audit.
@@ -181,3 +181,15 @@
     - The Action dropdown appears only on the Activities **list** page, and only when the list has at least one activity (Django hides it on an empty list).
 87. The API detail field `allowed_status_moves` now uses the same `allowed_next_statuses()`, so it also leaves out Draft once someone has registered.
 88. **Data check (2026-10-19, development database).** Row counts: activity_status 4, participant_category 3, activity_type 6, document_status 2, document_type 8, role 5. No duplicate names, including ignoring upper/lower case and spaces. The reported "Activity status with this Name already exists." came from the old read-only Status link on the activity page: it opened the lookup row of the activity's *current* status (Draft), and typing "Conducted" there tried to rename Draft to Conducted. The unique name rule blocked it, so no data changed. That page is now view only.
+
+## Many participant categories per activity (Step 4 review, ERD change)
+
+89. **ERD change.** ACTIVITY no longer has `participant_category_id`. The new table ACTIVITY_PARTICIPANT_CATEGORY (`activity_participant_category_id` PK, `activity_id` FK, `participant_category_id` FK, unique (activity, participant category)) links an activity to each category it is for. Delete rules: activity → CASCADE (a pure child row; activities are never deleted anyway), category → PROTECT. In Django this is `Activity.participant_categories`, a many-to-many field through `ActivityParticipantCategory` (no column on ACTIVITY).
+90. **Migration `activities/0004`** creates the table, copies each activity's old category into it, then drops the old column. It prints the counts and stops (rolling everything back) if the number of links does not equal the number of activities. Going back only works on an empty database. Development database before the migration: 2 activities, both "Incubatees"; expected after: 2 links.
+91. **At least one category per activity**, checked on create and update ("Choose at least one participant category."), in the API and in the Django admin. This replaces the Step 4 rule "exactly one participant category".
+92. **Audit log.** One row per edit, field "Participant Categories", old and new values are the category names sorted and joined with ", " (for example "Faculty, MSMEs"). No row when only the order changes or a category is repeated: categories are compared as a set.
+93. **API.** Create and update take `participant_categories` as a list of IDs (`[1, 3]`). Responses (list rows and detail) return `participant_category_ids` (sorted) and `participant_categories` (names, sorted). The list filter still takes one `participant_category` ID.
+94. **Counting by category.** One activity can count under several categories, so per-category numbers can add up to more than the total. Totals must count distinct activities (the list and the stats already do: the category filter uses an EXISTS subquery, so an activity is never counted twice).
+95. **Django admin.** Categories are a checkbox multi-select on the activity form, read-only (shown as text) when the activity is Conducted. The activity list has a "Participant categories" column and a category filter. Category changes are saved only through the service (with the audit row).
+96. **Category delete rule.** An Admin-added category can be deleted only if no activity links to it (item 84). The "no registration uses it" check is added in Step 5, when REGISTRATION.participant_category_id exists.
+97. **Demo data.** "Startup Pitch Competition" is for Incubatees and MSMEs, and "Technology Forum" for Faculty and Incubatees; the other demo activities have one category.

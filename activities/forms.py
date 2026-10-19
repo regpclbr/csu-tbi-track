@@ -13,7 +13,10 @@ class ActivityDataForm(forms.Form):
     title = forms.CharField(max_length=255)
     description = forms.CharField(required=False)
     activity_type = forms.ModelChoiceField(queryset=ActivityType.objects.all())
-    participant_category = forms.ModelChoiceField(queryset=ParticipantCategory.objects.all())
+    participant_categories = forms.ModelMultipleChoiceField(  # a list of IDs, e.g. [1, 3]
+        queryset=ParticipantCategory.objects.all(),
+        error_messages={"required": "Choose at least one participant category."},
+    )
     start_date = forms.DateField()
     end_date = forms.DateField()
     time_schedule = forms.CharField(max_length=100)

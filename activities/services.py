@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, F, QuerySet
+from django.db.models import Count, Exists, F, OuterRef, QuerySet
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 
@@ -22,6 +22,7 @@ from .formatting import format_audit_value
 from .models import (
     Activity,
     ActivityAuditLog,
+    ActivityParticipantCategory,
     ActivityResourcePerson,
     ActivityStatus,
     ParticipantCategory,
@@ -48,7 +49,7 @@ FIELD_LABELS: dict[str, str] = {
     "title": "Title",
     "description": "Description",
     "activity_type": "Activity Type",
-    "participant_category": "Participant Category",
+    "participant_categories": "Participant Categories",
     "start_date": "Start Date",
     "end_date": "End Date",
     "time_schedule": "Time Schedule",
@@ -59,7 +60,9 @@ FIELD_LABELS: dict[str, str] = {
     "budget_amount": "Budget Amount",
 }
 EDITABLE_FIELDS = tuple(FIELD_LABELS)
-REQUIRED_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != "description")
+CATEGORIES = "participant_categories"  # many-to-many (ACTIVITY_PARTICIPANT_CATEGORY), not a column
+SCALAR_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != CATEGORIES)  # columns on ACTIVITY
+REQUIRED_FIELDS = tuple(field for field in SCALAR_FIELDS if field != "description")
 TEXT_FIELDS = ("title", "description", "time_schedule", "venue")
 
 STATUS_LABEL = "Status"
@@ -113,17 +116,28 @@ def _clean_values(data: dict) -> dict:
             cleaned[field] = cleaned[field].strip()
     if cleaned.get("description") == "":
         cleaned["description"] = None
+    if CATEGORIES in cleaned:
+        cleaned[CATEGORIES] = _category_set(cleaned[CATEGORIES])
     return cleaned
 
 
+def _category_set(categories) -> frozenset[ParticipantCategory]:
+    """Categories as a set (order and repeats do not matter)."""
+    return frozenset(categories or ())
+
+
 def activity_values(activity: Activity) -> dict:
-    """The editable field values of an activity (None for a foreign key that is not set yet)."""
+    """The editable field values of an activity (None for a foreign key that is not set yet).
+
+    `participant_categories` is a set of categories (empty for an unsaved activity).
+    """
     values = {}
-    for field in EDITABLE_FIELDS:
+    for field in SCALAR_FIELDS:
         try:
             values[field] = getattr(activity, field)
         except ObjectDoesNotExist:
             values[field] = None
+    values[CATEGORIES] = _category_set(activity.participant_categories.all()) if activity.pk else frozenset()
     return values
 
 
@@ -147,6 +161,8 @@ def validate_activity_values(
     for field in REQUIRED_FIELDS:
         if values.get(field) in (None, ""):
             errors[field] = "This field is required."
+    if not values.get(CATEGORIES):
+        errors[CATEGORIES] = "Choose at least one participant category."
     if errors:
         raise ValidationError(errors)
 
@@ -239,28 +255,35 @@ def get_audit_log(
 
 
 @transaction.atomic
-def save_new_activity(member: TBIMember, activity: Activity, now: datetime | None = None) -> Activity:
-    """Validate and save an unsaved Activity as Draft, and write its first audit row.
+def save_new_activity(
+    member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None
+) -> Activity:
+    """Validate and save an unsaved Activity as Draft with its categories, and write its first audit row.
 
     Used by create_activity() and by the Django admin's add form. `now` is only for tests
     and the demo seed (to create activities "as of" an earlier day); real calls leave it out.
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
-    validate_activity_values(activity_values(activity), now=now)
+    categories = _category_set(participant_categories)
+    validate_activity_values({**activity_values(activity), CATEGORIES: categories}, now=now)
     activity.created_by = member
     activity.status = ActivityStatus.objects.get(name=DRAFT)
     activity.save()
+    activity.participant_categories.set(categories)
     _write_audit(activity, member, [(STATUS_LABEL, "", activity.status)])
     return activity
 
 
 def create_activity(member: TBIMember, data: dict, now: datetime | None = None) -> Activity:
-    """Create a Draft activity. `data` holds Python values (model instances, dates, Decimal).
+    """Create a Draft activity. `data` holds Python values (model instances, dates, Decimal);
+    `participant_categories` is a list of one or more ParticipantCategory.
 
     start_date and registration_deadline must not be in the past (see save_new_activity for `now`).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
-    return save_new_activity(member, Activity(**_clean_values(data)), now=now)
+    values = _clean_values(data)
+    categories = values.pop(CATEGORIES, frozenset())
+    return save_new_activity(member, Activity(**values), categories, now=now)
 
 
 @transaction.atomic
@@ -280,9 +303,12 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
     validate_activity_values({**old_values, **changes}, current, changed_fields=set(changed), now=now)
 
     if changed:
-        for field in changed:
+        columns = [field for field in changed if field != CATEGORIES]
+        for field in columns:
             setattr(current, field, changes[field])
-        current.save(update_fields=[*changed, "updated_at"])
+        current.save(update_fields=[*columns, "updated_at"])  # updated_at changes for categories too
+        if CATEGORIES in changed:
+            current.participant_categories.set(changes[CATEGORIES])
         _write_audit(
             current, member, [(FIELD_LABELS[field], old_values[field], changes[field]) for field in changed]
         )
@@ -392,8 +418,10 @@ DEFAULT_SORT = "-start_date"
 
 
 def _with_registered_count(queryset: QuerySet) -> QuerySet:
-    return queryset.select_related("status", "activity_type", "participant_category", "created_by").annotate(
-        registered=Count("registrations", distinct=True)
+    return (
+        queryset.select_related("status", "activity_type", "created_by")
+        .prefetch_related("participant_categories")
+        .annotate(registered=Count("registrations", distinct=True))
     )
 
 
@@ -409,7 +437,8 @@ def _overlapping(queryset: QuerySet, start: date | None, end: date | None) -> Qu
 def list_activities(filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE) -> PageResult:
     """The Activities list. Each item has `.registered` (count) to show with max_slots, e.g. 18/30.
 
-    filters: search (title), activity_type, status, participant_category (IDs),
+    filters: search (title), activity_type, status, participant_category (IDs; an activity
+             matches if the category is one of its categories),
              date_from, date_to (dates), sort (one of SORT_OPTIONS).
     """
     filters = filters or {}
@@ -420,9 +449,19 @@ def list_activities(filters: dict | None = None, page: int | str | None = 1, per
     activities = _with_registered_count(Activity.objects.all())
     if filters.get("search"):
         activities = activities.filter(title__icontains=filters["search"].strip())
-    for field in ("activity_type", "status", "participant_category"):
+    for field in ("activity_type", "status"):
         if filters.get(field):
             activities = activities.filter(**{f"{field}_id": filters[field]})
+    if filters.get("participant_category"):
+        # An activity matches if it has the chosen category among its categories.
+        # Exists() avoids a join, so each activity still appears once.
+        activities = activities.filter(
+            Exists(
+                ActivityParticipantCategory.objects.filter(
+                    activity=OuterRef("pk"), participant_category_id=filters["participant_category"]
+                )
+            )
+        )
     activities = _overlapping(activities, filters.get("date_from"), filters.get("date_to"))
     return _paginate(activities.order_by(*SORT_OPTIONS[sort], "activity_id"), page, per_page)
 
@@ -456,6 +495,7 @@ def activities_between(start: date, end: date) -> list[Activity]:
 def get_activity_detail(activity: Activity) -> dict:
     """Everything the Overview tab needs."""
     count = registered_count(activity)
+    categories = sorted(activity.participant_categories.all(), key=lambda category: category.name)
     links = activity.resource_person_links.select_related("resource_person").order_by("resource_person__name")
     return {
         "activity_id": activity.pk,
@@ -463,7 +503,8 @@ def get_activity_detail(activity: Activity) -> dict:
         "description": activity.description or "",
         "status": activity.status.name,
         "activity_type": activity.activity_type.name,
-        "participant_category": activity.participant_category.name,
+        "participant_category_ids": [category.pk for category in categories],
+        "participant_categories": [category.name for category in categories],
         "start_date": activity.start_date,
         "end_date": activity.end_date,
         "time_schedule": activity.time_schedule,

@@ -115,6 +115,13 @@ class ActivityResourcePersonInline(admin.TabularInline):
 class ActivityAdminForm(forms.ModelForm):
     """Runs the same validation as activities.services, so errors show on the form."""
 
+    participant_categories = forms.ModelMultipleChoiceField(
+        queryset=ParticipantCategory.objects.all(),
+        widget=forms.CheckboxSelectMultiple,
+        error_messages={"required": "Choose at least one participant category."},
+        help_text="Who the activity is for. Choose one or more.",
+    )
+
     class Meta:
         model = Activity
         fields = services.EDITABLE_FIELDS
@@ -126,6 +133,8 @@ class ActivityAdminForm(forms.ModelForm):
         saved = Activity.objects.get(pk=self.instance.pk) if self.instance.pk else None
         values = services.activity_values(saved) if saved else {}
         submitted = {field: cleaned[field] for field in services.EDITABLE_FIELDS if field in cleaned}
+        if services.CATEGORIES in submitted:
+            submitted[services.CATEGORIES] = frozenset(submitted[services.CATEGORIES])
         changed = {field for field, value in submitted.items() if saved is None or value != values[field]}
         values.update(submitted)
         try:
@@ -147,8 +156,8 @@ class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     change_form_template = "admin/activities/activity/change_form.html"
 
     form = ActivityAdminForm
-    list_display = ("title", "activity_type", "status", "start_date", "end_date", "max_slots", "created_by")
-    list_filter = ("status", "activity_type", "participant_category")
+    list_display = ("title", "activity_type", "categories", "status", "start_date", "end_date", "max_slots", "created_by")
+    list_filter = ("status", "activity_type", "participant_categories")
     search_fields = ("title", "venue")
     date_hierarchy = "start_date"
     actions = ["move_to_scheduled", "move_to_ongoing", "move_to_conducted", "move_to_draft"]
@@ -168,6 +177,13 @@ class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
         if _is_conducted(obj):  # Conducted is read-only
             return ("current_status", *services.EDITABLE_FIELDS, "created_by")
         return ("current_status", "created_by")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related("participant_categories")
+
+    @admin.display(description="Participant categories")
+    def categories(self, obj: Activity) -> str:
+        return ", ".join(sorted(category.name for category in obj.participant_categories.all()))
 
     @admin.display(description="Status")
     def current_status(self, obj: Activity) -> str:
@@ -217,12 +233,18 @@ class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
 
     def save_model(self, request, obj: Activity, form, change: bool) -> None:
         if not change:
-            services.save_new_activity(request.user, obj)
+            services.save_new_activity(request.user, obj, form.cleaned_data[services.CATEGORIES])
             return
         changed = {field: form.cleaned_data[field] for field in form.changed_data if field in services.EDITABLE_FIELDS}
         if changed:
             saved = Activity.objects.get(pk=obj.pk)
             services.update_activity(request.user, saved, changed)
+
+    def save_related(self, request, form, formsets, change: bool) -> None:
+        """Categories are already saved by the service (with the audit row), so skip
+        form.save_m2m(); only the resource-person inline is saved here."""
+        for formset in formsets:
+            self.save_formset(request, form, formset, change=change)
 
     def save_formset(self, request, form, formset, change: bool) -> None:
         if formset.model is not ActivityResourcePerson:

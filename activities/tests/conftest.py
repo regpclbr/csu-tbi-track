@@ -41,7 +41,7 @@ def valid_data(roles):
             "title": "Pitching Workshop",
             "description": "Learn to pitch.",
             "activity_type": ActivityType.objects.get(name="Workshop"),
-            "participant_category": ParticipantCategory.objects.get(name="Incubatees"),
+            "participant_categories": [ParticipantCategory.objects.get(name="Incubatees")],
             "start_date": start,
             "end_date": end,
             "time_schedule": "8:00 AM - 5:00 PM",

@@ -42,7 +42,7 @@ def test_description_is_optional(director, valid_data) -> None:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("missing", ["title", "activity_type", "participant_category", "start_date", "budget_amount"])
+@pytest.mark.parametrize("missing", ["title", "activity_type", "start_date", "budget_amount"])
 def test_required_fields(director, valid_data, missing) -> None:
     data = valid_data()
     del data[missing]
@@ -156,7 +156,7 @@ def test_update_writes_one_readable_row_per_changed_field(director, valid_data) 
         {
             "venue": "Room 101",
             "activity_type": ActivityType.objects.get(name="Seminar"),
-            "participant_category": ParticipantCategory.objects.get(name="MSMEs"),
+            "participant_categories": [ParticipantCategory.objects.get(name="MSMEs")],
             "end_date": date(2026, 11, 18),
             "evaluation_deadline": at(date(2026, 11, 25), 9),
             "budget_amount": Decimal("45000.50"),
@@ -169,7 +169,7 @@ def test_update_writes_one_readable_row_per_changed_field(director, valid_data) 
         [
             ("Venue", "CSU Hall", "Room 101"),
             ("Activity Type", "Workshop", "Seminar"),  # names, never IDs
-            ("Participant Category", "Incubatees", "MSMEs"),
+            ("Participant Categories", "Incubatees", "MSMEs"),
             ("End Date", "Nov 16, 2026", "Nov 18, 2026"),
             ("Evaluation Deadline", "Nov 23, 2026 5:00 PM", "Nov 25, 2026 9:00 AM"),
             ("Budget Amount", "₱30,000.00", "₱45,000.50"),

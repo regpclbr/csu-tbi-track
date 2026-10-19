@@ -29,7 +29,7 @@ def form_data(activity: Activity | None = None, values: dict | None = None, link
         "title": values["title"],
         "description": values["description"] or "",
         "activity_type": values["activity_type"].pk,
-        "participant_category": values["participant_category"].pk,
+        "participant_categories": sorted(category.pk for category in values["participant_categories"]),
         "start_date": values["start_date"].isoformat(),
         "end_date": values["end_date"].isoformat(),
         "time_schedule": values["time_schedule"],

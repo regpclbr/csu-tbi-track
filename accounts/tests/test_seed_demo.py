@@ -64,3 +64,11 @@ def test_demo_twice_creates_no_duplicates(demo_settings) -> None:
     output = run_demo()
     assert (Activity.objects.count(), Registration.objects.count(), Document.objects.count()) == counts
     assert "0 activities created" in output
+
+
+@pytest.mark.django_db
+def test_demo_has_activities_with_two_categories(demo_settings) -> None:
+    run_demo()
+    pitch = Activity.objects.get(title="Startup Pitch Competition")
+    assert sorted(c.name for c in pitch.participant_categories.all()) == ["Incubatees", "MSMEs"]
+    assert all(a.participant_categories.exists() for a in Activity.objects.all())

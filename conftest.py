@@ -36,11 +36,10 @@ def member(staff_role: Role) -> TBIMember:
 @pytest.fixture
 def activity(member: TBIMember) -> Activity:
     deadline = timezone.make_aware(datetime(2026, 11, 1, 17, 0))
-    return Activity.objects.create(
+    activity = Activity.objects.create(
         created_by=member,
         status=ActivityStatus.objects.create(name="Draft"),
         activity_type=ActivityType.objects.create(name="Workshop"),
-        participant_category=ParticipantCategory.objects.create(name="Faculty"),
         title="Pitching Workshop",
         start_date=date(2026, 11, 5),
         end_date=date(2026, 11, 6),
@@ -51,6 +50,8 @@ def activity(member: TBIMember) -> Activity:
         evaluation_deadline=deadline + timedelta(days=14),
         budget_amount=Decimal("5000.00"),
     )
+    activity.participant_categories.add(ParticipantCategory.objects.create(name="Faculty"))
+    return activity
 
 
 @pytest.fixture

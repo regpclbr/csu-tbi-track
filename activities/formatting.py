@@ -28,10 +28,13 @@ def format_audit_value(value: object) -> str:
     """Turn any activity field value into the text stored in ACTIVITY_AUDIT_LOG.
 
     Lookups (status, activity type, category, resource person) are stored by name,
-    never by ID. Empty values become "".
+    never by ID. A group of categories becomes their names, sorted and joined with ", ".
+    Empty values become "".
     """
     if value is None or value == "":
         return ""
+    if isinstance(value, (set, frozenset, list, tuple)):  # e.g. participant categories
+        return ", ".join(sorted(format_audit_value(item) for item in value))
     if isinstance(value, models.Model):
         return str(value)  # every lookup's __str__ is its name
     if isinstance(value, datetime):  # check datetime before date: a datetime is also a date

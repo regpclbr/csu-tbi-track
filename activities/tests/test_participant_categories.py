@@ -118,7 +118,7 @@ def test_unused_added_category_can_be_deleted(client, admin_member) -> None:
 @pytest.mark.django_db
 def test_category_in_use_shows_a_clear_error(client, admin_member, director, valid_data) -> None:
     alumni = services.save_participant_category(admin_member, ParticipantCategory(), "Alumni")
-    services.create_activity(director, valid_data(participant_category=alumni))
+    services.create_activity(director, valid_data(participant_categories=[alumni]))
     client.force_login(admin_member)
 
     for method in (client.get, client.post):  # opening the delete page, or confirming it
@@ -212,33 +212,35 @@ def test_activities_work_with_added_categories(client, director, valid_data, fiv
     # Create through the API with a new category, then edit it to another new one.
     payload = {
         key: (value.pk if hasattr(value, "pk") else value.isoformat() if hasattr(value, "isoformat") else str(value))
-        for key, value in valid_data(participant_category=alumni).items()
+        for key, value in valid_data().items()
+        if key != "participant_categories"
     }
+    payload["participant_categories"] = [alumni.pk]
     response = client.post("/activities/api/", json.dumps(payload), content_type="application/json")
     assert response.status_code == 201, response.content
     activity = Activity.objects.get()
-    assert json.loads(response.content)["activity"]["participant_category"] == "Alumni"
+    assert json.loads(response.content)["activity"]["participant_categories"] == ["Alumni"]
 
-    services.update_activity(director, activity, {"participant_category": students})
+    services.update_activity(director, activity, {"participant_categories": [students]})
     assert activity.audit_logs.filter(old_value="Alumni", new_value="Students").exists()
 
     # List filter by the new category, and the detail.
     rows = json.loads(client.get("/activities/api/", {"participant_category": students.pk}).content)
-    assert [r["participant_category"] for r in rows["activities"]] == ["Students"]
+    assert [r["participant_categories"] for r in rows["activities"]] == [["Students"]]
     assert services.list_activities({"participant_category": alumni.pk}).total == 0
-    assert services.get_activity_detail(activity)["participant_category"] == "Students"
+    assert services.get_activity_detail(activity)["participant_categories"] == ["Students"]
 
 
 @pytest.mark.django_db
 def test_admin_activity_form_offers_every_category(client, admin_member, five_categories) -> None:
     client.force_login(admin_member)
-    choices = client.get("/admin/activities/activity/add/").context["adminform"].form.fields["participant_category"].queryset
+    choices = client.get("/admin/activities/activity/add/").context["adminform"].form.fields["participant_categories"].queryset
     assert sorted(c.name for c in choices) == ["Alumni", "Faculty", "Incubatees", "MSMEs", "Students"]
 
 
 @pytest.mark.django_db
 def test_admin_list_filter_offers_every_category(client, admin_member, director, valid_data, five_categories) -> None:
-    services.create_activity(director, valid_data(participant_category=category("Students")))
+    services.create_activity(director, valid_data(participant_categories=[category("Students")]))
     client.force_login(admin_member)
     html = client.get("/admin/activities/activity/").content.decode()
     for name in ["Alumni", "Faculty", "Incubatees", "MSMEs", "Students"]:
