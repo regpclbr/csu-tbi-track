@@ -18,6 +18,12 @@ def fast_password_hashing(settings) -> None:
     settings.PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 
+@pytest.fixture(autouse=True)
+def temporary_media_root(settings, tmp_path) -> None:
+    """Tests only: uploaded files go to a temporary folder, never the real media folder."""
+    settings.MEDIA_ROOT = tmp_path / "media"
+
+
 @pytest.fixture
 def admin_role() -> Role:
     return Role.objects.create(role_name="Admin", can_create_activity=True, can_manage_users=True)

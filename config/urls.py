@@ -1,7 +1,5 @@
 """Root URL configuration for CSU-TBI Track."""
 
-from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
@@ -30,6 +28,5 @@ urlpatterns = [
 # A clear 403 message (JSON for /api/ URLs) when a member lacks a permission.
 handler403 = "config.views.permission_denied"
 
-# Serve uploaded files during development only.
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Uploaded files are deliberately NOT served from /media/ (not even in DEBUG).
+# Documents are downloaded only through /documents/<id>/download/, which requires a staff login.

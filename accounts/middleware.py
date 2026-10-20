@@ -29,5 +29,5 @@ class MustChangePasswordMiddleware:
     @staticmethod
     def _is_allowed(path: str) -> bool:
         allowed = {reverse("accounts:password_change"), reverse("accounts:logout")}
-        # Static files (CSS/JS) are allowed; uploaded files (MEDIA) are not.
+        # Static files (CSS/JS) are allowed; document downloads are not.
         return path in allowed or path.startswith(settings.STATIC_URL)

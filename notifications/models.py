@@ -8,6 +8,12 @@ from django.db.models import Q
 class Notification(models.Model):
     """An in-app notification for exactly one recipient: a TBI member or a startup."""
 
+    # Values of `type`. A reminder is sent at most once per (member, activity, document type, type).
+    DOCUMENT_DUE_SOON = "document_due_soon"
+    DOCUMENT_OVERDUE = "document_overdue"
+    DOCUMENT_RETURNED = "document_returned"
+    REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
+
     notification_id = models.BigAutoField(primary_key=True)
     member = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
@@ -34,6 +40,13 @@ class Notification(models.Model):
                 condition=Q(member__isnull=False, startup__isnull=True)
                 | Q(member__isnull=True, startup__isnull=False),
                 name="notification_has_exactly_one_recipient",
+            ),
+            # Never the same reminder twice, even when two runs happen at the same moment.
+            # Returned-document notifications are not limited (a document can be returned again).
+            models.UniqueConstraint(
+                fields=["member", "activity", "document_type", "type"],
+                condition=Q(type__in=["document_due_soon", "document_overdue"]),
+                name="unique_document_reminder",
             ),
         ]
 

@@ -59,6 +59,14 @@ class DocumentType(models.Model):
         return self.name
 
 
+def document_upload_to(instance: "Document", filename: str) -> str:
+    """The full path is built by documents.services.build_file_path() from DOCUMENT_TYPE.naming_pattern.
+
+    It is used as given here, so the uploaded file's own name never ends up in the path.
+    """
+    return filename
+
+
 class DocumentQuerySet(models.QuerySet):
     """Documents with related_certificate set belong to the Certificates tab."""
 
@@ -73,6 +81,14 @@ class DocumentQuerySet(models.QuerySet):
     def approved(self) -> "DocumentQuerySet":
         """Documents whose status is Approved (the only ones that get embeddings)."""
         return self.filter(status__status_name=DocumentStatus.APPROVED)
+
+    def waiting_for_reviewer(self) -> "DocumentQuerySet":
+        """For Review and not returned (reviewed_at empty): a reviewer has to act."""
+        return self.filter(status__status_name=DocumentStatus.FOR_REVIEW, reviewed_at__isnull=True)
+
+    def returned(self) -> "DocumentQuerySet":
+        """For Review but returned by a reviewer (reviewed_at set): the uploader has to replace the file."""
+        return self.filter(status__status_name=DocumentStatus.FOR_REVIEW, reviewed_at__isnull=False)
 
 
 class Document(models.Model):
@@ -103,7 +119,7 @@ class Document(models.Model):
     )
     title = models.CharField(max_length=255)
     file_name = models.CharField(max_length=255)
-    file_path = models.FileField(upload_to="documents/%Y/%m/", max_length=255)
+    file_path = models.FileField(upload_to=document_upload_to, max_length=255)
     file_extension = models.CharField(max_length=10)
     file_size_kb = models.PositiveIntegerField()
     uploaded_at = models.DateTimeField(auto_now_add=True)
@@ -117,4 +133,15 @@ class Document(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    # Review state, calculated from status + reviewed_at (no extra column):
+    WAITING_FOR_REVIEW = "waiting_for_review"  # For Review, reviewed_at empty
+    RETURNED = "returned"  # For Review, reviewed_at set: returned to the uploader
+    APPROVED = "approved"
+
+    @property
+    def review_state(self) -> str:
+        if self.status.status_name == DocumentStatus.APPROVED:
+            return self.APPROVED
+        return self.RETURNED if self.reviewed_at else self.WAITING_FOR_REVIEW
 

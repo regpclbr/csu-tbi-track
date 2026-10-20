@@ -36,6 +36,12 @@ def is_staff_member(user: object) -> bool:
     return isinstance(user, TBIMember) and user.is_authenticated and user.is_active
 
 
+def require_staff_member(user: object) -> None:
+    """Raise PermissionDenied (HTTP 403) unless `user` is an active staff member (no role flag needed)."""
+    if not is_staff_member(user):
+        raise PermissionDenied("Only active TBI staff members can do this.")
+
+
 def has_permission(user: object, permission: Permission) -> bool:
     """True if `user` is an active staff member whose role grants `permission`."""
     return is_staff_member(user) and bool(getattr(user.role, permission.value))

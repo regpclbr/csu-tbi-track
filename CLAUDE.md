@@ -65,7 +65,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
-- Uploaded files must be served through a permission-checked view (Step 6).
+- Uploaded files are never served from `/media/` (not even in DEBUG). Documents are downloaded only
+  through `documents.views.download_document` (active staff login, always an attachment).
 
 ## Activities
 - Every activity change goes through `activities/services.py` (create, update, change_status,
@@ -89,6 +90,24 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
   never "type your email". Public pages never show who registered.
 - Default form fields are placeholders (validate with the TBI); `seed_data` creates them once.
+
+## Documents, checklist and reminders
+- All rules live in `documents/services.py`. Upload: any active staff member, any activity status
+  (incl. Conducted), active types only. Files: pdf/docx/xlsx/jpg/png, checked by real content,
+  max `DOCUMENT_MAX_UPLOAD_MB`. The stored path comes from `build_file_path()` (DOCUMENT_TYPE.naming_pattern
+  or `FALLBACK_NAMING_PATTERN`); never use the uploaded name in a path.
+- Review state is calculated from status + `reviewed_at` (no column): For Review + empty = waiting for a
+  reviewer; For Review + set = returned (waiting for the uploader); Approved = final.
+  `approve_document` / `return_document` need can_create_activity and never the uploader;
+  `replace_document_file` / `delete_document`: uploader only, For Review only. Approved: never
+  replaced, retyped or deleted. Step 8 queues embeddings at the marked place in `approve_document`.
+- Use `Document.objects.activity_documents()` (via `documents_for_listing()`) everywhere until Step 9.
+- `document_checklist()` is the only "what is missing" check (Step 8 reuses it). Due dates are
+  computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
+- `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
+  `unique_document_reminder` guarantees one per (member, activity, document type, type).
+  Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
+- Notifications: `notifications/services.py`; a member only sees/changes their own.
 
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
@@ -122,8 +141,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 2. Seed data command + fake demo data command (safe to run twice) — done
 3. Staff login, role permissions, first-sign-in password change — done
 4. Activities, status changes, audit log — done (incl. many categories per activity)
-5. Public registration, attendance, evaluation flow — written, awaiting owner review
-6. Documents, checklist, reminders (Django-Q2 scheduled task)
+5. Public registration, attendance, evaluation flow — done
+6. Documents, checklist, reminders (Django-Q2 scheduled task) — written, awaiting owner review
 7. Startups module with a mock StartupProvider
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources
 9. Certificates (WeasyPrint), sign-off flow, automatic emails
@@ -137,5 +156,8 @@ python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
+python manage.py setup_schedules          # once (safe to rerun): daily 8:00 AM document reminders
+python manage.py send_document_reminders  # run the reminders once by hand (testing)
+python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
 pytest
 ```

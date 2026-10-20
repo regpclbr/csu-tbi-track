@@ -166,8 +166,17 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Uploaded files live in MEDIA_ROOT but are NEVER served from MEDIA_URL (not even in DEBUG):
+# documents are downloaded only through documents.views.download_document, which checks the login.
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+
+
+# --- Documents (Step 6) --------------------------------------------------------
+
+DOCUMENT_MAX_UPLOAD_MB = 10  # largest file a member can upload
+DOCUMENT_REMINDER_DAYS_BEFORE = 3  # "due soon" reminder: due within this many days
+DOCUMENT_REMINDER_HOUR = 8  # the daily reminder task runs at 8:00 AM Manila time
 
 
 # --- Email ------------------------------------------------------------------
