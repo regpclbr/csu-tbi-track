@@ -109,6 +109,23 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
 - Notifications: `notifications/services.py`; a member only sees/changes their own.
 
+## Startups and Navigatu
+- `startups/providers.py` is the ONLY Navigatu access point: `get_provider()` returns the class named
+  in `settings.STARTUP_PROVIDER` (mock now; `NavigatuStartupProvider` is a stub). Other code uses
+  plain `StartupRecord`s and never reads the mock JSON.
+- `sync_startups()` matches navigatu_id, then email (ignoring case); copies only Navigatu fields,
+  never `password`; skips email conflicts; never deletes (deactivates). Deactivation safety guard:
+  zero records or > `STARTUP_SYNC_MAX_DEACTIVATE_RATIO` → nobody deactivated; only the manual
+  command's `--force` overrides it. A second run saves no row (`last_synced_at` is a bulk update).
+- Startup login: `startups.services.authenticate_startup` / `login_startup` / `current_startup`,
+  session key `STARTUP_SESSION_KEY`, lockout via `accounts.services` with `STARTUP_SCOPE`.
+  Portal views use `startups.decorators.startup_login_required` (refuses staff sessions).
+- Set-password links: signed, expiring (`STARTUP_PASSWORD_LINK_HOURS`), single use through the
+  password-hash fingerprint; sent only by `can_manage_users`, never returned by the API.
+- A logged-in startup registers through `registrations.services.register(..., startup=...)`
+  (same rules); "my registrations" = `registrations_for()` (linked + older email matches, read only).
+- Notifications services take a member or a startup as the recipient.
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -142,8 +159,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 3. Staff login, role permissions, first-sign-in password change — done
 4. Activities, status changes, audit log — done (incl. many categories per activity)
 5. Public registration, attendance, evaluation flow — done
-6. Documents, checklist, reminders (Django-Q2 scheduled task) — written, awaiting owner review
-7. Startups module with a mock StartupProvider
+6. Documents, checklist, reminders (Django-Q2 scheduled task) — done
+7. Startups module with a mock StartupProvider — written, awaiting owner review
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources
 9. Certificates (WeasyPrint), sign-off flow, automatic emails
 10. Reports and dashboard numbers
@@ -156,8 +173,9 @@ python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
-python manage.py setup_schedules          # once (safe to rerun): daily 8:00 AM document reminders
+python manage.py setup_schedules          # once (safe to rerun): daily 7:00 AM startup sync, 8:00 AM reminders
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
+python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
 pytest
 ```

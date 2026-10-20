@@ -1,10 +1,11 @@
 """Background tasks for documents, run by the Django-Q2 cluster (`python manage.py qcluster`)."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django.conf import settings
-from django.utils import timezone
+
+from config.schedules import next_daily_run
 
 from . import services
 
@@ -23,8 +24,4 @@ def run_document_reminders() -> dict[str, int]:
 
 def next_reminder_run(now: datetime | None = None) -> datetime:
     """The next DOCUMENT_REMINDER_HOUR:00 in Manila time (today if it has not passed yet, else tomorrow)."""
-    local_now = timezone.localtime(now or timezone.now())
-    run = local_now.replace(hour=settings.DOCUMENT_REMINDER_HOUR, minute=0, second=0, microsecond=0)
-    if run <= local_now:
-        run += timedelta(days=1)
-    return run
+    return next_daily_run(settings.DOCUMENT_REMINDER_HOUR, now)

@@ -12,7 +12,7 @@
 8. Documents that are uploaded must be reviewed and approved before they count as approved (For Review, then Approved).
 9. Required documents for every activity: invitation letter, activity design, request letter, attendance sheet, accomplishment report. Due dates are placeholders until the TBI confirms them.
 10. Missing-document reminders go to the person who created the activity, inside the app.
-11. Navigatu startup data is read-only and reached through one mock provider for now. Startups are identified by email.
+11. Navigatu startup data is read-only and reached through one mock provider for now. Startups are identified by email. *(Refined in Step 7, item 135: matched by Navigatu ID first, then by email.)*
 12. Any TBI staff member can see every startup.
 13. The admins are the researchers.
 14. Certificate numbering format is decided by the researchers.
@@ -123,7 +123,7 @@
     - Members are never deleted (no delete in the API or the Django admin).
 60. **Temporary passwords** are 16 random characters (Python `secrets`). They are hashed before saving, appear only in the invitation email, are never logged, and are never returned by the API. During development the console email backend prints the email to the terminal (standard output, not the log). Real sending replaces `accounts.emails.send_invitation_email()` in Step 9.
 61. **Django admin member screen** uses the same services: adding a member asks only for email, name and role and sends the invitation; `is_active` and `must_change_password` are read-only; members are (de)activated with the "Deactivate/Reactivate selected members" actions; demoting the last Admin is refused. An Admin cannot yet reset another member's password (open item: add a "reset password" service if the TBI needs it).
-62. **Startups are never staff.** The staff login only checks TBI_MEMBER. A startup can never be `request.user`; the startup login (Step 7) will keep its id under the separate session key `startups.services.STARTUP_SESSION_KEY`. Staff views only admit an active TBI_MEMBER.
+62. **Startups are never staff.** The staff login only checks TBI_MEMBER. A startup can never be `request.user`; the startup login (Step 7) will keep its id under the separate session key `startups.services.STARTUP_SESSION_KEY`. Staff views only admit an active TBI_MEMBER. *(Built in Step 7: items 140–141.)*
 63. The login, change-password and landing (`/`) pages are temporary plain forms until the frontend phase. The Admin Console is a small JSON API under `/accounts/api/`.
 64. Tests use a fast password hasher (MD5) so the suite runs in seconds. The real server always uses Django's default PBKDF2 hasher.
 65. **Closed in Step 6 (see 120).** Was an open item: in development (`DEBUG=True`) uploaded files under `/media/` are served without a login check. Step 6 must serve documents through a view that checks permissions.
@@ -269,3 +269,46 @@
 131. **Django admin.** Documents and notifications are view only. The document screens show a "Download" link through the permission-checked view (never a `/media/` link). Document types validate `naming_pattern` and show the placeholders.
 132. **Demo data.** `seed_demo` still writes small `.txt` placeholder files directly (demo only); they can be downloaded through the new view but could not be uploaded through the service.
 133. The embedding job is **not** built yet: `approve_document` has one clearly marked place where Step 8 will queue it after the approval is saved.
+
+
+## Startups and the Navigatu provider (Step 7)
+
+134. **One access point to Navigatu.** `startups/providers.py` is the only module that knows where startup data comes from. `StartupProvider` has two methods, `list_startups()` and `get_startup(navigatu_id)`, which return plain `StartupRecord` objects (not models). The class is chosen by the `STARTUP_PROVIDER` setting (dotted path, also readable from `.env`):
+     - `MockStartupProvider` (default) reads 10 invented startups from `startups/mock_data/navigatu_startups.json` (all emails end in `@demo.example.com`; one is inactive). The first six are the startups `seed_demo` already created in Step 2, with the same emails and `DEMO-NAV-00x` IDs.
+     - `NavigatuStartupProvider` is a stub that raises "The Navigatu connection is not available yet." The staff sync API answers 503 with that message; the command stops with it.
+135. **Sync** (`startups.services.sync_startups`). Navigatu data is read-only in this system.
+     - Matching: by `navigatu_id` first, then by email ignoring case (this refines item 11). An email match links a row that had no `navigatu_id` yet.
+     - Copied fields: `name`, `contact_number`, `email` (stored lowercase), `maturity_stage`, `last_assessment_at`, `is_active`. A row is saved only when one of these changed. `password` is never touched.
+     - **`last_synced_at`** is refreshed for every startup the provider returned, even if nothing else changed, with one bulk update that does not touch `updated_at`. So a second run saves no row and reports created 0, updated 0, deactivated 0. *(Owner decision S1.)*
+     - **Email conflicts are skipped and logged (WARNING on `startups.sync`), never merged:** two Navigatu records with the same email; a record whose email already belongs to a different row; an email match whose row has a different `navigatu_id`. The rows involved are left untouched (not updated, not deactivated). Unusable records (no `navigatu_id`, no name, invalid email, values too long) are skipped too.
+     - Only one sync runs at a time (a PostgreSQL advisory lock inside the sync transaction).
+     - Result: `created`, `updated`, `unchanged`, `deactivated`, `skipped`, `deactivation_skipped`, `deactivation_skipped_reason`.
+136. **Startups missing from Navigatu are deactivated, never deleted** (registrations may point to them), and each is logged. This includes rows that never had a `navigatu_id`. A record that comes back active reactivates the row.
+137. **Deactivation safety guard.** If the provider returns **zero records**, or the run would deactivate **more than** `STARTUP_SYNC_MAX_DEACTIVATE_RATIO` (0.5, a setting) of the currently active startups, nobody is deactivated in that run. Creates and updates still happen; a WARNING is logged; the result has `"deactivation_skipped": true` and the reason. Exactly half is allowed. `python manage.py sync_startups --force` overrides the guard on purpose; the scheduled task and the staff "sync now" API never force.
+138. **Emails are unique ignoring case** (migration `startups/0002`: a unique index on `LOWER(email)`, no new column). The development database had 0 startups when this was added.
+139. **Daily sync schedule.** `python manage.py setup_schedules` now creates two schedules from the list in `config/schedules.py`: "Daily document reminders" (8:00 AM) and "Daily Navigatu startup sync" (7:00 AM Manila, `STARTUP_SYNC_HOUR`). Same idempotent rules as item 127 (one row per name). The command moved from `documents/` to `accounts/management/commands/` because it now covers several apps; it is typed the same way. A provider error fails only that run (Django-Q2 records it as a failed task). `python manage.py sync_startups` runs it once by hand.
+140. **Startup login** (separate from staff, item 62).
+     - JSON endpoint `/startups/portal/api/login/` (GET sets the CSRF cookie; POST logs in). Email ignores case and outer spaces.
+     - Unknown email, wrong password, inactive startup and a startup without a password all get "Invalid email or password." (for an unknown email the password is still hashed once, so the timing is the same).
+     - **Same lockout rules and messages as staff** (item 54: 5 per email, 20 per IP, 15 minutes), but **separate counters**: failed startup logins never lock a staff login and vice versa.
+     - Logging in starts a fresh session holding only `STARTUP_SESSION_KEY` and a fingerprint of the password hash. Every portal request checks that the startup is still active and the fingerprint still matches, so a deactivated startup, or a startup whose password changed, is logged out on its next request.
+     - Logout is POST only.
+141. **Staff and startups never cross.** A startup session has no Django user, so every staff URL (pages, APIs, Django admin) sends it to the staff login. Every portal URL refuses a session with a logged-in staff member (403 "Staff accounts cannot use the startup portal.") and answers 401 "Startup login required." when nobody is logged in. A staff member cannot use the portal login either (403); they must log out first.
+142. **Set-password link** (STARTUP has no `must_change_password`, so the staff invitation is not copied).
+     - Only a member with `can_manage_users` sends it (staff API or the Django admin action), and only to an active startup. It is emailed (console backend in development) and never returned by the API or logged.
+     - The link carries the startup ID and a fingerprint of the current password hash and email, signed with Django's `TimestampSigner` (salted, `SECRET_KEY`). It expires after `STARTUP_PASSWORD_LINK_HOURS` (72).
+     - **Single use without a new column:** setting the password changes the hash, so the fingerprint no longer matches and the link (and every other link sent earlier) stops working. A sync that changes the email also invalidates it.
+     - Refused links: tampered ("This link is not valid."), expired ("This link has expired. …"), used or replaced ("This link has already been used or is no longer valid. …"), or for an inactive startup.
+     - The new password must pass Django's password validators (including similarity to the startup's email). A refused password does not use up the link.
+     - Setting the password does not log the startup in.
+143. **The Admin-sent link is also the "forgot password" route** for now. There is no self-service reset and no change-password page in the portal. *(Question for the TBI.)*
+144. **Startup portal** (`/startups/portal/api/`, startup login required):
+     - **My profile:** the Navigatu data (read-only) and `last_synced_at`; never the password.
+     - **My registrations:** registrations made while logged in (`startup` = me) plus older public registrations with my email (ignoring case) that are not linked to any startup, with activity, dates, category, attendance and confirmation method. Reading never changes a row (old rows are not linked automatically).
+     - **Register while logged in:** the same service and rules as public registration (`registrations.services.register`, which gained one optional `startup` argument): only Scheduled activities, deadline, slots, row lock, required answers, one registration per email. Name, email and contact number come from the profile; `registration.startup` is set; the startup still chooses one of the activity's categories (chosen automatically when there is only one); any category may be chosen.
+     - **My notifications:** list (newest first), unread count, mark one or all as read, through the same `notifications.services` functions as staff (they now accept a member or a startup, and always filter by that recipient). Nothing creates startup notifications yet.
+145. **Staff side** (`/startups/api/`): any active staff member can list and search startups (name or email, maturity stage, active), 20 per page, by name, and open a startup's detail with its registration and attendance history (the same "my registrations" rule). Running a sync now and sending set-password links need `can_manage_users`.
+146. **Django admin:** startups are view only (Navigatu fields cannot be edited here; the password hash is never shown). The only action is "Send set-password link to selected startups".
+147. **Maturity stages are placeholders** until the TBI confirms them: Ideation, Validation, Early Traction, Scaling (stored as plain text from Navigatu). *(Question for the TBI.)*
+148. **Demo data.** `seed_demo` now creates its startups through a mock sync (`sync_startups` with the mock provider), so demo startups go through the same path as real data: 10 startups, 9 active. Its sync never deactivates anything (`deactivate_missing=False`), so it cannot touch non-demo startups. Safe to run twice.
+149. **Development emails show long links on one line.** Django's console backend wrapped long lines ("quoted-printable", a `=` at each line end), so a set-password link printed in the terminal could not be copied (Step 5 evaluation links would wrap too once IDs grow). The development backend is now `config.mail.ConsoleEmailBackend`: the same console output, but lines may be up to 998 characters (the RFC 5322 limit). Real sending (SMTP, Step 9) is unchanged; mail programs decode wrapped lines themselves.

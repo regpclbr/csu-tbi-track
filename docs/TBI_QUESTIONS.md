@@ -35,6 +35,11 @@ all of them are to be validated with the TBI too.
 
 - **Item 125:** Missing-document reminders go to the person who created the activity. If that person's account has been deactivated, who should get the reminders instead?
 
+## Startups
+
+- **Item 147:** What maturity stages does Navigatu use for startups? (Current placeholders: Ideation, Validation, Early Traction, Scaling.)
+- **Item 143:** Should startups be able to request a password reset themselves, or is a link sent by the Admin enough until Navigatu SSO is available?
+
 ## Certificates
 
 - **Item 46:** Is this the right certificate process: Generated → Pending Sign-off → Approved → Issued, one step at a time, with a rejected certificate going back from Pending Sign-off to Generated, and an issued certificate never changed (a wrong one is replaced by a new certificate with a new number)?

@@ -30,43 +30,57 @@ class LoginError(Exception):
     """Login refused. The message is safe to show: it never says whether the email exists."""
 
 
-def _client_ip(request: HttpRequest) -> str:
+def client_ip(request: HttpRequest) -> str:
     return request.META.get("REMOTE_ADDR", "unknown")
 
 
-def _counter_key(kind: str, value: str) -> str:
-    return f"login-failures:{kind}:{value}"
+# Staff and startups use the same limits and messages but separate counters ("scope").
+STAFF_SCOPE, STARTUP_SCOPE = "staff", "startup"
 
 
-def _lock_key(kind: str, value: str) -> str:
-    return f"login-locked:{kind}:{value}"
+def _counter_key(scope: str, kind: str, value: str) -> str:
+    return f"login-failures:{scope}:{kind}:{value}"
+
+
+def _lock_key(scope: str, kind: str, value: str) -> str:
+    return f"login-locked:{scope}:{kind}:{value}"
 
 
 def _lockout_seconds() -> int:
     return settings.LOGIN_LOCKOUT_MINUTES * 60
 
 
-def is_locked_out(email: str, ip: str) -> bool:
-    """True if this email or this IP address is locked out right now."""
-    return bool(cache.get(_lock_key("email", email)) or cache.get(_lock_key("ip", ip)))
+def lockout_message() -> str:
+    return f"Too many failed attempts. Try again in {settings.LOGIN_LOCKOUT_MINUTES} minutes."
 
 
-def _record_failure(kind: str, value: str, limit: int, email: str, ip: str) -> None:
+def is_locked_out(email: str, ip: str, scope: str = STAFF_SCOPE) -> bool:
+    """True if this email or this IP address is locked out right now (for this kind of login)."""
+    return bool(cache.get(_lock_key(scope, "email", email)) or cache.get(_lock_key(scope, "ip", ip)))
+
+
+def _record_failure(scope: str, kind: str, value: str, limit: int, email: str, ip: str) -> None:
     """Count one failed login; lock out `value` when it reaches `limit` failures."""
-    key = _counter_key(kind, value)
+    key = _counter_key(scope, kind, value)
     cache.add(key, 0, _lockout_seconds())  # start a new counting window if none
     failures = cache.incr(key)
     if failures >= limit:
-        cache.set(_lock_key(kind, value), True, _lockout_seconds())
+        cache.set(_lock_key(scope, kind, value), True, _lockout_seconds())
         cache.delete(key)
         security_log.warning(
-            "Login lockout: %s=%s after %d failed attempts (email=%s, ip=%s), locked for %d minutes.",
-            kind, value, failures, email, ip, settings.LOGIN_LOCKOUT_MINUTES,
+            "Login lockout (%s): %s=%s after %d failed attempts (email=%s, ip=%s), locked for %d minutes.",
+            scope, kind, value, failures, email, ip, settings.LOGIN_LOCKOUT_MINUTES,
         )
 
 
-def _clear_failures(email: str) -> None:
-    cache.delete(_counter_key("email", email))
+def record_failed_login(email: str, ip: str, scope: str = STAFF_SCOPE) -> None:
+    """Count a failed login for the email and for the IP address (Step 3 limits)."""
+    _record_failure(scope, "email", email, settings.LOGIN_MAX_FAILED_ATTEMPTS, email, ip)
+    _record_failure(scope, "ip", ip, settings.LOGIN_MAX_FAILED_ATTEMPTS_PER_IP, email, ip)
+
+
+def clear_failed_logins(email: str, scope: str = STAFF_SCOPE) -> None:
+    cache.delete(_counter_key(scope, "email", email))
 
 
 def authenticate_member(request: HttpRequest, email: str, password: str) -> TBIMember:
@@ -77,21 +91,18 @@ def authenticate_member(request: HttpRequest, email: str, password: str) -> TBIM
     - Only TBI_MEMBER accounts are checked; STARTUP accounts can never log in here.
     """
     email = email.strip().lower()
-    ip = _client_ip(request)
+    ip = client_ip(request)
     if is_locked_out(email, ip):
-        raise LoginError(
-            f"Too many failed attempts. Try again in {settings.LOGIN_LOCKOUT_MINUTES} minutes."
-        )
+        raise LoginError(lockout_message())
 
     # Django's ModelBackend returns None for unknown emails, wrong passwords and
     # inactive members alike, and takes about the same time for each.
     member = authenticate(request, username=email, password=password)
     if member is None:
-        _record_failure("email", email, settings.LOGIN_MAX_FAILED_ATTEMPTS, email, ip)
-        _record_failure("ip", ip, settings.LOGIN_MAX_FAILED_ATTEMPTS_PER_IP, email, ip)
+        record_failed_login(email, ip)
         raise LoginError(INVALID_LOGIN_MESSAGE)
 
-    _clear_failures(email)
+    clear_failed_logins(email)
     return member
 
 

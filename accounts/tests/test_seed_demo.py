@@ -40,7 +40,8 @@ def test_demo_creates_prototype_activities(demo_settings) -> None:
         "Mentoring Session", "Product Development Workshop", "Market Research Training",
         "Investor Networking", "Technology Forum",
     }
-    assert Startup.objects.count() == 6
+    assert Startup.objects.count() == 10  # from the mock Navigatu sync (Step 7)
+    assert Startup.objects.filter(is_active=True).count() == 9
     assert Document.objects.filter(status__status_name="For Review").exists()
     assert Document.objects.filter(status__status_name="Approved").exists()
 

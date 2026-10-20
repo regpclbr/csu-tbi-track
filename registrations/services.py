@@ -375,8 +375,12 @@ def register(
     participant_category=None,
     answers: dict | None = None,
     now: datetime | None = None,
+    startup=None,
 ) -> Registration:
     """Public registration. Everyone who registers is in (no approval step).
+
+    `startup` is set only by the startup portal (a logged-in startup registering); every
+    other rule is exactly the same as for a public registration.
 
     The activity row is locked first, so two people cannot take the last slot at the
     same time. The registration and its answers are saved together; the confirmation
@@ -411,7 +415,7 @@ def register(
 
     registration = Registration.objects.create(
         activity=locked, template=form, participant_category=category,
-        name=name, email=email, contact_number=contact_number,
+        name=name, email=email, contact_number=contact_number, startup=startup,
     )
     for field, value in stored_answers.items():
         FormAnswer.objects.create(

@@ -45,6 +45,8 @@ from registrations.models import (
     Registration,
 )
 from startups.models import Startup
+from startups.providers import MockStartupProvider
+from startups.services import sync_startups
 
 DEMO_DOMAIN = "demo.example.com"
 
@@ -55,16 +57,6 @@ FIRST_NAMES = [
 LAST_NAMES = [
     "Abad", "Bautista", "Castillo", "Domingo", "Espino", "Flores", "Garcia", "Herrera", "Ilagan", "Jimenez",
     "Lopez", "Mendoza", "Navarro", "Ocampo", "Pascual", "Quiambao", "Ramos", "Santos", "Torres", "Villanueva",
-]
-
-# Invented startups: (name, maturity_stage)
-STARTUPS = [
-    ("Kalinaw Agritech", "Validation"),
-    ("Pantay Logistics", "Early Traction"),
-    ("Sibol Health Systems", "Ideation"),
-    ("Lakbay Data Labs", "Scaling"),
-    ("Tahanan Solar", "Early Traction"),
-    ("Habi Textile Works", "Validation"),
 ]
 
 # Invented resource persons: (name, topic)
@@ -184,20 +176,12 @@ class Command(BaseCommand):
         return staff
 
     def create_startups(self) -> list[Startup]:
-        startups = []
-        for number, (name, stage) in enumerate(STARTUPS, start=1):
-            startup, _ = Startup.objects.get_or_create(
-                email=f"{slugify(name)}@{DEMO_DOMAIN}",
-                defaults={
-                    "name": name,
-                    "navigatu_id": f"DEMO-NAV-{number:03d}",
-                    "contact_number": f"0917{number:07d}",
-                    "maturity_stage": stage,
-                    "last_synced_at": timezone.now(),
-                },
-            )
-            startups.append(startup)
-        return startups
+        """Demo startups come from a mock Navigatu sync (the same path as real data). Safe to run twice."""
+        result = sync_startups(provider=MockStartupProvider(), deactivate_missing=False)
+        self.stdout.write(
+            f"  startups synced from the mock provider: {result['created']} created, {result['updated']} updated"
+        )
+        return list(Startup.objects.filter(is_active=True, email__endswith=f"@{DEMO_DOMAIN}").order_by("navigatu_id"))
 
     def create_resource_persons(self) -> list[ResourcePerson]:
         persons = []

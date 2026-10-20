@@ -179,13 +179,25 @@ DOCUMENT_REMINDER_DAYS_BEFORE = 3  # "due soon" reminder: due within this many d
 DOCUMENT_REMINDER_HOUR = 8  # the daily reminder task runs at 8:00 AM Manila time
 
 
+# --- Startups and Navigatu (Step 7) -------------------------------------------------
+# Navigatu is reached ONLY through this provider class (dotted path). The mock reads
+# invented data from startups/mock_data/; NavigatuStartupProvider is a stub for later.
+STARTUP_PROVIDER = os.environ.get("STARTUP_PROVIDER", "startups.providers.MockStartupProvider")
+STARTUP_SYNC_HOUR = 7  # the daily sync runs at 7:00 AM Manila time
+# Safety guard: a sync that would deactivate more than this share of the active startups
+# (or gets zero records) deactivates nobody. `sync_startups --force` overrides it on purpose.
+STARTUP_SYNC_MAX_DEACTIVATE_RATIO = 0.5
+STARTUP_PASSWORD_LINK_HOURS = 72  # a "set your password" link expires after this many hours
+
+
 # --- Email ------------------------------------------------------------------
 # Console backend for development: emails are printed in the terminal.
 # Real SMTP settings are added in Step 9 (certificates).
 
 MAILERS = {
     "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
+        # Django's console backend, but long links stay on one line (see config/mail.py).
+        "BACKEND": "config.mail.ConsoleEmailBackend",
     },
 }
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "CSU-TBI Track <no-reply@localhost>")

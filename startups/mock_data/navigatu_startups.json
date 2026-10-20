@@ -1,0 +1,12 @@
+[
+  {"navigatu_id": "DEMO-NAV-001", "name": "Kalinaw Agritech", "email": "kalinaw-agritech@demo.example.com", "contact_number": "09170000001", "maturity_stage": "Validation", "last_assessment_at": "2026-08-15T10:00:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-002", "name": "Pantay Logistics", "email": "pantay-logistics@demo.example.com", "contact_number": "09170000002", "maturity_stage": "Early Traction", "last_assessment_at": "2026-07-30T14:00:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-003", "name": "Sibol Health Systems", "email": "sibol-health-systems@demo.example.com", "contact_number": "09170000003", "maturity_stage": "Ideation", "last_assessment_at": null, "active": true},
+  {"navigatu_id": "DEMO-NAV-004", "name": "Lakbay Data Labs", "email": "lakbay-data-labs@demo.example.com", "contact_number": "09170000004", "maturity_stage": "Scaling", "last_assessment_at": "2026-09-02T09:30:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-005", "name": "Tahanan Solar", "email": "tahanan-solar@demo.example.com", "contact_number": "09170000005", "maturity_stage": "Early Traction", "last_assessment_at": "2026-06-18T15:00:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-006", "name": "Habi Textile Works", "email": "habi-textile-works@demo.example.com", "contact_number": "09170000006", "maturity_stage": "Validation", "last_assessment_at": "2026-09-20T11:00:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-007", "name": "Alon Aqua Systems", "email": "alon-aqua-systems@demo.example.com", "contact_number": "09170000007", "maturity_stage": "Ideation", "last_assessment_at": null, "active": true},
+  {"navigatu_id": "DEMO-NAV-008", "name": "Bayanihan Pay", "email": "bayanihan-pay@demo.example.com", "contact_number": "09170000008", "maturity_stage": "Validation", "last_assessment_at": "2026-10-01T13:00:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-009", "name": "Dagat Fresh Seafoods", "email": "dagat-fresh-seafoods@demo.example.com", "contact_number": "09170000009", "maturity_stage": "Scaling", "last_assessment_at": "2026-05-12T10:00:00+08:00", "active": true},
+  {"navigatu_id": "DEMO-NAV-010", "name": "Kawayan Craft Studio", "email": "kawayan-craft-studio@demo.example.com", "contact_number": "09170000010", "maturity_stage": "Ideation", "last_assessment_at": "2026-03-03T09:00:00+08:00", "active": false}
+]

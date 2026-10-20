@@ -173,7 +173,8 @@ def test_setup_schedules_twice_creates_one_schedule() -> None:
     call_command("setup_schedules")
     call_command("setup_schedules")
     schedule = Schedule.objects.get(name=tasks.REMINDER_SCHEDULE_NAME)
-    assert Schedule.objects.count() == 1
+    assert Schedule.objects.filter(name=tasks.REMINDER_SCHEDULE_NAME).count() == 1
+    assert Schedule.objects.count() == 2  # plus the startup sync (Step 7)
     assert schedule.func == "documents.tasks.run_document_reminders"
     assert schedule.schedule_type == Schedule.DAILY and schedule.repeats == -1
     local = timezone.localtime(schedule.next_run)
@@ -182,15 +183,15 @@ def test_setup_schedules_twice_creates_one_schedule() -> None:
 
 
 def test_setup_schedules_keeps_the_next_run_and_fixes_a_wrong_time() -> None:
+    reminders = Schedule.objects.filter(name=tasks.REMINDER_SCHEDULE_NAME)
     call_command("setup_schedules")
-    schedule = Schedule.objects.get()
-    first_run = schedule.next_run
+    first_run = reminders.get().next_run
     call_command("setup_schedules")
-    assert Schedule.objects.get().next_run == first_run  # unchanged on a second run
+    assert reminders.get().next_run == first_run  # unchanged on a second run
 
-    Schedule.objects.update(next_run=at(date(2026, 12, 1), 15))  # someone changed it to 3 PM
+    reminders.update(next_run=at(date(2026, 12, 1), 15))  # someone changed it to 3 PM
     call_command("setup_schedules")
-    assert timezone.localtime(Schedule.objects.get().next_run).hour == 8
+    assert timezone.localtime(reminders.get().next_run).hour == 8
 
 
 def test_setup_schedules_removes_duplicates_with_its_name() -> None:

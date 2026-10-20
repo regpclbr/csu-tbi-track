@@ -2,6 +2,7 @@
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
+from django.db.models.functions import Lower
 
 
 class Startup(models.Model):
@@ -29,6 +30,10 @@ class Startup(models.Model):
     class Meta:
         db_table = "startup"
         ordering = ["name"]
+        constraints = [
+            # Startups are matched by email ignoring case, so "Ana@x.com" and "ana@x.com" are one startup.
+            models.UniqueConstraint(Lower("email"), name="unique_startup_email_ignoring_case"),
+        ]
 
     def __str__(self) -> str:
         return self.name
