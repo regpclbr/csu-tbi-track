@@ -3,7 +3,7 @@
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
-from django.db.models.functions import Lower
+from django.db.models.functions import Lower, Trim
 
 
 class FormType(models.TextChoices):
@@ -29,7 +29,9 @@ class DefaultFormField(models.Model):
     form_type = models.CharField(max_length=20, choices=FormType.choices)
     field_label = models.CharField(max_length=255)
     field_type = models.CharField(max_length=20, choices=FieldType.choices)
-    options = models.TextField(blank=True, help_text="Choices for multiple choice/checkbox, one per line.")
+    options = models.TextField(
+        blank=True, help_text='Choices for multiple choice/checkbox as a JSON list, e.g. ["Yes", "No"].'
+    )
     is_required = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -60,6 +62,10 @@ class FormTemplate(models.Model):
 
     class Meta:
         db_table = "form_template"
+        constraints = [
+            # One registration form and one evaluation form per activity.
+            models.UniqueConstraint(fields=["activity", "form_type"], name="one_form_per_type_per_activity"),
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -72,7 +78,9 @@ class FormField(models.Model):
     template = models.ForeignKey(FormTemplate, on_delete=models.CASCADE, related_name="fields")
     field_label = models.CharField(max_length=255)
     field_type = models.CharField(max_length=20, choices=FieldType.choices)
-    options = models.TextField(blank=True, help_text="Choices for multiple choice/checkbox, one per line.")
+    options = models.TextField(
+        blank=True, help_text='Choices for multiple choice/checkbox as a JSON list, e.g. ["Yes", "No"].'
+    )
     is_required = models.BooleanField(default=True)
     sort_order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -95,6 +103,11 @@ class Registration(models.Model):
     registration_id = models.BigAutoField(primary_key=True)
     activity = models.ForeignKey("activities.Activity", on_delete=models.PROTECT, related_name="registrations")
     template = models.ForeignKey(FormTemplate, on_delete=models.PROTECT, related_name="registrations")
+    # The category the person attends as: one of the activity's categories (checked in
+    # registrations.services.register). Required (NOT NULL), as in the ERD.
+    participant_category = models.ForeignKey(
+        "activities.ParticipantCategory", on_delete=models.PROTECT, related_name="registrations"
+    )
     startup = models.ForeignKey(
         "startups.Startup",
         on_delete=models.SET_NULL,
@@ -118,8 +131,10 @@ class Registration(models.Model):
         db_table = "registration"
         ordering = ["-registration_date"]
         constraints = [
-            # Lower() so "Ana@x.com" and "ana@x.com" count as the same person.
-            models.UniqueConstraint(Lower("email"), "activity", name="unique_registration_per_activity_email"),
+            # "Ana@x.com" and " ana@x.com " count as the same person.
+            models.UniqueConstraint(
+                Lower(Trim("email")), "activity", name="unique_registration_per_activity_email"
+            ),
         ]
 
     def __str__(self) -> str:

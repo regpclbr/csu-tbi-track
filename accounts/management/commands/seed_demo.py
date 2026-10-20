@@ -24,8 +24,9 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from accounts.models import Role, TBIMember
-from accounts.seed import load_lookups
+from accounts.seed import load_default_form_fields, load_lookups
 from activities import services as activity_services
+from registrations import services as registration_services
 from activities.models import (
     Activity,
     ActivityStatus,
@@ -152,6 +153,7 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             load_lookups()
+            load_default_form_fields()
             self.staff = self.create_demo_staff()
             self.startups = self.create_startups()
             self.resource_persons = self.create_resource_persons()
@@ -254,12 +256,13 @@ class Command(BaseCommand):
             activity_services.change_status(creator, activity, status_name)
 
         if spec.status != "Draft":
-            registration_form = self.create_registration_form(activity, creator)
+            # Both forms come from the default fields, through the same service staff use.
+            registration_form = registration_services.create_form(creator, activity, FormType.REGISTRATION)
+            evaluation_form = registration_services.create_form(creator, activity, FormType.EVALUATION)
             registrations = self.create_registrations(activity, registration_form, spec)
             if spec.status in ("Conducted", "Ongoing"):
                 self.mark_attendance(registrations, share=0.8 if spec.status == "Conducted" else 0.5)
             if spec.status == "Conducted":
-                evaluation_form = self.create_evaluation_form(activity, creator)
                 self.create_evaluations(registrations, evaluation_form, end)
 
         documents = CONDUCTED_DOCUMENTS.get(spec.title) or UPCOMING_DOCUMENTS.get(spec.title) or {}
@@ -267,38 +270,40 @@ class Command(BaseCommand):
             self.create_document(activity, type_name, status_name)
 
     # --- forms, registrations, evaluations ----------------------------------
+    # Demo registrations are written directly (many demo activities are already closed for
+    # registration), but every answer goes through registrations.services.validate_answers.
 
-    def create_registration_form(self, activity: Activity, creator: TBIMember) -> FormTemplate:
-        form = FormTemplate.objects.create(
-            activity=activity, form_type=FormType.REGISTRATION, title=f"{activity.title} Registration", created_by=creator
+    def fake_answer(self, field: FormField, organization: str = ""):
+        """A plausible raw answer for any field type."""
+        options = registration_services.parse_options(field.options)
+        if field.field_type == FieldType.RATING:
+            return self.rng.choice([3, 4, 4, 5, 5])
+        if field.field_type == FieldType.CHECKBOX:
+            return options[:1]  # e.g. the Data Privacy consent
+        if field.field_type == FieldType.MULTIPLE_CHOICE:
+            return self.rng.choice(options)
+        if field.field_type == FieldType.SHORT_TEXT:
+            return organization or self.rng.choice(["CSU", "Freelance", "Family business", "LGU"])
+        if not field.is_required and self.rng.random() < 0.4:
+            return ""
+        return self.rng.choice(
+            ["The talks were practical.", "More hands-on time please.", "Very helpful for our startup.",
+             "Clear examples and good pacing."]
         )
-        FormField.objects.create(template=form, field_label="Organization / Startup", field_type=FieldType.SHORT_TEXT, sort_order=1)
-        FormField.objects.create(
-            template=form,
-            field_label="How did you hear about this activity?",
-            field_type=FieldType.MULTIPLE_CHOICE,
-            options="Facebook page\nEmail invitation\nFriend or colleague\nCSU website",
-            sort_order=2,
-        )
-        return form
 
-    def create_evaluation_form(self, activity: Activity, creator: TBIMember) -> FormTemplate:
-        form = FormTemplate.objects.create(
-            activity=activity, form_type=FormType.EVALUATION, title=f"{activity.title} Evaluation", created_by=creator
-        )
-        FormField.objects.create(template=form, field_label="Overall rating (1-5)", field_type=FieldType.RATING, sort_order=1)
-        FormField.objects.create(
-            template=form, field_label="What was most useful?", field_type=FieldType.LONG_TEXT, is_required=False, sort_order=2
-        )
-        return form
+    def save_answers(self, form: FormTemplate, raw: dict, **parent) -> None:
+        source = FormAnswer.AnswerSource.REGISTRATION if "registration" in parent else FormAnswer.AnswerSource.EVALUATION
+        for field, value in registration_services.validate_answers(form, raw).items():
+            FormAnswer.objects.create(field=field, answer_source=source, answer_value=value, **parent)
 
     def create_registrations(self, activity: Activity, form: FormTemplate, spec: DemoActivity) -> list[Registration]:
-        org_field, source_field = form.fields.order_by("sort_order")
-        sources = source_field.options.splitlines()
+        categories = list(activity.participant_categories.order_by("name"))
+        incubatees = next((c for c in categories if c.name == "Incubatees"), None)
+        fields = list(form.fields.all())
         registrations = []
 
         # A few incubatee startups register while logged in.
-        linked_startups = self.startups[:3] if "Incubatees" in spec.categories else []
+        linked_startups = self.startups[:3] if incubatees else []
         people = [(s.name + " (representative)", s.email, s) for s in linked_startups]
         people += [(name, email, None) for name, email in self.fake_people(spec.registrations - len(people))]
 
@@ -307,6 +312,7 @@ class Command(BaseCommand):
                 activity=activity,
                 template=form,
                 startup=startup,
+                participant_category=incubatees if startup else self.rng.choice(categories),
                 name=name,
                 email=email,
                 contact_number=f"09{self.rng.randint(100000000, 999999999)}",
@@ -315,11 +321,8 @@ class Command(BaseCommand):
             Registration.objects.filter(pk=registration.pk).update(
                 registration_date=activity.registration_deadline - timedelta(days=self.rng.randint(1, 14))
             )
-            organization = startup.name if startup else self.rng.choice(["CSU", "Freelance", "Family business", "LGU"])
-            FormAnswer.objects.create(field=org_field, answer_source="registration", registration=registration, answer_value=organization)
-            FormAnswer.objects.create(
-                field=source_field, answer_source="registration", registration=registration, answer_value=self.rng.choice(sources)
-            )
+            raw = {str(f.pk): self.fake_answer(f, startup.name if startup else "") for f in fields}
+            self.save_answers(form, raw, registration=registration)
             registrations.append(registration)
         return registrations
 
@@ -331,7 +334,7 @@ class Command(BaseCommand):
                 registration.save(update_fields=["attendance_confirmed", "confirmation_method", "updated_at"])
 
     def create_evaluations(self, registrations: list[Registration], form: FormTemplate, end: date) -> None:
-        rating_field, comment_field = form.fields.order_by("sort_order")
+        fields = list(form.fields.all())
         comments = ["The talks were practical.", "More hands-on time please.", "Very helpful for our startup.", ""]
         for registration in registrations:
             if not registration.attendance_confirmed or self.rng.random() > 0.7:
@@ -340,14 +343,7 @@ class Command(BaseCommand):
                 template=form, registration=registration, comments=self.rng.choice(comments)
             )
             EvaluationSubmission.objects.filter(pk=evaluation.pk).update(submitted_at=self.at(end + timedelta(days=1), 10))
-            FormAnswer.objects.create(
-                field=rating_field, answer_source="evaluation", evaluation_submission=evaluation,
-                answer_value=str(self.rng.choice([3, 4, 4, 5, 5])),
-            )
-            FormAnswer.objects.create(
-                field=comment_field, answer_source="evaluation", evaluation_submission=evaluation,
-                answer_value=self.rng.choice(comments),
-            )
+            self.save_answers(form, {str(f.pk): self.fake_answer(f) for f in fields}, evaluation_submission=evaluation)
 
     # --- documents ----------------------------------------------------------------
 

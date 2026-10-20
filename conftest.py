@@ -64,7 +64,11 @@ def registration_form(activity: Activity, member: TBIMember) -> FormTemplate:
 @pytest.fixture
 def registration(activity: Activity, registration_form: FormTemplate) -> Registration:
     return Registration.objects.create(
-        activity=activity, template=registration_form, name="Ana Cruz", email="ana@example.com"
+        activity=activity,
+        template=registration_form,
+        participant_category=activity.participant_categories.first(),
+        name="Ana Cruz",
+        email="ana@example.com",
     )
 
 

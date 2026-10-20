@@ -1,3 +1,241 @@
-from django.shortcuts import render
+"""JSON endpoints for forms, public registration, attendance and evaluations.
 
-# Create your views here.
+Views are thin: parse input, check permission, call registrations.services.
+Public endpoints (no login): /register/<activity_id>/ and /evaluate/<token>/.
+Staff endpoints: /registrations/api/... (reading needs staff login; changes need can_create_activity).
+"""
+
+import json
+from collections.abc import Callable
+from functools import wraps
+
+from django.core.exceptions import ValidationError
+from django.http import Http404, HttpRequest
+from django.shortcuts import get_object_or_404
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
+
+from config.json import JsonResponse  # date-times in Manila time
+
+from accounts.permissions import Permission, permission_required, staff_login_required
+from activities.models import Activity
+
+from . import services
+from .models import FormField, FormTemplate
+
+
+class BadRequest(Exception):
+    """Invalid request body or query parameters."""
+
+
+def api_errors(view: Callable) -> Callable:
+    """Turn refusals and validation errors into 400 responses with clear messages."""
+
+    @wraps(view)
+    def wrapper(request: HttpRequest, *args, **kwargs) -> JsonResponse:
+        try:
+            return view(request, *args, **kwargs)
+        except ValidationError as error:
+            errors = error.message_dict if hasattr(error, "error_dict") else {"__all__": error.messages}
+            return JsonResponse({"errors": errors}, status=400)
+        except (services.RegistrationError, BadRequest) as error:
+            return JsonResponse({"error": str(error)}, status=400)
+
+    return wrapper
+
+
+def _json_body(request: HttpRequest) -> dict:
+    try:
+        data = json.loads(request.body or b"{}")
+    except json.JSONDecodeError as error:
+        raise BadRequest("Request body must be valid JSON.") from error
+    if not isinstance(data, dict):
+        raise BadRequest("Request body must be a JSON object.")
+    return data
+
+
+# --- Public: registration ---------------------------------------------------------------
+
+
+@require_http_methods(["GET", "POST"])
+@api_errors
+def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
+    """GET: activity info, categories, slots left and the form. POST: register.
+
+    POST {"name", "email", "contact_number", "participant_category": id (optional if only one),
+          "answers": {"<field_id>": value}}
+    """
+    activity = services.get_public_activity(activity_id)
+    if activity is None:
+        raise Http404("Activity not found.")
+    if request.method == "GET":
+        return JsonResponse({"activity": services.public_activity_info(activity)})
+
+    data = _json_body(request)
+    registration = services.register(
+        activity,
+        name=str(data.get("name", "")),
+        email=str(data.get("email", "")),
+        contact_number=str(data.get("contact_number", "")),
+        participant_category=data.get("participant_category"),
+        answers=data.get("answers") or {},
+    )
+    return JsonResponse(
+        {
+            "message": "You are registered. A confirmation email is on its way.",
+            "participant_category": registration.participant_category.name,
+            "slots_remaining": services.slots_remaining(activity),
+        },
+        status=201,
+    )
+
+
+# --- Public: evaluation (personal signed link) --------------------------------------------
+
+
+@require_http_methods(["GET", "POST"])
+@api_errors
+def public_evaluate(request: HttpRequest, token: str) -> JsonResponse:
+    """GET: the evaluation form (or why it is closed). POST {"comments", "answers": {...}}: submit."""
+    if request.method == "GET":
+        return JsonResponse({"evaluation": services.evaluation_page(token)})
+    data = _json_body(request)
+    services.submit_evaluation(token, comments=str(data.get("comments", "")), answers=data.get("answers") or {})
+    return JsonResponse({"message": "Thank you! Your evaluation was submitted."}, status=201)
+
+
+# --- Staff: forms --------------------------------------------------------------------------
+
+
+def _form_json(form: FormTemplate) -> dict:
+    return {
+        "template_id": form.pk,
+        "activity_id": form.activity_id,
+        "form_type": form.form_type,
+        "title": form.title,
+        "generated_from_default": form.generated_from_default,
+        "locked": services.form_is_locked(form),
+        "fields": [services._field_json(field) for field in form.fields.order_by("sort_order", "field_id")],
+    }
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def create_form_api(request: HttpRequest, activity_id: int) -> JsonResponse:
+    """POST {"form_type": "registration" | "evaluation", "title": optional}"""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    data = _json_body(request)
+    form = services.create_form(request.user, activity, str(data.get("form_type", "")), str(data.get("title", "")))
+    return JsonResponse({"form": _form_json(form)}, status=201)
+
+
+@staff_login_required
+@require_GET
+def form_api(request: HttpRequest, template_id: int) -> JsonResponse:
+    return JsonResponse({"form": _form_json(get_object_or_404(FormTemplate, pk=template_id))})
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def add_field_api(request: HttpRequest, template_id: int) -> JsonResponse:
+    """POST {"field_label", "field_type", "options": [..], "is_required"}"""
+    form = get_object_or_404(FormTemplate, pk=template_id)
+    data = _json_body(request)
+    services.add_field(
+        request.user,
+        form,
+        field_label=str(data.get("field_label", "")),
+        field_type=str(data.get("field_type", "")),
+        options=data.get("options"),
+        is_required=data.get("is_required", True),
+    )
+    return JsonResponse({"form": _form_json(form)}, status=201)
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def update_field_api(request: HttpRequest, field_id: int) -> JsonResponse:
+    """POST only what changes: field_label, field_type, options, is_required."""
+    field = get_object_or_404(FormField, pk=field_id)
+    services.update_field(request.user, field, **_json_body(request))
+    return JsonResponse({"form": _form_json(field.template)})
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def remove_field_api(request: HttpRequest, field_id: int) -> JsonResponse:
+    field = get_object_or_404(FormField, pk=field_id)
+    form = field.template
+    services.remove_field(request.user, field)
+    return JsonResponse({"form": _form_json(form)})
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def reorder_fields_api(request: HttpRequest, template_id: int) -> JsonResponse:
+    """POST {"field_ids": [3, 1, 2]}"""
+    form = get_object_or_404(FormTemplate, pk=template_id)
+    field_ids = _json_body(request).get("field_ids")
+    if not isinstance(field_ids, list):
+        raise BadRequest("field_ids must be a list.")
+    services.reorder_fields(request.user, form, field_ids)
+    return JsonResponse({"form": _form_json(form)})
+
+
+# --- Staff: registrations and attendance -----------------------------------------------
+
+
+@staff_login_required
+@require_GET
+@api_errors
+def registrations_api(request: HttpRequest, activity_id: int) -> JsonResponse:
+    """GET ?attended=true|false&category=<id>"""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    attended = {"true": True, "false": False, None: None, "": None}.get(request.GET.get("attended"), "bad")
+    if attended == "bad":
+        raise BadRequest("attended must be true or false.")
+    category = request.GET.get("category") or None
+    if category is not None and not category.isdigit():
+        raise BadRequest("category must be a number.")
+    rows = [
+        {
+            "registration_id": r.pk,
+            "name": r.name,
+            "email": r.email,
+            "contact_number": r.contact_number,
+            "participant_category": r.participant_category.name if r.participant_category else None,
+            "registration_date": r.registration_date,
+            "attendance_confirmed": r.attendance_confirmed,
+            "confirmation_method": r.confirmation_method,
+            "evaluation_submitted": hasattr(r, "evaluation_submission"),
+            "answers": [{"field_label": a.field.field_label, "answer_value": a.answer_value} for a in r.answers.all()],
+        }
+        for r in services.list_registrations(activity, attended, int(category) if category else None)
+    ]
+    return JsonResponse({"registrations": rows, "total": len(rows)})
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def attendance_api(request: HttpRequest, activity_id: int) -> JsonResponse:
+    """POST {"registration_ids": [..], "attended": true|false, "method": "email" | "wet_signature"}"""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    data = _json_body(request)
+    ids = data.get("registration_ids")
+    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+        raise BadRequest("registration_ids must be a list of numbers.")
+    changed = services.set_attendance(request.user, activity, ids, bool(data.get("attended")), data.get("method"))
+    return JsonResponse({"changed": changed})
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+@api_errors
+def send_evaluation_links_api(request: HttpRequest, activity_id: int) -> JsonResponse:
+    activity = get_object_or_404(Activity, pk=activity_id)
+    return JsonResponse({"sent": services.send_evaluation_links(request.user, activity)})

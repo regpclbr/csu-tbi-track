@@ -6,6 +6,7 @@ Safe to run many times:
   `is_active` are only set when a row is first created, so an admin's edits are kept.
 """
 
+import json
 from dataclasses import dataclass
 
 from django.contrib.auth.password_validation import validate_password
@@ -97,6 +98,56 @@ def load_lookups() -> SeedResult:
         _, created = DocumentType.objects.update_or_create(name=name, defaults=due_rule, create_defaults=due_rule)
         result.add(created)
 
+    return result
+
+
+# Default form fields copied into every new registration/evaluation form.
+# PLACEHOLDERS: to be validated with the TBI. The same set is used for every activity type.
+# (field_label, field_type, options, is_required)
+DATA_PRIVACY_CONSENT = (
+    "I agree to the processing of my personal data in accordance with the "
+    "Data Privacy Act of 2012 (RA 10173)."
+)
+DEFAULT_FORM_FIELDS: dict[str, list[tuple[str, str, list[str], bool]]] = {
+    "registration": [
+        ("Affiliation / Organization", "short_text", [], True),
+        ("Data Privacy consent", "checkbox", [DATA_PRIVACY_CONSENT], True),
+    ],
+    "evaluation": [
+        ("Overall rating", "rating", [], True),
+        ("Resource person rating", "rating", [], True),
+        ("Organization / venue rating", "rating", [], True),
+        ("Key learnings", "long_text", [], True),
+        ("Suggestions", "long_text", [], False),
+    ],
+}
+
+
+@transaction.atomic
+def load_default_form_fields() -> SeedResult:
+    """Create the placeholder default fields for every activity type, for both form types.
+
+    Matched by (activity type, form type, label) and only created when missing, so running
+    it again never duplicates them or overwrites the Admin's edits.
+    """
+    from registrations.models import DefaultFormField  # registrations depends on activities, not the other way
+
+    result = SeedResult()
+    for activity_type in ActivityType.objects.all():
+        for form_type, fields in DEFAULT_FORM_FIELDS.items():
+            for order, (label, field_type, options, required) in enumerate(fields, start=1):
+                _, created = DefaultFormField.objects.get_or_create(
+                    activity_type=activity_type,
+                    form_type=form_type,
+                    field_label=label,
+                    defaults={
+                        "field_type": field_type,
+                        "options": json.dumps(options, ensure_ascii=False) if options else "",
+                        "is_required": required,
+                        "sort_order": order,
+                    },
+                )
+                result.add(created)
     return result
 
 

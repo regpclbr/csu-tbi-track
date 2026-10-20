@@ -81,6 +81,15 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Registration state is calculated, never stored: `registered_count()`, `slots_remaining()`,
   `is_registration_open()` in activities/services.py (Step 5 must reuse them).
 
+## Registrations and evaluations
+- All rules live in `registrations/services.py`: forms (`create_form`, field edits, locked once
+  submitted), `validate_answers` (the only answer check), `register` (locks the activity row;
+  reuses `is_registration_open`), `set_attendance`, evaluation links and `submit_evaluation`.
+- REGISTRATION.participant_category must be one of the activity's categories (auto when only one).
+- Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
+  never "type your email". Public pages never show who registered.
+- Default form fields are placeholders (validate with the TBI); `seed_data` creates them once.
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -99,6 +108,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Working rules
 - Business logic goes in each app's `services.py`. Keep views thin.
+- API views return `config.json.JsonResponse` (never Django's directly), so date-times are shown
+  in Manila time with the offset (`+08:00`), not UTC.
 - Write pytest-django tests for every business rule (`<app>/tests/test_*.py`).
 - Never put secrets in code. Never commit `.env`.
 - Use clear names that match the ERD. Use type hints and short docstrings.
@@ -110,8 +121,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 1. Models matching the ERD, constraints, admin — done (review changes applied)
 2. Seed data command + fake demo data command (safe to run twice) — done
 3. Staff login, role permissions, first-sign-in password change — done
-4. Activities, status changes, audit log — written, awaiting owner review
-5. Public registration, attendance, evaluation flow
+4. Activities, status changes, audit log — done (incl. many categories per activity)
+5. Public registration, attendance, evaluation flow — written, awaiting owner review
 6. Documents, checklist, reminders (Django-Q2 scheduled task)
 7. Startups module with a mock StartupProvider
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources

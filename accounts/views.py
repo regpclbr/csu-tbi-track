@@ -10,10 +10,12 @@ from django.conf import settings
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
+
+from config.json import JsonResponse  # date-times in Manila time
 
 from . import services
 from .forms import LoginForm, PasswordChangeForm
@@ -103,7 +105,7 @@ def _member_json(member: TBIMember) -> dict:
         "role_id": member.role_id,
         "is_active": member.is_active,
         "must_change_password": member.must_change_password,
-        "last_login": member.last_login.isoformat() if member.last_login else None,
+        "last_login": member.last_login,  # shown in Manila time by config.json
     }
 
 

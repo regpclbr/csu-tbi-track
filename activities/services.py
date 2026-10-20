@@ -163,6 +163,14 @@ def validate_activity_values(
             errors[field] = "This field is required."
     if not values.get(CATEGORIES):
         errors[CATEGORIES] = "Choose at least one participant category."
+    elif activity is not None and activity.pk:
+        # A category cannot be removed while registrations of this activity use it.
+        removed = set(activity.participant_categories.all()) - set(values[CATEGORIES])
+        in_use = sorted(
+            category.name for category in removed if activity.registrations.filter(participant_category=category).exists()
+        )
+        if in_use:
+            errors[CATEGORIES] = f"Cannot remove {', '.join(in_use)}: registrations of this activity use it."
     if errors:
         raise ValidationError(errors)
 
@@ -590,6 +598,12 @@ def why_category_cannot_be_deleted(category: ParticipantCategory) -> str | None:
         return (
             f'Cannot delete "{category.name}": it is used by {used_by} '
             f"{'activity' if used_by == 1 else 'activities'}. Change those activities to another category first."
+        )
+    registrations = category.registrations.count()
+    if registrations:
+        return (
+            f'Cannot delete "{category.name}": {registrations} '
+            f"{'registration uses' if registrations == 1 else 'registrations use'} it."
         )
     return None
 

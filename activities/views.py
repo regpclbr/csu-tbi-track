@@ -12,9 +12,11 @@ from datetime import date
 from functools import wraps
 
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest, JsonResponse
+from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
+
+from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, require_permission, staff_login_required
 

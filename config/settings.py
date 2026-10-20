@@ -181,6 +181,9 @@ MAILERS = {
 }
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "CSU-TBI Track <no-reply@localhost>")
 
+# Public address of the site, used to build links in emails (e.g. personal evaluation links).
+SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:8000").rstrip("/")
+
 
 # --- Background tasks (Django-Q2, database broker, no Redis) ----------------
 

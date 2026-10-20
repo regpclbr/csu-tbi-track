@@ -86,7 +86,13 @@ def register(director):
         )
         start = activity.registrations.count()
         return [
-            Registration.objects.create(activity=activity, template=form, name=f"Person {n}", email=f"p{n}@example.com")
+            Registration.objects.create(
+                activity=activity,
+                template=form,
+                participant_category=activity.participant_categories.first(),
+                name=f"Person {n}",
+                email=f"p{n}@example.com",
+            )
             for n in range(start, start + count)
         ]
 

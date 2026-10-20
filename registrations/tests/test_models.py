@@ -20,8 +20,22 @@ def test_one_registration_per_activity_and_email(registration: Registration) -> 
         Registration.objects.create(
             activity=registration.activity,
             template=registration.template,
+            participant_category=registration.participant_category,
             name="Ana again",
-            email="ANA@example.com",  # same email, different case
+            email=" ANA@example.com ",  # same email, different case and spaces
+        )
+
+
+@pytest.mark.django_db
+def test_participant_category_is_required_in_the_database(registration: Registration) -> None:
+    """NOT NULL in the database, as in the ERD (migration registrations/0003)."""
+    from django.db import connection
+
+    columns = {c.name: c.null_ok for c in connection.introspection.get_table_description(connection.cursor(), "registration")}
+    assert columns["participant_category_id"] is False
+    with pytest.raises(IntegrityError):
+        Registration.objects.create(
+            activity=registration.activity, template=registration.template, name="Ben", email="ben@example.com"
         )
 
 

@@ -9,7 +9,7 @@ import os
 
 from django.core.management.base import BaseCommand, CommandError
 
-from accounts.seed import AdminAccountError, ensure_admin_account, load_lookups
+from accounts.seed import AdminAccountError, ensure_admin_account, load_default_form_fields, load_lookups
 
 
 class Command(BaseCommand):
@@ -19,6 +19,12 @@ class Command(BaseCommand):
         result = load_lookups()
         self.stdout.write(
             self.style.SUCCESS(f"Lookups: {result.created} created, {result.existing} already present.")
+        )
+        defaults = load_default_form_fields()
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Default form fields: {defaults.created} created, {defaults.existing} already present."
+            )
         )
 
         email = os.environ.get("SEED_ADMIN_EMAIL", "").strip()

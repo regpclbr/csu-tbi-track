@@ -1,6 +1,8 @@
 """Project-wide error views."""
 
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse
+
+from .json import JsonResponse
 
 
 def permission_denied(request: HttpRequest, exception: Exception | None = None) -> HttpResponse:

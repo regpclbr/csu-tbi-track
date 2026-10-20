@@ -22,7 +22,13 @@ def test_one_participation_certificate_per_registration(registration, make_certi
 def test_certificate_number_is_unique(registration, make_certificate, activity, registration_form) -> None:
     from registrations.models import Registration
 
-    other = Registration.objects.create(activity=activity, template=registration_form, name="Ben", email="b@x.com")
+    other = Registration.objects.create(
+        activity=activity,
+        template=registration_form,
+        participant_category=activity.participant_categories.first(),
+        name="Ben",
+        email="b@x.com",
+    )
     make_certificate(registration, "TBI-0001")
     with pytest.raises(IntegrityError):
         make_certificate(other, "TBI-0001")

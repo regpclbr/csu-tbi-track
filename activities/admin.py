@@ -160,7 +160,10 @@ class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     list_filter = ("status", "activity_type", "participant_categories")
     search_fields = ("title", "venue")
     date_hierarchy = "start_date"
-    actions = ["move_to_scheduled", "move_to_ongoing", "move_to_conducted", "move_to_draft"]
+    actions = [
+        "move_to_scheduled", "move_to_ongoing", "move_to_conducted", "move_to_draft",
+        "create_forms", "send_evaluation_links",
+    ]
 
     def get_inlines(self, request, obj=None):
         # Resource persons can only be linked once the activity exists.
@@ -283,6 +286,36 @@ class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     @admin.action(description="Change status back to Draft")
     def move_to_draft(self, request, queryset) -> None:
         self._move(request, queryset, ActivityStatus.DRAFT)
+
+    # --- Forms and evaluation links (registrations.services) ---------------------------
+
+    @admin.action(description="Create registration and evaluation forms (from defaults)")
+    def create_forms(self, request, queryset) -> None:
+        from registrations import services as registration_services
+        from registrations.models import FormType
+
+        for activity in queryset:
+            for form_type in FormType.values:
+                try:
+                    form = registration_services.create_form(request.user, activity, form_type)
+                except registration_services.RegistrationError as error:
+                    self.message_user(request, f'"{activity.title}": {error}', level=messages.WARNING)
+                else:
+                    self.message_user(
+                        request, f'"{activity.title}": {form.title} created with {form.fields.count()} fields.', messages.SUCCESS
+                    )
+
+    @admin.action(description="Send evaluation links to attendees who have not evaluated")
+    def send_evaluation_links(self, request, queryset) -> None:
+        from registrations import services as registration_services
+
+        for activity in queryset:
+            try:
+                sent = registration_services.send_evaluation_links(request.user, activity)
+            except registration_services.RegistrationError as error:
+                self.message_user(request, f'"{activity.title}": {error}', level=messages.ERROR)
+            else:
+                self.message_user(request, f'"{activity.title}": {sent} evaluation link(s) sent.', messages.SUCCESS)
 
 
 @admin.register(ActivityAuditLog)
