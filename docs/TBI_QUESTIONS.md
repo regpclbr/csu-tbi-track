@@ -40,6 +40,11 @@ all of them are to be validated with the TBI too.
 - **Item 147:** What maturity stages does Navigatu use for startups? (Current placeholders: Ideation, Validation, Early Traction, Scaling.)
 - **Item 143:** Should startups be able to request a password reset themselves, or is a link sent by the Admin enough until Navigatu SSO is available?
 
+## AI assistant
+
+- **Item 165:** On the free tier of the Gemini API, Google may use the content sent to it (questions and document excerpts) to improve its products. May real TBI documents be sent to it, or is a paid tier required? Today these document types are never sent: Attendance Sheet. Should any other types be excluded?
+- **Item 151:** Some uploaded documents are scans or photos (no text inside). Is OCR (reading text from images) needed, so the assistant can search them too?
+
 ## Certificates
 
 - **Item 46:** Is this the right certificate process: Generated → Pending Sign-off → Approved → Issued, one step at a time, with a rejected certificate going back from Pending Sign-off to Generated, and an issued certificate never changed (a wrong one is replaced by a new certificate with a new number)?

@@ -34,6 +34,7 @@ from accounts.models import TBIMember
 from accounts.permissions import Permission, has_permission, require_permission, require_staff_member
 from activities.models import Activity, ActivityStatus
 from activities.services import PageResult, _paginate
+from assistant.indexing import queue_indexing, with_searchable
 from notifications.models import Notification
 
 from .models import Document, DocumentStatus, DocumentType
@@ -307,9 +308,10 @@ def approve_document(member: TBIMember, document: Document, now: datetime | None
         document.reviewed_at = now or timezone.now()
         document.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
 
-        # ---- STEP 8: queue the embedding job here (only Approved documents get embeddings) ----
-        # transaction.on_commit(lambda: async_task("assistant.tasks.embed_document", document.pk))
-        # ----------------------------------------------------------------------------------------
+        # Step 8: index it for the assistant once the approval is saved (Django-Q2 task).
+        # robust=True: a problem queueing the task never undoes or breaks the approval.
+        document_id = document.pk
+        transaction.on_commit(lambda: queue_indexing(document_id), robust=True)
     return document
 
 
@@ -345,7 +347,8 @@ def return_document(member: TBIMember, document: Document, reason: str, now: dat
 
 
 def documents_for_listing() -> QuerySet:
-    return Document.objects.activity_documents().select_related(
+    """Activity documents with `searchable` (has embeddings for the assistant; no column)."""
+    return with_searchable(Document.objects.activity_documents()).select_related(
         "activity", "document_type", "status", "uploaded_by", "reviewed_by"
     )
 
@@ -372,7 +375,8 @@ def list_documents(filters: dict | None = None, page: int | str | None = 1, per_
     """Document Repository: activity documents across activities, newest first.
 
     Filters (all optional): activity, document_type, status, uploaded_by (IDs),
-    review_state ("waiting_for_review" | "returned" | "approved"), q (searches title and file name).
+    review_state ("waiting_for_review" | "returned" | "approved"), searchable (True/False),
+    q (searches title and file name).
     """
     filters = filters or {}
     queryset = documents_for_listing()
@@ -388,6 +392,8 @@ def list_documents(filters: dict | None = None, page: int | str | None = 1, per_
         queryset = queryset.approved()
     elif state:
         raise DocumentError("review_state must be waiting_for_review, returned or approved.")
+    if filters.get("searchable") is not None:
+        queryset = queryset.filter(searchable=filters["searchable"])
     search = (filters.get("q") or "").strip()
     if search:
         queryset = queryset.filter(Q(title__icontains=search) | Q(file_name__icontains=search))

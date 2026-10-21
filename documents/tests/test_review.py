@@ -224,7 +224,8 @@ def test_allowed_actions(document, director, admin_staff) -> None:
     assert services.allowed_actions(director, document) == nothing
 
 
-def test_approve_has_a_marked_place_for_step_8() -> None:
+def test_approve_queues_indexing_after_commit_step_8() -> None:
+    """Step 8 filled the marked place: indexing is queued once the approval is committed."""
     import inspect
 
-    assert "STEP 8: queue the embedding job here" in inspect.getsource(services.approve_document)
+    assert "transaction.on_commit(lambda: queue_indexing(document_id), robust=True)" in inspect.getsource(services.approve_document)

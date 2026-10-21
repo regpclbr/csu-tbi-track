@@ -19,6 +19,29 @@ def fast_password_hashing(settings) -> None:
 
 
 @pytest.fixture(autouse=True)
+def fake_gemini(monkeypatch):
+    """Tests NEVER call the real Gemini API.
+
+    - Every caller of assistant.gemini.get_gateway() gets this FakeGemini (the one injection point).
+    - Creating a real google-genai Client fails the test immediately.
+    - Retry waits are skipped.
+    """
+    from google import genai
+
+    from assistant import gemini
+    from assistant.testing import FakeGemini
+
+    def refuse_real_client(*args, **kwargs):
+        raise RuntimeError("Tests must never call the real Gemini API (google.genai.Client was created).")
+
+    monkeypatch.setattr(genai, "Client", refuse_real_client)
+    fake = FakeGemini()
+    monkeypatch.setattr(gemini, "_override", fake)
+    monkeypatch.setattr(gemini, "sleep", lambda seconds: None)
+    return fake
+
+
+@pytest.fixture(autouse=True)
 def temporary_media_root(settings, tmp_path) -> None:
     """Tests only: uploaded files go to a temporary folder, never the real media folder."""
     settings.MEDIA_ROOT = tmp_path / "media"

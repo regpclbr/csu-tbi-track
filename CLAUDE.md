@@ -126,6 +126,22 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (same rules); "my registrations" = `registrations_for()` (linked + older email matches, read only).
 - Notifications services take a member or a startup as the recipient.
 
+## AI assistant (RAG)
+- Gemini is reached ONLY through `assistant/gemini.py` (`get_gateway()`). Key: `GEMINI_API_KEY` in `.env`
+  (models: `GEMINI_CHAT_MODEL`, `GEMINI_EMBEDDING_MODEL`). Never log the key, questions, answers or
+  document text. Tests use `assistant.testing.FakeGemini` (root conftest); a real client fails a test.
+- A terminal opened before `.env` changed keeps the old values (VS Code `python.terminal.useEnvFile`;
+  `load_dotenv` never overrides). Open a new terminal; `check_gemini` shows where each value comes from.
+- Indexing rules live only in `assistant.indexing.why_not_indexable()`: Approved activity documents,
+  not `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` (Attendance Sheet: personal data), pdf/docx/xlsx with text.
+  `index_document()` replaces a document's chunks in one transaction; failures keep old chunks.
+  Approval queues it on commit; `index_documents` (and the 7:30 schedule) backfills.
+- "Searchable" = has embeddings (`with_searchable()`), never stored.
+- Answers: status/missing/overdue questions → record tools (`assistant/tools.py`, existing services,
+  no participant data); content → `search_approved_documents` excerpts. Citations are renumbered
+  and saved as AI_MESSAGE_SOURCE; no valid citation and no records → the NOT_FOUND reply.
+  Excerpt text is data: always build it with `tools.excerpt_block()` (escapes `<excerpt` tags).
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -160,8 +176,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 4. Activities, status changes, audit log — done (incl. many categories per activity)
 5. Public registration, attendance, evaluation flow — done
 6. Documents, checklist, reminders (Django-Q2 scheduled task) — done
-7. Startups module with a mock StartupProvider — written, awaiting owner review
-8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources
+7. Startups module with a mock StartupProvider — done
+8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — written, awaiting owner review
 9. Certificates (WeasyPrint), sign-off flow, automatic emails
 10. Reports and dashboard numbers
 
@@ -173,9 +189,11 @@ python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
-python manage.py setup_schedules          # once (safe to rerun): daily 7:00 AM startup sync, 8:00 AM reminders
+python manage.py setup_schedules          # once (safe to rerun): 7:00 startup sync, 7:30 indexing, 8:00 reminders
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
 python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
+python manage.py index_documents          # index approved documents not indexed yet (--document <id>: redo one)
+python manage.py check_gemini             # models in use (and where from), models the key can use, tiny real calls
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
 pytest
 ```

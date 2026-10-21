@@ -87,6 +87,7 @@ def document_json(document: Document, member=None) -> dict:
         "file_size_kb": document.file_size_kb,
         "status": document.status.status_name,
         "review_state": document.review_state,  # waiting_for_review | returned | approved
+        "searchable": bool(getattr(document, "searchable", False)),  # indexed for the assistant (Step 8)
         "uploaded_by": _member_json(document.uploaded_by),
         "uploaded_at": document.uploaded_at,
         "reviewed_by": _member_json(document.reviewed_by),
@@ -110,11 +111,15 @@ def _page_json(result, rows: list) -> dict:
 @require_GET
 @api_errors
 def repository_api(request: HttpRequest) -> JsonResponse:
-    """GET ?activity=&document_type=&status=&uploaded_by=&review_state=&q=&page="""
+    """GET ?activity=&document_type=&status=&uploaded_by=&review_state=&searchable=true|false&q=&page="""
     filters = {
         key: _int_value(request.GET.get(key), key) for key in ("activity", "document_type", "status", "uploaded_by")
     }
     filters["review_state"] = request.GET.get("review_state", "")
+    searchable = request.GET.get("searchable", "").lower()
+    if searchable not in ("", "true", "false"):
+        raise BadRequest("searchable must be true or false.")
+    filters["searchable"] = {"true": True, "false": False}.get(searchable)
     filters["q"] = request.GET.get("q", "")
     result = services.list_documents(filters, page=request.GET.get("page", 1))
     return JsonResponse(_page_json(result, [document_json(d) for d in result.items]))

@@ -215,15 +215,38 @@ Q_CLUSTER = {
     "timeout": 300,  # seconds a task may run
     "retry": 360,  # must be larger than timeout
     "catch_up": False,  # don't replay missed schedules after downtime
+    # A task that raised is recorded under "Failed tasks" and NOT re-queued every `retry`
+    # seconds forever. (Our tasks catch their own errors; this is the safety net.)
+    "ack_failures": True,
 }
 
 
 # --- AI (Gemini via google-genai) -------------------------------------------
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
+# gemini-2.5-flash is closed to new API users (HTTP 404 since 2026); see ASSUMPTIONS item 20.
+# Check what a key can use with: python manage.py check_gemini
+GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.5-flash-lite")
 GEMINI_EMBEDDING_MODEL = os.environ.get("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
 
 # Size of every embedding vector. DOCUMENT_EMBEDDING's VectorField and the
 # embedding API call both read this, so it only changes in one place.
 EMBEDDING_DIMENSIONS = 768
+
+
+# --- AI assistant (Step 8) ---------------------------------------------------------------
+# Starting values, to tune with real TBI documents (ASSUMPTIONS item R3).
+ASSISTANT_CHUNK_SIZE = 1200  # characters per chunk (about 300 tokens)
+ASSISTANT_CHUNK_OVERLAP = 200  # characters repeated between neighbouring chunks
+ASSISTANT_EMBED_BATCH_SIZE = 20  # texts per embedding request
+ASSISTANT_MAX_RETRIES = 4  # attempts per Gemini request on rate limits / server errors
+ASSISTANT_REQUEST_TIMEOUT_SECONDS = 60  # one Gemini request may take at most this long
+ASSISTANT_TOP_K = 6  # excerpts retrieved per search
+ASSISTANT_MIN_SIMILARITY = 0.55  # cosine similarity below this is "not relevant"
+ASSISTANT_HISTORY_MESSAGES = 6  # earlier chat messages sent as context (3 questions + answers)
+ASSISTANT_MAX_TOOL_ROUNDS = 4  # function-calling rounds per question
+# Never indexed (personal data). Names of DOCUMENT_TYPE rows.
+ASSISTANT_EXCLUDED_DOCUMENT_TYPES = ["Attendance Sheet"]
+# Daily retry of documents that are approved but not indexed yet (e.g. rate limits).
+ASSISTANT_INDEX_HOUR = 7
+ASSISTANT_INDEX_MINUTE = 30

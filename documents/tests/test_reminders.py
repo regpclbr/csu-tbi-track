@@ -174,7 +174,7 @@ def test_setup_schedules_twice_creates_one_schedule() -> None:
     call_command("setup_schedules")
     schedule = Schedule.objects.get(name=tasks.REMINDER_SCHEDULE_NAME)
     assert Schedule.objects.filter(name=tasks.REMINDER_SCHEDULE_NAME).count() == 1
-    assert Schedule.objects.count() == 2  # plus the startup sync (Step 7)
+    assert Schedule.objects.count() == 3  # plus the startup sync (Step 7) and indexing (Step 8)
     assert schedule.func == "documents.tasks.run_document_reminders"
     assert schedule.schedule_type == Schedule.DAILY and schedule.repeats == -1
     local = timezone.localtime(schedule.next_run)

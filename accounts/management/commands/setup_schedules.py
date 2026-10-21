@@ -9,7 +9,7 @@ from config.schedules import SCHEDULES, DailySchedule, next_daily_run
 
 
 class Command(BaseCommand):
-    help = "Create the daily schedules (document reminders, startup sync). Running it again never adds a second one."
+    help = "Create the daily schedules (startup sync, document indexing, reminders). Running it again never adds a second one."
 
     @transaction.atomic
     def handle(self, *args, **options) -> None:
@@ -28,8 +28,8 @@ class Command(BaseCommand):
         schedule.schedule_type = Schedule.DAILY  # Manila has no daylight saving time, so the hour stays put
         schedule.repeats = -1  # forever
         local_next = timezone.localtime(schedule.next_run) if schedule.next_run else None
-        if local_next is None or local_next.hour != daily.hour or local_next.minute != 0:
-            schedule.next_run = next_daily_run(daily.hour)
+        if local_next is None or local_next.hour != daily.hour or local_next.minute != daily.minute:
+            schedule.next_run = next_daily_run(daily.hour, minute=daily.minute)
         schedule.save()
 
         when = timezone.localtime(schedule.next_run).strftime("%Y-%m-%d %I:%M %p")

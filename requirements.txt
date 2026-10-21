@@ -12,6 +12,10 @@ google-genai==2.31.0
 # Files: PDF and Excel output
 weasyprint==70.0
 openpyxl==3.1.5
+
+# Assistant: reading approved documents (Step 8)
+pypdf==6.19.0
+python-docx==1.2.0
 pillow==13.0.0  # needed by ImageField (signature images)
 
 # Configuration

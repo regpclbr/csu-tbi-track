@@ -320,7 +320,7 @@ def test_setup_schedules_adds_the_daily_sync_once() -> None:
     call_command("setup_schedules")
     call_command("setup_schedules")
     sync = Schedule.objects.get(name=tasks.SYNC_SCHEDULE_NAME)
-    assert Schedule.objects.count() == 2
+    assert Schedule.objects.filter(name=tasks.SYNC_SCHEDULE_NAME).count() == 1
     assert sync.func == tasks.SYNC_TASK and sync.schedule_type == Schedule.DAILY and sync.repeats == -1
     local = timezone.localtime(sync.next_run)
     assert (local.hour, local.minute) == (7, 0)
