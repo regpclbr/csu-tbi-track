@@ -1,12 +1,16 @@
 """`python manage.py seed_demo`: DEMO-ONLY fake data for presentations.
 
-Creates the eight activities from the Figma prototype with fake registrations,
-attendance, evaluations, resource persons, startups and documents.
+Creates the eight activities from the Figma prototype, plus (Step 10) seven earlier Conducted
+activities spread over several months, types and categories, with fake registrations,
+attendance, evaluations, resource persons, startups, documents and certificates, so every
+dashboard card and chart has something to show. One of them is titled "=HYPERLINK(...)"
+on purpose, to show that the Excel report writes it as text, never as a formula.
 
 - Refuses to run when DEBUG is False, so it can never touch a production database.
 - All people and companies are invented. Every email ends in @demo.example.com.
 - Demo staff accounts have unusable passwords (they cannot log in).
-- Safe to run twice: an activity that already exists (by title) is skipped.
+- Safe to run twice: an activity that already exists (by title) is skipped; certificates are
+  only created for a demo activity that has none yet.
 """
 
 import math
@@ -14,12 +18,14 @@ import random
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from io import BytesIO
 
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -27,8 +33,12 @@ from accounts.models import Role, TBIMember
 from accounts.seed import load_default_form_fields, load_lookups
 from activities import services as activity_services
 from registrations import services as registration_services
+from certificates import services as certificate_services
+from certificates.management.commands.make_sample_certificate_images import draw_signature, draw_template
+from certificates.models import Certificate, CertificateSignatory, CertificateTemplate
 from activities.models import (
     Activity,
+    ActivityParticipantCategory,
     ActivityStatus,
     ActivityType,
     ParticipantCategory,
@@ -85,6 +95,8 @@ class DemoActivity:
     resource_persons: list[int]  # indexes into RESOURCE_PERSONS
 
 
+FORMULA_TEST_TITLE = '=HYPERLINK("https://example.com","Formula test")'
+
 DEMO_ACTIVITIES = [
     DemoActivity("Startup Pitch Competition", "Forum", ["Incubatees", "MSMEs"], "Conducted", -30, 1, 40, 32, "25000.00",
                  "CSU Gonzaga Function Hall", [0, 5]),
@@ -102,6 +114,22 @@ DEMO_ACTIVITIES = [
                  "Hotel Ensenada Conference Room", [5]),  # full: shows "registration closed"
     DemoActivity("Technology Forum", "Forum", ["Faculty", "Incubatees"], "Draft", 40, 1, 60, 0, "35000.00",
                  "CSU Gymnasium", []),
+    # Step 10: earlier Conducted activities (several months, types and categories) for the dashboard and reports.
+    DemoActivity("Design Thinking Workshop", "Workshop", ["Faculty", "MSMEs"], "Conducted", -235, 2, 40, 34, "22000.00",
+                 "CSU Engineering Laboratory", [1, 4]),
+    DemoActivity("Startup Finance Seminar", "Seminar", ["Incubatees"], "Conducted", -200, 1, 35, 28, "14000.00",
+                 "CSU Audio-Visual Room", [5]),
+    DemoActivity("Women in Tech Forum", "Forum", ["Faculty", "Incubatees", "MSMEs"], "Conducted", -165, 1, 80, 61,
+                 "30000.00", "CSU Gymnasium", [0, 2]),
+    DemoActivity("Digital Marketing Training", "Training", ["MSMEs"], "Conducted", -130, 2, 30, 27, "16000.00",
+                 "TBI Co-working Space", [4]),
+    DemoActivity("Founder Mentoring Clinic", "Mentoring", ["Incubatees"], "Conducted", -95, 1, 15, 13, "6000.00",
+                 "TBI Meeting Room", [3]),
+    DemoActivity("Industry-Academe Networking Night", "Networking", ["Faculty", "MSMEs"], "Conducted", -60, 1, 50, 41,
+                 "28000.00", "Hotel Ensenada Conference Room", [5]),
+    # Deliberately starts with "=": the Excel report must show it as plain text, never run it as a formula.
+    DemoActivity(FORMULA_TEST_TITLE, "Seminar", ["Faculty"], "Conducted", -45, 1, 20, 8, "1000.00",
+                 "CSU Audio-Visual Room", []),
 ]
 
 # For conducted activities: which required documents exist and their status.
@@ -126,6 +154,43 @@ CONDUCTED_DOCUMENTS = {
         "Invitation Letter": "For Review",
         # Request Letter, Attendance Sheet and Accomplishment Report missing
     },
+    "Design Thinking Workshop": {
+        "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
+        "Attendance Sheet": "Approved", "Accomplishment Report": "Approved",
+    },
+    "Startup Finance Seminar": {
+        "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
+        "Attendance Sheet": "Approved", "Accomplishment Report": "For Review",
+    },
+    "Women in Tech Forum": {
+        "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
+        "Attendance Sheet": "Approved", "Accomplishment Report": "Approved",
+    },
+    "Digital Marketing Training": {
+        "Activity Design": "Approved", "Invitation Letter": "Approved", "Attendance Sheet": "For Review",
+        # Request Letter and Accomplishment Report missing
+    },
+    "Founder Mentoring Clinic": {
+        "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
+        "Attendance Sheet": "Approved", "Accomplishment Report": "Approved",
+    },
+    "Industry-Academe Networking Night": {
+        "Activity Design": "Approved", "Invitation Letter": "For Review",
+    },
+}
+
+# Certificates per Conducted demo activity: how far along the sign-off flow they go.
+# "approved" ones are rendered, issued and emailed by `python manage.py retry_certificates` (or qcluster).
+DEMO_CERTIFICATES = {
+    "Startup Pitch Competition": "approved",
+    "Business Model Training": "pending_signoff",
+    "Intellectual Property Seminar": "generated",
+    "Design Thinking Workshop": "approved",
+    "Startup Finance Seminar": "approved",
+    "Women in Tech Forum": "approved",
+    "Digital Marketing Training": "approved",
+    "Founder Mentoring Clinic": "pending_signoff",
+    "Industry-Academe Networking Night": "generated",
 }
 UPCOMING_DOCUMENTS = {
     "Mentoring Session": {"Activity Design": "Approved", "Invitation Letter": "Approved"},
@@ -158,8 +223,15 @@ class Command(BaseCommand):
                 self.create_activity(spec)
                 created += 1
                 self.stdout.write(f"  created: {spec.title}")
+            certificates = self.create_certificates()
+            self.update_statistics()
 
-        self.stdout.write(self.style.SUCCESS(f"Demo data: {created} activities created."))
+        self.stdout.write(self.style.SUCCESS(f"Demo data: {created} activities created, {certificates} certificates created."))
+        if certificates:
+            self.stdout.write(
+                "Approved participant certificates are rendered, issued and emailed (printed: demo addresses are never "
+                "really sent) by `python manage.py retry_certificates` or by qcluster."
+            )
         self.stdout.write(self.style.WARNING("This is fake demo data. Do not use it in production."))
 
     # --- people -----------------------------------------------------------------
@@ -287,7 +359,7 @@ class Command(BaseCommand):
         registrations = []
 
         # A few incubatee startups register while logged in.
-        linked_startups = self.startups[:3] if incubatees else []
+        linked_startups = self.rng.sample(self.startups, min(3, len(self.startups))) if incubatees else []
         people = [(s.name + " (representative)", s.email, s) for s in linked_startups]
         people += [(name, email, None) for name, email in self.fake_people(spec.registrations - len(people))]
 
@@ -356,3 +428,69 @@ class Command(BaseCommand):
             file_extension="txt",
             file_size_kb=max(1, math.ceil(len(content) / 1024)),
         )
+
+    # --- database statistics --------------------------------------------------------------
+
+    def update_statistics(self) -> None:
+        """ANALYZE the tables just filled, so PostgreSQL knows their real size right away.
+
+        Without it, a table last measured while empty is planned as "1 row", and the report queries can
+        nest full scans of every table (seen in the test suite: one query ran for over 20 minutes).
+        ANALYZE may run inside this transaction and also counts the rows it inserted.
+        """
+        models = [Activity, ActivityParticipantCategory, Registration, EvaluationSubmission, FormTemplate, FormField,
+                  FormAnswer, Document, Certificate, Startup, ResourcePerson]
+        tables = ", ".join(connection.ops.quote_name(model._meta.db_table) for model in models)
+        with connection.cursor() as cursor:
+            cursor.execute(f"ANALYZE {tables}")
+
+    # --- certificates (Step 10: so the certificate cards have numbers) -----------------
+
+    def demo_design(self) -> bool:
+        """Use the active design; if there is none, add an invented one as the first active Admin."""
+        try:
+            certificate_services.active_design()
+            return True
+        except certificate_services.CertificateError:
+            pass
+        admin = TBIMember.objects.filter(role__role_name=Role.ADMIN, is_active=True).order_by("pk").first()
+        if admin is None:
+            self.stdout.write(self.style.WARNING("  certificates skipped: no active design and no active Admin (run seed_data)."))
+            return False
+
+        def png(draw, *args) -> SimpleUploadedFile:
+            buffer = BytesIO()
+            draw(buffer, *args)
+            return SimpleUploadedFile("demo.png", buffer.getvalue())
+
+        if not CertificateTemplate.objects.filter(is_active=True).exists():
+            certificate_services.upload_template(admin, "[DEMO] Sample design", png(draw_template), activate=True)
+        for position, name, seed in (("vp", "[DEMO] Dr. Vice President", 3), ("director", "[DEMO] TBI Director", 11)):
+            if not CertificateSignatory.objects.filter(position=position, is_active=True).exists():
+                certificate_services.add_signatory(admin, name, position, png(draw_signature, seed))
+        self.stdout.write("  certificate design: invented demo design and/or signatures added (none was active)")
+        return True
+
+    def create_certificates(self) -> int:
+        """Generate demo certificates and move them through the real sign-off services. Only for demo
+        activities that have no certificate yet, so running twice adds nothing."""
+        todo = [
+            (activity, target)
+            for title, target in DEMO_CERTIFICATES.items()
+            if (activity := Activity.objects.filter(title=title, status__name=ActivityStatus.CONDUCTED).first())
+            and not Certificate.objects.filter(activity=activity).exists()
+        ]
+        if not todo or not self.demo_design():
+            return 0
+        created = 0
+        for activity, target in todo:
+            member = activity.created_by
+            created += certificate_services.generate_certificates(member, activity)["total"]
+            if target in ("pending_signoff", "approved"):
+                certificate_services.review_certificates(member, activity=activity)
+            if target == "approved":
+                certificate_services.record_signoff(member, "director", activity=activity)
+                certificate_services.record_signoff(member, "vp", activity=activity)
+                certificate_services.approve_certificates(member, activity=activity)
+            self.stdout.write(f"  certificates ({target}): {activity.title}")
+        return created

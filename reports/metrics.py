@@ -1,0 +1,599 @@
+"""Every number on the dashboard and in the reports. ONE source of truth: the dashboard API, the
+PDF and the Excel file all call these functions. The definitions (N1-N18, S1-S6) are in
+docs/ASSUMPTIONS.md, Step 10.
+
+Two scopes:
+- "period" numbers count only Conducted activities whose end_date (a Manila date) is in the
+  date range, optionally of one activity type. Exception: S1 (activities by status) counts every
+  status, Draft included, by start_date in the range.
+- "now" numbers (S2-S6) are a snapshot of today: they ignore the date range but respect the
+  activity type filter.
+
+Everything is counted by the database (aggregates, EXISTS and subqueries), never by looping over
+registrations, answers or documents in Python. Python only reshapes the (small) results.
+"""
+
+import re
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+
+from django.core.exceptions import ValidationError
+from django.db.models import (
+    Avg,
+    BooleanField,
+    Count,
+    Exists,
+    ExpressionWrapper,
+    FloatField,
+    IntegerField,
+    Min,
+    OuterRef,
+    Q,
+    QuerySet,
+    StringAgg,
+    Subquery,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Cast, Coalesce, Lower, Trim, TruncMonth
+
+from activities.models import Activity, ActivityParticipantCategory, ActivityStatus, ActivityType, ParticipantCategory
+from certificates.models import Certificate
+from documents.models import Document, DocumentStatus, DocumentType
+from documents.services import due_date, today_in_manila
+from registrations.models import EvaluationSubmission, FieldType, FormAnswer, Registration
+from startups.models import Startup
+
+PERIOD = "period"  # depends on the date range
+NOW = "now"  # snapshot of today; ignores the date range
+
+STATUS_ORDER = [ActivityStatus.DRAFT, ActivityStatus.SCHEDULED, ActivityStatus.ONGOING, ActivityStatus.CONDUCTED]
+UPCOMING_LIMIT = 5
+MAX_RANGE_DAYS = 3660  # about 10 years: keeps the per-month list small
+
+APPROVED, FOR_REVIEW, MISSING = "Approved", "For Review", "Missing"  # same words as the Step 6 checklist
+
+CATEGORY_NOTE = (
+    "An activity can be for several participant categories, so the activities per category can add up "
+    "to more than the total. Registrations and attendees add up to the totals: each registration has one category."
+)
+
+
+@dataclass(frozen=True)
+class ReportFilters:
+    """The date range (inclusive, Manila dates) and the optional activity type."""
+
+    start: date
+    end: date
+    activity_type_id: int | None = None
+
+
+# --- Filters -----------------------------------------------------------------------------------
+
+
+def default_filters(now: datetime | None = None) -> ReportFilters:
+    """The current year in Manila: January 1 to December 31."""
+    year = today_in_manila(now).year
+    return ReportFilters(date(year, 1, 1), date(year, 12, 31))
+
+
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+FORMAT_MESSAGE = "Use the format YYYY-MM-DD, for example 2026-06-30."
+
+
+def _parse_date(value, field: str, errors: dict) -> date | None:
+    """A date written exactly as YYYY-MM-DD. Python's own parser also accepts forms like 20260630 or
+    2026-W26-2 (a week date), so the shape is checked first."""
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):  # from Python code (tests, commands), not from a request
+        return value
+    if not isinstance(value, str) or not ISO_DATE.match(value.strip()):
+        errors[field] = [FORMAT_MESSAGE]
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        errors[field] = [f"{value.strip()} is not a real date. {FORMAT_MESSAGE}"]
+        return None
+
+
+def parse_filters(params: dict, now: datetime | None = None, *, dates_required: bool = False) -> ReportFilters:
+    """Read start, end (YYYY-MM-DD) and activity_type (an ID) from request data.
+
+    Reports need both dates (`dates_required=True`). The dashboard may leave them out: a missing
+    start or end takes the current year's January 1 / December 31 (Manila).
+    Raises ValidationError with one message per field.
+    """
+    errors: dict[str, list[str]] = {}
+    defaults = default_filters(now)
+    start = _parse_date(params.get("start"), "start", errors)
+    end = _parse_date(params.get("end"), "end", errors)
+    for field, value in (("start", start), ("end", end)):
+        if value is None and field not in errors and dates_required:
+            errors[field] = [f"Required. {FORMAT_MESSAGE}"]
+    start, end = start or defaults.start, end or defaults.end
+    if not errors:
+        if start > end:
+            errors["end"] = [
+                f"The end date ({end.isoformat()}) is before the start date ({start.isoformat()}). "
+                "The end date must be on or after the start date."
+            ]
+        elif (end - start).days > MAX_RANGE_DAYS:
+            errors["end"] = ["The date range can be at most 10 years."]
+
+    activity_type_id = None
+    raw_type = params.get("activity_type")
+    if raw_type not in (None, ""):
+        if not str(raw_type).isdigit():
+            errors["activity_type"] = ["activity_type must be an activity type ID."]
+        elif not ActivityType.objects.filter(pk=int(raw_type)).exists():
+            errors["activity_type"] = ["Unknown activity type."]
+        else:
+            activity_type_id = int(raw_type)
+    if errors:
+        raise ValidationError(errors)
+    return ReportFilters(start, end, activity_type_id)
+
+
+# --- Building blocks -----------------------------------------------------------------------------
+
+
+def _of_type(queryset: QuerySet, filters: ReportFilters, path: str = "activity_type_id") -> QuerySet:
+    return queryset.filter(**{path: filters.activity_type_id}) if filters.activity_type_id else queryset
+
+
+def in_period(filters: ReportFilters, activity: str = "activity") -> Q:
+    """Rows whose activity (reached through `activity`; "" for Activity itself) is a period activity:
+    Conducted, end_date in the range, of the chosen type. Written as plain joins, not
+    "activity IN (subquery)": PostgreSQL plans joins well even when its table statistics are stale."""
+    prefix = f"{activity}__" if activity else ""
+    condition = Q(**{
+        f"{prefix}status__name": ActivityStatus.CONDUCTED,
+        f"{prefix}end_date__gte": filters.start,
+        f"{prefix}end_date__lte": filters.end,
+    })
+    if filters.activity_type_id:
+        condition &= Q(**{f"{prefix}activity_type_id": filters.activity_type_id})
+    return condition
+
+
+def period_activities(filters: ReportFilters) -> QuerySet:
+    """N1: Conducted activities with end_date in the range (and of the chosen type)."""
+    return Activity.objects.filter(in_period(filters, ""))
+
+
+def _count_of(queryset: QuerySet, link: str) -> Coalesce:
+    """How many rows of `queryset` point (through `link`) to the outer row. A subquery, so several
+    counts on one row never multiply each other the way joins would."""
+    counted = queryset.filter(**{link: OuterRef("pk")}).order_by().values(link).annotate(n=Count("pk")).values("n")
+    return Coalesce(Subquery(counted, output_field=IntegerField()), 0)
+
+
+def rate(part: int, whole: int) -> float | None:
+    """part / whole as a fraction (0.85 = 85%), or None when there is nothing to divide by."""
+    return round(part / whole, 4) if whole else None
+
+
+def _average(total: int | None, count: int) -> float | None:
+    return round(total / count, 2) if count and total is not None else None
+
+
+RATING_ACTIVITY = "evaluation_submission__registration__activity"  # from FORM_ANSWER to its activity
+
+
+def _rating_answers() -> QuerySet:
+    """Evaluation answers to rating questions (stored as "1".."5", checked by validate_answers)."""
+    return FormAnswer.objects.filter(
+        answer_source=FormAnswer.AnswerSource.EVALUATION, field__field_type=FieldType.RATING
+    )
+
+
+def _rating_value():
+    return Cast("answer_value", IntegerField())
+
+
+def _months(start: date, end: date) -> list[date]:
+    """The first day of every month from start to end (inclusive)."""
+    months, current = [], date(start.year, start.month, 1)
+    while current <= end:
+        months.append(current)
+        current = date(current.year + (current.month == 12), current.month % 12 + 1, 1)
+    return months
+
+
+# --- Period numbers ------------------------------------------------------------------------------
+
+
+def period_summary(filters: ReportFilters, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
+    """The headline period numbers (N1, N5-N8, N10, N11, N13, N15-N18), used by the dashboard cards
+    and the report's Summary section."""
+    activities = period_activities(filters)
+    activities_conducted = activities.count()
+    registrations = Registration.objects.filter(in_period(filters)).aggregate(
+        registered=Count("pk"),
+        attended=Count("pk", filter=Q(attendance_confirmed=True)),
+        unique_attendees=Count(Lower("email"), filter=Q(attendance_confirmed=True), distinct=True),
+        evaluations=Count("evaluation_submission"),
+    )
+    ratings = _rating_answers().filter(in_period(filters, RATING_ACTIVITY)).aggregate(
+        answers=Count("pk"), total=Sum(_rating_value())
+    )
+    certificates = certificates_in_period(filters)
+    return {
+        "activities_conducted": activities_conducted,
+        "registered": registrations["registered"],
+        "attended": registrations["attended"],
+        "attendance_rate": rate(registrations["attended"], registrations["registered"]),
+        "unique_attendees": registrations["unique_attendees"],
+        "evaluations": registrations["evaluations"],
+        "evaluation_response_rate": rate(registrations["evaluations"], registrations["attended"]),
+        "average_rating": _average(ratings["total"], ratings["answers"]),
+        "rating_answers": ratings["answers"],
+        "fully_compliant_activities": fully_compliant_count(filters, types),
+        "certificates_issued": certificates["issued_participation"] + certificates["issued_appreciation"],
+        "certificates_issued_participation": certificates["issued_participation"],
+        "certificates_issued_appreciation": certificates["issued_appreciation"],
+        "certificates_emailed": certificates["emailed"],
+        "startups_engaged": engaged_startups(filters).count(),
+    }
+
+
+def activity_rows(filters: ReportFilters) -> list[dict]:
+    """One row per period activity with its own registered / attended / evaluation numbers."""
+    category_names = (
+        ActivityParticipantCategory.objects.filter(activity=OuterRef("pk"))
+        .order_by()
+        .values("activity")
+        .annotate(names=StringAgg("participant_category__name", Value(", "), order_by="participant_category__name"))
+        .values("names")
+    )
+    average_rating = (
+        _rating_answers()
+        .filter(evaluation_submission__registration__activity=OuterRef("pk"))
+        .order_by()
+        .values("evaluation_submission__registration__activity")
+        .annotate(average=Avg(Cast("answer_value", FloatField())))
+        .values("average")
+    )
+    rows = (
+        period_activities(filters)
+        .annotate(
+            registered=_count_of(Registration.objects.all(), "activity"),
+            attended=_count_of(Registration.objects.filter(attendance_confirmed=True), "activity"),
+            evaluations=_count_of(EvaluationSubmission.objects.all(), "registration__activity"),
+            average_rating=Subquery(average_rating, output_field=FloatField()),
+            categories=Subquery(category_names),
+        )
+        .order_by("end_date", "start_date", "title", "pk")
+        .values(
+            "activity_id", "title", "activity_type__name", "categories", "start_date", "end_date", "venue",
+            "registered", "attended", "evaluations", "average_rating",
+        )
+    )
+    return [
+        {
+            **row,
+            "attendance_rate": rate(row["attended"], row["registered"]),
+            "average_rating": round(row["average_rating"], 2) if row["average_rating"] is not None else None,
+            "categories": row["categories"] or "",
+        }
+        for row in rows
+    ]
+
+
+def _with_rate(row: dict) -> dict:
+    """Rename activity_count (the model already has an "activities" relation) and add the attendance rate."""
+    row = dict(row)
+    row["activities"] = row.pop("activity_count")
+    return {**row, "attendance_rate": rate(row["attended"], row["registered"])}
+
+
+def by_type(filters: ReportFilters) -> list[dict]:
+    """N2: period activities, registered and attended per activity type (adds up to the totals)."""
+    activities = period_activities(filters)
+    registrations = Registration.objects.filter(in_period(filters))
+    rows = (
+        _of_type(ActivityType.objects.all(), filters, "pk")
+        .annotate(
+            activity_count=_count_of(activities, "activity_type"),
+            registered=_count_of(registrations, "activity__activity_type"),
+            attended=_count_of(registrations.filter(attendance_confirmed=True), "activity__activity_type"),
+        )
+        .filter(activity_count__gt=0)
+        .order_by("name")
+        .values("activity_type_id", "name", "activity_count", "registered", "attended")
+    )
+    return [_with_rate(row) for row in rows]
+
+
+def by_category(filters: ReportFilters) -> list[dict]:
+    """N3 (activities per category, can add up to more than N1) and N9 (registered / attended per
+    the registration's category, adds up to N5 / N6). Every category is listed, also with zero."""
+    registrations = Registration.objects.filter(in_period(filters))
+    rows = (
+        ParticipantCategory.objects.annotate(
+            activity_count=_count_of(ActivityParticipantCategory.objects.filter(in_period(filters)), "participant_category"),
+            registered=_count_of(registrations, "participant_category"),
+            attended=_count_of(registrations.filter(attendance_confirmed=True), "participant_category"),
+        )
+        .order_by("name")
+        .values("participant_category_id", "name", "activity_count", "registered", "attended")
+    )
+    return [_with_rate(row) for row in rows]
+
+
+def per_month(filters: ReportFilters) -> list[dict]:
+    """N4: period activities per month of their end_date, with registered and attended.
+    Every month of the range is listed, also with zero."""
+    activities = period_activities(filters)
+    activity_counts = dict(
+        activities.annotate(month=TruncMonth("end_date")).order_by().values("month").annotate(n=Count("pk")).values_list("month", "n")
+    )
+    registration_counts = {
+        row["month"]: row
+        for row in Registration.objects.filter(in_period(filters))
+        .annotate(month=TruncMonth("activity__end_date"))
+        .order_by()
+        .values("month")
+        .annotate(registered=Count("pk"), attended=Count("pk", filter=Q(attendance_confirmed=True)))
+    }
+    months = []
+    for month in _months(filters.start, filters.end):
+        counts = registration_counts.get(month, {})
+        months.append({
+            "month": month,
+            "label": f"{month:%b %Y}",
+            "activities": activity_counts.get(month, 0),
+            "registered": counts.get("registered", 0),
+            "attended": counts.get("attended", 0),
+        })
+    return months
+
+
+def evaluation_results(filters: ReportFilters) -> dict:
+    """N12 and N13. Rating questions are grouped by their label, ignoring upper/lower case and outer
+    spaces (forms are edited per activity). Each group shows the label used most often."""
+    rows = (
+        _rating_answers()
+        .filter(in_period(filters, RATING_ACTIVITY))
+        .annotate(key=Lower(Trim("field__field_label")))
+        .order_by()
+        .values("key", "field__field_label")
+        .annotate(answers=Count("pk"), total=Sum(_rating_value()), order=Min("field__sort_order"))
+    )
+    groups: dict[str, dict] = {}
+    for row in rows:  # one row per distinct label spelling, not per answer
+        label = row["field__field_label"].strip()
+        group = groups.setdefault(row["key"], {"answers": 0, "total": 0, "order": row["order"], "labels": {}})
+        group["answers"] += row["answers"]
+        group["total"] += row["total"]
+        group["order"] = min(group["order"], row["order"])
+        group["labels"][label] = group["labels"].get(label, 0) + row["answers"]
+    questions = sorted(
+        (
+            {
+                "question": min(group["labels"], key=lambda name: (-group["labels"][name], name)),
+                "average": _average(group["total"], group["answers"]),
+                "answers": group["answers"],
+                "order": group["order"],
+            }
+            for group in groups.values()
+        ),
+        key=lambda item: (item["order"], item["question"].lower()),
+    )
+    answers = sum(group["answers"] for group in groups.values())
+    total = sum(group["total"] for group in groups.values())
+    for question in questions:
+        del question["order"]
+    return {"questions": questions, "average_rating": _average(total, answers), "rating_answers": answers}
+
+
+def certificates_in_period(filters: ReportFilters) -> dict:
+    """N16 (Issued, by the Manila date of issued_at) and N17 (emailed, by the Manila date of sent_at)."""
+    in_range = {"__date__gte": filters.start, "__date__lte": filters.end}
+    issued = Q(status=Certificate.Status.ISSUED, **{f"issued_at{k}": v for k, v in in_range.items()})
+    return _of_type(Certificate.objects.all(), filters, "activity__activity_type_id").aggregate(
+        issued_participation=Count("pk", filter=issued & Q(recipient_type=Certificate.RecipientType.REGISTRATION)),
+        issued_appreciation=Count("pk", filter=issued & Q(recipient_type=Certificate.RecipientType.RESOURCE_PERSON)),
+        emailed=Count("pk", filter=Q(**{f"sent_at{k}": v for k, v in in_range.items()})),
+    )
+
+
+def engaged_startups(filters: ReportFilters) -> QuerySet:
+    """N18: startups with an attended registration in a period activity: linked to the startup, or an
+    older public registration with the startup's email (ignoring case), the same rule as
+    startups.services.registrations_for. Inactive startups count too (this is history)."""
+    matching = Registration.objects.filter(in_period(filters), attendance_confirmed=True).filter(
+        Q(startup=OuterRef("pk")) | Q(startup__isnull=True, email__iexact=OuterRef("email"))
+    )
+    activities_attended = matching.order_by().annotate(one=Value(1)).values("one").annotate(n=Count("activity", distinct=True)).values("n")
+    return Startup.objects.filter(Exists(matching)).annotate(
+        activities_attended=Subquery(activities_attended, output_field=IntegerField())
+    )
+
+
+# --- Document compliance (same rules as documents.services.document_checklist) -------------------
+
+
+def required_document_types() -> list[DocumentType]:
+    """Active required types, as in the checklist."""
+    return list(DocumentType.objects.filter(is_active=True, is_required=True).order_by("name"))
+
+
+def _documents_of(document_type: DocumentType) -> QuerySet:
+    """The outer activity's documents of this type (certificate files never count)."""
+    return Document.objects.activity_documents().filter(activity=OuterRef("pk"), document_type=document_type)
+
+
+def _approved(document_type: DocumentType) -> Exists:
+    """An Approved document of this type exists (the type is complete)."""
+    return Exists(_documents_of(document_type).filter(status__status_name=DocumentStatus.APPROVED))
+
+
+def _uploaded(document_type: DocumentType) -> Exists:
+    return Exists(_documents_of(document_type))
+
+
+def _overdue(document_type: DocumentType, today: date) -> Q:
+    """Today is after the due date and nothing is Approved. "today > reference + offset" is written as
+    "reference < today - offset", so it compares plain dates."""
+    due_before = {f"{document_type.due_reference}__lt": today - timedelta(days=document_type.due_offset_days)}
+    return Q(**due_before) & ~Q(_approved(document_type))
+
+
+def _all_approved(types: list[DocumentType]) -> Q:
+    condition = Q()
+    for document_type in types:
+        condition &= Q(_approved(document_type))
+    return condition
+
+
+def fully_compliant_count(filters: ReportFilters, types: list[DocumentType] | None = None) -> int:
+    """N15: period activities where every active required document type has an Approved document."""
+    types = required_document_types() if types is None else types
+    activities = period_activities(filters)
+    if not types:
+        return activities.count()
+    return activities.aggregate(n=Count("pk", filter=_all_approved(types)))["n"]
+
+
+def document_compliance(activities: QuerySet, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
+    """N14: for each activity and each active required type: due date, state and overdue flag."""
+    today = today_in_manila(now)
+    types = required_document_types() if types is None else types
+    rows = []
+    annotations = {}
+    for t in types:
+        annotations[f"approved_{t.pk}"] = _approved(t)
+        annotations[f"uploaded_{t.pk}"] = _uploaded(t)
+        annotations[f"overdue_{t.pk}"] = ExpressionWrapper(_overdue(t, today), output_field=BooleanField())
+    for activity in activities.annotate(**annotations).order_by("end_date", "start_date", "title", "pk"):
+        items = []
+        for document_type in types:
+            pk = document_type.pk
+            approved, uploaded = getattr(activity, f"approved_{pk}"), getattr(activity, f"uploaded_{pk}")
+            items.append({
+                "document_type": document_type.name,
+                "document_type_id": pk,
+                "due_date": due_date(document_type, activity),
+                "state": APPROVED if approved else FOR_REVIEW if uploaded else MISSING,
+                "is_overdue": getattr(activity, f"overdue_{pk}"),
+            })
+        rows.append({
+            "activity_id": activity.pk,
+            "title": activity.title,
+            "end_date": activity.end_date,
+            "items": items,
+            "complete": all(item["state"] == APPROVED for item in items),
+        })
+    return {"today": today, "document_types": [t.name for t in types], "activities": rows}
+
+
+# --- "Now" numbers (snapshot; ignore the date range, respect the activity type) -----------------
+
+
+def activities_by_status(filters: ReportFilters) -> list[dict]:
+    """S1: every activity (Draft included) with start_date in the range, by current status."""
+    queryset = _of_type(Activity.objects.filter(start_date__gte=filters.start, start_date__lte=filters.end), filters)
+    counts = dict(queryset.order_by().values("status__name").annotate(n=Count("pk")).values_list("status__name", "n"))
+    return [{"status": name, "count": counts.get(name, 0)} for name in STATUS_ORDER]
+
+
+def upcoming_activities(filters: ReportFilters, now: datetime | None = None) -> dict:
+    """S2: Scheduled activities starting today or later (Manila), with the next few (title and dates)."""
+    queryset = _of_type(
+        Activity.objects.filter(status__name=ActivityStatus.SCHEDULED, start_date__gte=today_in_manila(now)), filters
+    ).order_by("start_date", "title", "pk")
+    return {
+        "count": queryset.count(),
+        "next": list(queryset.values("activity_id", "title", "start_date", "end_date")[:UPCOMING_LIMIT]),
+    }
+
+
+def documents_now(filters: ReportFilters, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
+    """S3: overdue (activity, required type) pairs in non-Draft activities (the reminder rule);
+    S4: activity documents waiting for a reviewer, and returned to the uploader."""
+    types = required_document_types() if types is None else types
+    overdue = 0
+    if types:
+        activities = _of_type(Activity.objects.exclude(status__name=ActivityStatus.DRAFT), filters)
+        today = today_in_manila(now)
+        counts = activities.aggregate(**{f"overdue_{t.pk}": Count("pk", filter=_overdue(t, today)) for t in types})
+        overdue = sum(counts.values())
+    review = _of_type(Document.objects.activity_documents(), filters, "activity__activity_type_id").aggregate(
+        waiting=Count("pk", filter=Q(status__status_name=DocumentStatus.FOR_REVIEW, reviewed_at__isnull=True)),
+        returned=Count("pk", filter=Q(status__status_name=DocumentStatus.FOR_REVIEW, reviewed_at__isnull=False)),
+    )
+    return {"overdue": overdue, "waiting_for_review": review["waiting"], "returned": review["returned"]}
+
+
+def certificates_now(filters: ReportFilters) -> dict:
+    """S5: Generated and Pending Sign-off; S6: Approved but not Issued yet."""
+    status = Certificate.Status
+    return _of_type(Certificate.objects.all(), filters, "activity__activity_type_id").aggregate(
+        generated=Count("pk", filter=Q(status=status.GENERATED)),
+        pending_signoff=Count("pk", filter=Q(status=status.PENDING_SIGNOFF)),
+        approved_not_issued=Count("pk", filter=Q(status=status.APPROVED)),
+    )
+
+
+# --- The dashboard ---------------------------------------------------------------------------------
+
+
+def _card(key: str, label: str, scope: str, value, **detail) -> dict:
+    return {"key": key, "label": label, "scope": scope, "value": value, **detail}
+
+
+def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
+    """Cards and chart data for the dashboard. Each card says its scope: "period" (the date range)
+    or "now" (a snapshot of today that ignores the range but respects the activity type)."""
+    types = required_document_types()
+    summary = period_summary(filters, now, types)
+    statuses = activities_by_status(filters)
+    upcoming = upcoming_activities(filters, now)
+    documents = documents_now(filters, now, types)
+    certificates = certificates_now(filters)
+    evaluation = evaluation_results(filters)
+    cards = [
+        _card("activities_by_status", "Activities by status (start date in the range, Draft included)", PERIOD,
+              sum(row["count"] for row in statuses), by_status=statuses),
+        _card("upcoming_activities", "Upcoming activities (Scheduled, starting today or later)", NOW,
+              upcoming["count"], next=upcoming["next"]),
+        _card("activities_conducted", "Activities conducted", PERIOD, summary["activities_conducted"]),
+        _card("registrations", "Registered participants", PERIOD, summary["registered"],
+              attended=summary["attended"], attendance_rate=summary["attendance_rate"],
+              unique_attendees=summary["unique_attendees"]),
+        _card("evaluations", "Evaluations submitted", PERIOD, summary["evaluations"],
+              response_rate=summary["evaluation_response_rate"], average_rating=summary["average_rating"],
+              rating_answers=summary["rating_answers"]),
+        _card("documents_complete", "Conducted activities with all required documents approved", PERIOD,
+              summary["fully_compliant_activities"], out_of=summary["activities_conducted"]),
+        _card("documents_overdue", "Required documents overdue", NOW, documents["overdue"]),
+        _card("documents_waiting_for_review", "Documents waiting for a reviewer", NOW, documents["waiting_for_review"],
+              returned=documents["returned"]),
+        _card("certificates_waiting_for_signoff", "Certificates waiting for sign-off", NOW,
+              certificates["generated"] + certificates["pending_signoff"],
+              generated=certificates["generated"], pending_signoff=certificates["pending_signoff"],
+              approved_not_issued=certificates["approved_not_issued"]),
+        _card("certificates_issued", "Certificates issued", PERIOD, summary["certificates_issued"],
+              participation=summary["certificates_issued_participation"],
+              appreciation=summary["certificates_issued_appreciation"], emailed=summary["certificates_emailed"]),
+        _card("startups_engaged", "Startups engaged (attended at least one activity)", PERIOD, summary["startups_engaged"]),
+    ]
+    return {
+        "today": today_in_manila(now),
+        "cards": cards,
+        "charts": {
+            "per_month": [{**row, "month": f"{row['month']:%Y-%m}"} for row in per_month(filters)],
+            "by_type": by_type(filters),
+            "by_category": by_category(filters),
+            "average_rating_by_question": evaluation["questions"],
+        },
+        "notes": [
+            'Cards with scope "period" count Conducted activities whose end date is in the range '
+            "(\"Activities by status\" uses the start date and includes every status).",
+            'Cards with scope "now" show today\'s situation: they ignore the date range but respect the activity type.',
+            CATEGORY_NOTE,
+        ],
+    }

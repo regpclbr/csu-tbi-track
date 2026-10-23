@@ -58,6 +58,13 @@ all of them are to be validated with the TBI too.
 - **Item 189:** When a resource person's certificate is handed over, does the TBI keep any proof (a signed receipt, a photo)? Should it be uploaded to the system?
 - **Item 194:** What should happen to the certificate of a participant who attended but never submits the evaluation? (Now it stays Approved and is never sent.)
 
+## Reports and dashboard
+
+- **Item 203:** Which reports does the TBI submit, to whom (for example the university, DOST or DTI), how often (monthly, quarterly, yearly), and in what format or template? (Built now: Accomplishment, Participation, Evaluation, Document Compliance and Certificates reports, as PDF or Excel.)
+- **Item 199:** Should evaluation reports include participants' written suggestions and comments (shown without names), or only the rating averages? (Now: only the rating averages.)
+- **Item 195:** Is it right that a report counts only activities that were Conducted, by the date they ended? (An activity that ends on January 2 counts in the new year.)
+- **Item 204:** Who should be allowed to generate reports? Now: staff whose role can create activities. Any staff member can see the dashboard and download reports. Should some roles not see them?
+
 ## General assumptions (items 1–14)
 
 - **Item 1:** Is everyone who registers automatically accepted, with no approval step?

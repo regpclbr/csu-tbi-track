@@ -166,6 +166,25 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Evidence = DOCUMENT with `related_certificate` (`upload_evidence`), Step 6 rules, never listed/indexed.
 - Startup "My certificates" = Issued certificates of `registrations_for(startup)`; anything else is 404.
 
+## Reports and dashboard (Step 10)
+- Every number comes from `reports/metrics.py` (definitions N1–N18, S1–S6: ASSUMPTIONS 196). The dashboard,
+  the PDF and the Excel file call the same functions; never count anywhere else. Database aggregation only
+  (subqueries/EXISTS so joins never multiply); the dashboard query count is fixed (test allows 20).
+- Reports need both dates, exactly YYYY-MM-DD, end ≥ start (`metrics.parse_filters(dates_required=True)`); no conducted
+  activities → "No conducted activities in this period." instead of empty tables (ASSUMPTIONS 213).
+- "Period" numbers: Conducted activities with `end_date` in the range (+ optional activity type). S1 (by status)
+  uses `start_date` and includes Draft. "Now" cards (S2–S6) ignore the range, respect the type; each card has `scope`.
+- Document compliance is SQL with the rules of `document_checklist()`; `test_compliance_parity.py` must keep passing.
+- Report types: **accomplishment and participation are the main ones**; also evaluation, document_compliance,
+  certificates (`reports/content.py`: `REPORT_TYPES`, `SECTIONS`). `included_sections` = JSON list in the string column.
+- `request_report` (can_create_activity) saves the row with an empty `file_path` and queues task `report-<id>`;
+  `build_report` writes `reports/<year>/report-<id>-<type>.<ext>`. State is calculated (ready/failed/pending).
+  Reports are never deleted; generating again = new row. Download only via `reports.views.download_report`.
+- PDF via `certificates.pdf.get_renderer()` (fake in tests); Excel cells only through `excel.safe_cell`
+  (text starting with = + - @ tab CR stays text).
+- AI narrative only through `reports/narrative.py`: Gemini gets figures, activity titles and dates only
+  (`for_ai=False` columns removed), the exact prompt goes in `ai_prompt`, a failure never stops the report.
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -203,7 +222,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 7. Startups module with a mock StartupProvider — done
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — done
 9. Certificates (WeasyPrint), sign-off flow, automatic emails — written, awaiting owner review
-10. Reports and dashboard numbers
+10. Reports and dashboard numbers — written, awaiting owner review
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -236,6 +255,8 @@ python manage.py send_test_email you@example.com [--smtp]   # one test email (--
 python manage.py retry_certificates       # render/issue ready certificates and send unsent emails now (the 8:30 retry)
 python manage.py make_sample_certificate_images <folder>    # DEMO: invented background + 2 signatures (PNG)
 python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG): try the certificate flow step by step
+python manage.py show_dashboard [--start --end --activity-type]   # dashboard numbers as JSON (same as the API)
+python manage.py generate_report --type accomplishment --format pdf --start 2026-01-01 --end 2026-06-30   # build now (--report <id>: a pending one)
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
 pytest
 ```

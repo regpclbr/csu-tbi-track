@@ -15,10 +15,8 @@ The life of a certificate (status rules in set_certificate_status, item 46):
 """
 
 import logging
-import os
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -30,6 +28,7 @@ from PIL import Image
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission, require_staff_member
+from config.files import write_file_atomically
 from activities.models import Activity, ActivityStatus
 from activities.services import PageResult, _paginate
 from documents import services as document_services
@@ -497,20 +496,8 @@ def final_pdf_name(certificate: Certificate) -> str:
 
 
 def _write_file_atomically(name: str, content: bytes) -> None:
-    """Write to a temporary file in the same folder, then rename it into place: the final file is
-    either complete or absent, never half-written."""
-    target = Path(Certificate._meta.get_field("file_path").storage.path(name))
-    target.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(dir=target.parent, prefix=".rendering-", suffix=".tmp")
-    try:
-        with os.fdopen(handle, "wb") as out:
-            out.write(content)
-            out.flush()
-            os.fsync(out.fileno())
-        os.replace(temporary, target)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+    """The final file is either complete or absent, never half-written (config.files)."""
+    write_file_atomically(Certificate._meta.get_field("file_path").storage, name, content)
 
 
 def prepare_certificate(certificate_id: int, now: datetime | None = None) -> str:
