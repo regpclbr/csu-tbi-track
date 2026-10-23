@@ -324,7 +324,11 @@ class Command(BaseCommand):
             if not registration.attendance_confirmed or self.rng.random() > 0.7:
                 continue  # only attendees evaluate, and not all of them do
             evaluation = EvaluationSubmission.objects.create(
-                template=form, registration=registration, comments=self.rng.choice(comments)
+                template=form,
+                registration=registration,
+                comments=self.rng.choice(comments),
+                certificate_name=registration.name,
+                certificate_email=registration.email,
             )
             EvaluationSubmission.objects.filter(pk=evaluation.pk).update(submitted_at=self.at(end + timedelta(days=1), 10))
             self.save_answers(form, {str(f.pk): self.fake_answer(f) for f in fields}, evaluation_submission=evaluation)

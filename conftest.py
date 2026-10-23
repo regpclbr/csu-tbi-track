@@ -42,6 +42,46 @@ def fake_gemini(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fake_pdf_renderer(monkeypatch):
+    """Tests NEVER render with real WeasyPrint (no Pango needed): every certificate PDF goes
+    through this FakeRenderer (certificates.pdf.get_renderer is the one injection point)."""
+    from certificates import pdf
+    from certificates.testing import FakeRenderer
+
+    def refuse_real_render(self, html):
+        raise RuntimeError("Tests must never render with real WeasyPrint.")
+
+    monkeypatch.setattr(pdf.WeasyPrintRenderer, "render", refuse_real_render)
+    fake = FakeRenderer()
+    monkeypatch.setattr(pdf, "_override", fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
+def no_real_smtp(monkeypatch) -> None:
+    """Tests NEVER send real email. Django already swaps every mailer for in-memory mail
+    (mail.outbox); opening an SMTP connection anyway fails the test."""
+    import smtplib
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("Tests must never open a real SMTP connection.")
+
+    monkeypatch.setattr(smtplib, "SMTP", refuse)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", refuse)
+
+
+def image_bytes(width: int = 8, height: int = 6, kind: str = "PNG") -> bytes:
+    """A small real image (PNG or JPEG) for upload tests."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), "white").save(buffer, kind)
+    return buffer.getvalue()
+
+
+@pytest.fixture(autouse=True)
 def temporary_media_root(settings, tmp_path) -> None:
     """Tests only: uploaded files go to a temporary folder, never the real media folder."""
     settings.MEDIA_ROOT = tmp_path / "media"
@@ -101,18 +141,29 @@ def registration(activity: Activity, registration_form: FormTemplate) -> Registr
     )
 
 
+def _stored(name: str, content: bytes) -> str:
+    """Save a file in the (temporary) media folder and return its stored name."""
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
+    return default_storage.save(name, ContentFile(content))
+
+
 @pytest.fixture
 def certificate_template(member: TBIMember) -> CertificateTemplate:
     return CertificateTemplate.objects.create(
-        name="Default design", file_path="certificate_templates/default.pdf", uploaded_by=member, is_active=True
+        name="Default design", file_path=_stored("certificate_templates/default.png", image_bytes()),
+        uploaded_by=member, is_active=True,
     )
 
 
 @pytest.fixture
 def signatories() -> tuple[CertificateSignatory, CertificateSignatory]:
-    vp = CertificateSignatory.objects.create(name="VP", position="vp", signature_image_path="signatures/vp.png")
+    vp = CertificateSignatory.objects.create(
+        name="VP", position="vp", signature_image_path=_stored("signatures/vp.png", image_bytes())
+    )
     director = CertificateSignatory.objects.create(
-        name="Director", position="director", signature_image_path="signatures/director.png"
+        name="Director", position="director", signature_image_path=_stored("signatures/director.png", image_bytes())
     )
     return vp, director
 

@@ -1,8 +1,24 @@
 """CERTIFICATE_TEMPLATE, CERTIFICATE_SIGNATORY and CERTIFICATE."""
 
+import secrets
+from pathlib import PurePosixPath
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+
+
+def _extension(filename: str) -> str:
+    """The extension only (already checked by the service); never the uploaded name itself."""
+    return PurePosixPath(filename or "").suffix.lower().lstrip(".")
+
+
+def template_upload_to(instance: "CertificateTemplate", filename: str) -> str:
+    return f"certificate_templates/template-{secrets.token_hex(8)}.{_extension(filename)}"
+
+
+def signature_upload_to(instance: "CertificateSignatory", filename: str) -> str:
+    return f"signatures/{instance.position}-{secrets.token_hex(8)}.png"
 
 
 class CertificateTemplate(models.Model):
@@ -10,7 +26,7 @@ class CertificateTemplate(models.Model):
 
     certificate_template_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=255)
-    file_path = models.FileField(upload_to="certificate_templates/", max_length=255)
+    file_path = models.FileField(upload_to=template_upload_to, max_length=255)
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="uploaded_certificate_templates"
     )
@@ -39,7 +55,7 @@ class CertificateSignatory(models.Model):
     signatory_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=255)
     position = models.CharField(max_length=20, choices=Position.choices)
-    signature_image_path = models.ImageField(upload_to="signatures/", max_length=255)
+    signature_image_path = models.ImageField(upload_to=signature_upload_to, max_length=255)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -119,7 +135,7 @@ class Certificate(models.Model):
         CertificateSignatory, on_delete=models.PROTECT, related_name="director_signed_certificates"
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.GENERATED)
-    # Null until the background job renders the PDF.
+    # Null until the background job renders the final PDF (certificates/<year>/<number>.pdf).
     file_path = models.FileField(upload_to="certificates/", max_length=255, null=True, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     director_signed_at = models.DateTimeField(null=True, blank=True)
@@ -133,6 +149,12 @@ class Certificate(models.Model):
         constraints = [
             # One Certificate of Participation per registration (NULLs are not compared).
             models.UniqueConstraint(fields=["registration"], name="one_certificate_per_registration"),
+            # One Certificate of Appreciation per resource person per activity (Step 9).
+            models.UniqueConstraint(
+                fields=["activity", "resource_person"],
+                condition=Q(resource_person__isnull=False),
+                name="one_certificate_per_resource_person_per_activity",
+            ),
             # The recipient column that is filled must match recipient_type.
             models.CheckConstraint(
                 condition=(

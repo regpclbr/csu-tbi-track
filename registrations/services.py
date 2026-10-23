@@ -35,6 +35,8 @@ from .models import (
 
 CHOICE_TYPES = (FieldType.MULTIPLE_CHOICE, FieldType.CHECKBOX)
 SHORT_TEXT_MAX = 255
+CERTIFICATE_NAME_MAX = 150  # EVALUATION_SUBMISSION.certificate_name
+CERTIFICATE_EMAIL_MAX = 254
 LONG_TEXT_MAX = 5000
 RATING_RANGE = range(1, 6)  # 1 to 5
 
@@ -436,7 +438,7 @@ def set_attendance(
 
     Allowed only while the activity is Ongoing or Conducted (Conducted locks the activity's
     own fields, not its registrations). Unmarking clears the method, and is refused for
-    anyone who has already submitted the evaluation. All or nothing.
+    anyone who has already submitted the evaluation or has a certificate. All or nothing.
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
@@ -454,6 +456,11 @@ def set_attendance(
         if evaluated:
             raise RegistrationError(
                 f"Cannot unmark {', '.join(sorted(evaluated))}: already submitted the evaluation."
+            )
+        with_certificate = [r.name for r in registrations if r.certificates.exists()]
+        if with_certificate:  # Step 9: a certificate was generated for their attendance
+            raise RegistrationError(
+                f"Cannot unmark {', '.join(sorted(with_certificate))}: a certificate was already generated."
             )
 
     for registration in registrations:
@@ -540,28 +547,90 @@ def evaluation_page(token: str, now: datetime | None = None) -> dict:
     return {
         "activity": registration.activity.title,
         "name": registration.name,
+        # Suggested defaults for the certificate name and email fields (the participant may change them).
+        "suggested_certificate_name": registration.name,
+        "suggested_certificate_email": registration.email,
         "is_open": reason is None,
         "closed_reason": reason,
         "fields": [_field_json(field) for field in form.fields.order_by("sort_order", "field_id")] if form else [],
     }
 
 
+def clean_certificate_details(certificate_name, certificate_email) -> tuple[str, str]:
+    """The name printed on the certificate and the address it is emailed to.
+
+    Name: outer spaces trimmed, required, at most 150 characters, capitalization kept as typed.
+    Email: trimmed, valid format, at most 254 characters, stored in lower case.
+    """
+    errors: dict[str, str] = {}
+    name = str(certificate_name or "").strip()
+    email = str(certificate_email or "").strip().lower()
+    if not name:
+        errors["certificate_name"] = "Enter the name to print on your certificate."
+    elif len(name) > CERTIFICATE_NAME_MAX:
+        errors["certificate_name"] = f"The name can be at most {CERTIFICATE_NAME_MAX} characters."
+    if not email:
+        errors["certificate_email"] = "Enter the email address to send your certificate to."
+    elif len(email) > CERTIFICATE_EMAIL_MAX:
+        errors["certificate_email"] = f"The email address can be at most {CERTIFICATE_EMAIL_MAX} characters."
+    else:
+        try:
+            validate_email(email)
+        except ValidationError:
+            errors["certificate_email"] = "Enter a valid email address."
+    if errors:
+        raise ValidationError(errors)
+    return name, email
+
+
 @transaction.atomic
-def submit_evaluation(token: str, *, comments: str = "", answers: dict | None = None, now: datetime | None = None) -> EvaluationSubmission:
-    """Save the evaluation and its answers together. Never anonymous: tied to the registration."""
+def submit_evaluation(
+    token: str,
+    *,
+    certificate_name: str,
+    certificate_email: str,
+    comments: str = "",
+    answers: dict | None = None,
+    now: datetime | None = None,
+) -> EvaluationSubmission:
+    """Save the evaluation and its answers together. Never anonymous: tied to the registration.
+
+    The participant also gives the name printed on their certificate and the address it is
+    emailed to (Step 9). After the save, an Approved certificate is issued and emailed.
+    """
     registration = registration_from_token(token)
     registration = Registration.objects.select_for_update().get(pk=registration.pk)  # one submission, even on double click
     if reason := evaluation_closed_reason(registration, now):
         raise RegistrationError(reason)
     form = get_form(registration.activity, FormType.EVALUATION)
-    stored_answers = validate_answers(form, answers)
+    errors: dict[str, str] = {}
+    try:
+        name, email = clean_certificate_details(certificate_name, certificate_email)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    try:
+        stored_answers = validate_answers(form, answers)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    if errors:
+        raise ValidationError(errors)
     submission = EvaluationSubmission.objects.create(
-        template=form, registration=registration, comments=(comments or "").strip()
+        template=form,
+        registration=registration,
+        comments=(comments or "").strip(),
+        certificate_name=name,
+        certificate_email=email,
     )
     for field, value in stored_answers.items():
         FormAnswer.objects.create(
             field=field, answer_source=FormAnswer.AnswerSource.EVALUATION, evaluation_submission=submission, answer_value=value
         )
+    # Step 9: if the certificate is already Approved, issue and email it now (background task).
+    # robust=True: a problem queueing the task never undoes the evaluation (the daily retry catches it).
+    from certificates.services import evaluation_submitted
+
+    registration_id = registration.pk
+    transaction.on_commit(lambda: evaluation_submitted(registration_id), robust=True)
     return submission
 
 

@@ -48,6 +48,15 @@ all of them are to be validated with the TBI too.
 ## Certificates
 
 - **Item 46:** Is this the right certificate process: Generated → Pending Sign-off → Approved → Issued, one step at a time, with a rejected certificate going back from Pending Sign-off to Generated, and an issued certificate never changed (a wrong one is replaced by a new certificate with a new number)?
+- **Item 183 (wording):** What exactly should a certificate say? (Current placeholder: "Certificate of Participation is presented to <name> for participating in "<activity>" held on <dates> at <venue>. Given on <end date> at CSU Technology Business Incubator." Resource persons: "Certificate of Appreciation … in grateful recognition of their valuable contribution as resource person on "<topic>" …".) What is the official name of the office to print?
+- **Item 183 (signatories):** Which titles should appear under the two signatures (for example "Director, CSU-TBI" and "Vice President for Research, Development and Extension"), and in which order (now: Director on the left, VP on the right)?
+- **Item 183 (date):** Should the "Given on" date be the activity's last day (now) or the day the certificate is approved or issued?
+- **Item 177:** Can the TBI give us its official certificate design as an image (A4 landscape, PNG or JPG, at least 1754 × 1240 pixels), with the centre left empty for the text?
+- **Item 176:** Is the number format `TBI-2026-00001` (year and a sequence that restarts every year) acceptable, or does the TBI already use another format?
+- **Item 181:** How do the Director and the VP approve certificates today: do they sign a printed list, reply to an email, or something else? Who in the office should record their approval in the system?
+- **Item 175:** Participants type the name printed on their certificate and the email it is sent to when they submit the evaluation, and there is no way to correct them afterwards. Is that acceptable, or should staff be able to fix a typo before the certificate is issued?
+- **Item 189:** When a resource person's certificate is handed over, does the TBI keep any proof (a signed receipt, a photo)? Should it be uploaded to the system?
+- **Item 194:** What should happen to the certificate of a participant who attended but never submits the evaluation? (Now it stays Approved and is never sent.)
 
 ## General assumptions (items 1–14)
 
@@ -64,4 +73,4 @@ all of them are to be validated with the TBI too.
 - **Item 11:** Is it right that startup data from Navigatu is read-only here and that startups are matched by their email address?
 - **Item 12:** Can every TBI staff member see every startup?
 - **Item 13:** Is it fine that the system's Admin accounts belong to the researchers?
-- **Item 14:** The researchers decide the certificate numbering format. Does the TBI have an existing format it wants us to follow?
+- **Item 14:** The researchers decide the certificate numbering format. Does the TBI have an existing format it wants us to follow? (Chosen for now: `TBI-<year>-<5-digit sequence>`, see Certificates above.)

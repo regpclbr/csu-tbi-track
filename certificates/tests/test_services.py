@@ -39,7 +39,9 @@ def submit_evaluation(registration, member):
         form = FormTemplate.objects.create(
             activity=registration.activity, form_type=FormType.EVALUATION, title="Evaluation", created_by=member
         )
-        return EvaluationSubmission.objects.create(template=form, registration=registration)
+        return EvaluationSubmission.objects.create(
+            template=form, registration=registration, certificate_name="Ana Cruz", certificate_email="ana@example.com"
+        )
 
     return submit
 

@@ -1,23 +1,78 @@
-"""Development email backend: prints emails in the terminal without wrapping long lines.
+"""Email backends (settings.MAILERS).
 
-Django's console backend builds each email with the standard 78-character line limit, so a
-long link (set-password, evaluation) is shown "quoted-printable": split over several lines with
-"=" at the end, which cannot be copied. This backend allows lines up to 998 characters (the
-RFC 5322 limit), so links appear on one line. Real sending (SMTP, Step 9) is not affected:
-mail programs decode wrapped lines automatically.
+ConsoleEmailBackend (development): prints emails in the terminal.
+- Long lines are not wrapped. Django's console backend uses the standard 78-character limit, so a
+  long link (set-password, evaluation) was shown "quoted-printable": split over several lines with
+  "=" at the end, which cannot be copied. Lines may now be up to 998 characters (the RFC 5322 limit).
+- Attachments are summarized ("[attachment TBI-2026-00001.pdf, application/pdf, 52,113 bytes]")
+  instead of printing thousands of lines of base64.
+
+GuardedSMTPBackend (real sending): Django's SMTP backend, but it never emails an address in
+settings.EMAIL_BLOCKED_DOMAINS (the demo data, @demo.example.com). Those recipients are printed
+to the console instead, so demo data can never reach a real mailbox.
 """
 
+import copy
 import email.policy
+import logging
+import sys
+from email.utils import parseaddr
 
+from django.conf import settings
 from django.core.mail.backends.console import EmailBackend as DjangoConsoleBackend
+from django.core.mail.backends.smtp import EmailBackend as DjangoSMTPBackend
 
 LONG_LINE_POLICY = email.policy.default.clone(max_line_length=998)
+
+logger = logging.getLogger("config.mail")
 
 
 class ConsoleEmailBackend(DjangoConsoleBackend):
     def write_message(self, message) -> None:
         msg = message.message(policy=LONG_LINE_POLICY)
+        for part in msg.walk():
+            if part.get_content_disposition() == "attachment":
+                size = len(part.get_payload(decode=True) or b"")
+                summary = f"[attachment {part.get_filename()}, {part.get_content_type()}, {size:,} bytes - not printed]"
+                del part["Content-Transfer-Encoding"]
+                part.set_payload(summary)
         charset = msg.get_charset().get_output_charset() if msg.get_charset() else "utf-8"
         self.stream.write("%s\n" % msg.as_bytes().decode(charset))
         self.stream.write("-" * 79)
         self.stream.write("\n")
+
+
+def is_blocked_address(address: str) -> bool:
+    """True for an address in a blocked domain (or one of its subdomains), ignoring case."""
+    domain = parseaddr(address)[1].rpartition("@")[2].lower()
+    return any(domain == blocked or domain.endswith("." + blocked) for blocked in settings.EMAIL_BLOCKED_DOMAINS)
+
+
+def _without_blocked(message):
+    """A copy of the message with blocked recipients removed (None if nobody is left)."""
+    kept = copy.copy(message)
+    kept.to = [a for a in message.to if not is_blocked_address(a)]
+    kept.cc = [a for a in message.cc if not is_blocked_address(a)]
+    kept.bcc = [a for a in message.bcc if not is_blocked_address(a)]
+    return kept if kept.recipients() else None
+
+
+class GuardedSMTPBackend(DjangoSMTPBackend):
+    """Real SMTP, except for blocked demo domains (printed to the console instead)."""
+
+    def send_messages(self, email_messages) -> int:
+        real, printed = [], []
+        for message in email_messages:
+            if any(is_blocked_address(a) for a in message.recipients()):
+                printed.append(message)
+                logger.info("Email to a blocked demo domain printed instead of sent.")
+                kept = _without_blocked(message)
+                if kept is not None:
+                    real.append(kept)
+            else:
+                real.append(message)
+        if printed:
+            ConsoleEmailBackend(stream=sys.stdout, alias=self.alias).send_messages(printed)
+        sent = super().send_messages(real) if real else 0
+        # A message whose recipients were all blocked counts as handled (it was printed).
+        return sent + sum(1 for m in printed if _without_blocked(m) is None)

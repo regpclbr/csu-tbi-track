@@ -44,14 +44,18 @@ def evaluation(registration: Registration, member) -> EvaluationSubmission:
     form = FormTemplate.objects.create(
         activity=registration.activity, form_type=FormType.EVALUATION, title="Evaluation", created_by=member
     )
-    return EvaluationSubmission.objects.create(template=form, registration=registration)
+    return EvaluationSubmission.objects.create(
+        template=form, registration=registration, certificate_name="Ana Cruz", certificate_email="ana@example.com"
+    )
 
 
 @pytest.mark.django_db
 def test_one_evaluation_per_registration(evaluation: EvaluationSubmission) -> None:
     assert evaluation.registration.evaluation_submission == evaluation
     with pytest.raises(IntegrityError):
-        EvaluationSubmission.objects.create(template=evaluation.template, registration=evaluation.registration)
+        EvaluationSubmission.objects.create(
+            template=evaluation.template, registration=evaluation.registration, certificate_name="X", certificate_email="x@example.com"
+        )
 
 
 @pytest.fixture

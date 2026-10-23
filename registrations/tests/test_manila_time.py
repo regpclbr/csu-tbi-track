@@ -13,7 +13,7 @@ from activities import services as activity_services
 from config.json import JsonResponse
 from registrations import services
 
-from .conftest import evaluation_answers, opens_at
+from .conftest import CERT, evaluation_answers, opens_at
 
 DATETIME = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(Z|[+-]\d{2}:\d{2})")
 
@@ -77,5 +77,5 @@ def test_submitted_evaluation_flow_still_works(client, attended, monkeypatch) ->
     person = attended(1)[0]
     monkeypatch.setattr(services.timezone, "now", lambda: opens_at(person.activity) + timedelta(hours=1))
     url = f"/evaluate/{services.evaluation_token(person)}/"
-    payload = {"answers": evaluation_answers(person.activity)}
+    payload = {**CERT, "answers": evaluation_answers(person.activity)}
     assert client.post(url, json.dumps(payload), content_type="application/json").status_code == 201

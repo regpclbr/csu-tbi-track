@@ -150,6 +150,8 @@ LOGGING = {
     "formatters": {"simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
     "root": {"handlers": ["console"], "level": "INFO"},
+    # WeasyPrint logs every render step at INFO; keep only its warnings (e.g. a missing image).
+    "loggers": {"weasyprint": {"level": "WARNING"}, "fontTools": {"level": "WARNING"}},
 }
 
 
@@ -190,15 +192,41 @@ STARTUP_SYNC_MAX_DEACTIVATE_RATIO = 0.5
 STARTUP_PASSWORD_LINK_HOURS = 72  # a "set your password" link expires after this many hours
 
 
-# --- Email ------------------------------------------------------------------
-# Console backend for development: emails are printed in the terminal.
-# Real SMTP settings are added in Step 9 (certificates).
+# --- Certificates (Step 9) ---------------------------------------------------------------
+CERTIFICATE_IMAGE_MAX_MB = 5  # largest template background or signature image
+# Printed on every certificate ("Given on ... at <this>"). Placeholder until the TBI confirms it.
+CERTIFICATE_ORGANIZATION_NAME = "CSU Technology Business Incubator"
+# A failed certificate email is retried after these many minutes (then by the daily retry).
+CERTIFICATE_EMAIL_RETRY_MINUTES = [5, 30, 120]
+# Daily retry of certificate PDFs, issuing and emails, at 8:30 AM Manila time.
+CERTIFICATE_RETRY_HOUR = 8
+CERTIFICATE_RETRY_MINUTE = 30
+
+
+# --- Email (Step 9) -------------------------------------------------------------
+# SMTP settings come from .env. While DEBUG is on, emails are printed in the terminal unless
+# EMAIL_REAL_SENDING=True. Even with real sending, addresses in EMAIL_BLOCKED_DOMAINS (the demo
+# data) are never really emailed: they are printed instead (config/mail.py).
+EMAIL_REAL_SENDING = env_bool("EMAIL_REAL_SENDING", False)
+EMAIL_BLOCKED_DOMAINS = ["demo.example.com"]
+
+SMTP_MAILER = {
+    "BACKEND": "config.mail.GuardedSMTPBackend",
+    "OPTIONS": {
+        "host": os.environ.get("EMAIL_HOST", "localhost"),
+        "port": int(os.environ.get("EMAIL_PORT", "587")),
+        "username": os.environ.get("EMAIL_HOST_USER", ""),
+        "password": os.environ.get("EMAIL_HOST_PASSWORD", ""),
+        "use_tls": env_bool("EMAIL_USE_TLS", True),
+        "timeout": 30,  # seconds; a hanging server fails the send (it is retried)
+    },
+}
+# Django's console backend, but long links stay on one line and attachments are summarized.
+CONSOLE_MAILER = {"BACKEND": "config.mail.ConsoleEmailBackend"}
 
 MAILERS = {
-    "default": {
-        # Django's console backend, but long links stay on one line (see config/mail.py).
-        "BACKEND": "config.mail.ConsoleEmailBackend",
-    },
+    "default": CONSOLE_MAILER if DEBUG and not EMAIL_REAL_SENDING else SMTP_MAILER,
+    "smtp": SMTP_MAILER,  # always real SMTP; only `send_test_email --smtp` uses it
 }
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "CSU-TBI Track <no-reply@localhost>")
 

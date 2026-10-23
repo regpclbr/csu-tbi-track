@@ -31,6 +31,8 @@ SCHEDULES = [
     DailySchedule("Daily Navigatu startup sync", "startups.tasks.run_startup_sync", "STARTUP_SYNC_HOUR"),
     # Retries approved documents that are not indexed yet (e.g. after a Gemini rate limit).
     DailySchedule("Index pending documents", "assistant.tasks.run_index_pending", "ASSISTANT_INDEX_HOUR", "ASSISTANT_INDEX_MINUTE"),
+    # Renders/issues Approved + evaluated certificates and sends Issued + unsent ones (Step 9).
+    DailySchedule("Retry certificate PDFs and emails", "certificates.tasks.run_certificate_retries", "CERTIFICATE_RETRY_HOUR", "CERTIFICATE_RETRY_MINUTE"),
 ]
 
 

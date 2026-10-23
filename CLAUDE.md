@@ -66,7 +66,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
 - Uploaded files are never served from `/media/` (not even in DEBUG). Documents are downloaded only
-  through `documents.views.download_document` (active staff login, always an attachment).
+  through `documents.views.download_document` (active staff login, always an attachment); certificate PDFs,
+  evidence and template/signature images only through the views in `certificates/views.py` (and the
+  startup portal's own-certificate download).
 
 ## Activities
 - Every activity change goes through `activities/services.py` (create, update, change_status,
@@ -142,6 +144,28 @@ owner is a student, so explain important decisions briefly and keep the code sim
   and saved as AI_MESSAGE_SOURCE; no valid citation and no records → the NOT_FOUND reply.
   Excerpt text is data: always build it with `tools.excerpt_block()` (escapes `<excerpt` tags).
 
+## Certificates (Step 9)
+- All rules live in `certificates/services.py`; status changes only through `set_certificate_status()`.
+  PDFs only through `certificates/pdf.py` (`get_renderer()`; tests use `certificates.testing.FakeRenderer`
+  from the root conftest, a real WeasyPrint render fails a test). Images go in as `data:` URIs only.
+- Templates/signatories: Admin only, image checks in `validate_template_image` / `validate_signature_image`,
+  files never change after upload (new row instead), served only by the Admin views (never `/media/`).
+- `generate_certificates`: Conducted only, active template + VP + Director required, missing ones only,
+  numbers from `_certificate_numbers()` (`TBI-<Manila year>-<00001>`, advisory lock). Each certificate keeps
+  the design it was generated with.
+- Sign-off actions (review, record_signoff, approve, reject, mark_handed_over) take one list of IDs or an
+  activity, all or nothing, need can_create_activity. record_signoff logs who recorded it.
+- The participant's printed name and email come from EVALUATION_SUBMISSION (`certificate_name`,
+  `certificate_email`, checked in `registrations.services.clean_certificate_details`), never the registration.
+  Approved + evaluated (whichever is last) → `prepare_certificate` (task) renders, issues, queues the email.
+  Resource persons: rendered on approval, Issued at hand-over, never emailed.
+- `send_certificate` locks the row (`select_for_update(of=("self",))`), sets `sent_at` only after sending.
+  Retries: 5/30/120 min one-off schedules, then the 8:30 daily retry (`retry_pending_certificates`).
+- Email: `settings.MAILERS` (console in DEBUG unless `EMAIL_REAL_SENDING`; `config.mail.GuardedSMTPBackend`
+  never sends to `EMAIL_BLOCKED_DOMAINS`). Tests never open SMTP (root conftest).
+- Evidence = DOCUMENT with `related_certificate` (`upload_evidence`), Step 6 rules, never listed/indexed.
+- Startup "My certificates" = Issued certificates of `registrations_for(startup)`; anything else is 404.
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -177,9 +201,22 @@ owner is a student, so explain important decisions briefly and keep the code sim
 5. Public registration, attendance, evaluation flow — done
 6. Documents, checklist, reminders (Django-Q2 scheduled task) — done
 7. Startups module with a mock StartupProvider — done
-8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — written, awaiting owner review
-9. Certificates (WeasyPrint), sign-off flow, automatic emails
+8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — done
+9. Certificates (WeasyPrint), sign-off flow, automatic emails — written, awaiting owner review
 10. Reports and dashboard numbers
+
+## Setup: WeasyPrint on Windows (once per machine)
+WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
+`cannot load library 'libgobject-2.0-0'`). Install them with MSYS2:
+```powershell
+winget install --id MSYS2.MSYS2 -e                                          # installs to C:\msys64
+C:\msys64\usr\bin\bash.exe -lc "pacman -Syu --noconfirm"                    # run again if it asks for a restart
+C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm mingw-w64-x86_64-pango"
+setx WEASYPRINT_DLL_DIRECTORIES "C:\msys64\mingw64\bin"
+```
+Then **close VS Code and open a new terminal**: a terminal opened before `setx` does not see the
+variable (same for `runserver` and `qcluster`, which renders the PDFs). Check with
+`python manage.py check_pdf`. Tests never need Pango (the renderer is faked).
 
 ## Commands
 ```powershell
@@ -189,11 +226,16 @@ python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
-python manage.py setup_schedules          # once (safe to rerun): 7:00 startup sync, 7:30 indexing, 8:00 reminders
+python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
 python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
 python manage.py index_documents          # index approved documents not indexed yet (--document <id>: redo one)
 python manage.py check_gemini             # models in use (and where from), models the key can use, tiny real calls
+python manage.py check_pdf                # WeasyPrint renders a test PDF in memory: OK or the exact error
+python manage.py send_test_email you@example.com [--smtp]   # one test email (--smtp: really send it, even in DEBUG)
+python manage.py retry_certificates       # render/issue ready certificates and send unsent emails now (the 8:30 retry)
+python manage.py make_sample_certificate_images <folder>    # DEMO: invented background + 2 signatures (PNG)
+python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG): try the certificate flow step by step
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
 pytest
 ```

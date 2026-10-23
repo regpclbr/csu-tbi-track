@@ -10,8 +10,9 @@ Review flow (DOCUMENT_STATUS has only For Review and Approved; there is no Rejec
 - Replace: uploader only, For Review only. Clears reviewed_by/reviewed_at (waiting for a reviewer again).
 - Delete: uploader only, For Review only (the file is removed too). Approved documents are never deleted.
 
-Certificate files (related_certificate set) are out of scope here: every query uses
-Document.objects.activity_documents().
+Certificate evidence (related_certificate set, Step 9) uses the same upload, review, replace and
+delete functions, but every listing and the checklist use Document.objects.activity_documents(),
+so it never appears there.
 """
 
 import logging
@@ -199,10 +200,10 @@ def _delete_stored_file(name: str) -> None:
 
 
 def _locked(document: Document) -> Document:
-    """Reload and lock the document row so two members cannot act on it at the same moment."""
+    """Reload and lock the document row so two members cannot act on it at the same moment.
+    (Activity documents and certificate evidence follow the same rules.)"""
     return (
-        Document.objects.activity_documents()
-        .select_for_update()
+        Document.objects.select_for_update()
         .select_related("status", "document_type", "activity")
         .get(pk=document.pk)
     )
@@ -215,9 +216,12 @@ def upload_document(
     file: UploadedFile | None,
     title: str = "",
     now: datetime | None = None,
+    related_certificate=None,
 ) -> Document:
     """Any active staff member uploads a document for an activity, in any activity status
-    (including Conducted: the accomplishment report is due after the end date). It starts For Review."""
+    (including Conducted: the accomplishment report is due after the end date). It starts For Review.
+
+    `related_certificate` is set only by certificates.services.upload_evidence (Step 9)."""
     require_staff_member(member)
     if not document_type.is_active:
         raise ValidationError({"document_type": ["This document type is not active."]})
@@ -232,6 +236,7 @@ def upload_document(
         uploaded_by=member,
         status=DocumentStatus.objects.get(status_name=DocumentStatus.FOR_REVIEW),
         title=title,
+        related_certificate=related_certificate,
     )
     _save_file(document, file, extension, now)
     try:
@@ -310,8 +315,10 @@ def approve_document(member: TBIMember, document: Document, now: datetime | None
 
         # Step 8: index it for the assistant once the approval is saved (Django-Q2 task).
         # robust=True: a problem queueing the task never undoes or breaks the approval.
+        # Certificate evidence is never indexed (item 151), so it is not queued.
         document_id = document.pk
-        transaction.on_commit(lambda: queue_indexing(document_id), robust=True)
+        if document.related_certificate_id is None:
+            transaction.on_commit(lambda: queue_indexing(document_id), robust=True)
     return document
 
 

@@ -104,7 +104,7 @@ class RegistrationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(EvaluationSubmission)
 class EvaluationSubmissionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ("registration", "template", "submitted_at")
+    list_display = ("registration", "certificate_name", "certificate_email", "template", "submitted_at")
 
 
 @admin.register(FormAnswer)

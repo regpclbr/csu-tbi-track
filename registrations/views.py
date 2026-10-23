@@ -95,11 +95,20 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
 @require_http_methods(["GET", "POST"])
 @api_errors
 def public_evaluate(request: HttpRequest, token: str) -> JsonResponse:
-    """GET: the evaluation form (or why it is closed). POST {"comments", "answers": {...}}: submit."""
+    """GET: the evaluation form (or why it is closed), with the suggested certificate name and email.
+
+    POST {"certificate_name", "certificate_email", "comments", "answers": {...}}: submit.
+    """
     if request.method == "GET":
         return JsonResponse({"evaluation": services.evaluation_page(token)})
     data = _json_body(request)
-    services.submit_evaluation(token, comments=str(data.get("comments", "")), answers=data.get("answers") or {})
+    services.submit_evaluation(
+        token,
+        certificate_name=str(data.get("certificate_name", "")),
+        certificate_email=str(data.get("certificate_email", "")),
+        comments=str(data.get("comments", "")),
+        answers=data.get("answers") or {},
+    )
     return JsonResponse({"message": "Thank you! Your evaluation was submitted."}, status=201)
 
 

@@ -9,7 +9,7 @@ from config.schedules import SCHEDULES, DailySchedule, next_daily_run
 
 
 class Command(BaseCommand):
-    help = "Create the daily schedules (startup sync, document indexing, reminders). Running it again never adds a second one."
+    help = "Create the daily schedules (startup sync, document indexing, reminders, certificate retry). Running it again never adds a second one."
 
     @transaction.atomic
     def handle(self, *args, **options) -> None:

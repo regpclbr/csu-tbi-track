@@ -11,7 +11,7 @@ from activities import services as activity_services
 from registrations import services
 from registrations.models import EvaluationSubmission, FormType, Registration
 
-from .conftest import cat, evaluation_answers, form_of, opens_at
+from .conftest import CERT, cat, evaluation_answers, form_of, opens_at
 
 # --- Attendance ------------------------------------------------------------------------------
 
@@ -52,7 +52,7 @@ def test_marking_needs_a_valid_method(director, attended) -> None:
 def test_unmark_refused_after_evaluation(director, attended) -> None:
     person = attended(1)[0]
     activity = person.activity
-    services.submit_evaluation(services.evaluation_token(person), answers=evaluation_answers(activity), now=opens_at(activity))
+    services.submit_evaluation(services.evaluation_token(person), **CERT, answers=evaluation_answers(activity), now=opens_at(activity))
     with pytest.raises(services.RegistrationError, match="already submitted the evaluation"):
         services.set_attendance(director, activity, [person.pk], False)
     person.refresh_from_db()
@@ -108,9 +108,9 @@ def test_evaluation_window_edges(attended) -> None:
 
     token = services.evaluation_token(person)
     with pytest.raises(services.RegistrationError, match="opens on"):
-        services.submit_evaluation(token, answers=evaluation_answers(activity), now=opens - minute)
+        services.submit_evaluation(token, **CERT, answers=evaluation_answers(activity), now=opens - minute)
     with pytest.raises(services.RegistrationError, match="closed on"):
-        services.submit_evaluation(token, answers=evaluation_answers(activity), now=closes + minute)
+        services.submit_evaluation(token, **CERT, answers=evaluation_answers(activity), now=closes + minute)
     assert not EvaluationSubmission.objects.exists()
 
 
@@ -120,7 +120,7 @@ def test_evaluation_only_for_attendees(scheduled, signup, director) -> None:
     activity_services.change_status(director, scheduled, "Ongoing")
     with pytest.raises(services.RegistrationError, match="Only people marked as attended"):
         services.submit_evaluation(
-            services.evaluation_token(person), answers=evaluation_answers(scheduled), now=opens_at(scheduled)
+            services.evaluation_token(person), **CERT, answers=evaluation_answers(scheduled), now=opens_at(scheduled)
         )
 
 
@@ -129,13 +129,13 @@ def test_submit_evaluation_once(attended) -> None:
     person = attended(1)[0]
     activity = person.activity
     token = services.evaluation_token(person)
-    submission = services.submit_evaluation(token, comments=" Great! ", answers=evaluation_answers(activity), now=opens_at(activity))
+    submission = services.submit_evaluation(token, comments=" Great! ", **CERT, answers=evaluation_answers(activity), now=opens_at(activity))
     assert submission.registration == person and submission.comments == "Great!"  # never anonymous
     assert submission.template == form_of(activity, FormType.EVALUATION)
     assert submission.answers.count() == 4  # the optional "Suggestions" was left empty
 
     with pytest.raises(services.RegistrationError, match="already submitted"):
-        services.submit_evaluation(token, answers=evaluation_answers(activity), now=opens_at(activity))
+        services.submit_evaluation(token, **CERT, answers=evaluation_answers(activity), now=opens_at(activity))
 
 
 @pytest.mark.django_db
@@ -150,7 +150,7 @@ def test_evaluation_and_answers_are_saved_together(attended, monkeypatch) -> Non
     monkeypatch.setattr(FormAnswer.objects, "create", fail)
     with pytest.raises(RuntimeError):
         services.submit_evaluation(
-            services.evaluation_token(person), answers=evaluation_answers(person.activity), now=opens_at(person.activity)
+            services.evaluation_token(person), **CERT, answers=evaluation_answers(person.activity), now=opens_at(person.activity)
         )
     assert not EvaluationSubmission.objects.exists()
 
@@ -206,7 +206,7 @@ def test_evaluate_endpoint(client, attended, monkeypatch) -> None:
     assert page["is_open"] is True and page["name"] == person.name
     assert len(page["fields"]) == 5
 
-    payload = {"comments": "Thanks", "answers": evaluation_answers(activity)}
+    payload = {"comments": "Thanks", **CERT, "answers": evaluation_answers(activity)}
     response = client.post(url, json.dumps(payload), content_type="application/json")
     assert response.status_code == 201
     assert json.loads(client.get(url).content)["evaluation"]["closed_reason"] == (
@@ -226,7 +226,7 @@ def test_send_links_only_to_attendees_who_have_not_evaluated(director, attended,
         name="No Show", email="noshow@example.com",
     )
     now = opens_at(activity)
-    services.submit_evaluation(services.evaluation_token(done), answers=evaluation_answers(activity), now=now)
+    services.submit_evaluation(services.evaluation_token(done), **CERT, answers=evaluation_answers(activity), now=now)
 
     assert services.send_evaluation_links(director, activity, now=now) == 1
     assert [m.to for m in mail.outbox] == [[waiting.email]]

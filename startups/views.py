@@ -11,8 +11,9 @@ from collections.abc import Callable
 from functools import wraps
 
 from django.core.exceptions import ValidationError
-from django.http import Http404, HttpRequest
+from django.http import FileResponse, Http404, HttpRequest
 from django.shortcuts import get_object_or_404
+from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -20,6 +21,7 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, staff_login_required
 from accounts.services import LoginError
+from certificates import services as certificate_services
 from notifications import services as notification_services
 from notifications.views import notification_json
 from registrations import services as registration_services
@@ -231,6 +233,40 @@ def portal_register(request: HttpRequest, activity_id: int) -> JsonResponse:
         request.startup, activity, participant_category=data.get("participant_category"), answers=data.get("answers") or {}
     )
     return JsonResponse({"registration": registration_json(registration)}, status=201)
+
+
+def certificate_json(certificate) -> dict:
+    return {
+        "certificate_id": certificate.pk,
+        "certificate_number": certificate.certificate_number,
+        "activity_id": certificate.activity_id,
+        "activity_title": certificate.activity.title,
+        "issued_at": certificate.issued_at,
+        "download_url": reverse("startups:portal_certificate_download", args=[certificate.pk]),
+    }
+
+
+@startup_login_required
+@require_GET
+def portal_certificates(request: HttpRequest) -> JsonResponse:
+    """My certificates: Issued certificates of my registrations (linked or matched by email)."""
+    return JsonResponse({"certificates": [certificate_json(c) for c in certificate_services.certificates_for_startup(request.startup)]})
+
+
+@startup_login_required
+@require_GET
+def portal_certificate_download(request: HttpRequest, certificate_id: int) -> FileResponse:
+    """Only my own Issued certificates. Anything else is 404 (never reveals that it exists)."""
+    certificate = get_object_or_404(certificate_services.certificates_for_startup(request.startup), pk=certificate_id)
+    if not certificate.file_path:
+        raise Http404("The file is not available.")
+    try:
+        handle = certificate.file_path.open("rb")
+    except (FileNotFoundError, ValueError) as error:
+        raise Http404("The file is missing.") from error
+    response = FileResponse(handle, as_attachment=True, filename=f"{certificate.certificate_number}.pdf")
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @startup_login_required

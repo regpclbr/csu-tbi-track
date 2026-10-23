@@ -151,6 +151,10 @@ class EvaluationSubmission(models.Model):
         Registration, on_delete=models.CASCADE, related_name="evaluation_submission"
     )
     comments = models.TextField(blank=True)
+    # Step 9 (ERD change): the participant types the name printed on their certificate and the
+    # address it is emailed to. Checked in registrations.services.submit_evaluation.
+    certificate_name = models.CharField(max_length=150)
+    certificate_email = models.EmailField(max_length=254)
     submitted_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

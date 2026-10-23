@@ -42,6 +42,10 @@ def registration_answers(activity: Activity, affiliation: str = "CSU") -> dict:
     }
 
 
+# The certificate name and email every evaluation now needs (Step 9).
+CERT = {"certificate_name": "Ana Cruz", "certificate_email": "ana.cert@example.com"}
+
+
 def evaluation_answers(activity: Activity) -> dict:
     """Valid answers for the default evaluation form."""
     form = form_of(activity, FormType.EVALUATION)
