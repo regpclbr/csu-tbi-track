@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.permissions import staff_login_required
+from activities.models import Activity
 from config.json import JsonResponse  # date-times in Manila time
 
 from . import services
@@ -56,6 +57,15 @@ def dashboard_api(request: HttpRequest) -> JsonResponse:
         return JsonResponse(services.dashboard(request.user, request.GET))
     except ValidationError as error:
         return _errors(error)
+
+
+@staff_login_required
+@require_GET
+def activity_evaluation_api(request: HttpRequest, activity_id: int) -> JsonResponse:
+    """GET: one activity's evaluation results: registered, attended, evaluations, response rate and
+    the average of each rating question (same rules as the reports; no comments or text answers)."""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    return JsonResponse(services.activity_evaluation(request.user, activity))
 
 
 @staff_login_required

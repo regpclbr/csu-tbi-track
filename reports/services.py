@@ -52,6 +52,13 @@ def dashboard(member: TBIMember, params: dict, now: datetime | None = None) -> d
     return {"filters": filters_json(filters), **metrics.dashboard(filters, now)}
 
 
+def activity_evaluation(member: TBIMember, activity) -> dict:
+    """One activity's evaluation results (counts and rating averages, never text answers), for any
+    active staff member, like the dashboard."""
+    require_staff_member(member)
+    return metrics.activity_evaluation_results(activity)
+
+
 def filters_json(filters: metrics.ReportFilters) -> dict:
     return {
         "start": filters.start,

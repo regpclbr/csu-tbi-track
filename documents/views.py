@@ -22,6 +22,7 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, staff_login_required
 from activities.models import Activity
+from config.parsing import parse_bool
 
 from . import services
 from .models import Document, DocumentType
@@ -116,10 +117,7 @@ def repository_api(request: HttpRequest) -> JsonResponse:
         key: _int_value(request.GET.get(key), key) for key in ("activity", "document_type", "status", "uploaded_by")
     }
     filters["review_state"] = request.GET.get("review_state", "")
-    searchable = request.GET.get("searchable", "").lower()
-    if searchable not in ("", "true", "false"):
-        raise BadRequest("searchable must be true or false.")
-    filters["searchable"] = {"true": True, "false": False}.get(searchable)
+    filters["searchable"] = parse_bool(request.GET.get("searchable"), "searchable")
     filters["q"] = request.GET.get("q", "")
     result = services.list_documents(filters, page=request.GET.get("page", 1))
     return JsonResponse(_page_json(result, [document_json(d) for d in result.items]))

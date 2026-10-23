@@ -1,11 +1,13 @@
 """JSON API for "my notifications". A member only sees and changes their own."""
 
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 from django.views.decorators.http import require_GET, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import staff_login_required
+from config.parsing import parse_bool
 
 from . import services
 from .models import Notification
@@ -28,8 +30,11 @@ def notification_json(notification: Notification) -> dict:
 @staff_login_required
 @require_GET
 def list_api(request: HttpRequest) -> JsonResponse:
-    """GET ?page=&unread=1 — newest first."""
-    unread_only = request.GET.get("unread") == "1"
+    """GET ?page=&unread=true|false — newest first."""
+    try:
+        unread_only = parse_bool(request.GET.get("unread"), "unread", default=False)
+    except ValidationError as error:
+        return JsonResponse({"errors": error.message_dict}, status=400)
     result = services.list_notifications(request.user, request.GET.get("page", 1), unread_only=unread_only)
     return JsonResponse(
         {

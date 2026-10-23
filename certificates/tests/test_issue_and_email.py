@@ -278,16 +278,21 @@ def test_preview_explains_a_rendering_problem(generated, director, fake_pdf_rend
 # --- Demo addresses are never really emailed ------------------------------------------------------------
 
 
-def test_demo_certificate_email_is_never_sent_by_smtp(issued, settings, monkeypatch, capsys) -> None:
+@pytest.mark.parametrize("debug", [True, False])
+def test_demo_certificate_email_is_never_sent_by_smtp(issued, settings, monkeypatch, capsys, debug) -> None:
     from django.core.mail.backends.smtp import EmailBackend as SMTPBackend
 
     sent_by_smtp = []
     monkeypatch.setattr(SMTPBackend, "send_messages", lambda self, messages: sent_by_smtp.extend(messages) or len(messages))
     settings.MAILERS = {"default": settings.SMTP_MAILER}  # real sending switched on
+    settings.DEBUG = debug
     issued.evaluation_submission.__class__.objects.filter(pk=issued.evaluation_submission_id).update(
         certificate_email="someone@demo.example.com"
     )
     assert services.send_certificate(issued.pk) == "sent"
     assert sent_by_smtp == []
     out = capsys.readouterr().out
-    assert "To: someone@demo.example.com" in out and "[attachment TBI-" in out  # printed, PDF summarized
+    if debug:
+        assert "To: someone@demo.example.com" in out and "[attachment TBI-" in out  # printed, PDF summarized
+    else:
+        assert out == ""  # a real server never prints the email (only that one was blocked is logged)

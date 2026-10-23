@@ -354,9 +354,34 @@ def per_month(filters: ReportFilters) -> list[dict]:
 def evaluation_results(filters: ReportFilters) -> dict:
     """N12 and N13. Rating questions are grouped by their label, ignoring upper/lower case and outer
     spaces (forms are edited per activity). Each group shows the label used most often."""
+    return _rating_questions(_rating_answers().filter(in_period(filters, RATING_ACTIVITY)))
+
+
+def activity_evaluation_results(activity: Activity) -> dict:
+    """One activity's evaluation results: the N5, N6, N10, N11 counts and the N12/N13 rating averages
+    with the same rules as the reports, but for this activity only and in any status (evaluations
+    open on the end date, possibly before the activity is set to Conducted). Rating questions only:
+    never comments or text answers."""
+    counts = Registration.objects.filter(activity=activity).aggregate(
+        registered=Count("pk"),
+        attended=Count("pk", filter=Q(attendance_confirmed=True)),
+        evaluations=Count("evaluation_submission"),
+    )
+    ratings = _rating_questions(_rating_answers().filter(**{RATING_ACTIVITY: activity}))
+    return {
+        "activity_id": activity.pk,
+        "registered": counts["registered"],
+        "attended": counts["attended"],
+        "evaluations": counts["evaluations"],
+        "evaluation_response_rate": rate(counts["evaluations"], counts["attended"]),
+        **ratings,
+    }
+
+
+def _rating_questions(answers: QuerySet) -> dict:
+    """Group rating answers by question label (ignoring case and outer spaces) with their averages."""
     rows = (
-        _rating_answers()
-        .filter(in_period(filters, RATING_ACTIVITY))
+        answers
         .annotate(key=Lower(Trim("field__field_label")))
         .order_by()
         .values("key", "field__field_label")

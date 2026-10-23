@@ -14,6 +14,8 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
 
+from config.network import client_ip  # one client_ip() for the lockout and the registration limit
+
 from .emails import send_invitation_email
 from .models import Role, TBIMember
 from .permissions import Permission, require_permission
@@ -28,10 +30,6 @@ INVALID_LOGIN_MESSAGE = "Invalid email or password."
 
 class LoginError(Exception):
     """Login refused. The message is safe to show: it never says whether the email exists."""
-
-
-def client_ip(request: HttpRequest) -> str:
-    return request.META.get("REMOTE_ADDR", "unknown")
 
 
 # Staff and startups use the same limits and messages but separate counters ("scope").

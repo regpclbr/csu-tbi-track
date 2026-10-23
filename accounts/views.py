@@ -123,6 +123,24 @@ def _error(message: str, status: int = 400) -> JsonResponse:
     return JsonResponse({"error": message}, status=status)
 
 
+def _text(data: dict, name: str) -> str:
+    """A text value from the JSON body ("" when missing). Numbers, lists and the like are refused."""
+    value = data.get(name, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise services.MemberManagementError(f"{name} must be text.")
+    return value
+
+
+def _role(data: dict) -> Role | None:
+    """The role named by role_id (a whole number), or None when it does not exist."""
+    role_id = data.get("role_id")
+    if isinstance(role_id, bool) or not isinstance(role_id, int):
+        raise services.MemberManagementError("role_id must be a number.")
+    return Role.objects.filter(pk=role_id).first()
+
+
 @permission_required(Permission.MANAGE_USERS)
 @require_http_methods(["GET"])
 def roles_api(request: HttpRequest) -> JsonResponse:
@@ -149,10 +167,10 @@ def members_api(request: HttpRequest) -> JsonResponse:
 
     try:
         data = _json_body(request)
-        name, email, role_id = data.get("name", ""), data.get("email", ""), data.get("role_id")
-        if not name.strip() or not email.strip() or not role_id:
+        name, email = _text(data, "name"), _text(data, "email")
+        if not name.strip() or not email.strip() or data.get("role_id") in (None, ""):
             return _error("name, email and role_id are required.")
-        role = Role.objects.filter(pk=role_id).first()
+        role = _role(data)
         if role is None:
             return _error("Unknown role_id.")
         member = services.create_member(request.user, name=name, email=email, role=role)
@@ -167,7 +185,7 @@ def member_role_api(request: HttpRequest, member_id: int) -> JsonResponse:
     """POST {role_id}: change a member's role."""
     member = get_object_or_404(TBIMember, pk=member_id)
     try:
-        role = Role.objects.filter(pk=_json_body(request).get("role_id")).first()
+        role = _role(_json_body(request))
         if role is None:
             return _error("Unknown role_id.")
         services.change_member_role(request.user, member, role)

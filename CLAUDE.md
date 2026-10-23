@@ -92,6 +92,15 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
   never "type your email". Public pages never show who registered.
 - Default form fields are placeholders (validate with the TBI); `seed_data` creates them once.
+- Public JSON lives under `/api/` (`/api/register/<id>/`, `/api/evaluate/<token>/`,
+  `/api/startups/set-password/<token>/`). The page URLs `/register/<id>/`, `/evaluate/<token>/`,
+  `/startups/set-password/<token>/` are reserved for the frontend's HTML pages (placeholder until
+  then); emails always link to the page URLs.
+- Registration emails (confirmation, evaluation links) are Django-Q2 tasks (`registrations/tasks.py`,
+  queued via `queue_confirmation` / `queue_evaluation_link`); never send them inside the request.
+- The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
+  honeypot field `website`) before `register()`; the service itself is never rate limited.
+- An evaluation link that is submitted or past its window shows only the closed reason.
 
 ## Documents, checklist and reminders
 - All rules live in `documents/services.py`. Upload: any active staff member, any activity status
@@ -110,6 +119,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
 - Notifications: `notifications/services.py`; a member only sees/changes their own.
+  NOTIFICATION.activity stays nullable (future startup notifications may have no activity).
 
 ## Startups and Navigatu
 - `startups/providers.py` is the ONLY Navigatu access point: `get_provider()` returns the class named
@@ -205,6 +215,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Business logic goes in each app's `services.py`. Keep views thin.
 - API views return `config.json.JsonResponse` (never Django's directly), so date-times are shown
   in Manila time with the offset (`+08:00`), not UTC.
+- The client IP comes only from `config.network.client_ip()` (`TRUSTED_PROXY_HEADER` behind a proxy).
+- Request values meaning true/false go through `config.parsing.parse_bool()` (true/false only, else 400).
+- Lookup lists for the frontend come from `/api/lookups/` (`config/lookups.py`). Master data and role
+  flags are managed only in the Django admin (no Admin Console screens for them).
+- Numbers about evaluations (also one activity's, `/reports/api/activities/<id>/evaluation/`) come
+  from `reports/metrics.py`.
 - Write pytest-django tests for every business rule (`<app>/tests/test_*.py`).
 - Never put secrets in code. Never commit `.env`.
 - Use clear names that match the ERD. Use type hints and short docstrings.
@@ -221,8 +237,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 6. Documents, checklist, reminders (Django-Q2 scheduled task) — done
 7. Startups module with a mock StartupProvider — done
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — done
-9. Certificates (WeasyPrint), sign-off flow, automatic emails — written, awaiting owner review
-10. Reports and dashboard numbers — written, awaiting owner review
+9. Certificates (WeasyPrint), sign-off flow, automatic emails — done
+10. Reports and dashboard numbers — done
+- Backend review before the frontend (2026-10-23): batch 1 fixes applied (ASSUMPTIONS 214–224).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

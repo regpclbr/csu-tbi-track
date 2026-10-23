@@ -85,6 +85,7 @@ def _activity_row(activity: Activity) -> dict:
         "activity_id": activity.pk,
         "title": activity.title,
         "status": activity.status.name,
+        "activity_type_id": activity.activity_type_id,
         "activity_type": activity.activity_type.name,
         "participant_category_ids": sorted(category.pk for category in activity.participant_categories.all()),
         "participant_categories": sorted(category.name for category in activity.participant_categories.all()),

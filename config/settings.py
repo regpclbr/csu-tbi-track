@@ -129,6 +129,18 @@ LOGIN_MAX_FAILED_ATTEMPTS = 5
 LOGIN_MAX_FAILED_ATTEMPTS_PER_IP = 20
 LOGIN_LOCKOUT_MINUTES = 15
 
+# The client's IP (login lockout, registration rate limit) is REMOTE_ADDR unless the site runs
+# behind a reverse proxy: then set this to the header the proxy fills in, e.g. X-Forwarded-For
+# or X-Real-IP (config/network.py). Leave it empty without a proxy: clients can fake headers.
+TRUSTED_PROXY_HEADER = os.environ.get("TRUSTED_PROXY_HEADER", "").strip()
+
+# Public registration (no login) rate limit, counted in the same cache as the login lockout.
+# Every POST to the public registration API counts, also refused ones. The per-IP limit is high on
+# purpose: many participants register from the same campus network (one public IP address).
+REGISTRATION_MAX_ATTEMPTS_PER_IP = 300
+REGISTRATION_MAX_ATTEMPTS_PER_EMAIL = 10
+REGISTRATION_RATE_WINDOW_MINUTES = 60
+
 # The failed-login counters live in Django's cache. A database cache is shared by
 # all server processes and survives restarts. Create its table once with:
 #   python manage.py createcachetable

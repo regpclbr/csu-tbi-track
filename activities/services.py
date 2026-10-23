@@ -501,16 +501,21 @@ def activities_between(start: date, end: date) -> list[Activity]:
 
 
 def get_activity_detail(activity: Activity) -> dict:
-    """Everything the Overview tab needs."""
+    """Everything the Overview tab needs, plus the IDs of its registration and evaluation forms
+    (None until created) for the Forms tab."""
     count = registered_count(activity)
     categories = sorted(activity.participant_categories.all(), key=lambda category: category.name)
     links = activity.resource_person_links.select_related("resource_person").order_by("resource_person__name")
+    form_ids = dict(activity.form_templates.values_list("form_type", "template_id"))  # one per type (constraint)
     return {
         "activity_id": activity.pk,
         "title": activity.title,
         "description": activity.description or "",
         "status": activity.status.name,
+        "activity_type_id": activity.activity_type_id,
         "activity_type": activity.activity_type.name,
+        "registration_form_id": form_ids.get("registration"),
+        "evaluation_form_id": form_ids.get("evaluation"),
         "participant_category_ids": [category.pk for category in categories],
         "participant_categories": [category.name for category in categories],
         "start_date": activity.start_date,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.db import models
+from django.db.models.functions import Lower
 
 
 class Role(models.Model):
@@ -85,6 +86,11 @@ class TBIMember(AbstractBaseUser):
     class Meta:
         db_table = "tbi_member"
         ordering = ["name"]
+        constraints = [
+            # Login matches the email ignoring case, so "Ana@x.com" and "ana@x.com" must be one member
+            # (migration accounts/0002 checks existing rows first).
+            models.UniqueConstraint(Lower("email"), name="unique_member_email_ignoring_case"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.name} <{self.email}>"

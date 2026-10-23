@@ -8,8 +8,9 @@ ConsoleEmailBackend (development): prints emails in the terminal.
   instead of printing thousands of lines of base64.
 
 GuardedSMTPBackend (real sending): Django's SMTP backend, but it never emails an address in
-settings.EMAIL_BLOCKED_DOMAINS (the demo data, @demo.example.com). Those recipients are printed
-to the console instead, so demo data can never reach a real mailbox.
+settings.EMAIL_BLOCKED_DOMAINS (the demo data, @demo.example.com), so demo data can never reach a
+real mailbox. Those emails are printed to the console while DEBUG is on; with DEBUG off only the
+fact that one was blocked is logged (never the body: it may hold a link or a temporary password).
 """
 
 import copy
@@ -61,18 +62,21 @@ class GuardedSMTPBackend(DjangoSMTPBackend):
     """Real SMTP, except for blocked demo domains (printed to the console instead)."""
 
     def send_messages(self, email_messages) -> int:
-        real, printed = [], []
+        real, blocked = [], []
         for message in email_messages:
             if any(is_blocked_address(a) for a in message.recipients()):
-                printed.append(message)
-                logger.info("Email to a blocked demo domain printed instead of sent.")
+                blocked.append(message)
                 kept = _without_blocked(message)
                 if kept is not None:
                     real.append(kept)
             else:
                 real.append(message)
-        if printed:
-            ConsoleEmailBackend(stream=sys.stdout, alias=self.alias).send_messages(printed)
+        if blocked and settings.DEBUG:
+            logger.info("%d email(s) to a blocked demo domain printed instead of sent.", len(blocked))
+            ConsoleEmailBackend(stream=sys.stdout, alias=self.alias).send_messages(blocked)
+        elif blocked:
+            # Not in DEBUG (a real server): never print the body, which may hold a link or a password.
+            logger.info("%d email(s) to a blocked demo domain were not sent.", len(blocked))
         sent = super().send_messages(real) if real else 0
-        # A message whose recipients were all blocked counts as handled (it was printed).
-        return sent + sum(1 for m in printed if _without_blocked(m) is None)
+        # A message whose recipients were all blocked counts as handled (printed or skipped on purpose).
+        return sent + sum(1 for m in blocked if _without_blocked(m) is None)

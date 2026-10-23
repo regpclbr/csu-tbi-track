@@ -190,7 +190,7 @@ def test_tampered_or_invalid_links_are_refused(attended) -> None:
 @pytest.mark.django_db
 def test_tampered_link_endpoint(client, attended) -> None:
     person = attended(1)[0]
-    response = client.get(f"/evaluate/{services.evaluation_token(person)}x/")
+    response = client.get(f"/api/evaluate/{services.evaluation_token(person)}x/")
     assert response.status_code == 400
     assert json.loads(response.content) == {"error": "This evaluation link is not valid."}
 
@@ -200,7 +200,7 @@ def test_evaluate_endpoint(client, attended, monkeypatch) -> None:
     person = attended(1)[0]
     activity = person.activity
     monkeypatch.setattr(services.timezone, "now", lambda: opens_at(activity) + timedelta(hours=9))
-    url = f"/evaluate/{services.evaluation_token(person)}/"
+    url = f"/api/evaluate/{services.evaluation_token(person)}/"
 
     page = json.loads(client.get(url).content)["evaluation"]
     assert page["is_open"] is True and page["name"] == person.name

@@ -21,6 +21,7 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, staff_login_required
 from activities.models import Activity
+from config.parsing import parse_bool
 from documents import services as document_services
 from documents.models import Document
 from documents.views import document_json
@@ -312,9 +313,8 @@ def templates_api(request: HttpRequest) -> JsonResponse:
     if request.method == "GET":
         templates = CertificateTemplate.objects.select_related("uploaded_by").order_by("-created_at")
         return JsonResponse({"templates": [template_json(t) for t in templates]})
-    template = services.upload_template(
-        request.user, request.POST.get("name", ""), request.FILES.get("file"), request.POST.get("activate", "").lower() in ("true", "1", "yes")
-    )
+    activate = parse_bool(request.POST.get("activate"), "activate", default=False)
+    template = services.upload_template(request.user, request.POST.get("name", ""), request.FILES.get("file"), activate)
     return JsonResponse({"template": template_json(template)}, status=201)
 
 

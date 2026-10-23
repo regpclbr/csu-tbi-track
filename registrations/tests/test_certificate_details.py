@@ -61,14 +61,14 @@ def test_answer_and_certificate_errors_are_reported_together(attended) -> None:
 
 def test_evaluation_page_suggests_the_registration_name_and_email(attended, client) -> None:
     person = attended(1)[0]
-    page = client.get(f"/evaluate/{services.evaluation_token(person)}/").json()["evaluation"]
+    page = client.get(f"/api/evaluate/{services.evaluation_token(person)}/").json()["evaluation"]
     assert page["suggested_certificate_name"] == person.name
     assert page["suggested_certificate_email"] == person.email
 
 
 def test_public_post_needs_the_certificate_details(attended, client) -> None:
     person = attended(1)[0]
-    url = f"/evaluate/{services.evaluation_token(person)}/"
+    url = f"/api/evaluate/{services.evaluation_token(person)}/"
     payload = {"answers": evaluation_answers(person.activity)}
     # The window opens on the end date; these fixtures' activity ends in the future, so freeze "now".
     from unittest import mock

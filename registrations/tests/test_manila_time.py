@@ -31,7 +31,7 @@ def test_encoder_converts_utc_to_manila() -> None:
 
 @pytest.mark.django_db
 def test_public_register_shows_manila_time(client, scheduled) -> None:
-    response = client.get(f"/register/{scheduled.pk}/")
+    response = client.get(f"/api/register/{scheduled.pk}/")
     deadline = json.loads(response.content)["activity"]["registration_deadline"]
     assert deadline == timezone.localtime(scheduled.registration_deadline).isoformat()
     assert deadline.endswith("+08:00")
@@ -43,7 +43,7 @@ def test_evaluation_page_has_no_utc_times(client, attended, monkeypatch) -> None
     person = attended(1)[0]
     activity = person.activity
     monkeypatch.setattr(services.timezone, "now", lambda: opens_at(activity) - timedelta(hours=1))
-    response = client.get(f"/evaluate/{services.evaluation_token(person)}/")
+    response = client.get(f"/api/evaluate/{services.evaluation_token(person)}/")
     page = json.loads(response.content)["evaluation"]
     assert page["closed_reason"].startswith("The evaluation opens on")  # written in Manila time
     assert "Z" not in offsets(response) and "+00:00" not in offsets(response)
@@ -76,6 +76,6 @@ def test_member_api_shows_manila_time(client, admin_member) -> None:
 def test_submitted_evaluation_flow_still_works(client, attended, monkeypatch) -> None:
     person = attended(1)[0]
     monkeypatch.setattr(services.timezone, "now", lambda: opens_at(person.activity) + timedelta(hours=1))
-    url = f"/evaluate/{services.evaluation_token(person)}/"
+    url = f"/api/evaluate/{services.evaluation_token(person)}/"
     payload = {**CERT, "answers": evaluation_answers(person.activity)}
     assert client.post(url, json.dumps(payload), content_type="application/json").status_code == 201

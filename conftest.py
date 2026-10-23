@@ -70,6 +70,19 @@ def no_real_smtp(monkeypatch) -> None:
     monkeypatch.setattr(smtplib, "SMTP_SSL", refuse)
 
 
+@pytest.fixture(autouse=True)
+def registration_emails_run_now(monkeypatch):
+    """Registration emails are Django-Q2 tasks; in tests they run straight away instead of waiting
+    for qcluster (like run_tasks for certificates), so mail.outbox shows them. Returns the real
+    queue functions, for the tests that check a task is really queued."""
+    from registrations import services, tasks
+
+    real = {"confirmation": services.queue_confirmation, "evaluation_link": services.queue_evaluation_link}
+    monkeypatch.setattr(services, "queue_confirmation", tasks.run_send_registration_confirmation)
+    monkeypatch.setattr(services, "queue_evaluation_link", tasks.run_send_evaluation_link)
+    return real
+
+
 def image_bytes(width: int = 8, height: int = 6, kind: str = "PNG") -> bytes:
     """A small real image (PNG or JPEG) for upload tests."""
     from io import BytesIO

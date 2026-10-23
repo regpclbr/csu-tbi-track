@@ -10,8 +10,8 @@ urlpatterns = [
     path("api/sync/", views.sync_api, name="api_sync"),
     path("api/<int:startup_id>/", views.startup_detail_api, name="api_detail"),
     path("api/<int:startup_id>/send-password-link/", views.send_password_link_api, name="api_send_password_link"),
-    # Public: the signed set-password link
-    path("set-password/<str:token>/", views.set_password, name="set_password"),
+    # The public set-password page (/startups/set-password/<token>/) and its JSON endpoint
+    # (/api/startups/set-password/<token>/) are in config/urls.py.
     # Startup portal (startup login)
     path("portal/api/login/", views.portal_login, name="portal_login"),
     path("portal/api/logout/", views.portal_logout, name="portal_logout"),

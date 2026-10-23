@@ -164,7 +164,7 @@ def test_not_logged_in_gets_401(client) -> None:
 
 
 def link_path(startup: Startup) -> str:
-    return f"/startups/set-password/{services.password_token(startup)}/"
+    return f"/api/startups/set-password/{services.password_token(startup)}/"
 
 
 def set_password(client, path: str, password: str = NEW_PASSWORD, again: str | None = None):
@@ -228,7 +228,7 @@ def test_tampered_link_is_refused(client, startup, make_startup, tamper) -> None
         token = f"{other_payload}:{rest}"  # someone else's data with this signature
     else:
         token = "not-a-real-token"
-    response = set_password(client, f"/startups/set-password/{token}/")
+    response = set_password(client, f"/api/startups/set-password/{token}/")
     assert response.status_code == 400 and response.json()["error"] == services.LINK_INVALID
     startup.refresh_from_db()
     assert startup.check_password(STARTUP_PASSWORD)
@@ -269,4 +269,5 @@ def test_emailed_link_works(client, startup, admin_member) -> None:
     from urllib.parse import urlsplit
 
     link = next(line for line in mail.outbox[-1].body.splitlines() if "/set-password/" in line).strip()
-    assert set_password(client, urlsplit(link).path).status_code == 200
+    assert urlsplit(link).path.startswith("/startups/set-password/")  # the email opens the page
+    assert set_password(client, "/api" + urlsplit(link).path).status_code == 200  # the page posts to the API

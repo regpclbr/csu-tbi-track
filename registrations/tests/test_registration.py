@@ -25,14 +25,14 @@ def test_only_scheduled_activities_are_public(client, new_activity, with_forms, 
     if status != "Draft":
         move_to(new_activity, status)
     assert services.get_public_activity(new_activity.pk) is None
-    assert client.get(f"/register/{new_activity.pk}/").status_code == 404
-    assert client.post(f"/register/{new_activity.pk}/", "{}", content_type="application/json").status_code == 404
+    assert client.get(f"/api/register/{new_activity.pk}/").status_code == 404
+    assert client.post(f"/api/register/{new_activity.pk}/", "{}", content_type="application/json").status_code == 404
 
 
 @pytest.mark.django_db
 def test_public_info_shows_slots_and_categories_but_no_registrants(client, scheduled, signup) -> None:
     signup(scheduled, "ana@example.com", name="Ana Cruz")
-    body = json.loads(client.get(f"/register/{scheduled.pk}/").content)["activity"]
+    body = json.loads(client.get(f"/api/register/{scheduled.pk}/").content)["activity"]
     assert body["slots_remaining"] == 29 and body["is_open"] is True
     assert body["participant_categories"] == [{"participant_category_id": cat("Incubatees").pk, "name": "Incubatees"}]
     assert [f["field_label"] for f in body["fields"]] == ["Affiliation / Organization", "Data Privacy consent"]
@@ -237,21 +237,21 @@ def test_no_email_when_registration_fails(scheduled, django_capture_on_commit_ca
 @pytest.mark.django_db
 def test_public_register_endpoint(client, scheduled) -> None:
     payload = {"name": "Ana Cruz", "email": "ana@example.com", "contact_number": "0917", "answers": registration_answers(scheduled)}
-    response = client.post(f"/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
+    response = client.post(f"/api/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
     assert response.status_code == 201
     assert json.loads(response.content) == {
         "message": "You are registered. A confirmation email is on its way.",
         "participant_category": "Incubatees",
         "slots_remaining": 29,
     }
-    again = client.post(f"/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
+    again = client.post(f"/api/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
     assert again.status_code == 400
     assert json.loads(again.content) == {"error": "This email is already registered for this activity."}
 
 
 @pytest.mark.django_db
 def test_public_register_shows_field_errors(client, scheduled) -> None:
-    response = client.post(f"/register/{scheduled.pk}/", json.dumps({"name": "", "email": "x"}), content_type="application/json")
+    response = client.post(f"/api/register/{scheduled.pk}/", json.dumps({"name": "", "email": "x"}), content_type="application/json")
     assert response.status_code == 400
     assert {"name", "email"} <= set(json.loads(response.content)["errors"])
 

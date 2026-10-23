@@ -1,7 +1,8 @@
 """JSON endpoints for forms, public registration, attendance and evaluations.
 
 Views are thin: parse input, check permission, call registrations.services.
-Public endpoints (no login): /register/<activity_id>/ and /evaluate/<token>/.
+Public JSON endpoints (no login): /api/register/<activity_id>/ and /api/evaluate/<token>/.
+(/register/<id>/ and /evaluate/<token>/ are the HTML pages of the frontend phase; emails link there.)
 Staff endpoints: /registrations/api/... (reading needs staff login; changes need can_create_activity).
 """
 
@@ -18,6 +19,8 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, staff_login_required
 from activities.models import Activity
+from config.network import client_ip
+from config.parsing import parse_bool
 
 from . import services
 from .models import FormField, FormTemplate
@@ -37,6 +40,8 @@ def api_errors(view: Callable) -> Callable:
         except ValidationError as error:
             errors = error.message_dict if hasattr(error, "error_dict") else {"__all__": error.messages}
             return JsonResponse({"errors": errors}, status=400)
+        except services.RegistrationRateLimited as error:
+            return JsonResponse({"error": str(error)}, status=429)
         except (services.RegistrationError, BadRequest) as error:
             return JsonResponse({"error": str(error)}, status=400)
 
@@ -62,7 +67,8 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
     """GET: activity info, categories, slots left and the form. POST: register.
 
     POST {"name", "email", "contact_number", "participant_category": id (optional if only one),
-          "answers": {"<field_id>": value}}
+          "answers": {"<field_id>": value}, "website": "" (the hidden honeypot field; leave empty)}
+    Too many attempts from one IP address or for one email: 429.
     """
     activity = services.get_public_activity(activity_id)
     if activity is None:
@@ -71,6 +77,7 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
         return JsonResponse({"activity": services.public_activity_info(activity)})
 
     data = _json_body(request)
+    services.guard_public_registration(client_ip(request), data.get("email"), data.get(services.HONEYPOT_FIELD))
     registration = services.register(
         activity,
         name=str(data.get("name", "")),
@@ -204,9 +211,7 @@ def reorder_fields_api(request: HttpRequest, template_id: int) -> JsonResponse:
 def registrations_api(request: HttpRequest, activity_id: int) -> JsonResponse:
     """GET ?attended=true|false&category=<id>"""
     activity = get_object_or_404(Activity, pk=activity_id)
-    attended = {"true": True, "false": False, None: None, "": None}.get(request.GET.get("attended"), "bad")
-    if attended == "bad":
-        raise BadRequest("attended must be true or false.")
+    attended = parse_bool(request.GET.get("attended"), "attended")
     category = request.GET.get("category") or None
     if category is not None and not category.isdigit():
         raise BadRequest("category must be a number.")
@@ -236,9 +241,12 @@ def attendance_api(request: HttpRequest, activity_id: int) -> JsonResponse:
     activity = get_object_or_404(Activity, pk=activity_id)
     data = _json_body(request)
     ids = data.get("registration_ids")
-    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+    if not isinstance(ids, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in ids):
         raise BadRequest("registration_ids must be a list of numbers.")
-    changed = services.set_attendance(request.user, activity, ids, bool(data.get("attended")), data.get("method"))
+    attended = parse_bool(data.get("attended"), "attended")
+    if attended is None:
+        raise BadRequest("attended is required: true or false.")
+    changed = services.set_attendance(request.user, activity, ids, attended, data.get("method"))
     return JsonResponse({"changed": changed})
 
 
@@ -246,5 +254,6 @@ def attendance_api(request: HttpRequest, activity_id: int) -> JsonResponse:
 @require_POST
 @api_errors
 def send_evaluation_links_api(request: HttpRequest, activity_id: int) -> JsonResponse:
+    """Queues one email per attendee who has not evaluated yet; {"queued": n} (sent in the background)."""
     activity = get_object_or_404(Activity, pk=activity_id)
-    return JsonResponse({"sent": services.send_evaluation_links(request.user, activity)})
+    return JsonResponse({"queued": services.send_evaluation_links(request.user, activity)})

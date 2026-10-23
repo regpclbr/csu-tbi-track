@@ -235,7 +235,8 @@ def password_token(startup: Startup) -> str:
 
 
 def password_link(startup: Startup) -> str:
-    return settings.SITE_URL + reverse("startups:set_password", args=[password_token(startup)])
+    # The page URL (the frontend's set-password page), not the JSON endpoint under /api/.
+    return settings.SITE_URL + reverse("startup_set_password", args=[password_token(startup)])
 
 
 def startup_from_password_token(token: str, *, lock: bool = False) -> Startup:

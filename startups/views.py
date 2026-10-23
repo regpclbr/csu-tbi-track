@@ -3,7 +3,8 @@
 - Staff (`/startups/api/`): any active staff member reads (item 12); sync and set-password
   links need can_manage_users.
 - Startup portal (`/startups/portal/api/`): a logged-in startup only (separate session key).
-- Public (`/startups/set-password/<token>/`): the signed, single-use set-password link.
+- Public (`/api/startups/set-password/<token>/`): the signed, single-use set-password link. The
+  emailed link opens the page URL /startups/set-password/<token>/ (frontend phase).
 """
 
 import json
@@ -22,6 +23,7 @@ from config.json import JsonResponse  # date-times in Manila time
 from accounts.permissions import Permission, permission_required, staff_login_required
 from accounts.services import LoginError
 from certificates import services as certificate_services
+from config.parsing import parse_bool
 from notifications import services as notification_services
 from notifications.views import notification_json
 from registrations import services as registration_services
@@ -101,16 +103,6 @@ def registration_json(registration: Registration) -> dict:
 # --- Staff side ------------------------------------------------------------------------------------
 
 
-def _bool_param(value: str | None) -> bool | None:
-    if value in (None, ""):
-        return None
-    if value.lower() in ("true", "1", "yes"):
-        return True
-    if value.lower() in ("false", "0", "no"):
-        return False
-    raise BadRequest("is_active must be true or false.")
-
-
 @staff_login_required
 @require_GET
 @api_errors
@@ -119,7 +111,7 @@ def startups_api(request: HttpRequest) -> JsonResponse:
     filters = {
         "q": request.GET.get("q", ""),
         "maturity_stage": request.GET.get("maturity_stage", ""),
-        "is_active": _bool_param(request.GET.get("is_active")),
+        "is_active": parse_bool(request.GET.get("is_active"), "is_active"),
     }
     result = services.list_startups(filters, page=request.GET.get("page", 1))
     return JsonResponse(
@@ -271,9 +263,10 @@ def portal_certificate_download(request: HttpRequest, certificate_id: int) -> Fi
 
 @startup_login_required
 @require_GET
+@api_errors
 def portal_notifications(request: HttpRequest) -> JsonResponse:
-    """GET ?page=&unread=1 — newest first."""
-    unread_only = request.GET.get("unread") == "1"
+    """GET ?page=&unread=true|false — newest first."""
+    unread_only = parse_bool(request.GET.get("unread"), "unread", default=False)
     result = notification_services.list_notifications(request.startup, request.GET.get("page", 1), unread_only=unread_only)
     return JsonResponse(
         {

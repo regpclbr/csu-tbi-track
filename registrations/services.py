@@ -4,10 +4,12 @@ Views stay thin and call the functions in this module.
 """
 
 import json
+import logging
 from datetime import datetime, time
 
 from django.conf import settings
 from django.core import signing
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -20,8 +22,8 @@ from accounts.permissions import Permission, require_permission
 from activities.formatting import format_datetime
 from activities.models import Activity, ActivityStatus, ParticipantCategory
 from activities.services import is_registration_open, slots_remaining
+from config.parsing import parse_bool
 
-from . import emails
 from .models import (
     DefaultFormField,
     EvaluationSubmission,
@@ -32,6 +34,8 @@ from .models import (
     FormType,
     Registration,
 )
+
+security_log = logging.getLogger("accounts.security")  # the same logger as the login lockout
 
 CHOICE_TYPES = (FieldType.MULTIPLE_CHOICE, FieldType.CHECKBOX)
 SHORT_TEXT_MAX = 255
@@ -46,9 +50,77 @@ RESERVED_LABELS = {"name", "full name", "email", "email address", "contact numbe
 ATTENDANCE_STATUSES = (ActivityStatus.ONGOING, ActivityStatus.CONDUCTED)
 EVALUATION_SALT = "registrations.evaluation-link"
 
+# The public registration form has this extra field, hidden from people by the frontend (CSS, not
+# type="hidden"). People leave it empty; simple bots fill in every field.
+HONEYPOT_FIELD = "website"
+HONEYPOT_MESSAGE = "Your registration could not be accepted."
+
+CONFIRMATION_TASK = "registrations.tasks.run_send_registration_confirmation"
+EVALUATION_LINK_TASK = "registrations.tasks.run_send_evaluation_link"
+
 
 class RegistrationError(Exception):
     """An action was refused. The message is safe to show (it never reveals other registrants)."""
+
+
+class RegistrationRateLimited(RegistrationError):
+    """Too many public registration attempts from one IP address or for one email (HTTP 429)."""
+
+
+# --- Background emails (Django-Q2 tasks in registrations/tasks.py) -------------------------------
+
+
+def queue_confirmation(registration_id: int) -> None:
+    from django_q.tasks import async_task
+
+    async_task(CONFIRMATION_TASK, registration_id, task_name=f"Registration confirmation {registration_id}")
+
+
+def queue_evaluation_link(registration_id: int) -> None:
+    from django_q.tasks import async_task
+
+    async_task(EVALUATION_LINK_TASK, registration_id, task_name=f"Evaluation link {registration_id}")
+
+
+# --- Public registration guard: rate limit and honeypot ------------------------------------------
+
+
+def _rate_key(kind: str, value: str) -> str:
+    return f"registration-attempts:{kind}:{value}"
+
+
+def _count_attempt(kind: str, value: str, limit: int) -> bool:
+    """Count one attempt in the current window. True while `value` is still within `limit`."""
+    key, seconds = _rate_key(kind, value), settings.REGISTRATION_RATE_WINDOW_MINUTES * 60
+    cache.add(key, 0, seconds)  # the window starts with the first attempt
+    try:
+        attempts = cache.incr(key)
+    except ValueError:  # the window expired between add() and incr()
+        cache.set(key, 1, seconds)
+        attempts = 1
+    return attempts <= limit
+
+
+def guard_public_registration(ip: str, email, honeypot) -> None:
+    """Checks for a public registration POST, before registering (never for the startup portal).
+
+    - Rate limit: at most REGISTRATION_MAX_ATTEMPTS_PER_IP attempts per IP address and
+      REGISTRATION_MAX_ATTEMPTS_PER_EMAIL per email (any activity) in REGISTRATION_RATE_WINDOW_MINUTES.
+      Every attempt counts, also refused ones. Counted in the same cache as the login lockout.
+    - Honeypot: a filled-in HONEYPOT_FIELD is refused with a neutral message and nothing is saved.
+    Both are logged with the IP address only (never the email).
+    """
+    email = str(email or "").strip().lower()
+    ip_ok = _count_attempt("ip", ip, settings.REGISTRATION_MAX_ATTEMPTS_PER_IP)
+    email_ok = _count_attempt("email", email, settings.REGISTRATION_MAX_ATTEMPTS_PER_EMAIL) if email else True
+    if not (ip_ok and email_ok):
+        security_log.warning("Public registration rate limit reached (ip=%s, by %s).", ip, "ip" if not ip_ok else "email")
+        raise RegistrationRateLimited(
+            f"Too many registration attempts. Please try again in {settings.REGISTRATION_RATE_WINDOW_MINUTES} minutes."
+        )
+    if str(honeypot or "").strip():
+        security_log.warning("Public registration refused: the hidden field was filled in (ip=%s).", ip)
+        raise RegistrationError(HONEYPOT_MESSAGE)
 
 
 # --- Field options (stored as a JSON list in FORM_FIELD.options) --------------------------
@@ -238,7 +310,7 @@ def add_field(
     last = form.fields.aggregate(last=Max("sort_order"))["last"] or 0
     return FormField.objects.create(
         template=form, field_label=label, field_type=field_type, options=stored_options,
-        is_required=bool(is_required), sort_order=last + 1,
+        is_required=parse_bool(is_required, "is_required", default=True), sort_order=last + 1,
     )
 
 
@@ -260,7 +332,7 @@ def update_field(member: TBIMember, field: FormField, **changes) -> FormField:
         options = None  # e.g. changing a checkbox into short text drops its options
     field.field_label, field.options = _clean_field(field.template, label, field_type, options)
     field.field_type = field_type
-    field.is_required = bool(changes.get("is_required", field.is_required))
+    field.is_required = parse_bool(changes.get("is_required"), "is_required", default=field.is_required)
     field.save()
     return field
 
@@ -350,6 +422,8 @@ def public_activity_info(activity: Activity, now: datetime | None = None) -> dic
             {"participant_category_id": c.pk, "name": c.name} for c in activity.participant_categories.order_by("name")
         ],
         "fields": [_field_json(field) for field in form.fields.order_by("sort_order", "field_id")] if form else [],
+        # Render this field hidden from people (CSS, not type="hidden") and send it empty.
+        "honeypot_field": HONEYPOT_FIELD,
     }
 
 
@@ -423,7 +497,10 @@ def register(
         FormAnswer.objects.create(
             field=field, answer_source=FormAnswer.AnswerSource.REGISTRATION, registration=registration, answer_value=value
         )
-    transaction.on_commit(lambda: emails.send_registration_confirmation(registration))
+    # The confirmation email is a background task queued after the commit. robust=True: a problem
+    # queueing it never turns the saved registration into an error (the task itself never raises).
+    registration_id = registration.pk
+    transaction.on_commit(lambda: queue_confirmation(registration_id), robust=True)
     return registration
 
 
@@ -540,10 +617,19 @@ def evaluation_closed_reason(registration: Registration, now: datetime | None = 
 
 
 def evaluation_page(token: str, now: datetime | None = None) -> dict:
-    """What the evaluation page shows for a personal link."""
+    """What the evaluation page shows for a personal link.
+
+    Once the evaluation is submitted or the window has closed, the link is of no more use: it then
+    shows only why it is closed, never the registrant's name or email (a forwarded or old email
+    should not reveal them).
+    """
     registration = registration_from_token(token)
     form = get_form(registration.activity, FormType.EVALUATION)
+    now = now or timezone.now()
     reason = evaluation_closed_reason(registration, now)
+    submitted = EvaluationSubmission.objects.filter(registration=registration).exists()
+    if submitted or now > registration.activity.evaluation_deadline:
+        return {"is_open": False, "closed_reason": reason}
     return {
         "activity": registration.activity.title,
         "name": registration.name,
@@ -635,7 +721,9 @@ def submit_evaluation(
 
 
 def send_evaluation_links(member: TBIMember, activity: Activity, now: datetime | None = None) -> int:
-    """Email each attendee who has not evaluated yet their personal link. Returns how many were sent.
+    """Queue one email task per attendee who has not evaluated yet (their personal link).
+    Returns how many were queued; the emails are sent in the background, so a mail-server
+    problem never fails this action.
 
     Refused if the activity has no evaluation form or the evaluation window is not open.
     """
@@ -645,8 +733,7 @@ def send_evaluation_links(member: TBIMember, activity: Activity, now: datetime |
     if reason := _window_reason(activity, now or timezone.now()):
         raise RegistrationError(f"Links cannot be sent now. {reason}")
     recipients = activity.registrations.filter(attendance_confirmed=True, evaluation_submission__isnull=True)
-    count = 0
-    for registration in recipients:
-        emails.send_evaluation_link(registration, evaluation_link(registration))
-        count += 1
-    return count
+    registration_ids = list(recipients.order_by("pk").values_list("pk", flat=True))
+    for registration_id in registration_ids:
+        queue_evaluation_link(registration_id)
+    return len(registration_ids)

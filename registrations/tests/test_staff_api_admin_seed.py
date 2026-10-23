@@ -89,7 +89,7 @@ def test_send_links_api(client, director, attended, monkeypatch) -> None:
     activity = attended(1)[0].activity
     monkeypatch.setattr(services.timezone, "now", lambda: opens_at(activity) + timedelta(hours=10))
     client.force_login(director)
-    assert body(post_json(client, f"{API}/activities/{activity.pk}/send-evaluation-links/")) == {"sent": 1}
+    assert body(post_json(client, f"{API}/activities/{activity.pk}/send-evaluation-links/")) == {"queued": 1}
     assert len(mail.outbox) == 1
 
 

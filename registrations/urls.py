@@ -1,5 +1,5 @@
 """Staff API for forms, registrations and attendance (mounted at /registrations/).
-The public URLs (/register/... and /evaluate/...) are in config/urls.py."""
+The public URLs (/api/register/..., /api/evaluate/... and their HTML page URLs) are in config/urls.py."""
 
 from django.urls import path
 

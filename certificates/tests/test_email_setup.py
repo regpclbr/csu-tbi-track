@@ -54,21 +54,38 @@ def test_blocked_addresses(address, blocked) -> None:
     assert config_mail.is_blocked_address(address) is blocked
 
 
-def test_guard_sends_real_recipients_and_prints_demo_ones(monkeypatch, capsys) -> None:
+def _guarded_send(monkeypatch) -> tuple[int, list]:
     from django.core.mail.backends.smtp import EmailBackend as SMTPBackend
 
     sent = []
     monkeypatch.setattr(SMTPBackend, "send_messages", lambda self, messages: sent.extend(messages) or len(messages))
     backend = config_mail.GuardedSMTPBackend(alias="test", host="localhost", port=25)
     messages = [
-        EmailMessage("Only demo", "x", "from@example.com", ["a@demo.example.com"]),
+        EmailMessage("Only demo", "secret link x", "from@example.com", ["a@demo.example.com"]),
         EmailMessage("Mixed", "x", "from@example.com", ["real@example.com", "b@demo.example.com"]),
         EmailMessage("Real", "x", "from@example.com", ["c@example.com"]),
     ]
-    assert backend.send_messages(messages) == 3
+    return backend.send_messages(messages), sent
+
+
+def test_guard_sends_real_recipients_and_prints_demo_ones_in_debug(monkeypatch, capsys, settings) -> None:
+    settings.DEBUG = True
+    count, sent = _guarded_send(monkeypatch)
+    assert count == 3
     assert [(m.subject, m.to) for m in sent] == [("Mixed", ["real@example.com"]), ("Real", ["c@example.com"])]
     out = capsys.readouterr().out
     assert "Subject: Only demo" in out and "Subject: Mixed" in out and "Subject: Real" not in out
+
+
+def test_guard_never_prints_demo_emails_without_debug(monkeypatch, capsys, caplog, settings) -> None:
+    settings.DEBUG = False
+    with caplog.at_level("INFO", logger="config.mail"):
+        count, sent = _guarded_send(monkeypatch)
+    assert count == 3  # still handled: the demo-only email counts as done
+    assert [(m.subject, m.to) for m in sent] == [("Mixed", ["real@example.com"]), ("Real", ["c@example.com"])]
+    assert capsys.readouterr().out == ""  # nothing printed
+    assert "2 email(s) to a blocked demo domain were not sent." in caplog.text
+    assert "secret link" not in caplog.text and "demo.example.com" not in caplog.text  # no body, no address
 
 
 def test_console_summarizes_attachments() -> None:
