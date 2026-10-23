@@ -46,8 +46,8 @@ def test_upload_errors_are_400(client, director, scheduled, doc_type) -> None:
 
 
 def test_api_requires_login(client, scheduled) -> None:
-    assert client.get(REPOSITORY).status_code == 302
-    assert client.post(api("api_upload", scheduled.pk)).status_code == 302
+    assert client.get(REPOSITORY).status_code == 401
+    assert client.post(api("api_upload", scheduled.pk)).status_code == 401
 
 
 # --- Review actions -------------------------------------------------------------------------------

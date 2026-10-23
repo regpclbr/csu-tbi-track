@@ -9,7 +9,6 @@ from datetime import datetime, time
 
 from django.conf import settings
 from django.core import signing
-from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -23,6 +22,7 @@ from activities.formatting import format_datetime
 from activities.models import Activity, ActivityStatus, ParticipantCategory
 from activities.services import is_registration_open, slots_remaining
 from config.parsing import parse_bool
+from config.ratelimit import count_attempt
 
 from .models import (
     DefaultFormField,
@@ -85,20 +85,9 @@ def queue_evaluation_link(registration_id: int) -> None:
 # --- Public registration guard: rate limit and honeypot ------------------------------------------
 
 
-def _rate_key(kind: str, value: str) -> str:
-    return f"registration-attempts:{kind}:{value}"
-
-
 def _count_attempt(kind: str, value: str, limit: int) -> bool:
-    """Count one attempt in the current window. True while `value` is still within `limit`."""
-    key, seconds = _rate_key(kind, value), settings.REGISTRATION_RATE_WINDOW_MINUTES * 60
-    cache.add(key, 0, seconds)  # the window starts with the first attempt
-    try:
-        attempts = cache.incr(key)
-    except ValueError:  # the window expired between add() and incr()
-        cache.set(key, 1, seconds)
-        attempts = 1
-    return attempts <= limit
+    """One public registration attempt, counted by the shared limiter (config/ratelimit.py)."""
+    return count_attempt("registration", kind, value, limit, settings.REGISTRATION_RATE_WINDOW_MINUTES)
 
 
 def guard_public_registration(ip: str, email, honeypot) -> None:
@@ -401,10 +390,9 @@ def _field_json(field: FormField) -> dict:
     }
 
 
-def public_activity_info(activity: Activity, now: datetime | None = None) -> dict:
-    """What the public registration page shows. Never who registered."""
-    form = get_form(activity, FormType.REGISTRATION)
-    reason = registration_closed_reason(activity, now)
+def public_activity_summary(activity: Activity) -> dict:
+    """The public facts of an activity: the same fields the registration page shows, without the
+    form. Never who registered."""
     return {
         "activity_id": activity.pk,
         "title": activity.title,
@@ -416,15 +404,37 @@ def public_activity_info(activity: Activity, now: datetime | None = None) -> dic
         "venue": activity.venue,
         "registration_deadline": activity.registration_deadline,
         "slots_remaining": slots_remaining(activity),
-        "is_open": reason is None,
-        "closed_reason": reason,
         "participant_categories": [
             {"participant_category_id": c.pk, "name": c.name} for c in activity.participant_categories.order_by("name")
         ],
+    }
+
+
+def public_activity_info(activity: Activity, now: datetime | None = None) -> dict:
+    """What the public registration page shows. Never who registered."""
+    form = get_form(activity, FormType.REGISTRATION)
+    reason = registration_closed_reason(activity, now)
+    return {
+        **public_activity_summary(activity),
+        "is_open": reason is None,
+        "closed_reason": reason,
         "fields": [_field_json(field) for field in form.fields.order_by("sort_order", "field_id")] if form else [],
         # Render this field hidden from people (CSS, not type="hidden") and send it empty.
         "honeypot_field": HONEYPOT_FIELD,
     }
+
+
+def open_activities(now: datetime | None = None) -> list[Activity]:
+    """Activities open for registration right now, soonest first: Scheduled, deadline not passed,
+    slots left and a registration form (the same rule as the registration page,
+    registration_closed_reason). Used by the public list and the startup portal."""
+    now = now or timezone.now()
+    candidates = (
+        Activity.objects.filter(status__name=ActivityStatus.SCHEDULED, registration_deadline__gte=now)
+        .select_related("status", "activity_type")
+        .order_by("start_date", "activity_id")
+    )
+    return [activity for activity in candidates if registration_closed_reason(activity, now) is None]
 
 
 def _choose_category(activity: Activity, category_id) -> ParticipantCategory:

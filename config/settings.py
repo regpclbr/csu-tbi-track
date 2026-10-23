@@ -99,7 +99,7 @@ DATABASES = {
         "NAME": os.environ.get("POSTGRES_DB", "csu_tbi_track"),
         "USER": os.environ.get("POSTGRES_USER", "csu_tbi"),
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
-        "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
+        "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),  # not "localhost": see .env.example
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
@@ -122,6 +122,24 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "accounts:login"
+
+# Sessions (staff and startup portal): at most 8 hours after logging in, and they also end when the
+# browser is closed (shared office computers).
+SESSION_COOKIE_AGE = 8 * 60 * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+# On a real server (DEBUG off) the session and CSRF cookies are sent over HTTPS only. The site must
+# then be served over HTTPS, or logging in will not work. (CSRF_COOKIE_HTTPONLY stays off: the
+# frontend's JavaScript reads the CSRF token from the cookie.)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+# "Forgot password" links for staff (Django's password reset) work for this many seconds, once.
+PASSWORD_RESET_TIMEOUT = 60 * 60
+# The "forgot password" form is rate limited (config/ratelimit.py, client_ip()): over a limit the
+# usual "check your email" page is shown but no email is sent. Every request counts.
+PASSWORD_RESET_MAX_REQUESTS_PER_EMAIL = 5
+PASSWORD_RESET_MAX_REQUESTS_PER_IP = 20
+PASSWORD_RESET_RATE_WINDOW_MINUTES = 60
 
 # Brute-force protection: after this many failed logins for one email (or many more
 # from one IP address), that email/IP is locked out for LOGIN_LOCKOUT_MINUTES.
@@ -281,6 +299,9 @@ ASSISTANT_CHUNK_OVERLAP = 200  # characters repeated between neighbouring chunks
 ASSISTANT_EMBED_BATCH_SIZE = 20  # texts per embedding request
 ASSISTANT_MAX_RETRIES = 4  # attempts per Gemini request on rate limits / server errors
 ASSISTANT_REQUEST_TIMEOUT_SECONDS = 60  # one Gemini request may take at most this long
+# One question in total (all rounds, embeddings and retries). The assistant still answers inside the
+# web request, so keep this under the web server's timeout (e.g. gunicorn --timeout 120).
+ASSISTANT_QUESTION_TIMEOUT_SECONDS = 90
 ASSISTANT_TOP_K = 6  # excerpts retrieved per search
 ASSISTANT_MIN_SIMILARITY = 0.55  # cosine similarity below this is "not relevant"
 ASSISTANT_HISTORY_MESSAGES = 6  # earlier chat messages sent as context (3 questions + answers)

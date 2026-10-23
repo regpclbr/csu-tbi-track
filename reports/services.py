@@ -38,10 +38,6 @@ CONTENT_TYPES = {
 }
 
 
-class ReportError(Exception):
-    """A report action was refused (the message is safe to show)."""
-
-
 # --- Dashboard -----------------------------------------------------------------------------------
 
 

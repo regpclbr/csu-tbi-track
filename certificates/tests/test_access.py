@@ -58,7 +58,7 @@ def test_download_is_404_before_the_pdf_exists(client, generated, admin_staff) -
 def test_not_logged_in_is_sent_to_the_login(client, both_issued) -> None:
     certificate = certificate_of(both_issued[1][0])
     for url in ("/certificates/api/", f"/certificates/api/{certificate.pk}/", f"/certificates/{certificate.pk}/download/"):
-        assert client.get(url).status_code == 302
+        assert client.get(url).status_code == (401 if "/api/" in url else 302)  # API: JSON; file: login page
 
 
 # --- Startup portal ---------------------------------------------------------------------------------

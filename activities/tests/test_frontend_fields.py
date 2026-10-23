@@ -53,5 +53,5 @@ def test_lookups_list_id_and_name(client, director) -> None:
 
 
 def test_lookups_need_a_staff_login(client) -> None:
-    assert client.get("/api/lookups/").status_code == 302
-    assert client.post("/api/lookups/").status_code == 302
+    assert client.get("/api/lookups/").status_code == 401
+    assert client.post("/api/lookups/").status_code == 401

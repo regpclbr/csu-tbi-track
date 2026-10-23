@@ -11,7 +11,7 @@ all of them are to be validated with the TBI too.
 
 - **Item 67:** Should any staff member who can create activities be able to edit *every* activity, or only the activities they created themselves?
 - **Item 85:** Should the Admin role (the system administrator) also be able to create and edit activities, or only manage user accounts?
-- **Item 61:** When a staff member forgets their password, should the Admin be able to reset it for them from the system?
+- **Items 226–227:** A staff member who forgets their password can now ask for a one-time link by email (valid for one hour), and the Admin can also email them a new temporary password. Is that acceptable to the TBI, or should only one of the two exist?
 
 ## Activities
 

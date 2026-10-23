@@ -262,7 +262,7 @@ def test_chats_are_private(client, director, head, chat, fake_gemini) -> None:
 
 
 def test_api_requires_staff_login(client, chat) -> None:
-    assert client.get("/assistant/api/chats/").status_code == 302
+    assert client.get("/assistant/api/chats/").status_code == 401
 
 
 # --- API and errors -----------------------------------------------------------------------------------------

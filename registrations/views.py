@@ -61,6 +61,13 @@ def _json_body(request: HttpRequest) -> dict:
 # --- Public: registration ---------------------------------------------------------------
 
 
+@require_GET
+def public_open_activities(request: HttpRequest) -> JsonResponse:
+    """GET: activities open for registration now (soonest first), with the public fields of the
+    registration page (no form, never who registered). Open each with /api/register/<id>/."""
+    return JsonResponse({"activities": [services.public_activity_summary(a) for a in services.open_activities()]})
+
+
 @require_http_methods(["GET", "POST"])
 @api_errors
 def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:

@@ -212,7 +212,7 @@ def test_sync_and_links_need_can_manage_users(client, admin_staff, admin_member,
 
 
 def test_staff_api_requires_staff_login(client) -> None:
-    assert client.get("/startups/api/").status_code == 302
+    assert client.get("/startups/api/").status_code == 401
 
 
 def test_admin_is_view_only_with_link_action(client, admin_member, startup) -> None:

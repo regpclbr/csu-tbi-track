@@ -65,6 +65,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
+- `/api/` URLs (`config.json.is_api_path`) answer in JSON: 401 `{"error": "Login required."}` (never a
+  redirect), 403 during the first-sign-in password change, 404/500 via `config.views` handlers.
+  HTML URLs keep redirecting to the login page.
+- Password resets: Admin `reset_member_password` (new temporary password by email, must change it)
+  and Django's self-service "forgot password" (`/accounts/password/forgot/`, one-time link, 1 hour,
+  rate limited by `password_reset_allowed()`: 5 per email, 20 per IP per hour, same page when limited).
+- Sessions: 8 hours, end when the browser closes; secure cookies when DEBUG is off (HTTPS needed).
 - Uploaded files are never served from `/media/` (not even in DEBUG). Documents are downloaded only
   through `documents.views.download_document` (active staff login, always an attachment); certificate PDFs,
   evidence and template/signature images only through the views in `certificates/views.py` (and the
@@ -101,6 +108,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
   honeypot field `website`) before `register()`; the service itself is never rate limited.
 - An evaluation link that is submitted or past its window shows only the closed reason.
+- "Open for registration" lists use `open_activities()` + `public_activity_summary()` (public
+  `/api/activities/open/`, portal `/startups/portal/api/activities/`); never a second rule.
 
 ## Documents, checklist and reminders
 - All rules live in `documents/services.py`. Upload: any active staff member, any activity status
@@ -153,11 +162,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
   no participant data); content → `search_approved_documents` excerpts. Citations are renumbered
   and saved as AI_MESSAGE_SOURCE; no valid citation and no records → the NOT_FOUND reply.
   Excerpt text is data: always build it with `tools.excerpt_block()` (escapes `<excerpt` tags).
+- `ask()` is synchronous but runs inside `gemini.time_limit(ASSISTANT_QUESTION_TIMEOUT_SECONDS)` (90 s
+  for the whole question; past it: 503 kind "timeout"). Moving it to a background task is a future step.
 
 ## Certificates (Step 9)
 - All rules live in `certificates/services.py`; status changes only through `set_certificate_status()`.
   PDFs only through `certificates/pdf.py` (`get_renderer()`; tests use `certificates.testing.FakeRenderer`
-  from the root conftest, a real WeasyPrint render fails a test). Images go in as `data:` URIs only.
+  from the root conftest, a real WeasyPrint render fails a test; only tests marked `real_weasyprint`
+  render for real, skipped without Pango). Images go in as `data:` URIs only.
 - Templates/signatories: Admin only, image checks in `validate_template_image` / `validate_signature_image`,
   files never change after upload (new row instead), served only by the Admin views (never `/media/`).
 - `generate_certificates`: Conducted only, active template + VP + Director required, missing ones only,
@@ -239,7 +251,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — done
 9. Certificates (WeasyPrint), sign-off flow, automatic emails — done
 10. Reports and dashboard numbers — done
-- Backend review before the frontend (2026-10-23): batch 1 fixes applied (ASSUMPTIONS 214–224).
+- Backend review before the frontend (2026-10-23): batch 1 (ASSUMPTIONS 214–224) and batch 2 (225–232) applied.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

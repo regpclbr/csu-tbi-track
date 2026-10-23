@@ -114,7 +114,7 @@ class TBIMemberAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     search_fields = ("name", "email")
     ordering = ("name",)
     readonly_fields = ("is_active", "must_change_password", "is_superuser", "last_login", "created_at", "updated_at")
-    actions = ["deactivate_selected", "reactivate_selected"]
+    actions = ["deactivate_selected", "reactivate_selected", "reset_password_selected"]
 
     def get_form(self, request, obj=None, **kwargs):
         kwargs["form"] = TBIMemberChangeForm if obj else TBIMemberAddForm
@@ -147,3 +147,13 @@ class TBIMemberAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     def reactivate_selected(self, request, queryset) -> None:
         for member in queryset:
             services.reactivate_member(request.user, member)
+
+    @admin.action(description="Reset password (email a new temporary password)")
+    def reset_password_selected(self, request, queryset) -> None:
+        for member in queryset:
+            try:
+                services.reset_member_password(request.user, member)
+            except services.MemberManagementError as error:
+                self.message_user(request, f"{member.email}: {error}", level=messages.ERROR)
+            else:
+                self.message_user(request, f"A new temporary password was emailed to {member.email}.")

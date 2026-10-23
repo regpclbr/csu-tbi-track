@@ -160,7 +160,7 @@ def test_login_with_must_change_password_goes_to_change_page(client, new_member)
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("path", ["/", "/admin/", "/accounts/api/members/", "/activities/", "/media/demo/x.txt"])
+@pytest.mark.parametrize("path", ["/", "/admin/", "/activities/", "/media/demo/x.txt"])  # the API: test_api_errors.py
 def test_every_page_redirects_until_password_changed(client, new_member, path) -> None:
     client.force_login(new_member)
     response = client.get(path)
@@ -228,4 +228,7 @@ def test_startup_session_never_reaches_staff_views(client, path) -> None:
     session[STARTUP_SESSION_KEY] = startup.pk
     session.save()
     response = client.get(path)
-    assert response.status_code == 302 and response.url.startswith(LOGIN)
+    if "/api/" in path:  # the JSON API answers 401 instead of redirecting
+        assert response.status_code == 401 and response.json() == {"error": "Login required."}
+    else:
+        assert response.status_code == 302 and response.url.startswith(LOGIN)

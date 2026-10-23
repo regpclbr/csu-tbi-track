@@ -62,5 +62,5 @@ def test_any_status_and_an_activity_without_evaluations(make_activity, register,
 
 def test_needs_a_staff_login(client, make_activity) -> None:
     activity = make_activity()
-    assert client.get(url(activity)).status_code == 302
-    assert client.get("/reports/api/activities/999999/evaluation/").status_code == 302
+    assert client.get(url(activity)).status_code == 401
+    assert client.get("/reports/api/activities/999999/evaluation/").status_code == 401

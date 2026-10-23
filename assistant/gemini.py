@@ -9,6 +9,9 @@ import logging
 import math
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,7 +30,7 @@ class AssistantUnavailable(Exception):
 
     def __init__(self, message: str, kind: str = "unavailable", status: int | None = None, detail: str = "") -> None:
         super().__init__(message)
-        self.kind = kind  # "not_configured" | "rate_limit" | "rejected" | "model_unavailable" | "unavailable"
+        self.kind = kind  # "not_configured" | "rate_limit" | "rejected" | "model_unavailable" | "unavailable" | "timeout"
         self.status = status  # Google's HTTP status, if there was a response
         self.detail = detail  # Google's own error message (never the key, never document text)
 
@@ -37,7 +40,62 @@ RATE_LIMITED = "The AI service is busy (rate limit reached). Please try again in
 UNAVAILABLE = "The AI service is not available right now. Please try again later."
 KEY_REJECTED = "The Gemini API key was rejected. Check GEMINI_API_KEY in .env."
 MODEL_UNAVAILABLE = "The AI model {model} is not available for this API key. Run: python manage.py check_gemini"
+TOO_SLOW = "The AI assistant took too long to answer (more than {seconds} seconds). Please try again in a moment."
 DETAIL_MAX_LENGTH = 300
+
+
+# --- Time limit for one question -------------------------------------------------------------------
+# A question may make several Gemini requests (tool rounds, embeddings, retries). The assistant
+# answers inside the web request, so the whole question must fit under the web server's timeout:
+# within time_limit(), every request gets at most the time that is left, a retry wait that would
+# go past the limit is not started, and an expired limit raises AssistantUnavailable(kind="timeout").
+
+_deadline: ContextVar[tuple[float, int] | None] = ContextVar("assistant_deadline", default=None)
+
+
+def monotonic() -> float:
+    """The clock for the time limit (tests replace it)."""
+    return time.monotonic()
+
+
+@contextmanager
+def time_limit(seconds: int) -> Iterator[None]:
+    """Limit everything inside to `seconds` in total (see above)."""
+    token = _deadline.set((monotonic() + seconds, seconds))
+    try:
+        yield
+    finally:
+        _deadline.reset(token)
+
+
+def seconds_left() -> float | None:
+    """Seconds left under the current time limit, or None when there is no limit (e.g. indexing)."""
+    limit = _deadline.get()
+    return None if limit is None else limit[0] - monotonic()
+
+
+def check_time_left() -> None:
+    """Raise the clear "took too long" error when the current time limit has run out."""
+    left = seconds_left()
+    if left is not None and left <= 0:
+        _too_slow()
+
+
+def _too_slow() -> None:
+    seconds = _deadline.get()[1]
+    logger.warning("Gemini: the question time limit (%d s) was reached.", seconds)
+    raise AssistantUnavailable(TOO_SLOW.format(seconds=seconds), "timeout")
+
+
+def _http_options():
+    """Per-request HTTP options: the request timeout, shortened to the time left under a limit."""
+    from google.genai import types
+
+    left = seconds_left()
+    if left is None:
+        return None  # the client's own timeout (ASSISTANT_REQUEST_TIMEOUT_SECONDS) applies
+    seconds = max(1.0, min(settings.ASSISTANT_REQUEST_TIMEOUT_SECONDS, left))
+    return types.HttpOptions(timeout=int(seconds * 1000))
 
 
 def google_detail(error: Exception) -> str:
@@ -141,6 +199,7 @@ class GoogleGemini(GeminiGateway):
 
         attempts = max(1, self.max_attempts or settings.ASSISTANT_MAX_RETRIES)
         for attempt in range(1, attempts + 1):
+            check_time_left()
             try:
                 return function(*args, **kwargs)
             except errors.ClientError as error:
@@ -167,6 +226,9 @@ class GoogleGemini(GeminiGateway):
                 logger.error("Gemini %s (%s) gave up after %d attempt(s): %s, %s", what, model_name, attempts, kind, detail)
                 raise AssistantUnavailable(message, kind, status, detail) from None
             wait = 2 ** attempt  # 2, 4, 8 … seconds
+            left = seconds_left()
+            if left is not None and left <= wait:  # waiting would go past the question's time limit
+                _too_slow()
             logger.warning("Gemini %s (%s): %s, retrying in %d s (attempt %d of %d).", what, model_name, kind, wait, attempt, attempts)
             sleep(wait)
         raise AssistantUnavailable(UNAVAILABLE)  # not reached
@@ -185,6 +247,7 @@ class GoogleGemini(GeminiGateway):
                 task_type=task_type,
                 output_dimensionality=settings.EMBEDDING_DIMENSIONS,
                 title=title if task_type == DOCUMENT_TASK and title else None,
+                http_options=_http_options(),
             )
             response = self._call(
                 "embedding", model, self.client.models.embed_content, model=model, contents=batch, config=config,
@@ -226,6 +289,7 @@ class GoogleGemini(GeminiGateway):
                 for t in tools
             ])] if tools else None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+            http_options=_http_options(),
         )
         response = self._call("chat", model, self.client.models.generate_content, model=model, contents=contents, config=config)
         candidates = response.candidates or []

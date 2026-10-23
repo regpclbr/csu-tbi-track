@@ -51,7 +51,7 @@ def some_data(make_activity, register, evaluate, add_document, make_certificate_
 
 def test_anonymous_is_sent_to_login() -> None:
     response = Client().get(URL)
-    assert response.status_code == 302 and "login" in response["Location"]
+    assert response.status_code == 401 and response.json() == {"error": "Login required."}
 
 
 def test_a_startup_session_is_not_staff(roles) -> None:
@@ -61,7 +61,7 @@ def test_a_startup_session_is_not_staff(roles) -> None:
     session[STARTUP_SESSION_KEY] = startup.pk
     session.save()
     response = client.get(URL)
-    assert response.status_code == 302 and "login" in response["Location"]
+    assert response.status_code == 401 and response.json() == {"error": "Login required."}
 
 
 def test_any_active_staff_member_sees_the_dashboard(admin_staff, login) -> None:

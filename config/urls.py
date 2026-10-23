@@ -20,6 +20,7 @@ urlpatterns = [
     path("evaluate/<str:token>/", views.page_placeholder, name="evaluate"),
     path("startups/set-password/<str:token>/", views.page_placeholder, name="startup_set_password"),
     # Public JSON endpoints (no login): registration, personal evaluation links, set-password links.
+    path("api/activities/open/", registration_views.public_open_activities, name="api_open_activities"),
     path("api/register/<int:activity_id>/", registration_views.public_register, name="api_register"),
     path("api/evaluate/<str:token>/", registration_views.public_evaluate, name="api_evaluate"),
     path("api/startups/set-password/<str:token>/", startup_views.set_password, name="api_startup_set_password"),
@@ -36,8 +37,11 @@ urlpatterns = [
     path("notifications/", include("notifications.urls")),
 ]
 
-# A clear 403 message (JSON for /api/ URLs) when a member lacks a permission.
+# Errors for /api/ URLs are JSON (403 with the reason, 404, 500); pages keep Django's error pages.
+# (404 and 500 handlers are used only when DEBUG is off; with DEBUG on Django shows its debug pages.)
 handler403 = "config.views.permission_denied"
+handler404 = "config.views.page_not_found"
+handler500 = "config.views.server_error"
 
 # Uploaded files are deliberately NOT served from /media/ (not even in DEBUG).
 # Documents are downloaded only through /documents/<id>/download/, which requires a staff login.

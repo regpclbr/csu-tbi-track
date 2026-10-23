@@ -42,11 +42,15 @@ def fake_gemini(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def fake_pdf_renderer(monkeypatch):
+def fake_pdf_renderer(monkeypatch, request):
     """Tests NEVER render with real WeasyPrint (no Pango needed): every certificate PDF goes
-    through this FakeRenderer (certificates.pdf.get_renderer is the one injection point)."""
+    through this FakeRenderer (certificates.pdf.get_renderer is the one injection point).
+    Exception: a test marked @pytest.mark.real_weasyprint (it skips itself without Pango)."""
     from certificates import pdf
     from certificates.testing import FakeRenderer
+
+    if request.node.get_closest_marker("real_weasyprint"):
+        return None
 
     def refuse_real_render(self, html):
         raise RuntimeError("Tests must never render with real WeasyPrint.")

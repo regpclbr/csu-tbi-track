@@ -114,7 +114,7 @@ def test_admin_staff_gets_403_on_staff_changes(client, admin_staff, scheduled, s
 @pytest.mark.django_db
 def test_staff_api_needs_login(client, scheduled) -> None:
     response = client.get(f"{API}/activities/{scheduled.pk}/registrations/")
-    assert response.status_code == 302 and "/accounts/login/" in response.url
+    assert response.status_code == 401 and response.json() == {"error": "Login required."}
 
 
 # --- Django admin ------------------------------------------------------------------------

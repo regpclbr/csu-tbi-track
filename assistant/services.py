@@ -26,7 +26,7 @@ from accounts.models import TBIMember
 from accounts.permissions import require_staff_member
 from activities.models import Activity
 
-from . import tools
+from . import gemini, tools
 from .gemini import AssistantUnavailable, GeminiGateway, ModelReply, Turn, get_gateway
 from .models import AIChat, AIChatMessage, AIMessageSource
 
@@ -194,14 +194,19 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
     system_instruction = SYSTEM_INSTRUCTION.format(today=timezone.localdate(now or timezone.now()).isoformat())
 
     reply = ModelReply()
-    for round_number in range(settings.ASSISTANT_MAX_TOOL_ROUNDS + 1):
-        last_round = round_number == settings.ASSISTANT_MAX_TOOL_ROUNDS
-        reply = gateway.generate(system_instruction=system_instruction, turns=turns, tools=[] if last_round else tools.TOOL_SPECS)
-        if not reply.function_calls or last_round:
-            break
-        turns.append(Turn("model", reply=reply))
-        results = [(call.name, _run_tool(gateway, call.name, call.args, state)) for call in reply.function_calls]
-        turns.append(Turn("tool", tool_results=[(name, json.loads(json.dumps(result, default=str))) for name, result in results]))
+    # The whole question (every round, embedding and retry) gets ASSISTANT_QUESTION_TIMEOUT_SECONDS,
+    # so it fits under the web server's timeout; past it: AssistantUnavailable(kind="timeout"), a 503.
+    with gemini.time_limit(settings.ASSISTANT_QUESTION_TIMEOUT_SECONDS):
+        for round_number in range(settings.ASSISTANT_MAX_TOOL_ROUNDS + 1):
+            gemini.check_time_left()
+            last_round = round_number == settings.ASSISTANT_MAX_TOOL_ROUNDS
+            reply = gateway.generate(system_instruction=system_instruction, turns=turns, tools=[] if last_round else tools.TOOL_SPECS)
+            if not reply.function_calls or last_round:
+                break
+            turns.append(Turn("model", reply=reply))
+            results = [(call.name, _run_tool(gateway, call.name, call.args, state)) for call in reply.function_calls]
+            turns.append(Turn("tool", tool_results=[(name, json.loads(json.dumps(result, default=str))) for name, result in results]))
+        gemini.check_time_left()  # the last reply came in too late
 
     content, cited, answered_from = finalize_answer(reply.text, state)
     with transaction.atomic():

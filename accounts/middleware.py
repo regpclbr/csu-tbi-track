@@ -7,7 +7,11 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 
+from config.json import JsonResponse, is_api_path
+
 from .permissions import is_staff_member
+
+CHANGE_PASSWORD_FIRST = "Change your password first (first sign-in)."
 
 
 class MustChangePasswordMiddleware:
@@ -23,6 +27,8 @@ class MustChangePasswordMiddleware:
     def __call__(self, request: HttpRequest) -> HttpResponse:
         user = request.user
         if is_staff_member(user) and user.must_change_password and not self._is_allowed(request.path):
+            if is_api_path(request.path):  # the API answers in JSON instead of redirecting
+                return JsonResponse({"error": CHANGE_PASSWORD_FIRST}, status=403)
             return redirect("accounts:password_change")
         return self.get_response(request)
 

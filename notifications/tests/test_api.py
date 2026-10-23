@@ -18,8 +18,8 @@ def other(make_member):
 
 
 def test_requires_login(client) -> None:
-    assert client.get("/notifications/api/").status_code == 302
-    assert client.post("/notifications/api/read-all/").status_code == 302
+    assert client.get("/notifications/api/").status_code == 401
+    assert client.post("/notifications/api/read-all/").status_code == 401
 
 
 def test_list_count_and_mark_read(client, me, other) -> None:

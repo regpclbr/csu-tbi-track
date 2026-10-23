@@ -8,10 +8,15 @@ import json
 
 from django.conf import settings
 from django.contrib.auth import login, logout, update_session_auth_hash
+from django.contrib.auth import views as auth_views
+from django.contrib.auth.forms import SetPasswordForm
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse_lazy
+
+from config.network import client_ip
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -213,3 +218,67 @@ def member_reactivate_api(request: HttpRequest, member_id: int) -> JsonResponse:
     member = get_object_or_404(TBIMember, pk=member_id)
     services.reactivate_member(request.user, member)
     return JsonResponse({"member": _member_json(member)})
+
+
+@permission_required(Permission.MANAGE_USERS)
+@require_POST
+def member_reset_password_api(request: HttpRequest, member_id: int) -> JsonResponse:
+    """POST: email the member a new temporary password; they must change it at the next sign-in."""
+    member = get_object_or_404(TBIMember, pk=member_id)
+    try:
+        services.reset_member_password(request.user, member)
+    except services.MemberManagementError as error:
+        return _error(str(error))
+    return JsonResponse({"member": _member_json(member), "message": f"A new temporary password was emailed to {member.email}."})
+
+
+# --- Forgot password (staff, self-service; Django's password reset views) ------------------------
+# Anyone can ask for a link by email. The answer is always the same, so it never reveals whether an
+# email belongs to a member. Only active members with a usable password get an email (Django's rule).
+# The link is single use and expires after PASSWORD_RESET_TIMEOUT. The new password must pass the
+# same validators as everywhere else (AUTH_PASSWORD_VALIDATORS).
+
+
+class ForgotPasswordView(auth_views.PasswordResetView):
+    template_name = "accounts/password_forgot.html"
+    email_template_name = "accounts/password_reset_email.txt"
+    subject_template_name = "accounts/password_reset_subject.txt"
+    success_url = reverse_lazy("accounts:password_forgot_done")
+
+    @property
+    def extra_email_context(self) -> dict:
+        return {"site_url": settings.SITE_URL}  # the public address, not whatever Host header arrived
+
+    def form_valid(self, form):
+        """Rate limit (config/ratelimit.py): at most PASSWORD_RESET_MAX_REQUESTS_PER_EMAIL requests per
+        email and PASSWORD_RESET_MAX_REQUESTS_PER_IP per IP address in PASSWORD_RESET_RATE_WINDOW_MINUTES.
+        Over a limit the answer is the usual "check your email" page, so it reveals neither the limit nor
+        whether the email exists; no email is sent, and a WARNING is logged with the IP only."""
+        if services.password_reset_allowed(client_ip(self.request), form.cleaned_data["email"]):
+            return super().form_valid(form)
+        return HttpResponseRedirect(self.get_success_url())
+
+
+class ForgotPasswordDoneView(auth_views.PasswordResetDoneView):
+    template_name = "accounts/password_forgot_done.html"
+
+
+class NewPasswordForm(SetPasswordForm):
+    """Django's set-password form (same validators); a password chosen this way is the member's
+    own, so the first-sign-in change is no longer needed."""
+
+    def save(self, commit: bool = True):
+        self.user.must_change_password = False
+        user = super().save(commit=commit)
+        services.security_log.info("Password set with a forgot-password link: member_id=%s", user.pk)
+        return user
+
+
+class ResetPasswordConfirmView(auth_views.PasswordResetConfirmView):
+    template_name = "accounts/password_reset_confirm.html"
+    form_class = NewPasswordForm
+    success_url = reverse_lazy("accounts:password_reset_complete")
+
+
+class ResetPasswordCompleteView(auth_views.PasswordResetCompleteView):
+    template_name = "accounts/password_reset_complete.html"

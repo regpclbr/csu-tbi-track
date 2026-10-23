@@ -17,6 +17,7 @@ urlpatterns = [
     path("portal/api/logout/", views.portal_logout, name="portal_logout"),
     path("portal/api/me/", views.portal_me, name="portal_me"),
     path("portal/api/registrations/", views.portal_registrations, name="portal_registrations"),
+    path("portal/api/activities/", views.portal_open_activities, name="portal_open_activities"),
     path("portal/api/activities/<int:activity_id>/register/", views.portal_register, name="portal_register"),
     path("portal/api/certificates/", views.portal_certificates, name="portal_certificates"),
     path("portal/certificates/<int:certificate_id>/download/", views.portal_certificate_download, name="portal_certificate_download"),

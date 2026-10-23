@@ -15,8 +15,9 @@ from django.db import transaction
 from django.http import HttpRequest
 
 from config.network import client_ip  # one client_ip() for the lockout and the registration limit
+from config.ratelimit import count_attempt
 
-from .emails import send_invitation_email
+from .emails import send_invitation_email, send_password_reset_email
 from .models import Role, TBIMember
 from .permissions import Permission, require_permission
 
@@ -102,6 +103,20 @@ def authenticate_member(request: HttpRequest, email: str, password: str) -> TBIM
 
     clear_failed_logins(email)
     return member
+
+
+def password_reset_allowed(ip: str, email: str) -> bool:
+    """The "forgot password" rate limit (shared limiter, config/ratelimit.py). Counts this request for
+    the email (lowercased) and for the IP address; False when either is over its limit. Logged as a
+    WARNING with the IP address only, never the email."""
+    window = settings.PASSWORD_RESET_RATE_WINDOW_MINUTES
+    email_ok = count_attempt("password-reset", "email", email.strip().lower(), settings.PASSWORD_RESET_MAX_REQUESTS_PER_EMAIL, window)
+    ip_ok = count_attempt("password-reset", "ip", ip, settings.PASSWORD_RESET_MAX_REQUESTS_PER_IP, window)
+    if not (email_ok and ip_ok):
+        security_log.warning(
+            "Forgot-password rate limit reached (ip=%s, by %s): no email sent.", ip, "ip" if not ip_ok else "email"
+        )
+    return email_ok and ip_ok
 
 
 # --- Passwords ------------------------------------------------------------------------
@@ -225,6 +240,28 @@ def deactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
     member.is_active = False
     member.save(update_fields=["is_active", "updated_at"])
     security_log.info("Member deactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
+    return member
+
+
+@transaction.atomic
+def reset_member_password(acting_member: TBIMember, member: TBIMember) -> TBIMember:
+    """Admin Console: give a member a new temporary password by email (like the invitation).
+
+    The member must choose a new password at the next sign-in (must_change_password), and every
+    session they have open ends (Django checks the password hash on each request). Refused for a
+    deactivated member and for your own account (use "change password" instead).
+    """
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    if member.pk == acting_member.pk:
+        raise MemberManagementError("Use Change password for your own account.")
+    if not member.is_active:
+        raise MemberManagementError("This member is deactivated. Reactivate the account first.")
+    temporary_password = generate_temporary_password(member)
+    member.set_password(temporary_password)
+    member.must_change_password = True
+    member.save(update_fields=["password", "must_change_password", "updated_at"])
+    send_password_reset_email(member, temporary_password)  # inside the transaction: no email, no reset
+    security_log.info("Password reset by an Admin: member_id=%s by member_id=%s", member.pk, acting_member.pk)
     return member
 
 

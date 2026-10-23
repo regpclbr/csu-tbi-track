@@ -213,6 +213,19 @@ def portal_registrations(request: HttpRequest) -> JsonResponse:
 
 
 @startup_login_required
+@require_GET
+def portal_open_activities(request: HttpRequest) -> JsonResponse:
+    """GET: the same open activities as the public list, each with `already_registered` (this
+    startup has a registration for it: linked, or an older public one with its email)."""
+    mine = set(services.registrations_for(request.startup).values_list("activity_id", flat=True))
+    rows = [
+        {**registration_services.public_activity_summary(activity), "already_registered": activity.pk in mine}
+        for activity in registration_services.open_activities()
+    ]
+    return JsonResponse({"activities": rows})
+
+
+@startup_login_required
 @require_POST
 @api_errors
 def portal_register(request: HttpRequest, activity_id: int) -> JsonResponse:

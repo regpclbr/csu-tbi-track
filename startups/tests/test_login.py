@@ -127,7 +127,10 @@ STARTUP_URLS = [
 def test_startup_cannot_reach_staff_urls(client, startup, url) -> None:
     login(client, startup.email, STARTUP_PASSWORD)
     response = client.get(url)
-    assert response.status_code == 302 and "/login/" in response.url  # treated as not logged in (staff login)
+    if "/api/" in url:  # treated as not logged in: the staff JSON API answers 401
+        assert response.status_code == 401 and response.json() == {"error": "Login required."}
+    else:  # pages: the staff login page
+        assert response.status_code == 302 and "/login/" in response.url
 
 
 @pytest.mark.parametrize("url", STARTUP_URLS)

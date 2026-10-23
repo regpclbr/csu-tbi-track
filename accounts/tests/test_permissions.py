@@ -92,7 +92,9 @@ def test_admin_can_open_django_admin_site(client, admin_member) -> None:
 @pytest.mark.django_db
 def test_not_logged_in_is_sent_to_login(client) -> None:
     response = client.get("/accounts/api/members/")
-    assert response.status_code == 302 and "/accounts/login/" in response.url
+    assert response.status_code == 401 and response.json() == {"error": "Login required."}  # API: JSON
+    response = client.get("/")
+    assert response.status_code == 302 and "/accounts/login/" in response.url  # pages: the login page
 
 
 def test_403_page_shows_the_reason() -> None:

@@ -1,7 +1,6 @@
-"""Emails sent to staff members.
-
-For now Django's console email backend prints these to the terminal (not to the log).
-Step 9 replaces the body of `send_invitation_email` with real sending; callers don't change.
+"""Emails sent to staff members, through the project's mailer (settings.MAILERS: printed in the
+terminal while DEBUG is on, real SMTP otherwise). Temporary passwords exist only in these emails:
+they are never stored in plain text and never written to the log.
 """
 
 from django.conf import settings
@@ -24,6 +23,23 @@ def send_invitation_email(member: TBIMember, temporary_password: str) -> None:
             f"Email: {member.email}\n"
             f"Temporary password: {temporary_password}\n\n"
             "You will be asked to choose a new password the first time you sign in.\n"
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[member.email],
+    )
+
+
+def send_password_reset_email(member: TBIMember, temporary_password: str) -> None:
+    """An Admin reset the member's password: the new temporary password (only in this email)."""
+    send_mail(
+        subject="Your CSU-TBI Track password was reset",
+        message=(
+            f"Hello {member.name},\n\n"
+            "An Admin reset the password of your CSU-TBI Track account.\n\n"
+            f"Email: {member.email}\n"
+            f"Temporary password: {temporary_password}\n\n"
+            "You will be asked to choose a new password the next time you sign in.\n"
+            "If you did not ask for this, please tell the TBI Admin.\n"
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[member.email],

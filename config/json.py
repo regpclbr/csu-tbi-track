@@ -12,6 +12,12 @@ from django.http import JsonResponse as DjangoJsonResponse
 from django.utils import timezone
 
 
+def is_api_path(path: str) -> bool:
+    """True for the JSON API (/api/... and /<app>/api/...): errors there are JSON, never pages or
+    redirects to the login page."""
+    return "/api/" in path
+
+
 class LocalTimeJSONEncoder(DjangoJSONEncoder):
     def default(self, value):
         if isinstance(value, datetime) and timezone.is_aware(value):

@@ -12,6 +12,8 @@ from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
 from django.http import HttpRequest, HttpResponse
 
+from config.json import JsonResponse, is_api_path
+
 from .models import TBIMember
 
 
@@ -56,12 +58,18 @@ def require_permission(user: object, permission: Permission) -> None:
 ViewFunc = Callable[..., HttpResponse]
 
 
+LOGIN_REQUIRED_MESSAGE = "Login required."
+
+
 def staff_login_required(view: ViewFunc) -> ViewFunc:
-    """Allow only logged-in, active staff members. Others are sent to the staff login page."""
+    """Allow only logged-in, active staff members. Others are sent to the staff login page, or,
+    for the JSON API, get 401 {"error": "Login required."} (an API call cannot follow a redirect to a page)."""
 
     @wraps(view)
     def wrapper(request: HttpRequest, *args, **kwargs) -> HttpResponse:
         if not is_staff_member(request.user):
+            if is_api_path(request.path):
+                return JsonResponse({"error": LOGIN_REQUIRED_MESSAGE}, status=401)
             return redirect_to_login(request.get_full_path())
         return view(request, *args, **kwargs)
 

@@ -152,7 +152,7 @@ def test_any_staff_member_can_read(client, admin_staff, new_activity) -> None:
 def test_not_logged_in_is_sent_to_login(client, new_activity) -> None:
     for url in [API, f"{API}{new_activity.pk}/", f"{API}{new_activity.pk}/update/"]:
         response = client.get(url) if not url.endswith("update/") else post_json(client, url)
-        assert response.status_code == 302 and "/accounts/login/" in response.url
+        assert response.status_code == 401 and response.json() == {"error": "Login required."}
 
 
 # --- Read responses -----------------------------------------------------------------------
