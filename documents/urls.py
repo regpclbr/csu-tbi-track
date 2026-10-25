@@ -1,10 +1,13 @@
 from django.urls import path
 
+from config.views import coming_soon
+
 from . import views
 
 app_name = "documents"
 
 urlpatterns = [
+    path("", coming_soon, {"feature": "Documents"}, name="list"),  # page of a later frontend phase (config.views.COMING_SOON_PAGES)
     path("api/", views.repository_api, name="api_repository"),
     path("api/review-queue/", views.review_queue_api, name="api_review_queue"),
     path("api/activities/<int:activity_id>/upload/", views.upload_api, name="api_upload"),

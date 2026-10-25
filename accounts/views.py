@@ -1,7 +1,7 @@
 """Staff login, logout, password change, and the Admin Console user API.
 
 Views are thin: they read input, call accounts.services, and return a response.
-The HTML pages here are temporary plain forms; the real pages come in the frontend phase.
+The HTML pages extend templates/layouts/auth.html (Phase F1).
 """
 
 import json
@@ -27,7 +27,7 @@ from .forms import LoginForm, PasswordChangeForm
 from .models import Role, TBIMember
 from .permissions import Permission, is_staff_member, permission_required, staff_login_required
 
-# --- Login, logout, password change (temporary HTML forms) -------------------------
+# --- Login, logout, password change (HTML pages) -----------------------------------
 
 
 def _safe_next_url(request: HttpRequest) -> str | None:
@@ -90,12 +90,6 @@ def password_change_view(request: HttpRequest) -> HttpResponse:
             return redirect(settings.LOGIN_REDIRECT_URL)
 
     return render(request, "accounts/password_change.html", {"form": form})
-
-
-@staff_login_required
-def home_view(request: HttpRequest) -> HttpResponse:
-    """Temporary landing page until the dashboard is built (Step 10 / frontend)."""
-    return render(request, "accounts/home.html")
 
 
 # --- Admin Console: user management JSON API -----------------------------------------

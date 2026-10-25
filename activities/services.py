@@ -259,6 +259,16 @@ def get_audit_log(
     return _paginate(rows.order_by("-changed_at", "-log_id"), page, per_page)
 
 
+RECENT_CHANGES_LIMIT = 5
+
+
+def recent_audit_entries(limit: int = RECENT_CHANGES_LIMIT) -> list[ActivityAuditLog]:
+    """The newest audit rows across all activities (the dashboard's "Recent changes"), with the
+    member and the activity. Read only."""
+    rows = ActivityAuditLog.objects.select_related("changed_by", "activity").order_by("-changed_at", "-log_id")
+    return list(rows[:limit])
+
+
 # --- Create and edit ----------------------------------------------------------------------
 
 

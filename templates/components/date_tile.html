@@ -1,0 +1,5 @@
+{% load ui %}{# Date tile (OCT / 28, NOV / 4–5). {% include "components/date_tile.html" with activity=activity %} Decorative: write the dates as text elsewhere. #}{% with tile=activity|date_tile %}
+<div class="flex w-17 shrink-0 flex-col items-center justify-center rounded-lg bg-blue-50 py-2 text-primary" aria-hidden="true">
+  <span class="text-[11px] font-bold tracking-wide">{{ tile.month }}</span>
+  <span class="text-2xl leading-tight font-bold">{{ tile.days }}</span>
+</div>{% endwith %}

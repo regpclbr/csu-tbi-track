@@ -19,8 +19,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - WeasyPrint for PDFs, openpyxl for Excel
 - Local file storage for uploads (`MEDIA_ROOT`)
 - Local Django login now; Navigatu SSO is a later phase
-- Frontend (Django Templates, HTMX, Alpine.js) comes AFTER the backend. Until then, don't
-  build pages; expose logic through service functions and simple views or a small JSON API.
+- Frontend: Django Templates, HTMX, Alpine.js, Tailwind CSS v4 (standalone CLI, no Node.js). Built phase by
+  phase (F1 done); see "Frontend" below.
 
 ## Apps
 `accounts`, `activities`, `registrations`, `documents`, `certificates`, `reports`,
@@ -207,6 +207,40 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - AI narrative only through `reports/narrative.py`: Gemini gets figures, activity titles and dates only
   (`for_ai=False` columns removed), the exact prompt goes in `ai_prompt`, a failure never stops the report.
 
+## Frontend (Phase F1 onwards)
+- Design reference: `docs/design/dashboard.png` (and `logo.png`). Desktop-first staff pages (1280 px+, usable at
+  1024 px; below that the sidebar hides behind a menu button). Public pages (F3) must also work on phones.
+- Pages are server-rendered views that call the existing services; HTMX only for partial updates (an HTMX request
+  gets a partial template, `accounts.permissions.is_htmx()`). Never repeat a business rule in a template or in JS.
+- Staff pages extend `templates/layouts/app.html` and pass `page_title`; sign-in and password pages extend
+  `layouts/auth_split.html` (design `docs/design/login.png`); error pages extend `layouts/auth.html`.
+  Login pages: one full-screen gradient #22378F → #60CDEE (`.auth-bg`) and a frosted glass card (`.auth-card`: white 70%
+  + 20px blur, white 92% without backdrop-filter), dark text inside; white text only on the dark end; at 1366×768 and
+  1440×900 the login page fits without scrolling (ASSUMPTIONS 257).
+  The university is Caraga State University. The illustration is inline (`partials/login_illustration.html`;
+  `docs/design/login-illustration.svg` is the unchanged reference); its CSS animations end with the final picture as the
+  natural state and are all off under `prefers-reduced-motion` (classes `anim`, `rise`; ASSUMPTIONS 253).
+- `layout` (sidebar items, badges, unread count, Manila date) comes from `config.frontend`
+  (one list of nav items, each with an optional `Permission`).
+- Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
+  classes `btn btn-primary|danger|warning|secondary|ghost`, empty_state, form_field, form_errors, pagination, toasts,
+  progress_bar, date_tile, spinner, icon). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
+  (button whose arrow slides); movement only under `motion-safe` (ASSUMPTIONS 254). Icons only through `components/icon.html` (add Lucide 1.52.0 SVGs there).
+  Display filters: `{% load ui %}` (`config/ui_tags.py`: number, percent, rating, relative_time, ...).
+- Everything is self-hosted (`static/vendor/VERSIONS.md`); never link a CDN (a test checks it).
+- Tailwind v4: tokens in the `@theme` block of `frontend/tailwind/app.css` (no tailwind.config.js). A new app's
+  `templates/` folder must be added there as an `@source`. Run `python manage.py tailwind build` after template
+  changes and commit `static/css/app.css` (ASSUMPTIONS 235). Text contrast at least 4.5:1 (KPI teal: large text only).
+- CSRF for HTMX: `hx-headers` on the staff layout only (never in `base.html`: public pages must not print a
+  per-request token, ASSUMPTIONS 247). HTMX without login: 401 + `HX-Redirect` (`staff_login_required`).
+- HTML error pages: `templates/errors/403|404|500.html` (500 is rendered without the request). `/api/` stays JSON.
+- Dashboard (`/`, `reports.views.dashboard_page` + `reports/dashboard_page.py`): numbers only from
+  `reports.services.dashboard()` (= the API) and existing services (ASSUMPTIONS 237–244).
+- Pages of later phases use `config.views.coming_soon` under their final URL names (`COMING_SOON_PAGES`); remove an
+  entry when its page is built.
+- Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
+  list for every chart, an empty state for every list, a loading indicator (`htmx-indicator`) for HTMX swaps.
+
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
   step: everyone who registers is in.
@@ -252,6 +286,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 9. Certificates (WeasyPrint), sign-off flow, automatic emails — done
 10. Reports and dashboard numbers — done
 - Backend review before the frontend (2026-10-23): batch 1 (ASSUMPTIONS 214–224) and batch 2 (225–232) applied.
+- Frontend F1 (2026-10-24): design foundation, staff layout, login pages, dashboard, error pages (ASSUMPTIONS 233–254).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -269,6 +304,12 @@ variable (same for `runserver` and `qcluster`, which renders the PDFs). Check wi
 ## Commands
 ```powershell
 .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt           # what the app needs to run (the server needs only this)
+pip install -r requirements-dev.txt       # development: also pytest, pytest-django and Playwright
+python -m playwright install chromium     # once, development only: the browser for page screenshots
+python manage.py tailwind install         # once: the pinned Tailwind CLI into tools/ (checked by SHA-256)
+python manage.py tailwind build           # static/css/app.css (after template changes; commit the result)
+python manage.py tailwind watch           # rebuild on every template change while working (Ctrl+C stops)
 docker compose up -d
 python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters

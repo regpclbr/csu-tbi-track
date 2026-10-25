@@ -83,7 +83,9 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "config.frontend.staff_layout",  # sidebar, top bar counts (staff pages only)
             ],
+            "libraries": {"ui": "config.ui_tags"},  # {% load ui %}: number, percent, relative_time, ...
         },
     },
 ]
@@ -197,6 +199,8 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Built CSS (python manage.py tailwind build), self-hosted fonts, htmx, Alpine.js, logo and icons.
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 # Uploaded files live in MEDIA_ROOT but are NEVER served from MEDIA_URL (not even in DEBUG):
 # documents are downloaded only through documents.views.download_document, which checks the login.

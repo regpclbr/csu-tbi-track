@@ -1,0 +1,19 @@
+{% comment %}
+Pager for a PageResult (activities.services.PageResult: items, total, page, num_pages).
+{% include "components/pagination.html" with result=result query=other_filters hx_target="#list" %}
+query: the other filters, already URL-encoded, WITHOUT "page" (optional).
+hx_target: the element HTMX swaps (optional; without it the links load the whole page).
+{% endcomment %}
+{% if result.num_pages > 1 %}
+<nav class="mt-4 flex items-center justify-between gap-4 text-sm" aria-label="Pages">
+  <p class="text-muted">Page {{ result.page }} of {{ result.num_pages }} · {{ result.total }} in total</p>
+  <div class="flex gap-2">
+    {% if result.page > 1 %}
+      <a class="btn btn-secondary btn-sm" rel="prev" href="?{% if query %}{{ query }}&amp;{% endif %}page={{ result.page|add:'-1' }}"{% if hx_target %} hx-get="?{% if query %}{{ query }}&amp;{% endif %}page={{ result.page|add:'-1' }}" hx-target="{{ hx_target }}" hx-push-url="true"{% endif %}>Previous</a>
+    {% endif %}
+    {% if result.page < result.num_pages %}
+      <a class="btn btn-secondary btn-sm" rel="next" href="?{% if query %}{{ query }}&amp;{% endif %}page={{ result.page|add:'1' }}"{% if hx_target %} hx-get="?{% if query %}{{ query }}&amp;{% endif %}page={{ result.page|add:'1' }}" hx-target="{{ hx_target }}" hx-push-url="true"{% endif %}>Next</a>
+    {% endif %}
+  </div>
+</nav>
+{% endif %}

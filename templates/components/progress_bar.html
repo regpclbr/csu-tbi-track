@@ -1,0 +1,4 @@
+{# Progress bar. {% include "components/progress_bar.html" with percent=93 label="28 of 30 slots registered" %} (the label is for screen readers) #}
+<div class="h-2 flex-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ percent }}" aria-label="{{ label }}">
+  <div class="h-full rounded-full bg-progress" style="width: {{ percent }}%"></div>
+</div>

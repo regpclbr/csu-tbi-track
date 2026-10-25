@@ -41,7 +41,8 @@ def test_no_update_or_delete_path_in_code_or_api() -> None:
         for name, function in inspect.getmembers(services, inspect.isfunction)
         if "audit" in name and function.__module__ == services.__name__  # defined there, not imported
     ]
-    assert sorted(functions) == ["_write_audit", "get_audit_log"]
+    # get_audit_log and recent_audit_entries (the dashboard's "Recent changes", F1) only read.
+    assert sorted(functions) == ["_write_audit", "get_audit_log", "recent_audit_entries"]
 
     audit_urls = [p for p in get_resolver("activities.urls").url_patterns if "audit" in str(p.pattern)]
     assert [p.name for p in audit_urls] == ["api_audit_log"]

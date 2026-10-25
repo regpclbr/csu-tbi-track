@@ -1,0 +1,27 @@
+{% load ui %}
+{# The bell's dropdown (notifications.views.dropdown / dropdown_read_all). Only the member's own notifications. #}
+<div class="flex items-center justify-between border-b border-line px-4 py-3">
+  <h2 class="text-sm font-semibold text-ink">Notifications</h2>
+  {% if unread %}
+    <button type="button" class="link text-sm" hx-post="{% url 'notifications:dropdown_read_all' %}" hx-target="#notifications-panel" hx-indicator="#notifications-loading">Mark all as read</button>
+  {% endif %}
+</div>
+{% if notifications %}
+  <ul class="max-h-96 divide-y divide-line overflow-y-auto">
+    {% for notification in notifications %}
+      <li class="flex gap-3 px-4 py-3 {% if not notification.is_read %}bg-blue-50/60{% endif %}">
+        <span class="mt-1.5 size-2 shrink-0 rounded-full {% if notification.is_read %}bg-transparent{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
+        <div class="min-w-0">
+          <p class="text-sm text-ink">{% if not notification.is_read %}<span class="sr-only">Unread: </span>{% endif %}{{ notification.message }}</p>
+          <p class="mt-0.5 text-xs text-muted">{{ notification.created_at|relative_time }}</p>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if total > notifications|length %}
+    <p class="border-t border-line px-4 py-2.5 text-xs text-muted">Showing the latest {{ notifications|length }} of {{ total }}.</p>
+  {% endif %}
+{% else %}
+  {% include "components/empty_state.html" with icon="bell" title="No notifications yet" text="Reminders about required documents will appear here." compact=True %}
+{% endif %}
+<span id="bell-count" hx-swap-oob="true">{% include "partials/bell_count.html" %}</span>

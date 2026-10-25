@@ -1,0 +1,32 @@
+{% load static %}<!doctype html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{% block title %}CSU-TBI Track{% endblock %}</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
+  <link rel="apple-touch-icon" sizes="180x180" href="{% static 'img/apple-touch-icon-180.png' %}">
+  <link rel="preload" href="{% static 'fonts/InterVariable.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  {# Self-hosted, pinned (static/vendor/VERSIONS.md). The staff layout adds hx-headers, so HTMX sends the CSRF token. #}
+  <script src="{% static 'vendor/htmx-2.0.11.min.js' %}" defer></script>
+  <script src="{% static 'vendor/alpine-3.17.4.min.js' %}" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="h-full {% block body_class %}{% endblock %}">
+  {% block body %}{% endblock %}
+  {% include "components/toasts.html" %}
+  <script>
+    // A failed HTMX request (403, 500, no connection) is not swapped into the page: tell the member.
+    document.addEventListener("htmx:responseError", function (event) {
+      var status = event.detail.xhr.status;
+      var text = status === 403 ? "You do not have permission to do this." : "Something went wrong. Please try again.";
+      window.dispatchEvent(new CustomEvent("toast", { detail: { level: "error", text: text } }));
+    });
+    document.addEventListener("htmx:sendError", function () {
+      window.dispatchEvent(new CustomEvent("toast", { detail: { level: "error", text: "No connection to the server. Please try again." } }));
+    });
+  </script>
+</body>
+</html>

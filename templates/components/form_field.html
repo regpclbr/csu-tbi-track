@@ -1,0 +1,41 @@
+{% comment %}
+One form field with its label, help text and errors (aria-invalid / aria-describedby set for screen readers).
+{% include "components/form_field.html" with field=form.email autocomplete="email" autofocus=True %}
+Optional:
+  icon="mail"                 a Lucide icon inside the input, on the left (components/icon.html)
+  placeholder="you@csu.edu.ph"
+  reveal=True                 password only: a show/hide button (Alpine) whose aria-label changes
+  aside_url=... aside_label=  a small link on the right of the label (e.g. "Forgot password?")
+Handles text-like inputs (text, email, password, date, number), select and textarea widgets.
+{% endcomment %}
+<div>
+  <div class="mb-1.5 flex items-baseline justify-between gap-3">
+    <label for="{{ field.id_for_label }}" class="text-sm font-semibold text-ink">{{ field.label }}</label>
+    {% if aside_url %}<a href="{{ aside_url }}" class="link text-sm">{{ aside_label }}</a>{% endif %}
+  </div>
+  {% if field.field.widget.input_type == "select" %}
+    <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="field-input"{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% elif field.help_text %} aria-describedby="{{ field.id_for_label }}-help"{% endif %}>
+      {% for value, label in field.field.choices %}<option value="{{ value }}"{% if field.value|stringformat:"s" == value|stringformat:"s" %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  {% elif field.field.widget.input_type %}
+    <div class="relative"{% if reveal %} x-data="{ show: false }"{% endif %}>
+      {% if icon %}<span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name=icon class="size-4.5" %}</span>{% endif %}
+      <input type="{{ field.field.widget.input_type }}" name="{{ field.html_name }}" id="{{ field.id_for_label }}"
+             class="field-input{% if icon %} pl-11{% endif %}{% if reveal %} pr-12{% endif %}"{% if reveal %} :type="show ? 'text' : 'password'"{% endif %}{% if field.field.widget.input_type != "password" and field.value is not None %} value="{{ field.value }}"{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}{% if autofocus %} autofocus{% endif %}{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% elif field.help_text %} aria-describedby="{{ field.id_for_label }}-help"{% endif %}>
+      {% if reveal %}
+        <button type="button" class="absolute inset-y-0 right-1.5 my-1.5 flex w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-ink"
+                @click="show = !show" :aria-pressed="show.toString()" :aria-label="show ? 'Hide password' : 'Show password'" aria-label="Show password" aria-controls="{{ field.id_for_label }}">
+          <span x-show="!show">{% include "components/icon.html" with name="eye" class="size-4.5" %}</span>
+          <span x-show="show" x-cloak>{% include "components/icon.html" with name="eye-off" class="size-4.5" %}</span>
+        </button>
+      {% endif %}
+    </div>
+  {% else %}
+    <textarea name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="field-input" rows="4"{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% endif %}>{{ field.value|default:"" }}</textarea>
+  {% endif %}
+  {% if field.errors %}
+    <p id="{{ field.id_for_label }}-error" class="field-error">{{ field.errors|join:" " }}</p>
+  {% elif field.help_text %}
+    <div id="{{ field.id_for_label }}-help" class="field-help">{{ field.help_text|safe }}</div>
+  {% endif %}
+</div>

@@ -1,0 +1,5 @@
+{% comment %}
+A badge. {% include "components/badge.html" with text="Approved" tone="success" %}
+tone: success | warning | danger | info | neutral, or an activity status tone (draft | scheduled | ongoing | conducted).
+For an activity status use components/status_badge.html, which picks the tone.
+{% endcomment %}<span class="badge badge-{{ tone|default:'neutral' }}">{{ text }}</span>

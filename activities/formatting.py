@@ -46,3 +46,34 @@ def format_audit_value(value: object) -> str:
     if isinstance(value, bool):
         return "Yes" if value else "No"
     return str(value)
+
+
+SENTENCE_VALUE_LIMIT = 60  # longer values are cut in sentences (the audit log itself keeps them whole)
+
+
+def _short(value: str) -> str:
+    return value if len(value) <= SENTENCE_VALUE_LIMIT else value[: SENTENCE_VALUE_LIMIT - 1].rstrip() + "…"
+
+
+def audit_sentence(entry) -> str:
+    """One ACTIVITY_AUDIT_LOG row as a sentence, for example
+    "Juan Dela Cruz changed the status of Business Model Training from Draft to Scheduled".
+    Uses the stored (already readable) values; the labels are the ones activities.services writes."""
+    from .services import RESOURCE_PERSON_ADDED, RESOURCE_PERSON_REMOVED, STATUS_LABEL
+
+    who, title = entry.changed_by.name, entry.activity.title
+    label, old, new = entry.field_changed, _short(entry.old_value), _short(entry.new_value)
+    field = label.lower()
+    if label == STATUS_LABEL and not old:
+        return f"{who} created {title} as {new}"
+    if label == STATUS_LABEL:
+        return f"{who} changed the status of {title} from {old} to {new}"
+    if label == RESOURCE_PERSON_ADDED:
+        return f"{who} added {new} as a resource person to {title}"
+    if label == RESOURCE_PERSON_REMOVED:
+        return f"{who} removed {old} as a resource person from {title}"
+    if label == "Description":
+        return f"{who} changed the description of {title}"
+    if not new:
+        return f"{who} cleared the {field} of {title}"
+    return f"{who} changed the {field} of {title} to {new}"

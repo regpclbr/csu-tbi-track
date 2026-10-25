@@ -1,15 +1,14 @@
-{# TEMPORARY plain form. Replaced by the real page in the frontend phase. #}
-<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Staff login - CSU-TBI Track</title></head>
-<body>
-  <h1>CSU-TBI Track staff login</h1>
-  <form method="post">
+{% extends "layouts/auth_split.html" %}
+{% block card_heading %}Welcome back{% endblock %}
+{% block card_text %}Sign in with your account to access your dashboard.{% endblock %}
+{% block card %}
+  <form method="post" class="mt-7 space-y-5" novalidate>
     {% csrf_token %}
-    {{ form.as_p }}
+    {% include "components/form_errors.html" %}
+    {% include "components/form_field.html" with field=form.email icon="mail" placeholder="you@csu.edu.ph" autocomplete="username" autofocus=True %}
+    {% url 'accounts:password_forgot' as forgot_url %}
+    {% include "components/form_field.html" with field=form.password icon="lock" placeholder="Your password" autocomplete="current-password" reveal=True aside_url=forgot_url aside_label="Forgot password?" %}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit">Log in</button>
+    <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-[15px]">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
   </form>
-  <p><a href="{% url 'accounts:password_forgot' %}">Forgot your password?</a></p>
-</body>
-</html>
+{% endblock %}

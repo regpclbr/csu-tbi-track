@@ -2,11 +2,14 @@
 
 from django.urls import path
 
+from config.views import coming_soon
+
 from . import views
 
 app_name = "certificates"
 
 urlpatterns = [
+    path("", coming_soon, {"feature": "Certificates"}, name="list"),  # page of a later frontend phase (config.views.COMING_SOON_PAGES)
     # Staff: reading and files
     path("api/", views.list_api, name="api_list"),
     path("api/<int:certificate_id>/", views.detail_api, name="api_detail"),

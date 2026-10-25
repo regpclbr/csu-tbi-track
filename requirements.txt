@@ -1,3 +1,5 @@
+# What the app needs to run (also on the server). Test and development tools: requirements-dev.txt
+
 # Web framework and database
 Django==6.1.2
 psycopg[binary]==3.3.6
@@ -20,7 +22,3 @@ pillow==13.0.0  # needed by ImageField (signature images)
 
 # Configuration
 python-dotenv==1.2.4
-
-# Testing
-pytest==9.1.1
-pytest-django==4.14.0

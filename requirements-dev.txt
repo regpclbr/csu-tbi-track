@@ -1,0 +1,11 @@
+# Test and development tools (not needed on the server). Installs the app's requirements too.
+#   pip install -r requirements-dev.txt
+#   python -m playwright install chromium     # once: the browser for screenshots (about 150 MB)
+-r requirements.txt
+
+# Testing
+pytest==9.1.1
+pytest-django==4.14.0
+
+# Browser screenshots of pages during development (compare with docs/design/*.png)
+playwright==1.63.0

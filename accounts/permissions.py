@@ -7,6 +7,7 @@ enough: every view and service that needs a permission calls these functions.
 from collections.abc import Callable
 from enum import StrEnum
 from functools import wraps
+from urllib.parse import urlsplit
 
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
@@ -61,16 +62,44 @@ ViewFunc = Callable[..., HttpResponse]
 LOGIN_REQUIRED_MESSAGE = "Login required."
 
 
+def is_htmx(request: HttpRequest) -> bool:
+    """True for a request sent by HTMX (a partial update of a page)."""
+    return request.headers.get("HX-Request") == "true"
+
+
+def htmx_redirect(request: HttpRequest, url: str, status: int = 200) -> HttpResponse:
+    """Tell HTMX to load `url` as a full page (HX-Redirect), instead of swapping a redirect's
+    page into a part of the current one."""
+    response = HttpResponse(status=status)
+    response["HX-Redirect"] = url
+    return response
+
+
+def _current_page(request: HttpRequest) -> str:
+    """The page the member is on: for HTMX, the page that sent the request (HX-Current-URL), so the
+    login sends them back there and not to a partial."""
+    current = request.headers.get("HX-Current-URL", "")
+    if is_htmx(request) and current:
+        parts = urlsplit(current)
+        if parts.netloc in ("", request.get_host()):
+            return parts.path + (f"?{parts.query}" if parts.query else "")
+    return request.get_full_path()
+
+
 def staff_login_required(view: ViewFunc) -> ViewFunc:
     """Allow only logged-in, active staff members. Others are sent to the staff login page, or,
-    for the JSON API, get 401 {"error": "Login required."} (an API call cannot follow a redirect to a page)."""
+    for the JSON API, get 401 {"error": "Login required."} (an API call cannot follow a redirect to a page).
+    An HTMX request gets 401 with an HX-Redirect header to the login page."""
 
     @wraps(view)
     def wrapper(request: HttpRequest, *args, **kwargs) -> HttpResponse:
         if not is_staff_member(request.user):
             if is_api_path(request.path):
                 return JsonResponse({"error": LOGIN_REQUIRED_MESSAGE}, status=401)
-            return redirect_to_login(request.get_full_path())
+            login_redirect = redirect_to_login(_current_page(request))
+            if is_htmx(request):  # 401 + HX-Redirect: HTMX loads the login page as a full page
+                return htmx_redirect(request, login_redirect.url, status=401)
+            return login_redirect
         return view(request, *args, **kwargs)
 
     return wrapper

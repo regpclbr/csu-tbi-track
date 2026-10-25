@@ -9,17 +9,18 @@ Report files are never served from /media/: only through download_report, always
 import json
 
 from django.core.exceptions import ValidationError
-from django.http import FileResponse, Http404, HttpRequest
-from django.shortcuts import get_object_or_404
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
-from accounts.permissions import staff_login_required
+from accounts.permissions import is_htmx, staff_login_required
 from activities.models import Activity
 from config.json import JsonResponse  # date-times in Manila time
 
 from . import services
 from .content import range_in_words
+from .dashboard_page import build_dashboard
 from .models import GeneratedReport
 
 
@@ -47,6 +48,17 @@ def report_json(report: GeneratedReport, state: str, detail: bool = False) -> di
     if detail:
         data["ai_prompt"] = report.ai_prompt  # the exact prompt sent to Gemini (figures only), or null
     return data
+
+
+@staff_login_required
+@require_GET
+def dashboard_page(request: HttpRequest) -> HttpResponse:
+    """The staff dashboard (/). GET range=this_month|this_quarter|this_year|last_year|custom,
+    start, end (YYYY-MM-DD, for custom) and activity_type. The filter form sends HTMX requests: they
+    get only the part below the filters (dashboard/_body.html); the URL keeps the filters."""
+    page = build_dashboard(request.user, request.GET)
+    template = "dashboard/_body.html" if is_htmx(request) else "dashboard/index.html"
+    return render(request, template, {"page_title": "Dashboard", "page": page})
 
 
 @staff_login_required

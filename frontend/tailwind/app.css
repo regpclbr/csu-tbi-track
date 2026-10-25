@@ -1,0 +1,311 @@
+/*
+  CSU-TBI Track: Tailwind CSS v4 source (the design tokens live in @theme below; v4 has no tailwind.config.js).
+  Build:  python manage.py tailwind build   -> static/css/app.css
+  Watch:  python manage.py tailwind watch
+  Colours come from docs/design/dashboard.png. Text colours were checked for contrast (>= 4.5:1 for
+  normal text, >= 3:1 for large text); see docs/ASSUMPTIONS.md "Frontend F1".
+*/
+@import "tailwindcss" source(none);
+
+/* Where Tailwind looks for class names (templates and the few Python modules that choose classes). */
+@source "../../templates";
+@source "../../accounts/templates";
+@source "../../activities/templates";
+@source "../../registrations/templates";
+@source "../../documents/templates";
+@source "../../certificates/templates";
+@source "../../reports/templates";
+@source "../../startups/templates";
+@source "../../assistant/templates";
+@source "../../notifications/templates";
+@source "../../reports/dashboard_page.py";
+@source "../../config/frontend.py";
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("../fonts/InterVariable.woff2") format("woff2");
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Brand and layout */
+  --color-sidebar: #22378F;
+  --color-sidebar-hover: #2B44A6;
+  --color-sidebar-line: #3A4FA3;
+  --color-sidebar-muted: #C7D2FE;      /* "WORKSPACE" label, role: 7.0:1 on the sidebar */
+  --color-primary: #1D4ED8;            /* 6.7:1 on white */
+  --color-primary-hover: #1E40AF;
+  --color-primary-soft: #DBEAFE;
+  --color-kpi: #0D9488;                /* KPI numbers only (large text: 3.7:1 on white, needs 3:1) */
+  --color-accent: #14B8A6;             /* decoration only (donut, logo tile, focus ring), never text */
+  --color-page: #F4F6FB;
+  --color-line: #E6EAF2;
+  --color-ink: #0F172A;                /* 17.9:1 on white */
+  --color-muted: #475569;              /* 7.6:1 on white, 7.0:1 on the page background */
+  --color-danger: #DC2626;             /* white text on it: 4.8:1 */
+  --color-danger-hover: #B91C1C;
+  --color-danger-soft: #FEE2E2;
+  --color-warning: #B45309;            /* amber text: 5.0:1 on white */
+  --color-warning-soft: #FEF3C7;
+
+  /* Status badges (text on its soft background is at least 6:1) */
+  --color-status-draft: #CBD5E1;
+  --color-status-scheduled: #60A5FA;
+  --color-status-ongoing: #FBBF24;
+  --color-status-conducted: #34D399;
+  --color-progress: #F59E0B;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  body {
+    @apply bg-page font-sans text-sm text-ink;
+  }
+  /* Visible keyboard focus everywhere (mouse clicks do not show it). */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  .on-dark :focus-visible {
+    outline-color: #FFFFFF;
+  }
+  [x-cloak] {
+    display: none !important;
+  }
+}
+
+@layer components {
+  /* Buttons: <a class="btn btn-primary"> or <button class="btn btn-danger btn-sm"> */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 hover:shadow-md active:translate-y-0 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 motion-safe:hover:-translate-y-px;
+  }
+  /* A button whose last icon (an arrow) slides forward on hover: <button class="btn btn-primary btn-arrow"> */
+  .btn-arrow svg:last-child {
+    transition: transform 150ms ease;
+  }
+  .btn-arrow:hover svg:last-child {
+    transform: translateX(4px);
+  }
+  .btn-sm {
+    @apply px-3.5 py-2 text-sm;
+  }
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-primary-hover;
+  }
+  .btn-danger {
+    @apply bg-danger text-white hover:bg-danger-hover;
+  }
+  .btn-warning {
+    @apply border border-amber-300 bg-warning-soft text-amber-900 hover:bg-amber-200;
+  }
+  .btn-secondary {
+    @apply border border-line bg-white text-ink hover:bg-slate-50;
+  }
+  .btn-ghost {
+    @apply text-primary hover:bg-primary-soft hover:shadow-none;
+  }
+  .link {
+    @apply font-semibold text-primary hover:underline;
+  }
+
+  /* Cards */
+  .card {
+    @apply rounded-xl border border-line bg-white;
+  }
+  .card-title {
+    @apply text-lg font-semibold text-ink;
+  }
+  .card-subtitle {
+    @apply mt-1 text-sm text-muted;
+  }
+
+  /* Hover feedback (reuse in later phases):
+     .hover-lift  a card that lifts slightly (KPI cards, clickable cards)
+     .hover-row   a list row whose border and shadow strengthen (attention items, lists) */
+  .hover-lift {
+    @apply transition-[transform,box-shadow,border-color] duration-200 hover:border-slate-300 hover:shadow-md motion-safe:hover:-translate-y-0.5;
+  }
+  .hover-row {
+    @apply transition-[box-shadow,border-color,background-color] duration-200 hover:border-slate-300 hover:shadow-sm;
+  }
+
+  /* Badges and tags */
+  .badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
+  }
+  .badge-draft { @apply bg-slate-100 text-slate-700; }
+  .badge-scheduled { @apply bg-sky-100 text-sky-800; }
+  .badge-ongoing { @apply bg-amber-100 text-amber-800; }
+  .badge-conducted { @apply bg-green-100 text-green-800; }
+  .badge-success { @apply bg-green-100 text-green-800; }
+  .badge-warning { @apply bg-amber-100 text-amber-800; }
+  .badge-danger { @apply bg-red-100 text-red-800; }
+  .badge-info { @apply bg-blue-100 text-blue-800; }
+  .badge-neutral { @apply bg-slate-100 text-slate-700; }
+  .tag {
+    @apply inline-flex items-center rounded-md border border-line bg-white px-2 py-0.5 text-xs font-medium text-slate-700;
+  }
+  .tag-type {
+    @apply border-transparent bg-primary-soft font-semibold text-primary;
+  }
+
+  /* Forms */
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-ink;
+  }
+  .field-input {
+    @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-ink placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
+  }
+  .field-input[aria-invalid="true"] {
+    @apply border-danger focus:ring-danger/20;
+  }
+  .field-error {
+    @apply mt-1.5 text-sm text-red-700;
+  }
+  .field-help {
+    @apply mt-1.5 text-sm text-muted;
+  }
+
+  /* HTMX loading state: elements with .htmx-indicator show only while a request is running. */
+  .htmx-indicator {
+    @apply hidden;
+  }
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    @apply flex;
+  }
+  .htmx-request .htmx-dim,
+  .htmx-request.htmx-dim {
+    @apply pointer-events-none opacity-50 transition-opacity;
+  }
+
+  /* Text only for screen readers (chart equivalents, icon labels). */
+  .sr-only-table {
+    @apply sr-only;
+  }
+}
+
+/* --- Sign-in panel animations (layouts/auth_split.html, partials/login_illustration.html) -------------------------
+   CSS only. Every element's natural state is its final state; entrance animations start from their "from" keyframe
+   (fill-mode: both), so with animations off (prefers-reduced-motion) the page is complete at once.
+   Only transform, opacity and stroke-dashoffset change: no layout shift. Entrance ends at about 1.45 s.
+   Loops: the gentle float of the illustration's cards and the slow flow of the dashed connector (left panel only,
+   never near the form). */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes li-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes li-draw {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@keyframes li-ring {
+  from { stroke-dashoffset: 201.1; }
+}
+@keyframes li-pop {
+  0% { opacity: 0; transform: scale(0.4); }
+  70% { opacity: 1; transform: scale(1.12); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes li-flow {
+  to { stroke-dashoffset: -22; }
+}
+@keyframes li-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+/* fill-mode backwards: after the entrance the element is back in its natural state, so hover effects can move it */
+.rise { animation: rise-in 500ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards; }
+/* The sign-in pages: one full-screen gradient from the brand blue (#22378F, top left, behind the logo, headline and
+   sentence: white text) to light cyan (#60CDEE, bottom right, behind the footer: dark text). White on #60CDEE would
+   be only 1.9:1, so no white text sits on the light end. Contrast: docs/ASSUMPTIONS.md item 257. Below 1024 px the
+   page is tall and narrow, so the gradient runs nearly top to bottom and stays dark behind the headline and sentence. */
+.auth-bg {
+  background: linear-gradient(170deg, #22378F 0%, #22378F 34%, #60CDEE 100%);
+}
+@media (width >= 64rem) {
+  .auth-bg {
+    background: linear-gradient(135deg, #22378F 0%, #22378F 22%, #60CDEE 100%);
+  }
+}
+/* The footer line: dark text on a small glass pill, so it passes wherever the gradient is mid-blue. */
+.auth-footnote {
+  background: rgb(255 255 255 / 0.6);
+}
+/* The sign-in card: light frosted glass. Without backdrop-filter it is nearly solid white (92%), so the dark text
+   stays readable. On hover it lifts 4 px and its shadow deepens; it moves only when the mouse enters or leaves it,
+   never while typing. */
+.auth-card {
+  background: rgb(255 255 255 / 0.92);
+  border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: 24px;
+  box-shadow: 0 20px 50px -20px rgb(11 26 92 / 0.45);
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 300ms ease, border-color 300ms ease;
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .auth-card {
+    background: rgb(255 255 255 / 0.7);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+  }
+}
+.auth-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 28px 60px -20px rgb(11 26 92 / 0.55);
+  border-color: rgb(255 255 255 / 0.8);
+}
+/* Inputs on the glass: white 85% with the card's border; focus ring in the primary blue (#1D4ED8). Unlayered, so the
+   focus and error states are repeated here. */
+.auth-card .field-input {
+  background: rgb(255 255 255 / 0.85);
+  border-color: rgb(255 255 255 / 0.5);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+/* The glass is a little darker than white: links and placeholders one shade darker keep 4.5:1 or more. */
+.auth-card .link {
+  color: var(--color-primary-hover);
+}
+.auth-card .field-input::placeholder {
+  color: var(--color-muted);
+}
+.auth-card .field-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgb(29 78 216 / 0.35);
+}
+.auth-card .field-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+.auth-card .field-input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px rgb(220 38 38 / 0.3);
+}
+/* fill-mode backwards: after the entrance the group is back to its natural state, so the hover lift below can move it */
+.login-illustration .li-enter { animation: li-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards; }
+/* Hover: a card of the illustration lifts and its shadow deepens */
+.login-illustration .li-card { transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1), filter 250ms ease; }
+.login-illustration .li-card:hover { transform: translateY(-6px); filter: drop-shadow(0 12px 14px rgb(11 26 92 / 0.35)); }
+.login-illustration .li-float { animation: li-float var(--float, 6s) ease-in-out var(--float-d, 1.5s) infinite; }
+.login-illustration .li-draw { stroke-dasharray: 1; animation: li-draw 500ms ease-out var(--d, 0ms) both; }
+.login-illustration .li-ring { animation: li-ring 700ms cubic-bezier(0.33, 1, 0.68, 1) var(--d, 0ms) both; }
+.login-illustration .li-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: li-pop 300ms ease-out var(--d, 0ms) both;
+}
+.login-illustration .li-flow { animation: li-flow 3s linear 1.5s infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim, .rise { animation: none !important; }
+  .login-illustration .li-card:hover, .btn-arrow:hover svg:last-child, .auth-card:hover { transform: none; }
+}

@@ -1,0 +1,42 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+The staff dashboard (reports.views.dashboard_page). The filter form sends an HTMX GET on every change;
+the response (dashboard/_body.html) replaces #dashboard-body and the URL keeps the filters
+(hx-push-url), so a reload or a shared link shows the same view. Without JavaScript the Apply button submits it.
+{% endcomment %}
+{% block content %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+  <h2 class="text-lg font-semibold text-slate-700">Overview</h2>
+  <form id="dashboard-filters" method="get" action="{% url 'home' %}"
+        hx-get="{% url 'home' %}" hx-target="#dashboard-body" hx-push-url="true" hx-trigger="change delay:300ms"
+        hx-indicator="#dashboard-body, #filters-loading"
+        x-data="{ range: '{{ page.range_key }}' }"
+        class="flex flex-wrap items-center gap-3">
+    <span id="filters-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
+    <div>
+      <label for="filter-range" class="sr-only">Date range</label>
+      <select id="filter-range" name="range" x-model="range" class="field-input w-auto py-2.5 pr-9 font-semibold">
+        {% for key, label in page.range_options %}<option value="{{ key }}"{% if key == page.range_key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div x-show="range === 'custom'" {% if page.range_key != "custom" %}x-cloak{% endif %} class="flex items-center gap-2">
+      <label for="filter-start" class="text-sm text-muted">From</label>
+      <input id="filter-start" type="date" name="start" value="{{ page.filters.start|date:'Y-m-d' }}" class="field-input w-auto py-2" :disabled="range !== 'custom'"{% if page.range_key != "custom" %} disabled{% endif %}>
+      <label for="filter-end" class="text-sm text-muted">to</label>
+      <input id="filter-end" type="date" name="end" value="{{ page.filters.end|date:'Y-m-d' }}" class="field-input w-auto py-2" :disabled="range !== 'custom'"{% if page.range_key != "custom" %} disabled{% endif %}>
+    </div>
+    <div>
+      <label for="filter-type" class="sr-only">Activity type</label>
+      <select id="filter-type" name="activity_type" class="field-input w-auto py-2.5 pr-9 font-semibold">
+        <option value="">All activity types</option>
+        {% for type in page.activity_types %}<option value="{{ type.pk }}"{% if type.pk == page.filters.activity_type_id %} selected{% endif %}>{{ type.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit" class="btn btn-secondary">Apply</button></noscript>
+  </form>
+</div>
+
+<div id="dashboard-body" class="htmx-dim">
+  {% include "dashboard/_body.html" %}
+</div>
+{% endblock %}

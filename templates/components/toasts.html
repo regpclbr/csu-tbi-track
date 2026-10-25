@@ -1,0 +1,27 @@
+{% comment %}
+Toast messages: Django messages (messages.success(request, "...")) shown when the page loads, plus any
+window event "toast" (detail: {level, text}) sent by JavaScript, e.g. after a failed HTMX request.
+They close by themselves after 6 seconds, or with the close button. Text is shown with x-text (never as HTML).
+{% endcomment %}
+{% if messages %}<script type="application/json" id="django-messages">[{% for message in messages %}{"level": "{{ message.level_tag|escapejs }}", "text": "{{ message|escapejs }}"}{% if not forloop.last %}, {% endif %}{% endfor %}]</script>{% endif %}
+<div x-data="{
+       toasts: [],
+       add(level, text) { const id = Date.now() + Math.random(); this.toasts.push({ id, level, text }); setTimeout(() => this.remove(id), 6000); },
+       remove(id) { this.toasts = this.toasts.filter(t => t.id !== id); }
+     }"
+     x-init="const el = document.getElementById('django-messages'); if (el) JSON.parse(el.textContent).forEach(m => add(m.level, m.text));"
+     @toast.window="add($event.detail.level, $event.detail.text)"
+     class="pointer-events-none fixed right-4 bottom-4 z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2"
+     role="status" aria-live="polite">
+  <template x-for="toast in toasts" :key="toast.id">
+    <div class="pointer-events-auto flex items-start gap-3 rounded-xl border bg-white px-4 py-3 text-sm shadow-lg"
+         :class="toast.level === 'error' ? 'border-red-200' : (toast.level === 'warning' ? 'border-amber-200' : 'border-line')">
+      <span class="mt-1.5 size-2 shrink-0 rounded-full" aria-hidden="true"
+            :class="toast.level === 'error' ? 'bg-danger' : (toast.level === 'warning' ? 'bg-amber-500' : (toast.level === 'success' ? 'bg-green-600' : 'bg-primary'))"></span>
+      <p class="flex-1 text-ink" x-text="toast.text"></p>
+      <button type="button" class="-m-1 rounded p-1 text-muted hover:text-ink" @click="remove(toast.id)" aria-label="Close this message">
+        {% include "components/icon.html" with name="x" class="size-4" %}
+      </button>
+    </div>
+  </template>
+</div>

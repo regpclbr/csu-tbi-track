@@ -1,0 +1,12 @@
+{% comment %}
+Section card = <section class="card p-6" aria-labelledby="ID"> + this header first inside it.
+{% include "components/section_header.html" with id="attention-title" title="Needs attention" subtitle="" aside="4 items" link_url="" link_label="" %}
+{% endcomment %}
+<div class="mb-5 flex items-start justify-between gap-4">
+  <div class="min-w-0">
+    <h2 id="{{ id }}" class="card-title">{{ title }}</h2>
+    {% if subtitle %}<p class="card-subtitle">{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if aside %}<p class="shrink-0 pt-0.5 text-sm text-muted">{{ aside }}</p>{% endif %}
+  {% if link_url %}<a href="{{ link_url }}" class="link shrink-0 pt-0.5 text-sm">{{ link_label }}</a>{% endif %}
+</div>

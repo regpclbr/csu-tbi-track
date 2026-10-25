@@ -1,0 +1,41 @@
+{% load ui %}
+{# Top bar: page title + Manila date, activity search, Ask AI, notification bell (HTMX dropdown). #}
+<header class="sticky top-0 z-20 flex min-h-22 items-center gap-4 border-b border-line bg-white px-6 xl:px-8">
+  <button type="button" class="-ml-2 rounded-lg p-2 text-muted hover:bg-slate-100 lg:hidden" @click="menuOpen = true" aria-label="Open the menu" aria-controls="sidebar" :aria-expanded="menuOpen.toString()">
+    {% include "components/icon.html" with name="menu" class="size-6" %}
+  </button>
+  <div class="min-w-0 flex-1">
+    <h1 class="truncate text-2xl font-bold tracking-tight text-ink">{{ page_title }}</h1>
+    <p class="mt-0.5 truncate text-sm text-muted">{% if page_subtitle %}{{ page_subtitle }}{% else %}{{ layout.today|long_date }} · Here's what's happening at CSU-TBI{% endif %}</p>
+  </div>
+
+  <form action="{% url 'activities:list' %}" method="get" role="search" class="relative hidden w-72 md:block xl:w-80">
+    <label for="topbar-search" class="sr-only">Search activities</label>
+    <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">{% include "components/icon.html" with name="search" class="size-4.5" %}</span>
+    <input id="topbar-search" type="search" name="q" value="{{ q|default:'' }}" placeholder="Search activities…" class="field-input bg-slate-50 py-2.5 pl-10">
+  </form>
+
+  <a href="{% url 'assistant:chat' %}" class="btn btn-primary hidden sm:inline-flex">
+    {% include "components/icon.html" with name="sparkles" class="size-4" %}
+    Ask AI
+  </a>
+
+  {# Bell: the dropdown is loaded by HTMX when opened (latest notifications, "mark all as read"). #}
+  <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+    <button type="button"
+            class="relative flex size-11 items-center justify-center rounded-xl border border-line bg-white text-ink hover:bg-slate-50"
+            @click="open = !open" :aria-expanded="open.toString()" aria-haspopup="true" aria-controls="notifications-panel"
+            hx-get="{% url 'notifications:dropdown' %}" hx-target="#notifications-panel" hx-trigger="click" hx-indicator="#notifications-loading">
+      {% include "components/icon.html" with name="bell" %}
+      <span class="sr-only">Notifications</span>
+      <span id="bell-count">{% include "partials/bell_count.html" with unread=layout.unread_count %}</span>
+    </button>
+    <div x-cloak x-show="open" x-transition.origin.top.right
+         class="absolute right-0 z-30 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-white shadow-lg">
+      <div id="notifications-loading" class="htmx-indicator items-center gap-2 px-4 py-3 text-sm text-muted">
+        {% include "components/spinner.html" %} Loading notifications…
+      </div>
+      <div id="notifications-panel" aria-live="polite"></div>
+    </div>
+  </div>
+</header>

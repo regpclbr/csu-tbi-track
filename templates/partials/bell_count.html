@@ -1,0 +1,2 @@
+{# The unread count on the bell. Also sent out-of-band (hx-swap-oob) with the dropdown, so it updates after "mark all as read". #}
+{% if unread %}<span class="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[11px] font-bold text-white ring-2 ring-white" aria-hidden="true">{% if unread > 99 %}99+{% else %}{{ unread }}{% endif %}</span><span class="sr-only">, {{ unread }} unread</span>{% endif %}

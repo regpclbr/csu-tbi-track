@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db.models import (
     Avg,
@@ -49,6 +50,7 @@ NOW = "now"  # snapshot of today; ignores the date range
 
 STATUS_ORDER = [ActivityStatus.DRAFT, ActivityStatus.SCHEDULED, ActivityStatus.ONGOING, ActivityStatus.CONDUCTED]
 UPCOMING_LIMIT = 5
+UPCOMING_WINDOW_DAYS = 30  # S2 detail: starting within the next 30 days (today included)
 MAX_RANGE_DAYS = 3660  # about 10 years: keeps the per-month list small
 
 APPROVED, FOR_REVIEW, MISSING = "Approved", "For Review", "Missing"  # same words as the Step 6 checklist
@@ -526,12 +528,18 @@ def activities_by_status(filters: ReportFilters) -> list[dict]:
 
 
 def upcoming_activities(filters: ReportFilters, now: datetime | None = None) -> dict:
-    """S2: Scheduled activities starting today or later (Manila), with the next few (title and dates)."""
+    """S2: Scheduled activities starting today or later (Manila), with the next few (title and dates).
+    `within_30_days`: those of them starting no later than today + UPCOMING_WINDOW_DAYS."""
+    today = today_in_manila(now)
     queryset = _of_type(
-        Activity.objects.filter(status__name=ActivityStatus.SCHEDULED, start_date__gte=today_in_manila(now)), filters
+        Activity.objects.filter(status__name=ActivityStatus.SCHEDULED, start_date__gte=today), filters
     ).order_by("start_date", "title", "pk")
+    counts = queryset.aggregate(
+        count=Count("pk"),
+        within_30_days=Count("pk", filter=Q(start_date__lte=today + timedelta(days=UPCOMING_WINDOW_DAYS))),
+    )
     return {
-        "count": queryset.count(),
+        **counts,
         "next": list(queryset.values("activity_id", "title", "start_date", "end_date")[:UPCOMING_LIMIT]),
     }
 
@@ -553,6 +561,46 @@ def documents_now(filters: ReportFilters, now: datetime | None = None, types: li
     return {"overdue": overdue, "waiting_for_review": review["waiting"], "returned": review["returned"]}
 
 
+def document_attention(filters: ReportFilters, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
+    """The dashboard's "Needs attention" document rows, as (activity, required type) pairs in non-Draft
+    activities of the type filter:
+    - "overdue": exactly the pairs S3 counts (past the due date, nothing Approved);
+    - "due_soon": the "due soon" reminder rule (documents.services._reminder_kind): nothing uploaded
+      and due within DOCUMENT_REMINDER_DAYS_BEFORE days (the due date itself included).
+    Each row: activity_id, title, document_type, due_date, state (Missing / For Review). Oldest due first.
+    One query per active required type."""
+    types = required_document_types() if types is None else types
+    today = today_in_manila(now)
+    days_before = settings.DOCUMENT_REMINDER_DAYS_BEFORE
+    activities = _of_type(Activity.objects.exclude(status__name=ActivityStatus.DRAFT), filters)
+    overdue, due_soon = [], []
+    for document_type in types:
+        reference, offset = document_type.due_reference, document_type.due_offset_days
+        # 0 <= (reference + offset) - today <= days_before, written on the plain reference date.
+        soon = Q(**{
+            f"{reference}__gte": today - timedelta(days=offset),
+            f"{reference}__lte": today + timedelta(days=days_before - offset),
+        }) & ~Q(_uploaded(document_type))
+        late = _overdue(document_type, today)
+        rows = (
+            activities.filter(late | soon)
+            .annotate(is_overdue=ExpressionWrapper(late, output_field=BooleanField()), uploaded=_uploaded(document_type))
+            .values("activity_id", "title", "start_date", "end_date", "is_overdue", "uploaded")
+        )
+        for row in rows:
+            item = {
+                "activity_id": row["activity_id"],
+                "title": row["title"],
+                "document_type": document_type.name,
+                "document_type_id": document_type.pk,
+                "due_date": row[reference] + timedelta(days=offset),
+                "state": FOR_REVIEW if row["uploaded"] else MISSING,
+            }
+            (overdue if row["is_overdue"] else due_soon).append(item)
+    order = lambda item: (item["due_date"], item["title"], item["document_type"])  # noqa: E731
+    return {"today": today, "overdue": sorted(overdue, key=order), "due_soon": sorted(due_soon, key=order)}
+
+
 def certificates_now(filters: ReportFilters) -> dict:
     """S5: Generated and Pending Sign-off; S6: Approved but not Issued yet."""
     status = Certificate.Status
@@ -561,6 +609,21 @@ def certificates_now(filters: ReportFilters) -> dict:
         pending_signoff=Count("pk", filter=Q(status=status.PENDING_SIGNOFF)),
         approved_not_issued=Count("pk", filter=Q(status=status.APPROVED)),
     )
+
+
+def certificates_waiting_by_activity(filters: ReportFilters, limit: int = 3) -> list[dict]:
+    """The activities with S5 certificates (Generated + Pending Sign-off), most certificates first:
+    activity_id, title, count. Respects the activity type filter, like S5."""
+    status = Certificate.Status
+    rows = (
+        _of_type(Certificate.objects.filter(status__in=[status.GENERATED, status.PENDING_SIGNOFF]), filters,
+                 "activity__activity_type_id")
+        .order_by()
+        .values("activity_id", "activity__title")
+        .annotate(count=Count("pk"))
+        .order_by("-count", "activity__title", "activity_id")[:limit]
+    )
+    return [{"activity_id": r["activity_id"], "title": r["activity__title"], "count": r["count"]} for r in rows]
 
 
 # --- The dashboard ---------------------------------------------------------------------------------
@@ -584,7 +647,7 @@ def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
         _card("activities_by_status", "Activities by status (start date in the range, Draft included)", PERIOD,
               sum(row["count"] for row in statuses), by_status=statuses),
         _card("upcoming_activities", "Upcoming activities (Scheduled, starting today or later)", NOW,
-              upcoming["count"], next=upcoming["next"]),
+              upcoming["count"], within_30_days=upcoming["within_30_days"], next=upcoming["next"]),
         _card("activities_conducted", "Activities conducted", PERIOD, summary["activities_conducted"]),
         _card("registrations", "Registered participants", PERIOD, summary["registered"],
               attended=summary["attended"], attendance_rate=summary["attendance_rate"],

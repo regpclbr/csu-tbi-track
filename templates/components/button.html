@@ -1,0 +1,5 @@
+{% comment %}
+A link styled as a button. {% include "components/button.html" with url=... label="Review" style="primary" size="sm" icon="plus" %}
+style: primary | danger | warning | secondary | ghost. For a real <button> (a form action), use the same
+classes directly: <button type="submit" class="btn btn-primary">.
+{% endcomment %}<a href="{{ url }}" class="btn btn-{{ style|default:'primary' }}{% if size == 'sm' %} btn-sm{% endif %}">{% if icon %}{% include "components/icon.html" with name=icon class="size-4" %}{% endif %}{{ label }}</a>

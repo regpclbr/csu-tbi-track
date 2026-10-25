@@ -1,7 +1,9 @@
-"""JSON API for "my notifications". A member only sees and changes their own."""
+"""JSON API for "my notifications", and the top bar's bell dropdown (HTML for HTMX).
+A member only sees and changes their own."""
 
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
@@ -64,3 +66,32 @@ def mark_read_api(request: HttpRequest, notification_id: int) -> JsonResponse:
 @require_POST
 def mark_all_read_api(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"marked_read": services.mark_all_read(request.user)})
+
+
+# --- The bell dropdown in the top bar (HTML partials for HTMX) -------------------------------------
+
+DROPDOWN_SIZE = 8
+
+
+def _dropdown(request: HttpRequest) -> HttpResponse:
+    latest = services.list_notifications(request.user, 1, per_page=DROPDOWN_SIZE)
+    return render(request, "partials/notifications_dropdown.html", {
+        "notifications": latest.items,
+        "total": latest.total,
+        "unread": services.unread_count(request.user),
+    })
+
+
+@staff_login_required
+@require_GET
+def dropdown(request: HttpRequest) -> HttpResponse:
+    """GET: the latest notifications, for the bell's dropdown."""
+    return _dropdown(request)
+
+
+@staff_login_required
+@require_POST
+def dropdown_read_all(request: HttpRequest) -> HttpResponse:
+    """POST: mark all my notifications as read, then show the dropdown again."""
+    services.mark_all_read(request.user)
+    return _dropdown(request)

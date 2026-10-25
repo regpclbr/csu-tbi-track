@@ -1,0 +1,10 @@
+{# One sidebar link. `item` is a dict from config.frontend.StaffLayout. #}
+<a href="{{ item.url }}"
+   class="group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors {% if item.active %}bg-[#E8EEFD] text-sidebar shadow-[inset_3px_0_0_var(--color-accent)]{% else %}text-white hover:bg-sidebar-hover{% endif %}"
+   {% if item.active %}aria-current="page"{% endif %}>
+  {% include "components/icon.html" with name=item.icon class="size-5 transition-transform duration-200 motion-safe:group-hover:scale-110" %}
+  <span class="flex-1">{{ item.label }}</span>
+  {% if item.badge %}
+    <span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1.5 text-xs font-bold text-amber-950">{{ item.badge }}<span class="sr-only"> {{ item.badge_label }}</span></span>
+  {% endif %}
+</a>

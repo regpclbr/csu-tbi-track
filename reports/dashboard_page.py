@@ -1,0 +1,318 @@
+"""The staff dashboard page (/): turns the numbers into what the template shows.
+
+Every number comes from reports.metrics (through services.dashboard, exactly like the dashboard API)
+or from an existing service (review queue, open activities, registered count, audit log). This module
+only picks, groups and lays out those results (percentages for bar widths, donut segments, sentences).
+"""
+
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta
+
+from django.core.exceptions import ValidationError
+from django.db.models import Count, Min
+from django.urls import reverse
+
+from accounts.models import TBIMember
+from accounts.permissions import Permission, has_permission
+from activities.formatting import audit_sentence
+from activities.models import Activity, ActivityType
+from activities.services import recent_audit_entries, registered_count
+from documents.services import review_queue, today_in_manila
+from registrations.services import open_activities
+
+from . import metrics, services
+from .content import range_in_words
+
+UPCOMING_SHOWN = 3
+ATTENTION_SHOWN = 5  # "Needs attention" items shown before "Show N more"
+ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs attention" item
+
+# Donut and legend colours, in order. Categories are master data (never a fixed number): the colours repeat.
+CATEGORY_COLORS = ["#1D4ED8", "#14B8A6", "#93C5FD", "#F59E0B", "#7C3AED", "#64748B", "#EC4899", "#84CC16"]
+
+QUICK_RANGES = [
+    ("this_month", "This month"),
+    ("this_quarter", "This quarter"),
+    ("this_year", "This year"),
+    ("last_year", "Last year"),
+    ("custom", "Custom"),
+]
+
+
+# --- Filters ---------------------------------------------------------------------------------------
+
+
+def quick_range(key: str, today: date) -> tuple[date, date] | None:
+    """Start and end of a quick choice (Manila calendar), or None for "custom" / unknown keys."""
+    if key == "this_month":
+        start = today.replace(day=1)
+        next_month = (start + timedelta(days=32)).replace(day=1)
+        return start, next_month - timedelta(days=1)
+    if key == "this_quarter":
+        first_month = 3 * ((today.month - 1) // 3) + 1
+        start = date(today.year, first_month, 1)
+        end = date(today.year + 1, 1, 1) if first_month == 10 else date(today.year, first_month + 3, 1)
+        return start, end - timedelta(days=1)
+    if key == "this_year":
+        return date(today.year, 1, 1), date(today.year, 12, 31)
+    if key == "last_year":
+        return date(today.year - 1, 1, 1), date(today.year - 1, 12, 31)
+    return None
+
+
+def matching_quick_range(start: date, end: date, today: date) -> str:
+    """The quick choice that gives exactly this range, else "custom"."""
+    for key, _label in QUICK_RANGES:
+        if quick_range(key, today) == (start, end):
+            return key
+    return "custom"
+
+
+def filter_params(params: dict, today: date) -> dict:
+    """The parameters for metrics.parse_filters: a quick choice (range=...) wins over typed dates."""
+    chosen = quick_range(params.get("range", ""), today)
+    start, end = (chosen[0].isoformat(), chosen[1].isoformat()) if chosen else (params.get("start"), params.get("end"))
+    return {"start": start, "end": end, "activity_type": params.get("activity_type")}
+
+
+# --- The page --------------------------------------------------------------------------------------
+
+
+@dataclass
+class AttentionItem:
+    tone: str  # "danger" (overdue), "warning" (due soon), "primary" (waiting for someone)
+    title: str
+    detail: str
+    action_label: str = ""
+    action_url: str = ""
+
+
+@dataclass
+class DashboardPage:
+    filters: metrics.ReportFilters
+    range_key: str
+    range_text: str
+    errors: list[str]
+    data: dict  # services.dashboard(): exactly what the dashboard API returns
+    cards: dict
+    can_create_activity: bool
+    review: dict
+    open_count: int
+    attention: list[AttentionItem]
+    upcoming: list[dict]
+    categories: dict
+    statuses: dict
+    conducted_by_type: list[dict]
+    recent_changes: list[dict]
+    activity_types: list = field(default_factory=list)
+    range_options: list = field(default_factory=list)  # (key, label) for the date range select
+
+    attention_shown: int = ATTENTION_SHOWN
+
+    @property
+    def attention_hidden(self) -> int:
+        return max(0, len(self.attention) - self.attention_shown)
+
+    @property
+    def attention_count_text(self) -> str:
+        count = len(self.attention)
+        return f"{count} item" if count == 1 else f"{count} items"
+
+
+def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None) -> DashboardPage:
+    """Everything the dashboard page shows, for any active staff member (services.dashboard checks it)."""
+    today = today_in_manila(now)
+    errors: list[str] = []
+    try:
+        data = services.dashboard(member, filter_params(params, today), now)
+    except ValidationError as error:
+        messages = error.message_dict if hasattr(error, "error_dict") else {"": error.messages}
+        errors = [message for values in messages.values() for message in values]
+        data = services.dashboard(member, {}, now)  # the default range (this year)
+    filters = metrics.ReportFilters(data["filters"]["start"], data["filters"]["end"], data["filters"]["activity_type"])
+    cards = {card["key"]: card for card in data["cards"]}
+    can_create = has_permission(member, Permission.CREATE_ACTIVITY)
+    review = _review(member, cards, can_create, now)
+
+    return DashboardPage(
+        filters=filters,
+        range_key=matching_quick_range(filters.start, filters.end, today),
+        range_text=range_in_words(filters.start, filters.end),
+        errors=errors,
+        data=data,
+        cards=cards,
+        can_create_activity=can_create,
+        review=review,
+        open_count=_open_count(filters, now),
+        attention=_attention(filters, cards, review, can_create, now),
+        upcoming=_upcoming(cards["upcoming_activities"]["next"][:UPCOMING_SHOWN]),
+        categories=_categories(data["charts"]["by_category"]),
+        statuses=_statuses(cards["activities_by_status"]["by_status"]),
+        conducted_by_type=_bars(data["charts"]["by_type"]),
+        recent_changes=[{"sentence": audit_sentence(entry), "changed_at": entry.changed_at} for entry in recent_audit_entries()],
+        activity_types=list(ActivityType.objects.filter(is_active=True).order_by("name")),
+        range_options=_range_options(today),
+    )
+
+
+def _range_options(today: date) -> list[tuple[str, str]]:
+    """The quick choices with their dates in words, e.g. ("this_year", "This year · January 1 – December 31, 2026")."""
+    options = []
+    for key, label in QUICK_RANGES:
+        chosen = quick_range(key, today)
+        options.append((key, f"{label} · {range_in_words(*chosen)}" if chosen else "Custom range…"))
+    return options
+
+
+def _review(member: TBIMember, cards: dict, can_create: bool, now: datetime | None = None) -> dict:
+    """Members who may review: the documents waiting for THEIR review (review_queue, never their own
+    uploads; all activity types, like the sidebar badge). Others: S4, waiting for any reviewer."""
+    if can_create:
+        queue = review_queue(member).aggregate(count=Count("pk"), oldest=Min("uploaded_at"))
+        oldest = today_in_manila(queue["oldest"]) if queue["oldest"] else None
+        days = (today_in_manila(now) - oldest).days if oldest else None
+        text = "" if days is None else "oldest: today" if days == 0 else f"oldest: {days} day{'' if days == 1 else 's'}"
+        return {"mine": True, "count": queue["count"], "oldest": oldest, "oldest_text": text}
+    return {"mine": False, "count": cards["documents_waiting_for_review"]["value"], "oldest": None, "oldest_text": ""}
+
+
+def _open_count(filters: metrics.ReportFilters, now: datetime | None) -> int:
+    """Activities open for registration now (registrations.services.open_activities, the one rule),
+    narrowed to the activity type filter like the other "now" cards."""
+    activities = open_activities(now)
+    if filters.activity_type_id:
+        activities = [a for a in activities if a.activity_type_id == filters.activity_type_id]
+    return len(activities)
+
+
+def _group_by_type(rows: list[dict]) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["document_type"], []).append(row)
+    return grouped
+
+
+def _titles(rows: list[dict]) -> str:
+    titles = list(dict.fromkeys(row["title"] for row in rows))
+    shown = ", ".join(titles[:ATTENTION_TITLES_SHOWN])
+    more = len(titles) - ATTENTION_TITLES_SHOWN
+    return f"{shown} and {more} more" if more > 0 else shown
+
+
+def _day(value: date) -> str:
+    return f"{value:%b} {value.day}"
+
+
+def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_create: bool,
+               now: datetime | None) -> list[AttentionItem]:
+    """Overdue required documents (red), documents due soon (amber), my review queue, certificate sign-off."""
+    items: list[AttentionItem] = []
+    documents_url = reverse("documents:list")
+    rows = metrics.document_attention(filters, now)
+    for type_name, group in _group_by_type(rows["overdue"]).items():
+        first = group[0]  # oldest due date first
+        if len(group) == 1:
+            verb = "is missing the" if first["state"] == metrics.MISSING else "is waiting for approval of the"
+            title = f"{first['title']} {verb} {type_name}"
+            detail = f"Overdue since {_day(first['due_date'] + timedelta(days=1))}"
+        else:
+            title = f"{type_name} is overdue for {len(group)} activities"
+            detail = _titles(group)
+        action = "Upload" if any(row["state"] == metrics.MISSING for row in group) else "Open"
+        items.append(AttentionItem("danger", title, detail, action, documents_url))
+    for type_name, group in _group_by_type(rows["due_soon"]).items():
+        first = group[0]
+        if len(group) == 1:
+            title = f"{first['title']} needs the {type_name}"
+            detail = f"Due {_day(first['due_date'])} · not uploaded yet"
+        else:
+            title = f"{type_name} is due soon for {len(group)} activities"
+            detail = f"{_titles(group)} · first due {_day(first['due_date'])}"
+        items.append(AttentionItem("warning", title, detail, "Upload", documents_url))
+
+    if review["mine"] and review["count"]:
+        noun = "document is" if review["count"] == 1 else "documents are"
+        items.append(AttentionItem(
+            "primary", f"{review['count']} {noun} waiting for your review",
+            f"Oldest uploaded {_day(review['oldest'])}" if review["oldest"] else "", "Review", documents_url,
+        ))
+
+    signoff = cards["certificates_waiting_for_signoff"]
+    if signoff["value"]:
+        noun = "certificate is" if signoff["value"] == 1 else "certificates are"
+        by_activity = metrics.certificates_waiting_by_activity(filters)
+        detail = ", ".join(row["title"] for row in by_activity[:ATTENTION_TITLES_SHOWN])
+        if len(by_activity) > ATTENTION_TITLES_SHOWN:
+            detail += " and more"
+        steps = []
+        if signoff["generated"]:
+            steps.append(f"{signoff['generated']} to review")
+        if signoff["pending_signoff"]:
+            steps.append(f"{signoff['pending_signoff']} waiting for signatures")
+        detail = " · ".join(filter(None, [detail, ", ".join(steps)]))
+        items.append(AttentionItem(
+            "primary", f"{signoff['value']} {noun} waiting for sign-off", detail,
+            "Review" if can_create else "", reverse("certificates:list") if can_create else "",
+        ))
+    return items
+
+
+def _upcoming(next_rows: list[dict]) -> list[dict]:
+    """The next Scheduled activities (S2's list) with type, categories and the registered count
+    (activities.services.registered_count, the Step 4 rule)."""
+    by_id = {
+        activity.pk: activity
+        for activity in Activity.objects.filter(pk__in=[row["activity_id"] for row in next_rows])
+        .select_related("status", "activity_type")
+        .prefetch_related("participant_categories")
+    }
+    upcoming = []
+    for row in next_rows:
+        activity = by_id[row["activity_id"]]
+        registered = registered_count(activity)
+        upcoming.append({
+            "activity": activity,
+            "categories": sorted(c.name for c in activity.participant_categories.all()),
+            "registered": registered,
+            "percent": min(100, round(100 * registered / activity.max_slots)) if activity.max_slots else 0,
+        })
+    return upcoming
+
+
+def _percent(part: int, whole: int) -> float:
+    return 100 * part / whole if whole else 0
+
+
+def _categories(rows: list[dict]) -> dict:
+    """N9 attended per registration category: legend rows and donut segments (SVG circle with a
+    circumference of 100, so a segment's dash length is its percentage)."""
+    total = sum(row["attended"] for row in rows)
+    legend, segments, offset = [], [], 0.0
+    for index, row in enumerate(sorted(rows, key=lambda r: (-r["attended"], r["name"]))):
+        color = CATEGORY_COLORS[index % len(CATEGORY_COLORS)]
+        share = _percent(row["attended"], total)
+        legend.append({"name": row["name"], "attended": row["attended"], "percent": round(share), "color": color})
+        if row["attended"]:
+            # dash + gap = 100 (the circumference), so the pattern wraps round the circle; offset 25 starts at 12 o'clock
+            segments.append({"color": color, "length": round(share, 3), "gap": round(100 - share, 3), "offset": round(25 - offset, 3)})
+            offset += share
+    return {"total": total, "legend": legend, "segments": segments}
+
+
+STATUS_COLORS = {"Draft": "bg-status-draft", "Scheduled": "bg-status-scheduled", "Ongoing": "bg-status-ongoing", "Conducted": "bg-status-conducted"}
+
+
+def _statuses(rows: list[dict]) -> dict:
+    """S1 as one stacked bar."""
+    total = sum(row["count"] for row in rows)
+    return {
+        "total": total,
+        "rows": [{**row, "percent": round(_percent(row["count"], total), 2), "color": STATUS_COLORS.get(row["status"], "bg-slate-400")} for row in rows],
+    }
+
+
+def _bars(rows: list[dict]) -> list[dict]:
+    """N2 Conducted activities per type, most first; types with none are left out."""
+    rows = sorted((row for row in rows if row["activities"]), key=lambda r: (-r["activities"], r["name"]))
+    largest = max((row["activities"] for row in rows), default=0)
+    return [{"name": row["name"], "count": row["activities"], "percent": round(_percent(row["activities"], largest), 2)} for row in rows]

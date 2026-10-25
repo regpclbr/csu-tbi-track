@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% load static %}
+{% comment %}
+Centered card on the page background, with the logo: the error pages (403, 404, 500).
+The sign-in and password pages use layouts/auth_split.html.
+Blocks: card (the card's content), below_card (small text under the card, optional).
+Also used by errors/500.html, which is rendered WITHOUT the request: nothing here may need it.
+{% endcomment %}
+{% block body %}
+<main class="flex min-h-full flex-col items-center justify-center px-4 py-12">
+  <a href="/" class="mb-8 flex items-center gap-3 rounded-lg" aria-label="CSU-TBI Track, home">
+    <img src="{% static 'img/logo-96.png' %}" alt="" width="48" height="48" class="size-12 rounded-xl">
+    <span class="text-xl font-bold tracking-tight text-ink">CSU-TBI Track</span>
+  </a>
+  <div class="card w-full max-w-md p-8 shadow-sm">
+    {% block card %}{% endblock %}
+  </div>
+  <div class="mt-6 text-center text-sm text-muted">{% block below_card %}Technology Business Incubator · Caraga State University{% endblock %}</div>
+</main>
+{% endblock %}

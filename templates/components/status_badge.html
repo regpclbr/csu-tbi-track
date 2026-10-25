@@ -1,0 +1,2 @@
+{# Activity status badge: {% include "components/status_badge.html" with status=activity.status.name %} (Draft slate, Scheduled sky, Ongoing amber, Conducted green). #}
+<span class="badge {% if status == 'Draft' %}badge-draft{% elif status == 'Scheduled' %}badge-scheduled{% elif status == 'Ongoing' %}badge-ongoing{% elif status == 'Conducted' %}badge-conducted{% else %}badge-neutral{% endif %}">{{ status }}</span>

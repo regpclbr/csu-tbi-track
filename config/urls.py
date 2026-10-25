@@ -3,14 +3,15 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from accounts.views import admin_login_redirect, home_view
+from accounts.views import admin_login_redirect
 from registrations import views as registration_views
+from reports.views import dashboard_page
 from startups import views as startup_views
 
 from . import views
 
 urlpatterns = [
-    path("", home_view, name="home"),
+    path("", dashboard_page, name="home"),  # the staff dashboard
     # Must come before admin.site.urls: the admin uses the staff login (with lockout).
     path("admin/login/", admin_login_redirect),
     path("admin/", admin.site.urls),
@@ -37,7 +38,7 @@ urlpatterns = [
     path("notifications/", include("notifications.urls")),
 ]
 
-# Errors for /api/ URLs are JSON (403 with the reason, 404, 500); pages keep Django's error pages.
+# Errors for /api/ URLs are JSON (403 with the reason, 404, 500); pages get templates/errors/*.html.
 # (404 and 500 handlers are used only when DEBUG is off; with DEBUG on Django shows its debug pages.)
 handler403 = "config.views.permission_denied"
 handler404 = "config.views.page_not_found"

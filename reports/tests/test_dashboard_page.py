@@ -1,0 +1,277 @@
+"""The dashboard page (/): access, the same numbers as reports.metrics / the dashboard API, filters
+(HTMX partial, URL keeps them), role-dependent parts, Needs attention, empty states."""
+
+import re
+from datetime import date, timedelta
+
+import pytest
+from django.test import Client
+from django.urls import reverse
+from django.utils import timezone
+
+from activities.models import ActivityStatus, ActivityType
+from certificates.models import Certificate
+from documents.models import DocumentStatus
+from documents.services import review_queue
+from reports import services
+from reports.dashboard_page import matching_quick_range, quick_range
+
+pytestmark = pytest.mark.django_db
+
+URL = reverse("home")
+HTMX = {"HTTP_HX_REQUEST": "true"}
+
+
+def today() -> date:
+    return timezone.localdate()
+
+
+def kpis(html: str) -> dict[str, str]:
+    """KPI card label -> value as shown on the page (components/kpi_card.html)."""
+    found = re.findall(
+        r'<p class="text-\[15px\] leading-snug text-muted">([^<]+)</p>\s*<div[^>]*>\s*<p class="text-4xl[^"]*">([^<]+)</p>', html
+    )
+    return {label.strip(): value.strip() for label, value in found}
+
+
+@pytest.fixture
+def data(make_activity, register, evaluate, add_document, make_certificate_row):
+    """A small, varied data set relative to today (the page uses the real clock)."""
+    now = today()
+    conducted = make_activity("Conducted Workshop", start=now - timedelta(days=20), categories=("Faculty", "MSMEs"))
+    for i in range(4):
+        registration = register(conducted, f"P{i}", attended=i < 3, category="Faculty" if i % 2 else "MSMEs")
+        if i == 0:
+            evaluate(registration, {"Overall rating": 5})
+            make_certificate_row(activity=conducted, registration=registration, status=Certificate.Status.PENDING_SIGNOFF)
+    make_activity("Soon Seminar", ActivityStatus.SCHEDULED, start=now + timedelta(days=8), type_name="Seminar", max_slots=20)
+    make_activity("Far Training", ActivityStatus.SCHEDULED, start=now + timedelta(days=45), type_name="Training")
+    make_activity("A draft", ActivityStatus.DRAFT, start=now + timedelta(days=12))
+    return {"conducted": conducted}
+
+
+# --- Access ---------------------------------------------------------------------------------------------
+
+
+def test_logged_out_is_sent_to_the_login_page() -> None:
+    response = Client().get(URL)
+    assert response.status_code == 302 and response.url == f"{reverse('accounts:login')}?next=/"
+
+
+def test_an_htmx_request_without_login_gets_401_with_hx_redirect() -> None:
+    response = Client().get(URL, {"range": "last_year"}, HTTP_HX_CURRENT_URL="http://testserver/?range=last_year", **HTMX)
+    assert response.status_code == 401
+    assert response["HX-Redirect"] == f"{reverse('accounts:login')}?next=/%3Frange%3Dlast_year"
+
+
+def test_hx_current_url_of_another_site_is_ignored() -> None:
+    response = Client().get(URL, HTTP_HX_CURRENT_URL="https://evil.example/steal", **HTMX)
+    assert response["HX-Redirect"] == f"{reverse('accounts:login')}?next=/"
+
+
+def test_every_active_staff_member_sees_the_dashboard(director, admin_staff, login) -> None:
+    for member in (director, admin_staff):
+        response = login(member).get(URL)
+        assert response.status_code == 200
+        assert "dashboard/index.html" in [t.name for t in response.templates]
+
+
+# --- Same numbers as the dashboard API ----------------------------------------------------------------
+
+
+@pytest.mark.parametrize("params", [{}, {"range": "last_year"}, {"range": "this_month"}, {"range": "custom", "start": "2026-01-01", "end": "2026-03-31"}])
+def test_page_numbers_are_the_dashboard_api_numbers(director, login, data, params) -> None:
+    response = login(director).get(URL, params)
+    page = response.context["page"]
+    api_params = {"start": page.filters.start.isoformat(), "end": page.filters.end.isoformat()}
+    assert page.data == services.dashboard(director, api_params)
+    api = login(director).get(reverse("reports:api_dashboard"), api_params).json()
+    assert {c["key"]: c["value"] for c in api["cards"]} == {c["key"]: c["value"] for c in page.data["cards"]}
+
+
+def test_kpi_cards_show_the_metric_numbers(director, login, data) -> None:
+    response = login(director).get(URL)
+    page = response.context["page"]
+    shown = kpis(response.content.decode())
+    cards = page.cards
+    assert shown["Upcoming activities"] == str(cards["upcoming_activities"]["within_30_days"]) == "1"
+    assert shown["Certificates waiting for sign-off"] == str(cards["certificates_waiting_for_signoff"]["value"]) == "1"
+    assert shown["Registrations"] == str(cards["registrations"]["value"]) == "4"
+    assert "75% attended" in response.content.decode()
+    assert shown["Open for registration"] == "0"  # no registration forms in this data set
+
+
+def test_charts_show_the_metric_numbers(director, login, data) -> None:
+    response = login(director).get(URL)
+    page = response.context["page"]
+    html = response.content.decode()
+    by_category = {row["name"]: row["attended"] for row in page.data["charts"]["by_category"]}
+    assert page.categories["total"] == sum(by_category.values()) == page.cards["registrations"]["attended"] == 3
+    assert {row["name"]: row["attended"] for row in page.categories["legend"]} == by_category
+    assert page.statuses["total"] == page.cards["activities_by_status"]["value"]
+    assert [(row["name"], row["count"]) for row in page.conducted_by_type] == [("Workshop", 1)]
+    assert "Activities by status · 4 total" in html
+    # Text equivalents of the charts
+    assert "Attendees by participant category" in html and "Conducted activities per activity type" in html
+
+
+# --- Filters ------------------------------------------------------------------------------------------------
+
+
+def test_quick_ranges() -> None:
+    day = date(2026, 11, 15)
+    assert quick_range("this_month", day) == (date(2026, 11, 1), date(2026, 11, 30))
+    assert quick_range("this_quarter", day) == (date(2026, 10, 1), date(2026, 12, 31))
+    assert quick_range("this_quarter", date(2026, 2, 3)) == (date(2026, 1, 1), date(2026, 3, 31))
+    assert quick_range("this_year", day) == (date(2026, 1, 1), date(2026, 12, 31))
+    assert quick_range("last_year", day) == (date(2025, 1, 1), date(2025, 12, 31))
+    assert quick_range("custom", day) is None
+    assert matching_quick_range(date(2026, 1, 1), date(2026, 12, 31), day) == "this_year"
+    assert matching_quick_range(date(2026, 1, 2), date(2026, 12, 31), day) == "custom"
+
+
+def test_default_is_this_year(director, login) -> None:
+    page = login(director).get(URL).context["page"]
+    assert (page.filters.start, page.filters.end, page.range_key) == (date(today().year, 1, 1), date(today().year, 12, 31), "this_year")
+
+
+def test_last_year_filter(director, login, data) -> None:
+    page = login(director).get(URL, {"range": "last_year"}).context["page"]
+    assert page.filters.start == date(today().year - 1, 1, 1) and page.range_key == "last_year"
+
+
+def test_a_quick_choice_wins_over_typed_dates(director, login) -> None:
+    page = login(director).get(URL, {"range": "this_year", "start": "2020-01-01", "end": "2020-01-31"}).context["page"]
+    assert page.filters.start == date(today().year, 1, 1)
+
+
+def test_custom_range(director, login) -> None:
+    page = login(director).get(URL, {"range": "custom", "start": "2026-02-01", "end": "2026-02-28"}).context["page"]
+    assert (page.filters.start, page.filters.end, page.range_key, page.errors) == (date(2026, 2, 1), date(2026, 2, 28), "custom", [])
+
+
+def test_an_invalid_custom_range_shows_the_error_and_this_year(director, login) -> None:
+    response = login(director).get(URL, {"range": "custom", "start": "2026-06-30", "end": "2026-06-01"})
+    page = response.context["page"]
+    assert response.status_code == 200
+    assert page.errors and "before the start date" in page.errors[0]
+    assert page.filters.start == date(today().year, 1, 1)
+    assert "before the start date" in response.content.decode()
+
+
+def test_activity_type_filter(director, login, data) -> None:
+    seminar = ActivityType.objects.get(name="Seminar")
+    page = login(director).get(URL, {"activity_type": seminar.pk}).context["page"]
+    assert page.filters.activity_type_id == seminar.pk
+    assert page.cards["activities_conducted"]["value"] == 0
+    assert [row["activity"].title for row in page.upcoming] == ["Soon Seminar"]
+
+
+def test_htmx_filter_request_returns_only_the_body(director, login, data) -> None:
+    response = login(director).get(URL, {"range": "last_year"}, **HTMX)
+    names = [t.name for t in response.templates]
+    assert "dashboard/_body.html" in names and "dashboard/index.html" not in names
+    assert "<aside" not in response.content.decode()
+
+
+def test_the_filter_form_updates_with_htmx_and_keeps_the_url(director, login) -> None:
+    html = login(director).get(URL).content.decode()
+    form = re.search(r'<form id="dashboard-filters"[^>]*>', html).group(0)
+    assert 'hx-get="/"' in form and 'hx-target="#dashboard-body"' in form and 'hx-push-url="true"' in form
+    assert "htmx-indicator" in html  # loading state
+
+
+# --- Role-dependent parts ---------------------------------------------------------------------------------
+
+
+def test_new_activity_button_only_with_can_create_activity(director, admin_staff, login) -> None:
+    create_url = reverse("activities:create")
+    assert create_url in login(director).get(URL).content.decode()
+    assert create_url not in login(admin_staff).get(URL).content.decode()
+
+
+def test_documents_card_for_a_reviewer_counts_my_review_queue(director, make_member, login, data, add_document) -> None:
+    other_head = make_member("Incubation Project Head")
+    add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)  # uploaded by director: not theirs to review
+    response = login(other_head).get(URL)
+    page = response.context["page"]
+    assert page.review["mine"] is True
+    assert page.review["count"] == review_queue(other_head).count() == 1
+    assert kpis(response.content.decode())["Documents to review"] == "1"
+    director_page = login(director).get(URL).context["page"]
+    assert director_page.review["count"] == 0  # their own upload
+
+
+def test_documents_card_without_can_create_activity_shows_the_s4_total(admin_staff, login, data, add_document) -> None:
+    add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
+    response = login(admin_staff).get(URL)
+    page = response.context["page"]
+    html = response.content.decode()
+    assert page.review["mine"] is False
+    assert kpis(html)["Documents waiting for review"] == str(page.cards["documents_waiting_for_review"]["value"]) == "1"
+    assert "Documents to review" not in html
+    assert not any(item.action_label == "Review" for item in page.attention)
+    assert "waiting for your review" not in html
+
+
+# --- Needs attention ---------------------------------------------------------------------------------------
+
+
+def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, login, data, add_document, make_activity) -> None:
+    head = make_member("Incubation Project Head")
+    add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
+    page = login(head).get(URL).context["page"]
+    tones = [item.tone for item in page.attention]
+    assert "danger" in tones  # the conducted activity's missing documents are overdue
+    assert "warning" in tones  # "Soon Seminar" (starts in 8 days): Invitation Letter due in 1 day
+    titles = " | ".join(item.title for item in page.attention)
+    assert "Soon Seminar needs the Invitation Letter" in titles
+    assert "1 document is waiting for your review" in titles
+    assert "1 certificate is waiting for sign-off" in titles
+    assert tones.index("danger") < tones.index("warning") < tones.index("primary")
+    html = login(head).get(URL).content.decode()
+    assert "btn-danger" in html and "btn-warning" in html
+
+
+def test_needs_attention_empty_state(director, login) -> None:
+    html = login(director).get(URL).content.decode()
+    assert "Nothing needs attention" in html
+
+
+def test_empty_states_without_data(director, login) -> None:
+    html = login(director).get(URL).content.decode()
+    assert "No upcoming activities" in html
+    assert "No conducted activities in this period." in html
+    assert "No changes yet" in html
+
+
+def test_upcoming_list_shows_registered_and_slots(director, login, data, register) -> None:
+    from activities.models import Activity
+
+    seminar = Activity.objects.get(title="Soon Seminar")
+    register(seminar, "Early bird")
+    page = login(director).get(URL).context["page"]
+    first = page.upcoming[0]
+    assert first["activity"] == seminar and first["registered"] == 1 and first["percent"] == 5
+    assert [row["activity"].title for row in page.upcoming] == ["Soon Seminar", "Far Training"]  # Scheduled only, no Draft
+
+
+def test_recent_changes_come_from_the_audit_log(director, login, roles) -> None:
+    from decimal import Decimal
+
+    from activities import services as activity_services
+    from activities.models import ParticipantCategory
+
+    start = today() + timedelta(days=20)
+    activity = activity_services.create_activity(director, {
+        "title": "Audit Seminar", "description": "", "activity_type": ActivityType.objects.get(name="Seminar"),
+        "participant_categories": [ParticipantCategory.objects.get(name="Faculty")], "start_date": start, "end_date": start,
+        "time_schedule": "9-5", "venue": "Hall A", "max_slots": 10,
+        "registration_deadline": timezone.now() + timedelta(days=10), "evaluation_deadline": timezone.now() + timedelta(days=30),
+        "budget_amount": Decimal("100.00"),
+    })
+    activity_services.update_activity(director, activity, {"venue": "TBI Lounge"})
+    html = login(director).get(URL).content.decode()
+    assert "Test Director changed the venue of Audit Seminar to TBI Lounge" in html
+    assert "Test Director created Audit Seminar as Draft" in html
+    assert "just now" in html
