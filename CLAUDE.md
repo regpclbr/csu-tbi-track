@@ -340,7 +340,7 @@ python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG):
 python manage.py show_dashboard [--start --end --activity-type]   # dashboard numbers as JSON (same as the API)
 python manage.py generate_report --type accomplishment --format pdf --start 2026-01-01 --end 2026-06-30   # build now (--report <id>: a pending one)
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
-pytest                                    # all tests, in parallel (-n auto) on the kept test databases (--reuse-db)
+pytest                                    # all tests, 2 workers in parallel (pytest.ini) on the kept test databases (--reuse-db)
 pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations

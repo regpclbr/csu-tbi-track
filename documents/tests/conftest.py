@@ -30,11 +30,12 @@ JPG_BYTES = b"\xff\xd8\xff\xe0" + b"\x00" * 32
 
 
 def office_bytes(kind: str) -> bytes:
-    """A minimal DOCX ("docx") or XLSX ("xlsx") ZIP package."""
+    """A minimal DOCX ("docx") or XLSX ("xlsx") ZIP package. The entries get a fixed date, so the bytes
+    (and the test IDs that contain them) are the same on every run and in every xdist worker."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr("[Content_Types].xml", "<Types/>")
-        archive.writestr("word/document.xml" if kind == "docx" else "xl/workbook.xml", "<x/>")
+        for name, text in [("[Content_Types].xml", "<Types/>"), ("word/document.xml" if kind == "docx" else "xl/workbook.xml", "<x/>")]:
+            archive.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), text)
     return buffer.getvalue()
 
 

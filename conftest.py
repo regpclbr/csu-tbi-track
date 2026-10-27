@@ -100,8 +100,22 @@ def image_bytes(width: int = 8, height: int = 6, kind: str = "PNG") -> bytes:
 
 @pytest.fixture(autouse=True)
 def temporary_media_root(settings, tmp_path) -> None:
-    """Tests only: uploaded files go to a temporary folder, never the real media folder."""
+    """Tests only: uploaded files go to a temporary folder, never the real media folder.
+    tmp_path is new for every test (and separate for every xdist worker), so tests never share files."""
     settings.MEDIA_ROOT = tmp_path / "media"
+
+
+@pytest.fixture(autouse=True)
+def fresh_cache(settings):
+    """Tests only: an empty in-memory cache for every test (login lockout and rate-limit counters).
+    The real database cache table is not a model, so a transactional test's flush would not empty it;
+    in memory it also belongs to one xdist worker only."""
+    from django.core.cache import cache
+
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "tests"}}
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture
