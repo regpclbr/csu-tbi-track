@@ -80,3 +80,16 @@ def date_tile(activity) -> dict:
     if (start.year, start.month) == (end.year, end.month):
         return {"month": f"{start:%b}".upper(), "days": f"{start.day}–{end.day}"}
     return {"month": f"{start:%b}–{end:%b}".upper(), "days": f"{start.day}–{end.day}"}
+
+
+@register.filter
+def date_span(activity) -> str:
+    """Compact dates on one line: Nov 6, 2026 / Oct 30–31, 2026 / Oct 30 – Nov 2, 2026 / Dec 30, 2026 – Jan 2, 2027."""
+    start, end = activity.start_date, activity.end_date
+    if start == end:
+        return f"{start:%b} {start.day}, {start.year}"
+    if start.year != end.year:
+        return f"{start:%b} {start.day}, {start.year} – {end:%b} {end.day}, {end.year}"
+    if start.month != end.month:
+        return f"{start:%b} {start.day} – {end:%b} {end.day}, {end.year}"
+    return f"{start:%b} {start.day}–{end.day}, {end.year}"

@@ -11,24 +11,28 @@ from datetime import date, datetime, timedelta
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Min
 from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, has_permission
 from activities.formatting import audit_sentence
 from activities.models import Activity, ActivityType
 from activities.services import recent_audit_entries, registered_count
+from config.frontend import initials
 from documents.services import review_queue, today_in_manila
 from registrations.services import open_activities
 
 from . import metrics, services
 from .content import range_in_words
 
-UPCOMING_SHOWN = 3
+UPCOMING_SHOWN = 4  # the first is the "Next activity" spotlight, the rest the list under it
 ATTENTION_SHOWN = 5  # "Needs attention" items shown before "Show N more"
 ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs attention" item
 
 # Donut and legend colours, in order. Categories are master data (never a fixed number): the colours repeat.
 CATEGORY_COLORS = ["#1D4ED8", "#14B8A6", "#93C5FD", "#F59E0B", "#7C3AED", "#64748B", "#EC4899", "#84CC16"]
+DONUT_STROKE = 7  # the ring's width in the donut's SVG units (circumference 100)
+DONUT_GAP = 1.5  # space between two segments, same units
 
 QUICK_RANGES = [
     ("this_month", "This month"),
@@ -104,6 +108,8 @@ class DashboardPage:
     statuses: dict
     conducted_by_type: list[dict]
     recent_changes: list[dict]
+    greeting: str = ""  # "Good morning" / "Good afternoon" / "Good evening" (Manila time)
+    first_name: str = ""
     activity_types: list = field(default_factory=list)
     range_options: list = field(default_factory=list)  # (key, label) for the date range select
 
@@ -112,6 +118,15 @@ class DashboardPage:
     @property
     def attention_hidden(self) -> int:
         return max(0, len(self.attention) - self.attention_shown)
+
+    @property
+    def next_activity(self) -> dict | None:
+        """The spotlight card: the first upcoming activity."""
+        return self.upcoming[0] if self.upcoming else None
+
+    @property
+    def upcoming_after_next(self) -> list[dict]:
+        return self.upcoming[1:]
 
     @property
     def attention_count_text(self) -> str:
@@ -149,10 +164,22 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         categories=_categories(data["charts"]["by_category"]),
         statuses=_statuses(cards["activities_by_status"]["by_status"]),
         conducted_by_type=_bars(data["charts"]["by_type"]),
-        recent_changes=[{"sentence": audit_sentence(entry), "changed_at": entry.changed_at} for entry in recent_audit_entries()],
+        recent_changes=[
+            {"sentence": audit_sentence(entry), "changed_at": entry.changed_at, "member": entry.changed_by.name,
+             "initials": initials(entry.changed_by.name)}
+            for entry in recent_audit_entries()
+        ],
+        greeting=greeting(now),
+        first_name=member.name.split()[0] if member.name.split() else "",
         activity_types=list(ActivityType.objects.filter(is_active=True).order_by("name")),
         range_options=_range_options(today),
     )
+
+
+def greeting(now: datetime | None = None) -> str:
+    """The banner's greeting for the Manila time of day: morning before 12:00, afternoon before 18:00."""
+    hour = timezone.localtime(now or timezone.now()).hour
+    return "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
 
 
 def _range_options(today: date) -> list[tuple[str, str]]:
@@ -171,7 +198,7 @@ def _review(member: TBIMember, cards: dict, can_create: bool, now: datetime | No
         queue = review_queue(member).aggregate(count=Count("pk"), oldest=Min("uploaded_at"))
         oldest = today_in_manila(queue["oldest"]) if queue["oldest"] else None
         days = (today_in_manila(now) - oldest).days if oldest else None
-        text = "" if days is None else "oldest: today" if days == 0 else f"oldest: {days} day{'' if days == 1 else 's'}"
+        text = "" if days is None else "oldest today" if days == 0 else f"oldest {days} d"
         return {"mine": True, "count": queue["count"], "oldest": oldest, "oldest_text": text}
     return {"mine": False, "count": cards["documents_waiting_for_review"]["value"], "oldest": None, "oldest_text": ""}
 
@@ -287,6 +314,10 @@ def _categories(rows: list[dict]) -> dict:
     """N9 attended per registration category: legend rows and donut segments (SVG circle with a
     circumference of 100, so a segment's dash length is its percentage)."""
     total = sum(row["attended"] for row in rows)
+    shown = sum(1 for row in rows if row["attended"])
+    # Rounded ends (stroke-linecap: round, width DONUT_STROKE) stick out half the stroke width at each end:
+    # with two or more segments each one is drawn shorter, so a small gap stays between them.
+    inset = DONUT_STROKE / 2 + DONUT_GAP / 2 if shown > 1 else 0
     legend, segments, offset = [], [], 0.0
     for index, row in enumerate(sorted(rows, key=lambda r: (-r["attended"], r["name"]))):
         color = CATEGORY_COLORS[index % len(CATEGORY_COLORS)]
@@ -294,9 +325,11 @@ def _categories(rows: list[dict]) -> dict:
         legend.append({"name": row["name"], "attended": row["attended"], "percent": round(share), "color": color})
         if row["attended"]:
             # dash + gap = 100 (the circumference), so the pattern wraps round the circle; offset 25 starts at 12 o'clock
-            segments.append({"color": color, "length": round(share, 3), "gap": round(100 - share, 3), "offset": round(25 - offset, 3)})
+            length = max(share - 2 * inset, 0.001)
+            segments.append({"color": color, "length": round(length, 3), "gap": round(100 - length, 3),
+                             "offset": round(25 - offset - inset, 3)})
             offset += share
-    return {"total": total, "legend": legend, "segments": segments}
+    return {"total": total, "legend": legend, "segments": segments, "stroke": DONUT_STROKE}
 
 
 STATUS_COLORS = {"Draft": "bg-status-draft", "Scheduled": "bg-status-scheduled", "Ongoing": "bg-status-ongoing", "Conducted": "bg-status-conducted"}

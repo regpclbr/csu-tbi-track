@@ -58,7 +58,7 @@ def dashboard_page(request: HttpRequest) -> HttpResponse:
     get only the part below the filters (dashboard/_body.html); the URL keeps the filters."""
     page = build_dashboard(request.user, request.GET)
     template = "dashboard/_body.html" if is_htmx(request) else "dashboard/index.html"
-    return render(request, template, {"page_title": "Dashboard", "page": page})
+    return render(request, template, {"page_title": "Dashboard", "page": page, "partial": is_htmx(request)})
 
 
 @staff_login_required

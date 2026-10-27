@@ -1,13 +1,15 @@
 {% comment %}
-KPI card. {% include "components/kpi_card.html" with label="Upcoming activities" value=8 pill="next 30 days" pill_tone="success" note="" %}
-value: a number or text (already formatted). pill_tone: success | warning | neutral | danger | info.
+KPI card. {% include "components/kpi_card.html" with label="Upcoming activities" value=8 icon="calendar" chip="blue" pill="next 30 days" pill_tone="success" note="" %}
+value: a number or text (already formatted). icon: a components/icon.html name, shown on a light tint
+(chip: blue | amber | teal | violet | green). pill_tone: success | warning | neutral | danger | info.
 note: small text under the value (optional).
 {% endcomment %}
-<div class="card hover-lift flex min-h-29 flex-col justify-between gap-3 p-5">
-  <p class="text-[15px] leading-snug text-muted">{{ label }}</p>
-  <div class="flex flex-wrap items-end justify-between gap-2">
-    <p class="text-4xl leading-none font-bold tracking-tight text-kpi tabular-nums">{{ value }}</p>
-    {% if pill %}<span class="badge badge-{{ pill_tone|default:'neutral' }} max-w-[62%] leading-tight whitespace-normal">{{ pill }}</span>{% endif %}
+<div class="kpi-card hover-lift flex min-h-36 flex-col gap-2.5 p-4">
+  {% if icon %}<span class="chip chip-{{ chip|default:'blue' }} size-10 rounded-xl">{% include "components/icon.html" with name=icon class="size-5" %}</span>{% endif %}
+  <p class="text-[13px] leading-snug font-medium text-muted">{{ label }}</p>
+  <div class="mt-auto flex flex-col items-start gap-2">
+    <p class="text-3xl leading-none font-bold tracking-tight text-kpi tabular-nums">{{ value }}</p>
+    {% if pill %}<span class="badge badge-{{ pill_tone|default:'neutral' }} rounded-full leading-tight whitespace-nowrap">{{ pill }}</span>{% endif %}
   </div>
   {% if note %}<p class="-mt-1 text-xs text-muted">{{ note }}</p>{% endif %}
 </div>

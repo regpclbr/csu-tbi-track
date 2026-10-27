@@ -43,6 +43,7 @@
   --color-kpi: #0D9488;                /* KPI numbers only (large text: 3.7:1 on white, needs 3:1) */
   --color-accent: #14B8A6;             /* decoration only (donut, logo tile, focus ring), never text */
   --color-page: #F4F6FB;
+  --color-panel: #F7F9FC;              /* the staff content panel on the gradient frame */
   --color-line: #E6EAF2;
   --color-ink: #0F172A;                /* 17.9:1 on white */
   --color-muted: #475569;              /* 7.6:1 on white, 7.0:1 on the page background */
@@ -58,6 +59,10 @@
   --color-status-ongoing: #FBBF24;
   --color-status-conducted: #34D399;
   --color-progress: #F59E0B;
+
+  /* Cards: soft blue-tinted shadow, a little deeper on hover */
+  --shadow-card: 0 10px 30px rgb(34 55 143 / 0.08);
+  --shadow-card-hover: 0 16px 40px rgb(34 55 143 / 0.14);
 }
 
 @layer base {
@@ -117,8 +122,21 @@
 
   /* Cards */
   .card {
-    @apply rounded-xl border border-line bg-white;
+    @apply rounded-[24px] border border-line/70 bg-white shadow-card;
   }
+  .kpi-card {
+    @apply rounded-[20px] border border-line/70 bg-white shadow-card;
+  }
+  /* Icon chip: a Lucide icon on a light tint (KPI cards, Needs attention). Text colours >= 4.5:1 on their tint. */
+  .chip {
+    @apply inline-flex shrink-0 items-center justify-center;
+  }
+  .chip-blue { @apply bg-blue-50 text-primary; }
+  .chip-amber { @apply bg-amber-50 text-amber-700; }
+  .chip-teal { @apply bg-teal-50 text-teal-700; }
+  .chip-violet { @apply bg-violet-50 text-violet-700; }
+  .chip-green { @apply bg-green-50 text-green-700; }
+  .chip-red { @apply bg-red-50 text-red-700; }
   .card-title {
     @apply text-lg font-semibold text-ink;
   }
@@ -130,7 +148,7 @@
      .hover-lift  a card that lifts slightly (KPI cards, clickable cards)
      .hover-row   a list row whose border and shadow strengthen (attention items, lists) */
   .hover-lift {
-    @apply transition-[transform,box-shadow,border-color] duration-200 hover:border-slate-300 hover:shadow-md motion-safe:hover:-translate-y-0.5;
+    @apply transition-[transform,box-shadow,border-color] duration-200 hover:border-slate-300 hover:shadow-card-hover motion-safe:hover:-translate-y-0.5;
   }
   .hover-row {
     @apply transition-[box-shadow,border-color,background-color] duration-200 hover:border-slate-300 hover:shadow-sm;
@@ -166,6 +184,10 @@
   .field-input[aria-invalid="true"] {
     @apply border-danger focus:ring-danger/20;
   }
+  /* Pill-shaped select or date input (dashboard filters) */
+  .pill-select {
+    @apply rounded-full border-slate-200 bg-white shadow-card;
+  }
   .field-error {
     @apply mt-1.5 text-sm text-red-700;
   }
@@ -190,6 +212,69 @@
   .sr-only-table {
     @apply sr-only;
   }
+}
+
+/* --- Staff app shell (layouts/app.html) ------------------------------------------------------------------------------
+   The login gradient as a frame; the sidebar sits on it (white text), the content is a light rounded panel.
+   Contrast of the sidebar text over the gradient: docs/ASSUMPTIONS.md item 258. The angle keeps the whole sidebar
+   on the dark part: the light end is at the bottom right, behind the content panel. */
+.app-bg {
+  background: linear-gradient(135deg, #22378F 0%, #22378F 30%, #60CDEE 100%);
+}
+@media (width >= 64rem) {
+  .app-panel {
+    box-shadow: 0 20px 60px -20px rgb(11 26 92 / 0.45);
+  }
+}
+/* Buttons are pill-shaped everywhere in the app shell (the sign-in pages keep their own design). */
+.app-shell .btn {
+  border-radius: 9999px;
+}
+/* The member's card at the bottom of the sidebar: frosted glass with a dark tint, so the white text keeps its contrast. */
+.sidebar-glass {
+  background: rgb(255 255 255 / 0.12);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  box-shadow: inset 0 0 0 999px rgb(11 26 92 / 0.18);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.sidebar-glass:hover {
+  background: rgb(255 255 255 / 0.18);
+}
+/* Dashboard welcome banner: the text stays on the dark (primary) part; the light cyan end is behind the illustration. */
+.welcome-banner {
+  background: linear-gradient(110deg, #1D4ED8 0%, #1D4ED8 60%, #60CDEE 100%);
+  box-shadow: 0 16px 40px -18px rgb(29 78 216 / 0.55);
+}
+/* The illustration in the banner is a still picture: no entrance, float or flow. */
+.banner-illustration .anim, .banner-illustration .li-enter, .banner-illustration .li-float,
+.banner-illustration .li-flow, .banner-illustration .li-draw, .banner-illustration .li-ring, .banner-illustration .li-pop {
+  animation: none !important;
+}
+.banner-illustration { pointer-events: none; }  /* decorative: no hover lift either */
+/* "Next activity" spotlight card and the upcoming date tiles: dark blue gradients, white text (>= 6.7:1). */
+.spotlight {
+  background: linear-gradient(150deg, #22378F 0%, #1D4ED8 100%);
+  box-shadow: 0 16px 40px -18px rgb(34 55 143 / 0.6);
+}
+.date-tile-gradient {
+  background: linear-gradient(160deg, #22378F 0%, #1D4ED8 100%);
+}
+/* #dashboard-body is display: contents (its parts sit in the page grid), so the HTMX loading dim goes on its children. */
+.htmx-request.htmx-dim-items > * {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+/* Recent changes as a timeline: a thin line joins the avatars. */
+.timeline > li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 2.25rem;
+  bottom: 0;
+  left: calc(1.125rem - 1px);
+  width: 2px;
+  background: var(--color-line);
 }
 
 /* --- Sign-in panel animations (layouts/auth_split.html, partials/login_illustration.html) -------------------------

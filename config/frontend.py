@@ -16,6 +16,13 @@ from documents.services import review_queue, today_in_manila
 from notifications.services import unread_count
 
 
+def initials(name: str) -> str:
+    """Avatar letters: first and last word ("Juan Dela Cruz" -> "JC"), one word -> its first two letters."""
+    words = [word for word in name.split() if word[:1].isalpha()]
+    letters = (words[0][0] + words[-1][0]) if len(words) > 1 else (words[0][:2] if words else "?")
+    return letters.upper()
+
+
 @dataclass(frozen=True)
 class NavItem:
     label: str
@@ -93,9 +100,7 @@ class StaffLayout:
 
     @cached_property
     def initials(self) -> str:
-        words = [word for word in self.member.name.split() if word[:1].isalpha()]
-        letters = (words[0][0] + words[-1][0]) if len(words) > 1 else (words[0][:2] if words else "?")
-        return letters.upper()
+        return initials(self.member.name)
 
     @cached_property
     def can_create_activity(self) -> bool:

@@ -220,6 +220,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   The university is Caraga State University. The illustration is inline (`partials/login_illustration.html`;
   `docs/design/login-illustration.svg` is the unchanged reference); its CSS animations end with the final picture as the
   natural state and are all off under `prefers-reduced-motion` (classes `anim`, `rise`; ASSUMPTIONS 253).
+- App shell (`layouts/app.html`, ASSUMPTIONS 258): the login gradient is the frame (`.app-bg`, 135°, dark to 30%, so the
+  whole sidebar stays on the dark part); the sidebar sits on it (white text, active = white 18% pill + white left
+  indicator, hover = white 10%, member in a `.sidebar-glass` card); the content is a light panel (`bg-panel` #F7F9FC,
+  28px corners, 16px from the edges) that scrolls on its own, with the top bar inside it. Buttons are pill-shaped in the
+  shell (`.app-shell .btn`). Cards: 24px corners (`.card`), KPI cards 20px (`.kpi-card`), soft shadow `shadow-card`
+  (0 10px 30px rgba(34,55,143,.08)), `.hover-lift` on hover. White text only on dark gradients (sidebar, banner text
+  side, `.spotlight`, `.date-tile-gradient`); measure it when changing a gradient.
 - `layout` (sidebar items, badges, unread count, Manila date) comes from `config.frontend`
   (one list of nav items, each with an optional `Permission`).
 - Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
@@ -287,6 +294,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 10. Reports and dashboard numbers — done
 - Backend review before the frontend (2026-10-23): batch 1 (ASSUMPTIONS 214–224) and batch 2 (225–232) applied.
 - Frontend F1 (2026-10-24): design foundation, staff layout, login pages, dashboard, error pages (ASSUMPTIONS 233–254).
+- Restyle (2026-10-25): login gradient + glass card (257), app shell frame + dashboard layout (258).
+- Dashboard polish (2026-10-27): full-width KPI row, compact dates (`date_span`), 2-line upcoming titles (259).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

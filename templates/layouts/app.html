@@ -1,35 +1,37 @@
 {% extends "base.html" %}
 {% comment %}
-The staff layout: sidebar + top bar. Every staff page extends this.
+The staff layout: the login gradient as a frame, the sidebar directly on it, and a light rounded panel (#F7F9FC)
+with the top bar and the page. Every staff page extends this.
 Context: page_title (the top bar heading and the <title>), optional page_subtitle (default: the
 Manila date and "Here's what's happening at CSU-TBI").
 Block: content (the page itself).
 `layout` comes from config.frontend.staff_layout (nav items, counts, initials).
-Desktop-first: below 1024 px (lg) the sidebar collapses behind the menu button.
+From 1024 px (lg) the frame fills the screen and only the panel scrolls (the sidebar and the gradient stay put).
+Below 1024 px the sidebar slides in from the menu button and the window scrolls.
 {% endcomment %}
 {% block title %}{{ page_title }} · CSU-TBI Track{% endblock %}
+{% block body_class %}app-bg{% endblock %}
 {% block body %}
 {# hx-headers: every HTMX request inside sends the CSRF token (only here: public and login pages must not print a per-request token). #}
-<div x-data="{ menuOpen: false }" @keydown.escape.window="menuOpen = false" class="min-h-full lg:flex" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<div x-data="{ menuOpen: false }" @keydown.escape.window="menuOpen = false" class="app-shell min-h-full lg:flex lg:h-screen lg:overflow-hidden" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
   <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:shadow">Skip to the content</a>
 
   {# Small screens: dark backdrop behind the open sidebar #}
   <div x-cloak x-show="menuOpen" x-transition.opacity class="fixed inset-0 z-30 bg-slate-900/50 lg:hidden" @click="menuOpen = false" aria-hidden="true"></div>
 
-  {% comment %}Desktop: a full-height blue column with the sidebar sticking to the top while the page scrolls.
-  Small screens: the sidebar slides in over the page from the menu button.{% endcomment %}
-  <div class="lg:w-62 lg:shrink-0 lg:bg-sidebar">
-    <aside id="sidebar"
-           class="on-dark fixed inset-y-0 left-0 z-40 flex w-62 -translate-x-full flex-col bg-sidebar text-white transition-transform lg:sticky lg:top-0 lg:h-screen lg:translate-x-0"
-           :class="menuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-           aria-label="Main navigation">
-      {% include "partials/sidebar.html" %}
-    </aside>
-  </div>
+  {% comment %}Desktop: the sidebar sits on the gradient, full height. Small screens: it slides in over the page
+  from the menu button (with its own solid brand blue, since it covers the page).{% endcomment %}
+  <aside id="sidebar"
+         class="on-dark fixed inset-y-0 left-0 z-40 flex w-62 -translate-x-full flex-col bg-sidebar text-white transition-transform lg:static lg:h-full lg:shrink-0 lg:translate-x-0 lg:bg-transparent"
+         :class="menuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+         aria-label="Main navigation">
+    {% include "partials/sidebar.html" %}
+  </aside>
 
-  <div class="min-w-0 flex-1">
+  {# The content panel: floats on the gradient (16 px from the edges); the top bar stays at its top while the page scrolls. #}
+  <div id="content-panel" class="app-panel relative min-w-0 flex-1 bg-panel lg:my-4 lg:mr-4 lg:overflow-y-auto lg:rounded-[28px]">
     {% include "partials/topbar.html" %}
-    <main id="main" class="px-6 pt-6 pb-12 xl:px-8" tabindex="-1">
+    <main id="main" class="px-5 pt-5 pb-10 sm:px-6 xl:px-7" tabindex="-1">
       {% block content %}{% endblock %}
     </main>
   </div>

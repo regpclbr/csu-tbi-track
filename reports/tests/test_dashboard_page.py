@@ -29,7 +29,7 @@ def today() -> date:
 def kpis(html: str) -> dict[str, str]:
     """KPI card label -> value as shown on the page (components/kpi_card.html)."""
     found = re.findall(
-        r'<p class="text-\[15px\] leading-snug text-muted">([^<]+)</p>\s*<div[^>]*>\s*<p class="text-4xl[^"]*">([^<]+)</p>', html
+        r'<p class="text-\[13px\] leading-snug font-medium text-muted">([^<]+)</p>\s*<div[^>]*>\s*<p class="text-3xl[^"]*">([^<]+)</p>', html
     )
     return {label.strip(): value.strip() for label, value in found}
 
@@ -95,7 +95,7 @@ def test_kpi_cards_show_the_metric_numbers(director, login, data) -> None:
     shown = kpis(response.content.decode())
     cards = page.cards
     assert shown["Upcoming activities"] == str(cards["upcoming_activities"]["within_30_days"]) == "1"
-    assert shown["Certificates waiting for sign-off"] == str(cards["certificates_waiting_for_signoff"]["value"]) == "1"
+    assert shown["Certificates waiting for sign\u2011off"] == str(cards["certificates_waiting_for_signoff"]["value"]) == "1"
     assert shown["Registrations"] == str(cards["registrations"]["value"]) == "4"
     assert "75% attended" in response.content.decode()
     assert shown["Open for registration"] == "0"  # no registration forms in this data set
@@ -275,3 +275,91 @@ def test_recent_changes_come_from_the_audit_log(director, login, roles) -> None:
     assert "Test Director changed the venue of Audit Seminar to TBI Lounge" in html
     assert "Test Director created Audit Seminar as Draft" in html
     assert "just now" in html
+
+
+# --- Restyled shell and dashboard (ASSUMPTIONS 258) ---------------------------------------------------
+
+
+@pytest.mark.parametrize(("hour", "expected"), [(6, "Good morning"), (11, "Good morning"), (12, "Good afternoon"),
+                                                (17, "Good afternoon"), (18, "Good evening"), (23, "Good evening")])
+def test_greeting_follows_manila_time(hour, expected) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from reports.dashboard_page import greeting
+
+    assert greeting(datetime(2026, 10, 25, hour, 30, tzinfo=ZoneInfo("Asia/Manila"))) == expected
+    in_utc = datetime(2026, 10, 25, hour, 30, tzinfo=ZoneInfo("Asia/Manila")).astimezone(ZoneInfo("UTC"))
+    assert greeting(in_utc) == expected  # the same moment given in UTC
+
+
+def test_banner_greets_by_first_name_and_summarises_the_page(director, login, data) -> None:
+    response = login(director).get(URL)
+    page, html = response.context["page"], response.content.decode()
+    assert f"{page.greeting}, Test</h2>" in html  # "Test Director"
+    upcoming = page.cards["upcoming_activities"]["within_30_days"]
+    summary = re.search(r'<p id="banner-summary"[^>]*>(.*?)</p>', html, re.S).group(1)
+    assert f"{len(page.attention)} item" in summary and f"{upcoming} upcoming activit" in summary
+    assert 'href="#needs-attention"' in html and 'id="needs-attention"' in html
+
+
+def test_a_filter_change_refreshes_the_banner_summary_out_of_band(director, login, data) -> None:
+    full = login(director).get(URL).content.decode()
+    assert 'hx-swap-oob="true"' not in full  # only the HTMX response carries it
+    partial = login(director).get(URL, {"range": "last_year"}, **HTMX).content.decode()
+    assert re.search(r'<p id="banner-summary"[^>]*hx-swap-oob="true"', partial)
+
+
+def test_next_activity_spotlight_and_the_rest_of_the_upcoming_list(director, login, data) -> None:
+    response = login(director).get(URL)
+    page, html = response.context["page"], response.content.decode()
+    assert page.next_activity == page.upcoming[0] and page.upcoming_after_next == page.upcoming[1:]
+    first = page.next_activity
+    assert f'aria-label="{first["registered"]} of {first["activity"].max_slots} slots registered"' in html
+    assert first["activity"].venue in html and "Open activity" in html
+
+
+def test_recent_changes_show_the_members_initials(director, login, make_activity) -> None:
+    from activities import services as activity_services
+
+    activity = make_activity("Initials Seminar", status="Scheduled", start=today() + timedelta(days=20))  # Conducted is read-only
+    activity_services.update_activity(director, activity, {"venue": "TBI Lounge"})
+    page = login(director).get(URL).context["page"]
+    change = next(c for c in page.recent_changes if "Initials Seminar" in c["sentence"] and "venue" in c["sentence"])
+    assert change["initials"] == "TD" and change["member"] == "Test Director"
+
+
+def test_donut_segments_leave_a_gap_for_their_rounded_ends() -> None:
+    from reports.dashboard_page import DONUT_GAP, DONUT_STROKE, _categories
+
+    one = _categories([{"name": "Faculty", "attended": 5}])
+    assert one["segments"][0]["length"] == 100 and one["stroke"] == DONUT_STROKE  # a full ring: nothing to separate
+    two = _categories([{"name": "Faculty", "attended": 3}, {"name": "MSMEs", "attended": 1}])
+    inset = DONUT_STROKE / 2 + DONUT_GAP / 2
+    assert [s["length"] for s in two["segments"]] == [75 - 2 * inset, 25 - 2 * inset]
+    assert [row["attended"] for row in two["legend"]] == [3, 1] and two["total"] == 4  # numbers unchanged
+
+
+@pytest.mark.parametrize("start, end, expected", [
+    (date(2026, 11, 6), date(2026, 11, 6), "Nov 6, 2026"),
+    (date(2026, 10, 30), date(2026, 10, 31), "Oct 30–31, 2026"),
+    (date(2026, 10, 30), date(2026, 11, 2), "Oct 30 – Nov 2, 2026"),
+    (date(2026, 12, 30), date(2027, 1, 2), "Dec 30, 2026 – Jan 2, 2027"),
+])
+def test_compact_activity_dates(start, end, expected) -> None:
+    from types import SimpleNamespace
+
+    from config.ui_tags import date_span
+
+    assert date_span(SimpleNamespace(start_date=start, end_date=end)) == expected
+
+
+def test_next_activity_and_upcoming_rows_use_compact_dates_and_a_title_tooltip(director, login, data) -> None:
+    from config.ui_tags import date_span
+
+    response = login(director).get(URL)
+    page, html = response.context["page"], response.content.decode()
+    for row in page.upcoming:
+        assert date_span(row["activity"]) in html
+    for row in page.upcoming_after_next:
+        assert f'title="{row["activity"].title}"' in html

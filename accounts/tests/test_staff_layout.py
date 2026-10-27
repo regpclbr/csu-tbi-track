@@ -360,3 +360,17 @@ def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -
     glass = glass[:glass.index("}")]
     assert "-webkit-backdrop-filter:blur(20px)" in glass and ";backdrop-filter:blur(20px)" in glass
     assert "background:#ffffffb3" in glass  # white 70%
+
+
+
+def test_app_shell_is_a_gradient_frame_with_a_rounded_panel_and_pill_buttons(director) -> None:
+    """ASSUMPTIONS 258: the sidebar sits on the login gradient; the content is a light rounded panel."""
+    html = logged_in(director).get(HOME).content.decode()
+    assert re.search(r'<body class="h-full app-bg', html)
+    assert 'id="content-panel"' in html and "lg:rounded-[28px]" in html and "sidebar-glass" in html
+    active = re.search(r'<a href="/"\s+class="([^"]*)"\s+aria-current="page"', html).group(1)
+    assert "bg-white/18" in active and "shadow-[inset_3px_0_0_#FFFFFF]" in active
+    css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
+    assert re.search(r"\.app-bg\{background:linear-gradient\(135deg,#22378f[^}]*#60cdee 100%\)\}", css)
+    assert ".app-shell .btn{border-radius:9999px}" in css
+    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#22378f14" in css  # card radius + soft shadow

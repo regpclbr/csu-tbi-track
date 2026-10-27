@@ -1,0 +1,9 @@
+{% load ui %}{% comment %}
+The welcome banner's one-line summary (dashboard/index.html). After a filter change, dashboard/_body.html sends it
+again with oob=True and HTMX swaps it in place (hx-swap-oob). Numbers: the Needs attention items and S2's
+"within 30 days" (the Upcoming activities card), so it always matches the cards below.
+{% endcomment %}{% with attention=page.attention|length upcoming=page.cards.upcoming_activities.within_30_days %}
+<p id="banner-summary" class="mt-2 max-w-xl text-[15px] leading-relaxed text-white"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if attention %}{{ attention|number }} item{{ attention|pluralize }} need{{ attention|pluralize:"s," }} attention{% else %}Nothing needs your attention{% endif %}
+  · {{ upcoming|number }} upcoming activit{{ upcoming|pluralize:"y,ies" }} in the next 30 days.
+</p>{% endwith %}

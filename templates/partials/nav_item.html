@@ -1,6 +1,6 @@
-{# One sidebar link. `item` is a dict from config.frontend.StaffLayout. #}
+{# One sidebar link (white on the gradient). Active: white pill at 18% with a white indicator on the left; hover: white at 10%. `item` is a dict from config.frontend.StaffLayout. #}
 <a href="{{ item.url }}"
-   class="group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-medium transition-colors {% if item.active %}bg-[#E8EEFD] text-sidebar shadow-[inset_3px_0_0_var(--color-accent)]{% else %}text-white hover:bg-sidebar-hover{% endif %}"
+   class="group relative flex items-center gap-3 rounded-full px-3.5 py-2.5 text-[15px] font-medium text-white transition-colors {% if item.active %}bg-white/18 font-semibold shadow-[inset_3px_0_0_#FFFFFF]{% else %}hover:bg-white/10{% endif %}"
    {% if item.active %}aria-current="page"{% endif %}>
   {% include "components/icon.html" with name=item.icon class="size-5 transition-transform duration-200 motion-safe:group-hover:scale-110" %}
   <span class="flex-1">{{ item.label }}</span>
