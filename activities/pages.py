@@ -33,9 +33,9 @@ SORT_CHOICES = [
 TABS = [
     ("overview", "Overview", None),
     ("history", "History", None),
-    ("forms", "Forms", "F2b"),
-    ("registrations", "Registrations", "F2b"),
-    ("evaluation", "Evaluation", "F2b"),
+    ("forms", "Forms", None),
+    ("registrations", "Registrations", None),
+    ("evaluation", "Evaluation", None),
     ("documents", "Documents", "F4"),
     ("certificates", "Certificates", "F4"),
 ]

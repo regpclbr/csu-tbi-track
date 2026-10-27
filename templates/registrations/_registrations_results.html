@@ -1,0 +1,84 @@
+{% comment %}
+The registrations table (swapped by the filters). With can_create_activity: row checkboxes, "select all on this page",
+Mark attended (choose the method) and Unmark, sent to registrations.services.set_attendance (all or nothing).
+The table scrolls sideways inside the card on narrow screens.
+{% endcomment %}
+<div id="registrations-results" class="htmx-dim">
+  <p class="mb-3 text-sm text-muted" role="status">
+    {{ result.total }} registration{{ result.total|pluralize }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
+  </p>
+  {% if page.object_list %}
+    <form method="post" action="{% url 'registrations:attendance' activity.pk %}"
+          x-data="{ selected: [], all: [{% for registration in page.object_list %}'{{ registration.pk }}'{% if not forloop.last %}, {% endif %}{% endfor %}] }">
+      {% csrf_token %}
+      <input type="hidden" name="filters" value="{{ filters.query }}">
+      {% if can_create %}
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <span class="text-sm text-slate-700" x-text="selected.length ? selected.length + ' selected' : 'Select registrations to record attendance.'">Select registrations to record attendance.</span>
+          {% if attendance_reason %}
+            <span class="text-sm text-muted">· {{ attendance_reason }}</span>
+          {% else %}
+            {% include "components/modal.html" with id="attendance-modal" title="Mark attended" body="registrations/_attendance_form.html" trigger_label="Mark attended…" trigger_icon="check" trigger_class="btn btn-primary btn-sm" %}
+            <button type="submit" name="action" value="unmark" class="btn btn-secondary btn-sm" :disabled="!selected.length">Unmark</button>
+          {% endif %}
+        </div>
+      {% endif %}
+      <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts of the right-hand cells inside the scroll box #}
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">Registrations of {{ activity.title }}</caption>
+          <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+            <tr>
+              {% if can_create and not attendance_reason %}
+                <th scope="col" class="w-10 px-3 py-2.5">
+                  <input type="checkbox" class="size-4 accent-primary" aria-label="Select all on this page"
+                         :checked="selected.length === all.length" @change="selected = $event.target.checked ? [...all] : []">
+                </th>
+              {% endif %}
+              <th scope="col" class="px-3 py-2.5">Name</th>
+              <th scope="col" class="px-3 py-2.5">Email</th>
+              <th scope="col" class="px-3 py-2.5">Contact number</th>
+              <th scope="col" class="px-3 py-2.5">Category</th>
+              <th scope="col" class="px-3 py-2.5">Registered</th>
+              <th scope="col" class="px-3 py-2.5">Attendance</th>
+              <th scope="col" class="px-3 py-2.5">Evaluation</th>
+              <th scope="col" class="px-3 py-2.5">Startup</th>
+              <th scope="col" class="px-3 py-2.5"><span class="sr-only">Details</span></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-line">
+            {% for registration in page.object_list %}
+              <tr class="hover:bg-slate-50">
+                {% if can_create and not attendance_reason %}
+                  <td class="px-3 py-2.5"><input type="checkbox" name="registration_ids" value="{{ registration.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ registration.name }}"></td>
+                {% endif %}
+                <th scope="row" class="min-w-44 px-3 py-2.5 font-semibold text-ink">{{ registration.name }}</th>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.email }}</td>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.contact_number|default:"–" }}</td>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.participant_category.name }}</td>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700"><time datetime="{{ registration.registration_date|date:'c' }}">{{ registration.registration_date|date:"M j, Y g:i A" }}</time></td>
+                <td class="px-3 py-2.5 whitespace-nowrap">
+                  {% if registration.attendance_confirmed %}<span class="badge badge-success">Attended · {{ registration.get_confirmation_method_display|lower }}</span>{% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
+                </td>
+                <td class="px-3 py-2.5">
+                  {% if registration.evaluation_submission %}<span class="badge badge-info">Submitted</span>{% else %}<span class="text-muted">–</span>{% endif %}
+                </td>
+                <td class="min-w-36 px-3 py-2.5 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
+                <td class="px-3 py-2.5 text-right">
+                  <button type="button" class="btn btn-ghost btn-sm" aria-haspopup="dialog" @click="opener = $el"
+                          hx-get="{% url 'registrations:registration_detail' activity.pk registration.pk %}" hx-target="#registration-dialog-body"
+                          hx-on::after-request="if (event.detail.successful) document.getElementById('registration-dialog').showModal()">
+                    View<span class="sr-only"> {{ registration.name }}</span></button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </form>
+    {% include "components/pagination.html" with result=result query=page_query hx_target="#tab-area" %}
+  {% elif filters.any_set %}
+    {% include "components/empty_state.html" with icon="search" title="No registrations match" text="Try another name or email, or fewer filters." %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="users" title="No registrations yet" text="People who register on the public page appear here." %}
+  {% endif %}
+</div>

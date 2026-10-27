@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% load ui %}
+{% comment %}
+Printable attendance sheet (registrations.page_views.attendance_sheet): A4, browser print. Name, participant category
+and an empty signature column, by name. Never emails or contact numbers (it is passed around on paper).
+{% endcomment %}
+{% block title %}Attendance sheet · {{ activity.title }}{% endblock %}
+{% block head %}
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff !important; }
+    .sheet { box-shadow: none !important; margin: 0 !important; padding: 0 !important; max-width: none !important; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+  }
+</style>
+{% endblock %}
+{% block body_class %}bg-slate-100{% endblock %}
+{% block body %}
+<div class="no-print mx-auto flex max-w-[210mm] items-center justify-between gap-3 px-4 pt-6">
+  <a href="{% url 'activities:detail' activity.pk %}?tab=registrations" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to the activity</a>
+  <button type="button" class="btn btn-primary" onclick="window.print()">{% include "components/icon.html" with name="file-text" class="size-4" %}Print</button>
+</div>
+<main class="sheet mx-auto my-6 max-w-[210mm] bg-white p-[12mm] text-ink shadow-card">
+  <header class="border-b-2 border-ink pb-3">
+    <p class="text-xs font-semibold tracking-wider text-slate-600 uppercase">Caraga State University · Technology Business Incubator</p>
+    <h1 class="mt-1 text-xl font-bold">Attendance sheet</h1>
+    <p class="mt-1 text-base font-semibold">{{ activity.title }}</p>
+    <p class="mt-0.5 text-sm text-slate-700">{{ activity|date_span }} · {{ activity.time_schedule }} · {{ activity.venue }}</p>
+  </header>
+  {% if rows %}
+    <table class="mt-4 w-full border-collapse text-sm">
+      <thead>
+        <tr class="text-left">
+          <th scope="col" class="w-10 border border-slate-400 px-2 py-1.5">No.</th>
+          <th scope="col" class="border border-slate-400 px-2 py-1.5">Name</th>
+          <th scope="col" class="w-40 border border-slate-400 px-2 py-1.5">Participant category</th>
+          <th scope="col" class="w-56 border border-slate-400 px-2 py-1.5">Signature</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td class="border border-slate-400 px-2 py-3 text-right tabular-nums">{{ forloop.counter }}</td>
+            <td class="border border-slate-400 px-2 py-3">{{ row.name }}</td>
+            <td class="border border-slate-400 px-2 py-3">{{ row.category }}</td>
+            <td class="border border-slate-400 px-2 py-3"></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="mt-3 text-xs text-slate-600">{{ rows|length }} registrant{{ rows|length|pluralize }}.</p>
+  {% else %}
+    <p class="mt-6 text-sm text-slate-700">Nobody has registered for this activity yet.</p>
+  {% endif %}
+</main>
+{% endblock %}

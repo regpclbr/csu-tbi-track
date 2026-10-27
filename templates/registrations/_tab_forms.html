@@ -1,0 +1,6 @@
+{% comment %}Forms tab: the registration form and the evaluation form (registrations.pages.forms_tab), one card each.{% endcomment %}
+<div class="grid gap-5 xl:grid-cols-2">
+  {% for card in cards %}
+    {% include "registrations/_form_card.html" %}
+  {% endfor %}
+</div>

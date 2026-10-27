@@ -12,7 +12,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import Max, QuerySet
+from django.db.models import Max, Q, QuerySet
 from django.urls import reverse
 from django.utils import timezone
 
@@ -232,11 +232,12 @@ def form_is_locked(form: FormTemplate) -> bool:
     ).exists()
 
 
+FORM_LOCKED = "This form already has answers, so its fields are locked: they cannot be added, edited or removed."
+
+
 def _ensure_unlocked(form: FormTemplate) -> None:
     if form_is_locked(form):
-        raise RegistrationError(
-            "This form already has answers, so its fields are locked: they cannot be added, edited or removed."
-        )
+        raise RegistrationError(FORM_LOCKED)
 
 
 @transaction.atomic
@@ -519,6 +520,13 @@ def register(
 
 # --- Attendance (staff, needs can_create_activity) -----------------------------------------
 
+ATTENDANCE_CLOSED = "Attendance can be recorded only when the activity is Ongoing or Conducted."
+
+
+def attendance_closed_reason(activity: Activity) -> str | None:
+    """None when attendance can be recorded now (Ongoing or Conducted); otherwise why not."""
+    return None if activity.status.name in ATTENDANCE_STATUSES else ATTENDANCE_CLOSED
+
 
 @transaction.atomic
 def set_attendance(
@@ -532,8 +540,8 @@ def set_attendance(
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
-    if locked.status.name not in ATTENDANCE_STATUSES:
-        raise RegistrationError("Attendance can be recorded only when the activity is Ongoing or Conducted.")
+    if reason := attendance_closed_reason(locked):
+        raise RegistrationError(reason)
     if attended and method not in Registration.ConfirmationMethod.values:
         raise RegistrationError("Choose how attendance was confirmed: email or wet_signature.")
 
@@ -561,14 +569,17 @@ def set_attendance(
 
 
 def list_registrations(
-    activity: Activity, attended: bool | None = None, participant_category_id: int | None = None
+    activity: Activity, attended: bool | None = None, participant_category_id: int | None = None, search: str = ""
 ) -> QuerySet:
-    """Staff list of an activity's registrations, with category and answers."""
+    """Staff list of an activity's registrations by name, with category, startup, evaluation and answers.
+    `search` matches the name or the email (ignoring case)."""
     registrations = (
-        activity.registrations.select_related("participant_category")
+        activity.registrations.select_related("participant_category", "startup", "evaluation_submission")
         .prefetch_related("answers__field")
         .order_by("name", "registration_id")
     )
+    if search := (search or "").strip():
+        registrations = registrations.filter(Q(name__icontains=search) | Q(email__icontains=search))
     if attended is not None:
         registrations = registrations.filter(attendance_confirmed=attended)
     if participant_category_id:
@@ -733,6 +744,20 @@ def submit_evaluation(
     return submission
 
 
+def evaluation_links_closed_reason(activity: Activity, now: datetime | None = None) -> str | None:
+    """None when evaluation links can be sent now (an evaluation form exists and the window is open)."""
+    if get_form(activity, FormType.EVALUATION) is None:
+        return "This activity has no evaluation form yet."
+    if reason := _window_reason(activity, now or timezone.now()):
+        return f"Links cannot be sent now. {reason}"
+    return None
+
+
+def evaluation_link_recipients(activity: Activity) -> QuerySet:
+    """Who gets an evaluation link: attendees who have not evaluated yet."""
+    return activity.registrations.filter(attendance_confirmed=True, evaluation_submission__isnull=True)
+
+
 def send_evaluation_links(member: TBIMember, activity: Activity, now: datetime | None = None) -> int:
     """Queue one email task per attendee who has not evaluated yet (their personal link).
     Returns how many were queued; the emails are sent in the background, so a mail-server
@@ -741,12 +766,9 @@ def send_evaluation_links(member: TBIMember, activity: Activity, now: datetime |
     Refused if the activity has no evaluation form or the evaluation window is not open.
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
-    if get_form(activity, FormType.EVALUATION) is None:
-        raise RegistrationError("This activity has no evaluation form yet.")
-    if reason := _window_reason(activity, now or timezone.now()):
-        raise RegistrationError(f"Links cannot be sent now. {reason}")
-    recipients = activity.registrations.filter(attendance_confirmed=True, evaluation_submission__isnull=True)
-    registration_ids = list(recipients.order_by("pk").values_list("pk", flat=True))
+    if reason := evaluation_links_closed_reason(activity, now):
+        raise RegistrationError(reason)
+    registration_ids = list(evaluation_link_recipients(activity).order_by("pk").values_list("pk", flat=True))
     for registration_id in registration_ids:
         queue_evaluation_link(registration_id)
     return len(registration_ids)

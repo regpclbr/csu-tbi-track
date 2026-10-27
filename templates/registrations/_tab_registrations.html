@@ -1,0 +1,85 @@
+{% load ui %}
+{% comment %}
+Registrations tab (registrations.pages.registrations_tab). Counts (reports metrics), the actions (send evaluation
+links, print the attendance sheet), filters and the table. The filters swap only #registrations-results (hx-select
+picks it from the tab); attendance changes are normal POSTs that come back here with a toast.
+{% endcomment %}
+<div class="space-y-5" x-data="{ opener: null }">
+  <div class="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+    {% include "components/kpi_card.html" with label="Registered / max slots" value=counts.slots icon="users" chip="blue" %}
+    {% include "components/kpi_card.html" with label="Attended" value=counts.attended|number icon="circle-check" chip="green" %}
+    {% include "components/kpi_card.html" with label="Evaluations submitted" value=counts.evaluations|number icon="file-check" chip="teal" %}
+    {% include "components/kpi_card.html" with label="Response rate" value=counts.response_rate|percent icon="chart-column" chip="violet" pill="of attendees" pill_tone="neutral" %}
+  </div>
+
+  <section class="card p-6" aria-labelledby="registrations-title">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 id="registrations-title" class="card-title">Registrations</h2>
+        <p class="card-subtitle">Nobody outside the TBI staff sees this list.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="{% url 'registrations:attendance_sheet' activity.pk %}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
+          {% include "components/icon.html" with name="file-text" class="size-4" %}Print attendance sheet<span class="sr-only"> (opens in a new tab)</span></a>
+        {% if can_create %}
+          <form method="post" action="{% url 'registrations:send_links' activity.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm"{% if links_reason %} disabled aria-describedby="links-reason"{% endif %}>
+              {% include "components/icon.html" with name="mail" class="size-4" %}Send evaluation links</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% if can_create %}
+      <p id="links-reason" class="mb-4 flex items-start gap-2 text-sm {% if links_reason %}text-slate-700{% else %}text-muted{% endif %}">
+        {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}
+        {% if links_reason %}Evaluation links: {{ links_reason }}{% else %}Evaluation links go to {{ link_recipients }} attendee{{ link_recipients|pluralize }} who ha{{ link_recipients|pluralize:"s,ve" }} not evaluated yet.{% endif %}
+      </p>
+    {% endif %}
+
+    <form id="registration-filters" method="get" action="{% url 'activities:detail' activity.pk %}" role="search" aria-label="Filter registrations"
+          hx-get="{% url 'activities:detail' activity.pk %}" hx-target="#registrations-results" hx-select="#registrations-results" hx-swap="outerHTML"
+          hx-push-url="true" hx-trigger="change, keyup changed delay:400ms from:#reg-q, search from:#reg-q" hx-indicator="#registrations-results, #reg-loading"
+          class="mb-4 flex flex-wrap items-center gap-2.5">
+      <input type="hidden" name="tab" value="registrations">
+      <div class="relative w-full sm:w-72">
+        <label for="reg-q" class="sr-only">Search by name or email</label>
+        <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4" %}</span>
+        <input id="reg-q" type="search" name="q" value="{{ filters.q }}" placeholder="Search by name or email…" class="field-input pill-select py-2 pl-10">
+      </div>
+      <div>
+        <label for="reg-attended" class="sr-only">Attendance</label>
+        <select id="reg-attended" name="attended" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <option value="">Everyone</option>
+          <option value="true"{% if filters.attended is True %} selected{% endif %}>Attended</option>
+          <option value="false"{% if filters.attended is False %} selected{% endif %}>Not marked attended</option>
+        </select>
+      </div>
+      {% if categories|length > 1 %}
+        <div>
+          <label for="reg-category" class="sr-only">Participant category</label>
+          <select id="reg-category" name="category" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+            <option value="">All categories</option>
+            {% for category in categories %}<option value="{{ category.pk }}"{% if category.pk == filters.category %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
+          </select>
+        </div>
+      {% endif %}
+      <span id="reg-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
+      <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
+    </form>
+
+    {% include "registrations/_registrations_results.html" %}
+  </section>
+
+  {# Registration details: HTMX loads them into this dialog; Escape closes it and focus goes back to the "View" button. #}
+  <dialog id="registration-dialog" class="modal max-w-xl" aria-labelledby="registration-dialog-title" @close="opener && opener.focus()" @click.self="$el.close()">
+    <div class="p-6">
+      <div class="mb-4 flex items-start justify-between gap-4">
+        <h2 id="registration-dialog-title" class="card-title">Registration</h2>
+        <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" onclick="this.closest('dialog').close()" aria-label="Close">
+          {% include "components/icon.html" with name="x" class="size-5" %}</button>
+      </div>
+      <div id="registration-dialog-body"></div>
+    </div>
+  </dialog>
+</div>

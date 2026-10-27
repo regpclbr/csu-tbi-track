@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from registrations import pages as registration_pages
 
 from . import pages, services
 from .forms import ActivityPageForm
@@ -115,8 +116,9 @@ def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
 @staff_login_required
 @require_GET
 def activity_detail(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """GET ?tab=overview|history|forms|registrations|evaluation|documents|certificates (&page= for History).
-    An HTMX request (a tab or a History page) gets only the tab."""
+    """GET ?tab=overview|history|forms|registrations|evaluation|documents|certificates (&page= for History;
+    &q, attended, category, page for Registrations). An HTMX request (a tab, a page, a filter) gets only the tab;
+    the Registrations filters pick their table out of it (hx-select)."""
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type", "created_by"), pk=activity_id)
     tab = pages.tab_key(request.GET.get("tab"))
     detail = services.get_activity_detail(activity)
@@ -132,6 +134,13 @@ def activity_detail(request: HttpRequest, activity_id: int) -> HttpResponse:
         context["detail_rows"] = pages.detail_rows(detail)
     elif tab == "history":
         context["history"], context["history_rows"] = pages.history(activity, request.GET.get("page", 1))
+    elif tab == "forms":
+        context.update(registration_pages.forms_tab(activity, can_create), field_types=registration_pages.FIELD_TYPE_CHOICES,
+                       choice_types=registration_pages.CHOICE_TYPES)
+    elif tab == "registrations":
+        context.update(registration_pages.registrations_tab(request.user, activity, request.GET))
+    elif tab == "evaluation":
+        context.update(registration_pages.evaluation_tab(request.user, activity))
     if is_htmx(request):
         return render(request, "activities/_tab.html", context)
     return render(request, "activities/detail.html", context)

@@ -1,0 +1,41 @@
+{% comment %}
+One form field as participants see it (registration / evaluation pages; the Forms tab preview uses it disabled).
+{% include "components/answer_field.html" with row=row disabled=True %}
+row: registrations.pages.field_rows item (field, options). Rating = five numbered choices (1 to 5).
+{% endcomment %}
+{% with field=row.field %}
+{% if field.field_type == "short_text" or field.field_type == "long_text" %}
+  <div>
+    <label for="answer-{{ field.pk }}" class="text-sm font-semibold text-ink">{{ field.field_label }}{% if field.is_required %} <span class="text-danger" aria-hidden="true">*</span>{% endif %}</label>
+    {% if field.field_type == "short_text" %}
+      <input id="answer-{{ field.pk }}" type="text" name="field_{{ field.pk }}" class="field-input mt-1.5"{% if field.is_required %} required{% endif %}{% if disabled %} disabled{% endif %}>
+    {% else %}
+      <textarea id="answer-{{ field.pk }}" name="field_{{ field.pk }}" rows="3" class="field-input mt-1.5"{% if field.is_required %} required{% endif %}{% if disabled %} disabled{% endif %}></textarea>
+    {% endif %}
+  </div>
+{% else %}
+  <fieldset>
+    <legend class="text-sm font-semibold text-ink">{{ field.field_label }}{% if field.is_required %} <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span>{% endif %}</legend>
+    {% if field.field_type == "rating" %}
+      <div class="mt-1.5 flex gap-2">
+        {% for number in "12345" %}
+          <label class="relative">
+            <input type="radio" name="field_{{ field.pk }}" value="{{ number }}" class="peer sr-only"{% if disabled %} disabled{% endif %}>
+            <span class="flex size-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-700 peer-checked:border-primary peer-checked:bg-primary peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-primary">{{ number }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <p class="mt-1 text-xs text-muted">1 = poor, 5 = excellent</p>
+    {% else %}
+      <div class="mt-1.5 space-y-1.5">
+        {% for option in row.options %}
+          <label class="flex items-center gap-2.5 text-sm text-ink">
+            <input type="{% if field.field_type == 'checkbox' %}checkbox{% else %}radio{% endif %}" name="field_{{ field.pk }}" value="{{ option }}" class="size-4 accent-primary"{% if disabled %} disabled{% endif %}>
+            {{ option }}
+          </label>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </fieldset>
+{% endif %}
+{% endwith %}

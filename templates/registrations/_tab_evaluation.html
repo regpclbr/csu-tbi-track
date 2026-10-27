@@ -1,0 +1,40 @@
+{% load ui %}
+{% comment %}
+Evaluation tab: reports.services.activity_evaluation (reports.metrics): counts and the average of each rating question.
+Never comments, text answers or names. Each bar is the average out of 5; the table holds the same numbers as text.
+{% endcomment %}
+<div class="space-y-5">
+  <div class="grid grid-cols-2 gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
+    {% include "components/kpi_card.html" with label="Registered" value=results.registered|number icon="users" chip="blue" %}
+    {% include "components/kpi_card.html" with label="Attended" value=results.attended|number icon="circle-check" chip="green" %}
+    {% include "components/kpi_card.html" with label="Evaluations submitted" value=results.evaluations|number icon="file-check" chip="teal" %}
+    {% include "components/kpi_card.html" with label="Response rate" value=results.evaluation_response_rate|percent icon="chart-column" chip="violet" pill="of attendees" pill_tone="neutral" %}
+    {% if results.average_rating is not None %}
+      {% include "components/kpi_card.html" with label="Overall average rating" value=average_text icon="award" chip="amber" pill=answers_text pill_tone="neutral" %}
+    {% else %}
+      {% include "components/kpi_card.html" with label="Overall average rating" value="–" icon="award" chip="amber" %}
+    {% endif %}
+  </div>
+
+  <section class="card p-6" aria-labelledby="ratings-title">
+    {% include "components/section_header.html" with id="ratings-title" title="Rating questions" subtitle="Average of the 1–5 ratings given in the submitted evaluations." %}
+    {% if questions %}
+      <table class="w-full text-sm">
+        <caption class="sr-only">Average rating per question (the bars show the same numbers)</caption>
+        <thead class="sr-only"><tr><th scope="col">Question</th><th scope="col">Bar</th><th scope="col">Average out of 5</th><th scope="col">Answers</th></tr></thead>
+        <tbody class="divide-y divide-line">
+          {% for question in questions %}
+            <tr>
+              <th scope="row" class="w-2/5 py-3 pr-4 text-left font-medium [overflow-wrap:anywhere] text-ink">{{ question.question }}</th>
+              <td class="py-3 pr-4" aria-hidden="true"><div class="h-2.5 rounded-full bg-slate-100"><div class="h-full rounded-full bg-primary" style="width: {{ question.percent }}%"></div></div></td>
+              <td class="w-20 py-3 text-right font-semibold whitespace-nowrap text-ink tabular-nums">{{ question.average|rating }} / 5</td>
+              <td class="w-28 py-3 text-right whitespace-nowrap text-muted tabular-nums">{{ question.answers }} answer{{ question.answers|pluralize }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      {% include "components/empty_state.html" with icon="chart-column" title="No evaluations yet" text="Results appear here once attendees submit the evaluation form. Comments and written answers are never shown here." %}
+    {% endif %}
+  </section>
+</div>

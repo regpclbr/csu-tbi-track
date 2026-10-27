@@ -1,0 +1,21 @@
+{% comment %}One registration in the details dialog: who, when, attendance, evaluation, and the registration answers.{% endcomment %}
+<p class="text-lg font-semibold [overflow-wrap:anywhere] text-ink">{{ registration.name }}</p>
+<dl class="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Email</dt><dd class="[overflow-wrap:anywhere] text-ink">{{ registration.email }}</dd></div>
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Contact number</dt><dd class="text-ink">{{ registration.contact_number|default:"–" }}</dd></div>
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Participant category</dt><dd class="text-ink">{{ registration.participant_category.name }}</dd></div>
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Registered</dt><dd class="text-ink">{{ registration.registration_date|date:"M j, Y g:i A" }}</dd></div>
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Attendance</dt><dd class="text-ink">{% if registration.attendance_confirmed %}Attended ({{ registration.get_confirmation_method_display|lower }}){% else %}Not yet{% endif %}</dd></div>
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Evaluation</dt><dd class="text-ink">{% if registration.evaluation_submission %}Submitted{% else %}Not submitted{% endif %}</dd></div>
+  {% if registration.startup %}<div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Startup</dt><dd class="text-ink">{{ registration.startup.name }}</dd></div>{% endif %}
+</dl>
+<h3 class="mt-5 border-t border-line pt-4 font-semibold text-ink">Registration answers</h3>
+{% if answers %}
+  <dl class="mt-2 space-y-3 text-sm">
+    {% for label, value in answers %}
+      <div><dt class="font-medium text-slate-700">{{ label }}</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ value|default:"–" }}</dd></div>
+    {% endfor %}
+  </dl>
+{% else %}
+  <p class="mt-2 text-sm text-muted">No answers besides the fixed fields.</p>
+{% endif %}

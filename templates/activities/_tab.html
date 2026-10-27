@@ -17,6 +17,12 @@ without JavaScript and a reload keeps the tab. Tabs of later phases say which ph
     {% include "activities/_tab_overview.html" %}
   {% elif tab == "history" %}
     {% include "activities/_tab_history.html" %}
+  {% elif tab == "forms" %}
+    {% include "registrations/_tab_forms.html" %}
+  {% elif tab == "registrations" %}
+    {% include "registrations/_tab_registrations.html" %}
+  {% elif tab == "evaluation" %}
+    {% include "registrations/_tab_evaluation.html" %}
   {% else %}
     {% include "activities/_tab_placeholder.html" %}
   {% endif %}

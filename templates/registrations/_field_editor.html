@@ -1,0 +1,45 @@
+{% comment %}
+Inline editor for a new field or one field (inside _form_card.html). Saved with HTMX; a refused save comes back with
+the service's messages under the inputs and the focus on the first one. `editor` = registrations.pages.editor_values
+(+ errors). Options are shown only for the choice types the server lists (choice_types).
+{% endcomment %}
+<form method="post"
+      action="{% if card.editing == "new" %}{% url 'registrations:field_add' card.form.pk %}{% else %}{% url 'registrations:field_update' card.editing %}{% endif %}"
+      hx-post="{% if card.editing == "new" %}{% url 'registrations:field_add' card.form.pk %}{% else %}{% url 'registrations:field_update' card.editing %}{% endif %}"
+      hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML"
+      class="space-y-3 rounded-2xl border-2 border-primary/30 bg-blue-50/40 p-4"
+      x-data="{ type: '{{ editor.field_type }}', choiceTypes: [{% for value in choice_types %}'{{ value }}'{% if not forloop.last %}, {% endif %}{% endfor %}] }"
+      x-init="$nextTick(() => { const first = $el.querySelector('[aria-invalid=true]') || $el.querySelector('input[name=field_label]'); first.focus(); })"
+      @keydown.escape="$refs.cancel.click()">
+  {% csrf_token %}
+  <h3 class="font-semibold text-ink">{% if card.editing == "new" %}New field{% else %}Edit field{% endif %}</h3>
+  <div>
+    <label for="editor-label-{{ card.form_type }}" class="text-sm font-semibold text-ink">Question</label>
+    <input id="editor-label-{{ card.form_type }}" type="text" name="field_label" value="{{ editor.field_label }}" maxlength="255" class="field-input mt-1.5"
+           {% if editor.errors.field_label %}aria-invalid="true" aria-describedby="editor-label-{{ card.form_type }}-error"{% endif %}>
+    {% if editor.errors.field_label %}<p id="editor-label-{{ card.form_type }}-error" class="field-error">{{ editor.errors.field_label }}</p>{% endif %}
+  </div>
+  <div class="flex flex-wrap items-end gap-4">
+    <div>
+      <label for="editor-type-{{ card.form_type }}" class="text-sm font-semibold text-ink">Answer type</label>
+      <select id="editor-type-{{ card.form_type }}" name="field_type" x-model="type" class="field-input mt-1.5 w-auto pr-9"
+              {% if editor.errors.field_type %}aria-invalid="true" aria-describedby="editor-type-{{ card.form_type }}-error"{% endif %}>
+        {% for value, label in field_types %}<option value="{{ value }}"{% if value == editor.field_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      {% if editor.errors.field_type %}<p id="editor-type-{{ card.form_type }}-error" class="field-error">{{ editor.errors.field_type }}</p>{% endif %}
+    </div>
+    <label class="flex items-center gap-2 pb-2.5 text-sm font-medium text-ink">
+      <input type="checkbox" name="is_required" class="size-4 accent-primary"{% if editor.is_required %} checked{% endif %}> Required
+    </label>
+  </div>
+  <div x-show="choiceTypes.includes(type)" {% if editor.field_type not in choice_types %}x-cloak{% endif %}>
+    {% with script_id="editor-options-"|add:card.form_type %}
+      {% include "components/options_editor.html" with options=editor.options error=editor.errors.options script_id=script_id %}
+    {% endwith %}
+  </div>
+  <div class="flex gap-2 pt-1">
+    <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="check" class="size-4" %}{% if card.editing == "new" %}Add field{% else %}Save field{% endif %}</button>
+    <button type="button" class="btn btn-secondary btn-sm" x-ref="cancel"
+            hx-get="{% url 'registrations:form_card' card.form.pk %}" hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">Cancel</button>
+  </div>
+</form>

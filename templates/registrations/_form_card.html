@@ -1,0 +1,102 @@
+{% comment %}
+One form's card (registrations.pages.form_card). Field actions are HTMX requests that replace this card (outerHTML)
+and show a toast; edit controls appear only with can_create_activity and only while the form has no answers.
+{% endcomment %}
+<section id="form-card-{{ card.form_type }}" class="card flex flex-col p-6" aria-labelledby="form-title-{{ card.form_type }}">
+  <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h2 id="form-title-{{ card.form_type }}" class="card-title">{{ card.label }} form</h2>
+      {% if card.form %}<p class="card-subtitle">{{ card.rows|length }} field{{ card.rows|length|pluralize }}{% if card.form.generated_from_default %} · started from the defaults{% endif %}</p>{% endif %}
+    </div>
+    {% if card.form %}
+      {% with preview_id="preview-"|add:card.form_type %}
+        {% include "components/modal.html" with id=preview_id title=card.label|add:" form preview" body="registrations/_preview.html" trigger_label="Preview" trigger_icon="eye" trigger_class="btn btn-secondary btn-sm" %}
+      {% endwith %}
+    {% endif %}
+  </div>
+
+  {% if not card.form %}
+    <div class="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center">
+      <span class="mb-3 flex size-11 items-center justify-center rounded-full bg-slate-100 text-muted">{% include "components/icon.html" with name="file-text" %}</span>
+      <p class="text-sm font-semibold text-ink">No {{ card.label|lower }} form yet</p>
+      <p class="mt-1 max-w-sm text-sm text-muted">
+        {% if card.default_count %}Start from the {{ card.default_count }} default field{{ card.default_count|pluralize }} for {{ activity.activity_type.name }} activities, then change them here.{% else %}There are no default fields for {{ activity.activity_type.name }} activities: the form starts empty.{% endif %}
+      </p>
+      {% if can_create %}
+        <form method="post" action="{% url 'registrations:form_create' activity.pk card.form_type %}" class="mt-4">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Create from defaults</button>
+        </form>
+      {% endif %}
+    </div>
+  {% else %}
+    {% if card.locked %}
+      <div class="mb-4 flex gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3 text-sm text-slate-700" role="note">
+        {% include "components/icon.html" with name="lock" class="mt-0.5 size-4.5 text-muted" %}
+        <p><strong class="text-ink">Locked.</strong> People have already answered this form, so its fields can no longer be added, edited, removed or moved.</p>
+      </div>
+    {% endif %}
+    {% if card.rows %}
+      <ol class="space-y-2" aria-label="Fields of the {{ card.label|lower }} form">
+        {% for row in card.rows %}
+          {% with field=row.field %}
+          {% if card.editable and card.editing == field.pk|stringformat:"s" %}
+            <li>{% include "registrations/_field_editor.html" with editor=card.editor action_url=field.pk %}</li>
+          {% else %}
+            <li class="flex items-start gap-3 rounded-2xl border border-line bg-white p-3.5" x-data="{ confirming: false }">
+              <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600" aria-hidden="true">{{ forloop.counter }}</span>
+              <div class="min-w-0 flex-1">
+                <p class="font-semibold [overflow-wrap:anywhere] text-ink">
+                  {{ field.field_label }}{% if field.is_required %} <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span>{% endif %}
+                </p>
+                <p class="mt-1 flex flex-wrap items-center gap-1.5">
+                  <span class="badge badge-info">{{ row.type_label }}</span>
+                  {% if field.is_required %}<span class="badge badge-neutral">Required</span>{% else %}<span class="badge badge-neutral">Optional</span>{% endif %}
+                </p>
+                {% if row.options %}
+                  <ul class="mt-2 flex flex-wrap gap-1" aria-label="Options">{% for option in row.options %}<li class="tag">{{ option }}</li>{% endfor %}</ul>
+                {% endif %}
+              </div>
+              {% if card.editable %}
+                <div class="flex shrink-0 items-center gap-1" x-show="!confirming">
+                  <button type="button" class="btn btn-ghost btn-sm px-2" aria-label="Move “{{ field.field_label }}” up"{% if row.is_first %} disabled{% endif %}
+                          hx-post="{% url 'registrations:field_move' field.pk %}" hx-vals='{"direction": "up"}' hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">
+                    {% include "components/icon.html" with name="chevron-up" class="size-4" %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm px-2" aria-label="Move “{{ field.field_label }}” down"{% if row.is_last %} disabled{% endif %}
+                          hx-post="{% url 'registrations:field_move' field.pk %}" hx-vals='{"direction": "down"}' hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">
+                    {% include "components/icon.html" with name="chevron-down" class="size-4" %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm px-2" aria-label="Edit “{{ field.field_label }}”"
+                          hx-get="{% url 'registrations:field_edit' card.form.pk field.pk %}" hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">
+                    {% include "components/icon.html" with name="pencil" class="size-4" %}</button>
+                  <button type="button" class="btn btn-ghost btn-sm px-2 text-danger" aria-label="Remove “{{ field.field_label }}”"
+                          @click="confirming = true; $nextTick(() => $refs.yes.focus())">
+                    {% include "components/icon.html" with name="trash-2" class="size-4" %}</button>
+                </div>
+                <div class="flex shrink-0 items-center gap-2" x-show="confirming" x-cloak @keydown.escape="confirming = false">
+                  <span class="text-sm text-slate-700">Remove?</span>
+                  <button type="button" class="btn btn-danger btn-sm" x-ref="yes"
+                          hx-post="{% url 'registrations:field_remove' field.pk %}" hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">Remove</button>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="confirming = false">Cancel</button>
+                </div>
+              {% endif %}
+            </li>
+          {% endif %}
+          {% endwith %}
+        {% endfor %}
+      </ol>
+    {% else %}
+      {% include "components/empty_state.html" with icon="file-text" title="No fields yet" text="Add the questions this form should ask." compact=True %}
+    {% endif %}
+
+    {% if card.editable %}
+      {% if card.editing == "new" %}
+        <div class="mt-3">{% include "registrations/_field_editor.html" with editor=card.editor action_url="new" %}</div>
+      {% else %}
+        <div class="mt-4">
+          <button type="button" class="btn btn-secondary btn-sm" hx-get="{% url 'registrations:field_new' card.form.pk %}" hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">
+            {% include "components/icon.html" with name="plus" class="size-4" %}Add field</button>
+        </div>
+      {% endif %}
+    {% endif %}
+  {% endif %}
+</section>

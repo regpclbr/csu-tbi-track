@@ -1,0 +1,26 @@
+{% comment %}
+A list of text options (add, rename, remove), posted as repeated `option` inputs in their order; the server checks
+them (registrations.services.clean_options) and stores the JSON list.
+{% include "components/options_editor.html" with options=list_of_text error="..." script_id="unique-id" %}
+{% endcomment %}
+{{ options|json_script:script_id }}
+<fieldset x-data="{ next: 0, items: [] }"
+          x-init="items = JSON.parse(document.getElementById('{{ script_id }}').textContent).map(text => ({ id: next++, text })); if (!items.length) items.push({ id: next++, text: '' })"
+          {% if error %}aria-describedby="{{ script_id }}-error"{% endif %}>
+  <legend class="text-sm font-semibold text-ink">Options</legend>
+  <ol class="mt-1.5 space-y-2">
+    <template x-for="(item, index) in items" :key="item.id">
+      <li class="flex items-center gap-2">
+        <label :for="'{{ script_id }}-' + item.id" class="sr-only" x-text="'Option ' + (index + 1)"></label>
+        <input type="text" name="option" maxlength="255" class="field-input py-2" :id="'{{ script_id }}-' + item.id" x-model="item.text"
+               {% if error %}aria-invalid="true"{% endif %}>
+        <button type="button" class="btn btn-ghost btn-sm px-2 text-danger" :aria-label="'Remove option ' + (index + 1)"
+                @click="items.splice(index, 1)" :disabled="items.length === 1">{% include "components/icon.html" with name="x" class="size-4" %}</button>
+      </li>
+    </template>
+  </ol>
+  <button type="button" class="link mt-2 inline-flex items-center gap-1 text-sm"
+          @click="items.push({ id: next++, text: '' }); $nextTick(() => document.getElementById('{{ script_id }}-' + (next - 1)).focus())">
+    {% include "components/icon.html" with name="plus" class="size-4" %}Add option</button>
+  {% if error %}<p id="{{ script_id }}-error" class="field-error">{{ error }}</p>{% endif %}
+</fieldset>
