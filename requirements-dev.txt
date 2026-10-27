@@ -6,6 +6,7 @@
 # Testing
 pytest==9.1.1
 pytest-django==4.14.0
+pytest-xdist==3.8.0       # runs the tests in parallel (-n auto, see pytest.ini)
 
 # Browser screenshots of pages during development (compare with docs/design/*.png)
 playwright==1.63.0

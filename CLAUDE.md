@@ -275,6 +275,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Numbers about evaluations (also one activity's, `/reports/api/activities/<id>/evaluation/`) come
   from `reports/metrics.py`.
 - Write pytest-django tests for every business rule (`<app>/tests/test_*.py`).
+- Tests run in parallel (pytest-xdist, `pytest.ini`): each worker has its own test database, `tmp_path` media
+  folder and an empty in-memory cache per test (root `conftest.py`). Never share state between tests (module
+  globals, files outside `tmp_path`, fixed ports); after a migration change run `pytest --create-db` once.
 - Never put secrets in code. Never commit `.env`.
 - Use clear names that match the ERD. Use type hints and short docstrings.
 - After each step, report what changed, how to run it, and what to check. Then stop.
@@ -314,7 +317,7 @@ variable (same for `runserver` and `qcluster`, which renders the PDFs). Check wi
 ```powershell
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt           # what the app needs to run (the server needs only this)
-pip install -r requirements-dev.txt       # development: also pytest, pytest-django and Playwright
+pip install -r requirements-dev.txt       # development: also pytest, pytest-django, pytest-xdist and Playwright
 python -m playwright install chromium     # once, development only: the browser for page screenshots
 python manage.py tailwind install         # once: the pinned Tailwind CLI into tools/ (checked by SHA-256)
 python manage.py tailwind build           # static/css/app.css (after template changes; commit the result)
@@ -337,5 +340,8 @@ python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG):
 python manage.py show_dashboard [--start --end --activity-type]   # dashboard numbers as JSON (same as the API)
 python manage.py generate_report --type accomplishment --format pdf --start 2026-01-01 --end 2026-06-30   # build now (--report <id>: a pending one)
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)
-pytest
+pytest                                    # all tests, in parallel (-n auto) on the kept test databases (--reuse-db)
+pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
+pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
+pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 ```
