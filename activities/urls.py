@@ -1,15 +1,24 @@
 from django.urls import path
 
-from accounts.permissions import Permission, permission_required
-from config.views import coming_soon
-
-from . import views
+from . import page_views, views
 
 app_name = "activities"
 
 urlpatterns = [
-    path("", coming_soon, {"feature": "Activities"}, name="list"),  # page of a later frontend phase (config.views.COMING_SOON_PAGES)
-    path("new/", permission_required(Permission.CREATE_ACTIVITY)(coming_soon), {"feature": "New activity"}, name="create"),
+    # Pages (phase F2a)
+    path("", page_views.activity_list, name="list"),
+    path("new/", page_views.activity_create, name="create"),
+    path("<int:activity_id>/", page_views.activity_detail, name="detail"),
+    path("<int:activity_id>/edit/", page_views.activity_edit, name="edit"),
+    path("<int:activity_id>/status/", page_views.activity_change_status, name="change_status"),
+    path("<int:activity_id>/resource-persons/add/", page_views.resource_person_add, name="add_resource_person"),
+    path(
+        "<int:activity_id>/resource-persons/<int:resource_person_id>/remove/",
+        page_views.resource_person_remove,
+        name="remove_resource_person",
+    ),
+    path("resource-persons/options/", page_views.resource_person_options, name="resource_person_options"),
+    # JSON API
     path("api/", views.activities_api, name="api_list"),  # GET list, POST create
     path("api/stats/", views.stats_api, name="api_stats"),
     path("api/calendar/", views.calendar_api, name="api_calendar"),

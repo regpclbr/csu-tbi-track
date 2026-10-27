@@ -5,6 +5,8 @@ Optional:
   icon="mail"                 a Lucide icon inside the input, on the left (components/icon.html)
   placeholder="you@csu.edu.ph"
   reveal=True                 password only: a show/hide button (Alpine) whose aria-label changes
+  step="0.01"                 number inputs: the step (e.g. money)
+  prefix="₱"                  a short text inside the input, on the left (e.g. the currency)
   aside_url=... aside_label=  a small link on the right of the label (e.g. "Forgot password?")
 Handles text-like inputs (text, email, password, date, number), select and textarea widgets.
 {% endcomment %}
@@ -20,8 +22,9 @@ Handles text-like inputs (text, email, password, date, number), select and texta
   {% elif field.field.widget.input_type %}
     <div class="relative"{% if reveal %} x-data="{ show: false }"{% endif %}>
       {% if icon %}<span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name=icon class="size-4.5" %}</span>{% endif %}
+      {% if prefix %}<span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-sm font-semibold text-slate-600" aria-hidden="true">{{ prefix }}</span>{% endif %}
       <input type="{{ field.field.widget.input_type }}" name="{{ field.html_name }}" id="{{ field.id_for_label }}"
-             class="field-input{% if icon %} pl-11{% endif %}{% if reveal %} pr-12{% endif %}"{% if reveal %} :type="show ? 'text' : 'password'"{% endif %}{% if field.field.widget.input_type != "password" and field.value is not None %} value="{{ field.value }}"{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}{% if autofocus %} autofocus{% endif %}{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% elif field.help_text %} aria-describedby="{{ field.id_for_label }}-help"{% endif %}>
+             class="field-input{% if icon %} pl-11{% endif %}{% if prefix %} pl-8{% endif %}{% if reveal %} pr-12{% endif %}"{% if reveal %} :type="show ? 'text' : 'password'"{% endif %}{% if field.field.widget.input_type != "password" and field.value is not None %} value="{{ field.value }}"{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if step %} step="{{ step }}"{% endif %}{% if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}{% if autofocus %} autofocus{% endif %}{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% elif field.help_text %} aria-describedby="{{ field.id_for_label }}-help"{% endif %}>
       {% if reveal %}
         <button type="button" class="absolute inset-y-0 right-1.5 my-1.5 flex w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-ink"
                 @click="show = !show" :aria-pressed="show.toString()" :aria-label="show ? 'Hide password' : 'Show password'" aria-label="Show password" aria-controls="{{ field.id_for_label }}">

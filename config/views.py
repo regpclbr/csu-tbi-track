@@ -54,8 +54,6 @@ def page_placeholder(request: HttpRequest, **kwargs) -> HttpResponse:
 # page is built, the URL shows this placeholder. Remove an entry from COMING_SOON_PAGES (and its
 # URL's use of coming_soon) when the page is built:
 COMING_SOON_PAGES = {
-    "activities:list": "Activities",
-    "activities:create": "New activity",
     "documents:list": "Documents",
     "certificates:list": "Certificates",
     "startups:list": "Startups",

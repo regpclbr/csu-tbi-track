@@ -1,0 +1,14 @@
+{% comment %}
+Copies a text (e.g. the public registration link) and confirms with a toast.
+{% include "components/copy_button.html" with text=register_url label="Copy registration link" done="Registration link copied." %}
+Without clipboard access (an old browser or a page not on HTTPS) it says so; the text is also shown where it can be selected.
+{% endcomment %}
+<button type="button" class="{{ class|default:'btn btn-secondary btn-sm' }}"
+        x-data="{ copy() {
+          const ok = () => $dispatch('toast', { level: 'success', text: '{{ done|default:"Copied."|escapejs }}' });
+          const fail = () => $dispatch('toast', { level: 'error', text: 'Could not copy. Select the link and copy it with Ctrl+C.' });
+          try { navigator.clipboard.writeText('{{ text|escapejs }}').then(ok, fail); } catch (error) { fail(); }
+        } }"
+        @click="copy()">
+  {% include "components/icon.html" with name="copy" class="size-4" %}{{ label|default:"Copy" }}
+</button>

@@ -1,0 +1,23 @@
+{% comment %}
+A button that opens a modal dialog (native <dialog> + showModal(): focus stays inside, Escape closes it, the page
+behind is inert; focus goes back to the button when it closes).
+{% include "components/modal.html" with id="status-modal" title="Change status" body="activities/_status_form.html" trigger_label="Change status" trigger_icon="refresh-cw" trigger_class="btn btn-secondary btn-sm" %}
+body: the template shown inside. Inside it, a button with @click="close()" closes the dialog; put `autofocus` on the
+element that should get the focus first (otherwise the close button gets it).
+{% endcomment %}
+<div x-data="{ open() { $refs.dialog.showModal() }, close() { $refs.dialog.close() } }">
+  <button type="button" class="{{ trigger_class|default:'btn btn-secondary' }}" x-ref="trigger" @click="open()" aria-haspopup="dialog">
+    {% if trigger_icon %}{% include "components/icon.html" with name=trigger_icon class="size-4" %}{% endif %}{{ trigger_label }}
+  </button>
+  <dialog id="{{ id }}" x-ref="dialog" class="modal" aria-labelledby="{{ id }}-title" @close="$refs.trigger.focus()" @click.self="close()">
+    <div class="p-6">
+      <div class="mb-4 flex items-start justify-between gap-4">
+        <h2 id="{{ id }}-title" class="card-title">{{ title }}</h2>
+        <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" @click="close()" aria-label="Close">
+          {% include "components/icon.html" with name="x" class="size-5" %}
+        </button>
+      </div>
+      {% include body %}
+    </div>
+  </dialog>
+</div>

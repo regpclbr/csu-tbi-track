@@ -208,6 +208,15 @@
     @apply pointer-events-none opacity-50 transition-opacity;
   }
 
+  /* Modal: a native <dialog> opened with showModal() (components/modal.html). The browser keeps focus inside,
+     Escape closes it, and the page behind is inert. */
+  .modal {
+    @apply m-auto w-[calc(100%-2rem)] max-w-lg rounded-[24px] border-0 bg-white p-0 text-ink shadow-2xl;
+  }
+  .modal::backdrop {
+    background: rgb(15 23 42 / 0.5);
+  }
+
   /* Text only for screen readers (chart equivalents, icon labels). */
   .sr-only-table {
     @apply sr-only;

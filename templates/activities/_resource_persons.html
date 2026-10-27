@@ -1,0 +1,95 @@
+{% comment %}
+Resource persons (services.get_activity_detail). Adding (an existing person, or a new one) and removing go through
+activities.services (duplicates and Conducted are refused there; the message comes back as a toast).
+Only shown to members with can_create_activity, and not on a Conducted activity.
+{% endcomment %}
+<section id="resource-persons" class="card mt-5 scroll-mt-24 p-6" aria-labelledby="rp-title">
+  {% with count=detail.resource_persons|length %}
+    {% include "components/section_header.html" with id="rp-title" title="Resource persons" aside=count|stringformat:"s"|add:" linked" %}
+  {% endwith %}
+
+  {% if detail.resource_persons %}
+    <ul class="divide-y divide-line">
+      {% for person in detail.resource_persons %}
+        <li class="flex items-center gap-4 py-3 first:pt-0" x-data="{ confirming: false }">
+          <span class="chip chip-violet size-10 rounded-xl" aria-hidden="true">{% include "components/icon.html" with name="user-round" class="size-5" %}</span>
+          <div class="min-w-0 flex-1">
+            <p class="font-semibold [overflow-wrap:anywhere] text-ink">{{ person.name }}</p>
+            <p class="text-sm [overflow-wrap:anywhere] text-muted">{% if person.topic %}Topic: {{ person.topic }}{% else %}No topic{% endif %}{% if person.email %} · {{ person.email }}{% endif %}</p>
+          </div>
+          {% if can_edit %}
+            <button type="button" class="btn btn-ghost btn-sm text-danger" x-show="!confirming" @click="confirming = true; $nextTick(() => $refs.yes.focus())">
+              {% include "components/icon.html" with name="trash-2" class="size-4" %}Remove<span class="sr-only"> {{ person.name }}</span>
+            </button>
+            <form method="post" action="{% url 'activities:remove_resource_person' activity.pk person.resource_person_id %}" x-show="confirming" x-cloak
+                  class="flex items-center gap-2" @keydown.escape="confirming = false">
+              {% csrf_token %}
+              <span class="text-sm text-slate-700">Remove {{ person.name }}?</span>
+              <button type="submit" class="btn btn-danger btn-sm" x-ref="yes">Remove</button>
+              <button type="button" class="btn btn-secondary btn-sm" @click="confirming = false">Cancel</button>
+            </form>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% include "components/empty_state.html" with icon="user-round" title="No resource persons yet" text="Speakers, trainers and mentors of this activity appear here." compact=True %}
+  {% endif %}
+
+  {% if can_edit %}
+    <div class="mt-5 rounded-2xl border border-line bg-slate-50/60 p-5" x-data="{ mode: 'existing' }">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h3 class="font-semibold text-ink">Add a resource person</h3>
+        <div class="inline-flex rounded-full border border-line bg-white p-1" role="radiogroup" aria-label="Who to add">
+          <button type="button" role="radio" :aria-checked="(mode === 'existing').toString()" @click="mode = 'existing'"
+                  class="rounded-full px-3.5 py-1.5 text-sm font-semibold" :class="mode === 'existing' ? 'bg-primary text-white' : 'text-slate-600 hover:text-ink'">Someone already in the list</button>
+          <button type="button" role="radio" :aria-checked="(mode === 'new').toString()" @click="mode = 'new'"
+                  class="rounded-full px-3.5 py-1.5 text-sm font-semibold" :class="mode === 'new' ? 'bg-primary text-white' : 'text-slate-600 hover:text-ink'">A new person</button>
+        </div>
+      </div>
+
+      <form method="post" action="{% url 'activities:add_resource_person' activity.pk %}" x-show="mode === 'existing'" class="mt-4 space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="existing">
+        <div>
+          <label for="rp-search" class="text-sm font-semibold text-ink">Search by name</label>
+          <input id="rp-search" type="search" name="q" autocomplete="off" placeholder="Type a name…" class="field-input mt-1.5"
+                 hx-get="{% url 'activities:resource_person_options' %}" hx-trigger="load, keyup changed delay:300ms, search" hx-target="#rp-options" hx-indicator="#rp-loading">
+        </div>
+        <div class="flex items-center gap-2 text-sm text-muted"><span id="rp-loading" class="htmx-indicator items-center gap-2">{% include "components/spinner.html" %} Searching…</span></div>
+        <div id="rp-options" aria-live="polite"></div>
+        <div>
+          <label for="rp-topic" class="text-sm font-semibold text-ink">Topic <span class="font-normal text-muted">(optional)</span></label>
+          <input id="rp-topic" type="text" name="topic" maxlength="255" class="field-input mt-1.5">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Add resource person</button>
+      </form>
+
+      <form method="post" action="{% url 'activities:add_resource_person' activity.pk %}" x-show="mode === 'new'" x-cloak class="mt-4 grid gap-3 md:grid-cols-2">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="new">
+        <div>
+          <label for="rp-name" class="text-sm font-semibold text-ink">Name</label>
+          <input id="rp-name" type="text" name="name" maxlength="255" required class="field-input mt-1.5">
+        </div>
+        <div>
+          <label for="rp-email" class="text-sm font-semibold text-ink">Email <span class="font-normal text-muted">(optional)</span></label>
+          <input id="rp-email" type="email" name="email" maxlength="255" class="field-input mt-1.5">
+        </div>
+        <div>
+          <label for="rp-contact" class="text-sm font-semibold text-ink">Contact number <span class="font-normal text-muted">(optional)</span></label>
+          <input id="rp-contact" type="text" name="contact_number" maxlength="50" class="field-input mt-1.5">
+        </div>
+        <div>
+          <label for="rp-new-topic" class="text-sm font-semibold text-ink">Topic <span class="font-normal text-muted">(optional)</span></label>
+          <input id="rp-new-topic" type="text" name="topic" maxlength="255" class="field-input mt-1.5">
+        </div>
+        <div class="md:col-span-2">
+          <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Add new resource person</button>
+        </div>
+      </form>
+    </div>
+  {% elif can_create %}
+    <p class="mt-4 flex items-center gap-2 text-sm text-muted">{% include "components/icon.html" with name="lock" class="size-4" %}A Conducted activity is read-only: resource persons can no longer change.</p>
+  {% endif %}
+</section>

@@ -235,10 +235,8 @@ def resource_persons_api(request: HttpRequest) -> JsonResponse:
         )
         return JsonResponse({"resource_person": _resource_person_json(person)}, status=201)
 
-    people = ResourcePerson.objects.order_by("name")
-    if search := request.GET.get("search", "").strip():
-        people = people.filter(name__icontains=search)
-    return JsonResponse({"resource_persons": [_resource_person_json(p) for p in people[:100]]})
+    people = services.search_resource_persons(request.GET.get("search", ""))
+    return JsonResponse({"resource_persons": [_resource_person_json(p) for p in people]})
 
 
 @permission_required(Permission.CREATE_ACTIVITY)

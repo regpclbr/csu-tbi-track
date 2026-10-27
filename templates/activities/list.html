@@ -1,0 +1,90 @@
+{% extends "layouts/app.html" %}
+{% load ui %}
+{% comment %}
+Activities list (activities.page_views.activity_list). KPI cards (services.activity_stats), the List / Calendar
+toggle, the filters (list view only) and #activity-results, which HTMX replaces on every filter change, page or
+month link; the URL keeps the filters (hx-push-url), so a reload or a shared link shows the same view.
+Without JavaScript the Apply button submits the filters.
+{% endcomment %}
+{% block content %}
+<div class="space-y-5">
+  <div class="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+    {% include "components/kpi_card.html" with label="Activities in total" value=stats.total|number icon="layout-grid" chip="blue" %}
+    {% include "components/kpi_card.html" with label="Open for registration" value=stats.open_for_registration|number icon="user-plus" chip="green" pill="open now" pill_tone="neutral" %}
+    {% include "components/kpi_card.html" with label="Conducted this month" value=stats.conducted_this_month|number icon="circle-check" chip="teal" %}
+    {% include "components/kpi_card.html" with label="Conducted in total" value=stats.conducted_total|number icon="award" chip="violet" %}
+  </div>
+
+  <section class="card p-6" aria-labelledby="activities-title">
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-4">
+        <h2 id="activities-title" class="card-title">{% if filters.view == "calendar" %}Calendar{% else %}All activities{% endif %}</h2>
+        <nav class="inline-flex rounded-full border border-line bg-slate-50 p-1" aria-label="View">
+          <a href="{% url 'activities:list' %}"{% if filters.view == "list" %} aria-current="page"{% endif %}
+             class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if filters.view == 'list' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">{% include "components/icon.html" with name="list" class="size-4" %}List</a>
+          <a href="{% url 'activities:list' %}?view=calendar"{% if filters.view == "calendar" %} aria-current="page"{% endif %}
+             class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if filters.view == 'calendar' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">{% include "components/icon.html" with name="calendar" class="size-4" %}Calendar</a>
+        </nav>
+      </div>
+      {% if can_create %}
+        <a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>
+      {% endif %}
+    </div>
+
+    {% if filters.view == "list" %}
+      <form id="activity-filters" method="get" action="{% url 'activities:list' %}" role="search" aria-label="Filter activities"
+            hx-get="{% url 'activities:list' %}" hx-target="#activity-results" hx-push-url="true"
+            hx-trigger="change, keyup changed delay:400ms from:#filter-q, search from:#filter-q" hx-indicator="#activity-results, #filters-loading"
+            class="mb-5 flex flex-wrap items-center gap-2.5">
+        <div class="relative w-full xl:w-64">
+          <label for="filter-q" class="sr-only">Search by title</label>
+          <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4" %}</span>
+          <input id="filter-q" type="search" name="q" value="{{ filters.q }}" placeholder="Search by title…" class="field-input pill-select py-2 pl-10">
+        </div>
+        <div>
+          <label for="filter-type" class="sr-only">Activity type</label>
+          <select id="filter-type" name="activity_type" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+            <option value="">All types</option>
+            {% for type in activity_types %}<option value="{{ type.pk }}"{% if type.pk == filters.activity_type %} selected{% endif %}>{{ type.name }}{% if not type.is_active %} (inactive){% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="filter-status" class="sr-only">Status</label>
+          <select id="filter-status" name="status" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+            <option value="">All statuses</option>
+            {% for status in statuses %}<option value="{{ status.pk }}"{% if status.pk == filters.status %} selected{% endif %}>{{ status.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="filter-category" class="sr-only">Participant category</label>
+          <select id="filter-category" name="participant_category" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+            <option value="">All categories</option>
+            {% for category in categories %}<option value="{{ category.pk }}"{% if category.pk == filters.participant_category %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <label for="filter-from" class="text-sm text-muted">From</label>
+          <input id="filter-from" type="date" name="date_from" value="{{ filters.date_from|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3 py-2">
+          <label for="filter-to" class="text-sm text-muted">to</label>
+          <input id="filter-to" type="date" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3 py-2">
+        </div>
+        <div class="ml-auto flex items-center gap-1.5">
+          <label for="filter-sort" class="text-sm text-muted">Sort</label>
+          <select id="filter-sort" name="sort" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+            {% for value, label in sort_choices %}<option value="{{ value }}"{% if value == filters.sort %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="flex w-full items-center gap-3 text-sm">
+          <span id="filters-loading" class="htmx-indicator items-center gap-2 text-muted">{% include "components/spinner.html" %} Updating…</span>
+          {% if filters.any_set %}<a href="{% url 'activities:list' %}" class="link">Clear filters</a>{% endif %}
+          <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
+        </div>
+      </form>
+    {% endif %}
+
+    <div id="activity-results" class="htmx-dim">
+      {% include "activities/_results.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}

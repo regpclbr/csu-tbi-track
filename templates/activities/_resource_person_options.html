@@ -1,0 +1,21 @@
+{% comment %}HTMX: the pick list for "add an existing person" (services.search_resource_persons).{% endcomment %}
+{% if people %}
+  <fieldset>
+    <legend class="sr-only">Choose a resource person</legend>
+    <ul class="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-line bg-white p-1.5">
+      {% for person in people %}
+        <li>
+          <label class="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-50 has-[:checked]:bg-primary-soft">
+            <input type="radio" name="resource_person" value="{{ person.pk }}" class="size-4 accent-primary" required>
+            <span class="min-w-0">
+              <span class="block text-sm font-semibold [overflow-wrap:anywhere] text-ink">{{ person.name }}</span>
+              {% if person.email %}<span class="block text-xs [overflow-wrap:anywhere] text-muted">{{ person.email }}</span>{% endif %}
+            </span>
+          </label>
+        </li>
+      {% endfor %}
+    </ul>
+  </fieldset>
+{% else %}
+  <p class="rounded-xl border border-dashed border-line bg-white px-4 py-3 text-sm text-muted">{% if q %}No one called “{{ q }}”. Add them as a new person.{% else %}No resource persons yet. Add a new person.{% endif %}</p>
+{% endif %}

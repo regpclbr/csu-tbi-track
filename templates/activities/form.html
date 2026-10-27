@@ -1,0 +1,74 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+Create / edit an activity (activities.page_views.activity_create / activity_edit). Every field the service accepts,
+in four sections. The rules are checked by activities.services; their messages appear under the right field, and
+the first field with an error gets the focus. Date-times are typed and shown in Manila time.
+{% endcomment %}
+{% block content %}
+<form method="post" novalidate class="mx-auto max-w-4xl space-y-5"
+      x-data x-init="$nextTick(() => { const first = $el.querySelector('[aria-invalid=true]'); if (first) first.focus(); })">
+  {% csrf_token %}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <a href="{% if activity %}{% url 'activities:detail' activity.pk %}{% else %}{% url 'activities:list' %}{% endif %}" class="link inline-flex items-center gap-1.5 text-sm">
+        {% include "components/icon.html" with name="arrow-left" class="size-4" %}{% if activity %}Back to the activity{% else %}All activities{% endif %}
+      </a>
+      <h2 class="mt-1 text-2xl font-bold tracking-tight text-ink">{% if activity %}Edit activity{% else %}New activity{% endif %}</h2>
+      <p class="text-sm text-muted">{% if activity %}Every change is written to the activity's History.{% else %}A new activity starts as Draft. Every field except the description is required.{% endif %}</p>
+    </div>
+  </div>
+
+  {% if form.errors %}
+    <div class="flex gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+      {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4.5" %}
+      <div class="space-y-1">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+        {% with count=form.errors|length %}{% if form.non_field_errors %}{% else %}<p>Please correct the field{{ count|pluralize }} marked below.</p>{% endif %}{% endwith %}
+      </div>
+    </div>
+  {% endif %}
+
+  <section class="card p-6" aria-labelledby="section-details">
+    {% include "components/section_header.html" with id="section-details" title="Details" %}
+    <div class="space-y-4">
+      {% include "components/form_field.html" with field=form.title %}
+      {% include "components/form_field.html" with field=form.description %}
+      <div class="grid gap-4 md:grid-cols-2">
+        {% include "components/form_field.html" with field=form.activity_type %}
+      </div>
+      {% include "components/choice_pills.html" with field=form.participant_categories %}
+    </div>
+  </section>
+
+  <section class="card p-6" aria-labelledby="section-schedule">
+    {% include "components/section_header.html" with id="section-schedule" title="Schedule" %}
+    <div class="grid gap-4 md:grid-cols-2">
+      {% include "components/form_field.html" with field=form.start_date %}
+      {% include "components/form_field.html" with field=form.end_date %}
+      {% include "components/form_field.html" with field=form.time_schedule placeholder="8:00 AM – 5:00 PM" %}
+      {% include "components/form_field.html" with field=form.venue %}
+    </div>
+  </section>
+
+  <section class="card p-6" aria-labelledby="section-registration">
+    {% include "components/section_header.html" with id="section-registration" title="Registration" subtitle="Registration closes at the deadline or when all slots are taken." %}
+    <div class="grid gap-4 md:grid-cols-3">
+      {% include "components/form_field.html" with field=form.max_slots %}
+      {% include "components/form_field.html" with field=form.registration_deadline %}
+      {% include "components/form_field.html" with field=form.evaluation_deadline %}
+    </div>
+  </section>
+
+  <section class="card p-6" aria-labelledby="section-budget">
+    {% include "components/section_header.html" with id="section-budget" title="Budget" %}
+    <div class="grid gap-4 md:grid-cols-3">
+      {% include "components/form_field.html" with field=form.budget_amount prefix="₱" step="0.01" %}
+    </div>
+  </section>
+
+  <div class="flex items-center justify-end gap-3">
+    <a href="{% if activity %}{% url 'activities:detail' activity.pk %}{% else %}{% url 'activities:list' %}{% endif %}" class="btn btn-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="check" class="size-4" %}{% if activity %}Save changes{% else %}Create activity{% endif %}</button>
+  </div>
+</form>
+{% endblock %}

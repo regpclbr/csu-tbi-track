@@ -360,6 +360,9 @@ def get_public_activity(activity_id: int) -> Activity | None:
     )
 
 
+REGISTRATION_FORM_NOT_READY = "Registration is not open yet: the registration form is not ready."
+
+
 def registration_closed_reason(activity: Activity, now: datetime | None = None) -> str | None:
     """None when registration is open; otherwise why it is closed.
 
@@ -376,7 +379,7 @@ def registration_closed_reason(activity: Activity, now: datetime | None = None) 
         return f"Registration is closed: the deadline ({format_datetime(activity.registration_deadline)}) has passed."
     if slots_remaining(activity) <= 0:
         return "Registration is closed: all slots are taken."
-    return "Registration is not open yet: the registration form is not ready."
+    return REGISTRATION_FORM_NOT_READY
 
 
 def _field_json(field: FormField) -> dict:

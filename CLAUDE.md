@@ -231,7 +231,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (one list of nav items, each with an optional `Permission`).
 - Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
   classes `btn btn-primary|danger|warning|secondary|ghost`, empty_state, form_field, form_errors, pagination, toasts,
-  progress_bar, date_tile, spinner, icon). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
+  progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
   (button whose arrow slides); movement only under `motion-safe` (ASSUMPTIONS 254). Icons only through `components/icon.html` (add Lucide 1.52.0 SVGs there).
   Display filters: `{% load ui %}` (`config/ui_tags.py`: number, percent, rating, relative_time, ...).
 - Everything is self-hosted (`static/vendor/VERSIONS.md`); never link a CDN (a test checks it).
@@ -243,6 +243,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - HTML error pages: `templates/errors/403|404|500.html` (500 is rendered without the request). `/api/` stays JSON.
 - Dashboard (`/`, `reports.views.dashboard_page` + `reports/dashboard_page.py`): numbers only from
   `reports.services.dashboard()` (= the API) and existing services (ASSUMPTIONS 237–244).
+- Activities pages (F2a, ASSUMPTIONS 261–269): `activities/page_views.py` (thin) + `activities/pages.py` (display only:
+  filters, month grid, tabs, registration summary). The registration link and the amber notice come only from
+  `pages.registration_summary()` (= `registration_closed_reason()`). Modals are a native `<dialog>` (`components/modal.html`);
+  also `components/copy_button.html` and `components/choice_pills.html` (multi-select as pills). Screens: `docs/design/screens/`.
 - Pages of later phases use `config.views.coming_soon` under their final URL names (`COMING_SOON_PAGES`); remove an
   entry when its page is built.
 - Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
@@ -299,6 +303,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F1 (2026-10-24): design foundation, staff layout, login pages, dashboard, error pages (ASSUMPTIONS 233–254).
 - Restyle (2026-10-25): login gradient + glass card (257), app shell frame + dashboard layout (258).
 - Dashboard polish (2026-10-27): full-width KPI row, compact dates (`date_span`), 2-line upcoming titles (259).
+- Faster tests (2026-10-27): pytest-xdist, 2 workers, kept test databases, fresh cache per test (260).
+- Frontend F2a (2026-10-27): Activities list + calendar, create/edit, activity page with Overview and History (261–269).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

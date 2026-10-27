@@ -1,0 +1,33 @@
+{% load ui %}
+{% comment %}Overview tab: all details, the registration summary and the resource persons.{% endcomment %}
+<div class="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+  <section class="card p-6" aria-labelledby="details-title">
+    {% include "components/section_header.html" with id="details-title" title="Details" %}
+    {% include "activities/_detail_rows.html" %}
+  </section>
+
+  <section class="card p-6" aria-labelledby="registration-title">
+    {% include "components/section_header.html" with id="registration-title" title="Registration" %}
+    <p class="flex items-baseline gap-2"><span class="text-3xl font-bold tracking-tight text-ink tabular-nums">{{ registration.registered }}/{{ registration.max_slots }}</span><span class="text-sm text-muted">registered</span></p>
+    <div class="mt-3 flex items-center gap-3">
+      {% include "components/progress_bar.html" with percent=registration.percent label="Slots registered" %}
+      <span class="text-sm text-muted tabular-nums whitespace-nowrap">{{ registration.slots_remaining }} left</span>
+    </div>
+    <div class="mt-4">
+      {% if registration.open %}
+        <p class="flex items-center gap-2 text-sm font-semibold text-green-800">{% include "components/icon.html" with name="circle-check" class="size-4.5" %}Open for registration</p>
+        <label for="register-url" class="mt-4 block text-sm font-semibold text-ink">Public registration link</label>
+        <div class="mt-1.5 flex gap-2">
+          <input id="register-url" type="text" readonly value="{{ register_url }}" class="field-input min-w-0 flex-1 py-2 text-sm" @focus="$el.select()" x-data>
+          {% include "components/copy_button.html" with text=register_url label="Copy" done="Registration link copied." %}
+        </div>
+      {% elif registration.notice %}
+        {% include "activities/_registration_notice.html" %}
+      {% else %}
+        <p class="flex gap-2 text-sm text-slate-700">{% include "components/icon.html" with name="info" class="mt-0.5 size-4.5 text-muted" %}{{ registration.reason }}</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+{% include "activities/_resource_persons.html" %}

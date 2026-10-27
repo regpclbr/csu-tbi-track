@@ -1,0 +1,48 @@
+{% extends "layouts/app.html" %}
+{% load ui %}
+{% comment %}
+The activity page (activities.page_views.activity_detail): header with the actions the member may take, then the
+tabs (activities/_tab.html, swapped by HTMX; the URL keeps ?tab=). The registration state and the amber notice come
+from activities.pages.registration_summary (registrations.services.registration_closed_reason).
+{% endcomment %}
+{% block content %}
+<div class="space-y-5">
+  <section class="card p-6" aria-labelledby="activity-title">
+    <a href="{% url 'activities:list' %}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}All activities</a>
+    <div class="mt-3 flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <h2 id="activity-title" class="text-2xl leading-tight font-bold tracking-tight [overflow-wrap:anywhere] text-ink">{{ activity.title }}</h2>
+          {% include "components/status_badge.html" with status=activity.status.name %}
+        </div>
+        <ul class="mt-2.5 flex flex-wrap gap-1.5" aria-label="Type and participant categories">
+          <li class="tag tag-type">{{ detail.activity_type }}</li>
+          {% for category in detail.participant_categories %}<li class="tag">{{ category }}</li>{% endfor %}
+        </ul>
+        <p class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-slate-700">
+          <span class="flex items-center gap-1.5 whitespace-nowrap">{% include "components/icon.html" with name="calendar" class="size-4 text-muted" %}{{ activity|date_span }}</span>
+          <span class="flex items-center gap-1.5">{% include "components/icon.html" with name="clock" class="size-4 text-muted" %}{{ activity.time_schedule }}</span>
+          <span class="flex min-w-0 items-center gap-1.5">{% include "components/icon.html" with name="map-pin" class="size-4 text-muted" %}<span class="[overflow-wrap:anywhere]">{{ activity.venue }}</span></span>
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        {% if registration.link_available %}
+          {% include "components/copy_button.html" with text=register_url label="Copy registration link" done="Registration link copied." %}
+        {% endif %}
+        {% if can_create and detail.allowed_status_moves %}
+          {% include "components/modal.html" with id="status-modal" title="Change status" body="activities/_status_form.html" trigger_label="Change status" trigger_icon="refresh-cw" trigger_class="btn btn-secondary btn-sm" %}
+        {% endif %}
+        {% if can_edit %}
+          <a href="{% url 'activities:edit' activity.pk %}" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="pencil" class="size-4" %}Edit</a>
+        {% endif %}
+      </div>
+    </div>
+    {% if registration.notice %}<div class="mt-4">{% include "activities/_registration_notice.html" %}</div>{% endif %}
+    {% if not can_create %}<p class="mt-4 flex items-center gap-2 text-sm text-muted">{% include "components/icon.html" with name="eye" class="size-4" %}View only: your role cannot change activities.</p>{% endif %}
+  </section>
+
+  <div id="tab-area">
+    {% include "activities/_tab.html" %}
+  </div>
+</div>
+{% endblock %}

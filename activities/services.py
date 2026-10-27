@@ -504,6 +504,18 @@ def activity_stats(now: datetime | None = None) -> dict[str, int]:
     }
 
 
+RESOURCE_PERSON_SEARCH_LIMIT = 100
+
+
+def search_resource_persons(search: str = "", limit: int = RESOURCE_PERSON_SEARCH_LIMIT) -> list[ResourcePerson]:
+    """Resource persons whose name contains `search` (ignoring case), by name: the pick list for
+    "add an existing person"."""
+    people = ResourcePerson.objects.order_by("name", "resource_person_id")
+    if search := search.strip():
+        people = people.filter(name__icontains=search)
+    return list(people[:limit])
+
+
 def activities_between(start: date, end: date) -> list[Activity]:
     """Activities that touch [start, end], for the calendar view (all statuses)."""
     activities = Activity.objects.select_related("status", "activity_type")

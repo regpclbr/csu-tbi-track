@@ -1,0 +1,12 @@
+{% comment %}The part of the Activities list that HTMX replaces: filter warnings, then the list or the calendar.{% endcomment %}
+{% if filters.errors %}
+  <div class="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+    {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}
+    <div>{% for error in filters.errors %}<p>{{ error }}</p>{% endfor %}</div>
+  </div>
+{% endif %}
+{% if filters.view == "calendar" %}
+  {% include "activities/_calendar.html" %}
+{% else %}
+  {% include "activities/_list.html" %}
+{% endif %}

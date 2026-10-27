@@ -1,0 +1,43 @@
+{% load ui %}
+{% comment %}List rows: services.list_activities (filters, sort, 20 a page) prepared by activities.pages.list_rows.{% endcomment %}
+<p class="mb-3 text-sm text-muted" role="status">
+  {{ result.total|number }} activit{{ result.total|pluralize:"y,ies" }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
+</p>
+{% if rows %}
+  <ul class="space-y-2.5">
+    {% for row in rows %}
+      {% with activity=row.activity %}
+      <li class="hover-row flex items-center gap-4 rounded-2xl border border-line bg-white p-3.5 hover:border-slate-300">
+        {% include "components/date_tile.html" with activity=activity gradient=True %}
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <h3 class="min-w-0 text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink">
+              <a href="{% url 'activities:detail' activity.pk %}" class="hover:text-primary hover:underline">{{ activity.title }}</a>
+            </h3>
+            {% include "components/status_badge.html" with status=activity.status.name %}
+          </div>
+          <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted">
+            <span class="whitespace-nowrap">{{ activity|date_span }}</span>
+            <span class="flex min-w-0 items-center gap-1">{% include "components/icon.html" with name="map-pin" class="size-3.5" %}<span class="truncate">{{ activity.venue }}</span></span>
+          </p>
+          <ul class="mt-1.5 flex flex-wrap gap-1" aria-label="Type and participant categories">
+            <li class="tag tag-type">{{ activity.activity_type.name }}</li>
+            {% for category in row.categories %}<li class="tag">{{ category }}</li>{% endfor %}
+          </ul>
+        </div>
+        <div class="hidden w-44 shrink-0 md:block">
+          <p class="mb-1.5 text-xs text-muted"><span class="font-semibold text-ink tabular-nums">{{ row.registered }}/{{ activity.max_slots }}</span> registered</p>
+          {% include "components/progress_bar.html" with percent=row.percent label="Slots registered" %}
+        </div>
+        <a href="{% url 'activities:detail' activity.pk %}" class="btn btn-secondary btn-sm btn-arrow shrink-0" aria-label="Open {{ activity.title }}">Open {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+      </li>
+      {% endwith %}
+    {% endfor %}
+  </ul>
+  {% include "components/pagination.html" with result=result query=page_query hx_target="#activity-results" %}
+{% elif filters.any_set %}
+  {% url 'activities:list' as list_url %}
+  {% include "components/empty_state.html" with icon="search" title="No activities match these filters" text="Try another search word, a wider date range or fewer filters." action_url=list_url action_label="Clear filters" %}
+{% else %}
+  {% include "components/empty_state.html" with icon="calendar" title="No activities yet" text="Activities appear here as soon as they are created." %}
+{% endif %}
