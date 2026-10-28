@@ -74,6 +74,16 @@ def create_chat(member: TBIMember) -> AIChat:
     return AIChat.objects.create(member=member, title=NEW_CHAT_TITLE)
 
 
+def discard_if_empty(member: TBIMember, chat: AIChat) -> bool:
+    """Delete one of the member's chats if it has no messages (a new chat whose first question failed), so empty
+    "New chat" rows do not pile up. A chat with messages is never deleted. Returns whether it was deleted."""
+    require_staff_member(member)
+    if chat.member_id != member.pk or chat.messages.exists():
+        return False
+    chat.delete()
+    return True
+
+
 def title_from_question(question: str) -> str:
     title = " ".join(question.split())
     return title if len(title) <= TITLE_LENGTH else title[: TITLE_LENGTH - 1].rstrip() + "…"

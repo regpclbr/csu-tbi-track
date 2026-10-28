@@ -266,6 +266,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   call, all or nothing, refusals listed from `CertificateError.problems`; Generate shows `generation_closed_reason()`. An
   error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The preview is the only
   inline PDF. New components: `file_drop`.
+- Reports, Assistant, Startups, Notifications and search pages (F5, ASSUMPTIONS 301–311): `reports/page_views.py` + `reports/pages.py`
+  (form: quick dates, sections preset by type, the AI switch adds `ai_summary`; a pending history row polls `reports:row` every 4 s and
+  stops when ready/failed or after 15 min), `assistant/page_views.py` + `assistant/pages.py`, `startups/staff_views.py` + `startups/pages.py`
+  (the public set-password page stays in `startups/page_views.py`), `notifications/views.py` (`/notifications/`), `config/search.py`
+  (`/search/`, the top bar's box: the lists' own services, 5 per group). **Model answers are untrusted:** render them only through
+  `assistant.pages.answer_html()` (escapes everything, then adds our `[n]` links and `<br>`); never `|safe`, HTML or Markdown from the
+  model. A first question that fails removes its new chat (`services.discard_if_empty`).
 - Pages of later phases use `config.views.coming_soon` under their final URL names (`COMING_SOON_PAGES`); remove an
   entry when its page is built.
 - Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
@@ -330,6 +337,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F3 (2026-10-27): public pages: open activities, registration, evaluation with review step, startup set password (278–288).
 - Tests and the time of day (2026-10-28): fake clock, walkthrough fix (289).
 - Frontend F4 (2026-10-28): documents tab, repository + review queue, document page, certificates tab and page, links (290–300).
+- Frontend F5 (2026-10-28): reports page with polling, AI assistant chat, startups pages, notifications page, global search (301–311).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

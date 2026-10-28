@@ -1,0 +1,19 @@
+{% load ui %}
+{# My chats, newest first (assistant.services.my_chats). Replaced out of band when a new chat gets its first answer. #}
+<div id="chat-list" class="-mx-1 min-h-0 flex-1 overflow-y-auto"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if chats %}
+    <ul class="space-y-1">
+      {% for item in chats %}
+        <li>
+          <a href="{% url 'assistant:conversation' item.pk %}"{% if chat and item.pk == chat.pk %} aria-current="page"{% endif %}
+             class="block rounded-xl px-3 py-2 text-sm {% if chat and item.pk == chat.pk %}bg-blue-50 font-semibold text-primary{% else %}text-slate-700 hover:bg-slate-50 hover:text-ink{% endif %}">
+            <span class="block truncate">{{ item.title }}</span>
+            <span class="block text-xs font-normal text-muted">{{ item.updated_at|relative_time }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% include "components/empty_state.html" with icon="sparkles" title="No chats yet" text="Your questions and answers are saved here. Only you can see them." compact=True %}
+  {% endif %}
+</div>

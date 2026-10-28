@@ -5,6 +5,9 @@ from . import views
 app_name = "notifications"
 
 urlpatterns = [
+    path("", views.notification_list, name="list"),  # the full list (?show=unread)
+    path("read-all/", views.mark_all_read, name="read_all"),
+    path("<int:notification_id>/read/", views.mark_read, name="read"),
     path("dropdown/", views.dropdown, name="dropdown"),  # HTML for the top bar's bell (HTMX)
     path("dropdown/read-all/", views.dropdown_read_all, name="dropdown_read_all"),
     path("<int:notification_id>/open/", views.open_notification, name="open"),  # mark read, then go to its page

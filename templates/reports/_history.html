@@ -1,0 +1,29 @@
+{% comment %}
+The history table of /reports/ (reports.pages.history). The pager swaps only this part (HTMX). Each row is
+reports/_row.html, which polls itself while pending.
+{% endcomment %}
+<div id="report-history" class="htmx-dim">
+  {% if rows %}
+    <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts inside the scroll box #}
+      <table class="w-full text-left text-sm">
+        <caption class="sr-only">Generated reports, newest first</caption>
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+          <tr>
+            <th scope="col" class="px-3 py-2.5">Report</th>
+            <th scope="col" class="px-3 py-2.5">Sections</th>
+            <th scope="col" class="px-3 py-2.5">Period</th>
+            <th scope="col" class="px-3 py-2.5">Requested</th>
+            <th scope="col" class="px-3 py-2.5">State</th>
+            <th scope="col" class="px-3 py-2.5"><span class="sr-only">Download</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {% for row in rows %}{% include "reports/_row.html" %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "components/pagination.html" with result=result hx_target="#report-history" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="chart-column" title="No reports yet" text="Generated reports will be listed here, newest first." %}
+  {% endif %}
+</div>

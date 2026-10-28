@@ -1,0 +1,32 @@
+{% comment %}
+One report in the history (reports.pages.history_row). A pending row asks for itself again every poll_seconds
+(reports:row, outerHTML swap); a ready or failed row has no trigger, so polling stops. After 15 minutes of polling
+(pages.MAX_POLLS) it stops too and says to refresh.
+{% endcomment %}
+{% with report=row.report %}
+<tr id="report-row-{{ report.pk }}" class="align-top hover:bg-slate-50"
+    {% if row.poll %}hx-get="{% url 'reports:row' report.pk %}?polls={{ row.next_poll }}" hx-trigger="every {{ poll_seconds }}s" hx-swap="outerHTML"{% endif %}>
+  <th scope="row" class="min-w-52 px-3 py-3 font-normal">
+    <span class="block font-semibold text-ink">{{ row.type_label }}</span>
+    <span class="text-xs text-muted">#{{ report.pk }} · {{ row.format_label }}{% if report.activity_type %} · {{ report.activity_type.name }} only{% endif %}</span>
+  </th>
+  <td class="min-w-48 px-3 py-3 text-xs text-slate-700">
+    {{ row.sections|join:", " }}{% if row.has_ai_summary %} <span class="badge badge-info ml-0.5 whitespace-nowrap">{% include "components/icon.html" with name="sparkles" class="size-3" %}AI</span>{% endif %}
+  </td>
+  <td class="min-w-40 px-3 py-3 text-slate-700">{{ row.range_text }}</td>
+  <td class="min-w-36 px-3 py-3 text-slate-700">{{ report.generated_by.name }}<br><time class="text-xs whitespace-nowrap text-muted" datetime="{{ report.generated_at|date:'c' }}">{{ report.generated_at|date:"M j, Y g:i A" }}</time></td>
+  <td class="px-3 py-3">
+    <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
+      {% if row.poll %}{% include "components/spinner.html" with class="size-3.5 animate-spin text-blue-700" %}{% endif %}
+      {% include "components/badge.html" with text=row.badge.label tone=row.badge.tone %}
+    </span>
+    {% if row.gave_up %}<p class="mt-1 max-w-48 text-xs text-muted">Still pending. Is qcluster running? Refresh the page to check again.</p>{% endif %}
+    {% if row.state == "failed" %}<p class="mt-1 max-w-48 text-xs text-muted">Generate it again; the log has the reason.</p>{% endif %}
+  </td>
+  <td class="px-3 py-3 text-right">
+    {% if row.download_url %}
+      <a href="{{ row.download_url }}" class="btn btn-secondary btn-sm whitespace-nowrap">{% include "components/icon.html" with name="download" class="size-4" %}Download<span class="sr-only"> report {{ report.pk }}</span></a>
+    {% endif %}
+  </td>
+</tr>
+{% endwith %}

@@ -47,9 +47,6 @@ def server_error(request: HttpRequest) -> HttpResponse:
 # page is built, the URL shows this placeholder. Remove an entry from COMING_SOON_PAGES (and its
 # URL's use of coming_soon) when the page is built:
 COMING_SOON_PAGES = {
-    "startups:list": "Startups",
-    "reports:list": "Reports",
-    "assistant:chat": "AI Assistant",
     "accounts:console": "Admin Console",
 }
 
@@ -57,9 +54,8 @@ COMING_SOON_PAGES = {
 @staff_login_required
 @require_GET
 def coming_soon(request: HttpRequest, feature: str = "This page") -> HttpResponse:
-    """A staff page that is planned for a later frontend phase. The search box sends `q` to the
-    activities list; it is shown back so the member knows the search was received."""
-    context = {"page_title": feature, "feature": feature, "q": request.GET.get("q", "").strip()}
+    """A staff page that is planned for a later frontend phase (now only the Admin Console, phase F6)."""
+    context = {"page_title": feature, "feature": feature}
     return render(request, "pages/coming_soon.html", context)
 
 

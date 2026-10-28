@@ -102,12 +102,12 @@ def test_logout_is_a_post_form_and_get_is_refused(director) -> None:
 # --- Top bar --------------------------------------------------------------------------------------------------
 
 
-def test_search_goes_to_the_activities_list_with_q(director) -> None:
+def test_search_goes_to_the_search_page_with_q(director) -> None:
     client = logged_in(director)
     html = client.get(HOME).content.decode()
-    assert f'action="{reverse("activities:list")}"' in html and 'name="q"' in html
-    page = client.get(reverse("activities:list"), {"q": "pitch"})
-    assert page.status_code == 200 and "“pitch”" in page.content.decode()
+    assert f'action="{reverse("search")}"' in html and 'name="q"' in html  # phase F5: global search
+    page = client.get(reverse("search"), {"q": "pitch"})
+    assert page.status_code == 200 and 'value="pitch"' in page.content.decode()
 
 
 def test_ask_ai_and_the_bell(director) -> None:
@@ -160,12 +160,13 @@ def test_dropdown_needs_login() -> None:
 # --- Coming-soon pages ----------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("url_name", [name for name in COMING_SOON_PAGES if name not in ("accounts:console", "activities:create")])
-def test_coming_soon_pages_load_for_staff_and_redirect_when_logged_out(url_name, admin_staff) -> None:
-    url = reverse(url_name)
-    response = logged_in(admin_staff).get(url)
-    assert response.status_code == 200 and "is coming soon" in response.content.decode()
-    assert Client().get(url).status_code == 302
+def test_only_the_admin_console_is_still_coming_soon(admin_staff) -> None:
+    """Phase F5 built Reports, the AI Assistant and Startups; the Admin Console stays a placeholder until F6."""
+    assert list(COMING_SOON_PAGES) == ["accounts:console"]
+    for url_name in ("reports:list", "assistant:chat", "startups:list"):
+        response = logged_in(admin_staff).get(reverse(url_name))
+        assert response.status_code == 200 and "is coming soon" not in response.content.decode()
+        assert Client().get(reverse(url_name)).status_code == 302
 
 
 def test_admin_console_needs_can_manage_users(admin_member, director) -> None:

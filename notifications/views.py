@@ -1,9 +1,11 @@
-"""JSON API for "my notifications", and the top bar's bell dropdown (HTML for HTMX).
+"""JSON API for "my notifications", the top bar's bell dropdown (HTML for HTMX) and the full list page (/notifications/).
 A member only sees and changes their own."""
 
+from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
@@ -104,3 +106,47 @@ def open_notification(request: HttpRequest, notification_id: int) -> HttpRespons
     (notifications.pages.target_url). Someone else's notification gives 404."""
     notification = services.mark_read(request.user, notification_id)
     return redirect(pages.target_url(notification))
+
+
+# --- The full list (phase F5) ----------------------------------------------------------------------
+
+
+def _list_url(request: HttpRequest) -> str:
+    """Back to the list as it was (All / Unread and the page), only within this site."""
+    from documents.pages import safe_next
+
+    return safe_next(request, reverse("notifications:list"))
+
+
+@staff_login_required
+@require_GET
+def notification_list(request: HttpRequest) -> HttpResponse:
+    """GET show=all|unread (anything else: all), page. My notifications, newest first (services.list_notifications)."""
+    show = "unread" if request.GET.get("show") == "unread" else "all"
+    result = services.list_notifications(request.user, request.GET.get("page", "1"), unread_only=show == "unread")
+    context = {
+        "page_title": "Notifications",
+        "page_subtitle": "Reminders about required documents and other updates for you",
+        "show": show,
+        "result": result,
+        "notifications": [{"notification": n, "target": pages.target_label(n)} for n in result.items],
+        "unread": services.unread_count(request.user),
+        "query": "show=unread" if show == "unread" else "",
+    }
+    return render(request, "notifications/list.html", context)
+
+
+@staff_login_required
+@require_POST
+def mark_read(request: HttpRequest, notification_id: int) -> HttpResponse:
+    """POST: mark one of my notifications as read (someone else's: 404), then back to the list."""
+    services.mark_read(request.user, notification_id)
+    return redirect(_list_url(request))
+
+
+@staff_login_required
+@require_POST
+def mark_all_read(request: HttpRequest) -> HttpResponse:
+    changed = services.mark_all_read(request.user)
+    messages.success(request, f"{changed} notification{'s' if changed != 1 else ''} marked as read." if changed else "Nothing was unread.")
+    return redirect(_list_url(request))

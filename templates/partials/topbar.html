@@ -1,5 +1,5 @@
 {% load ui %}
-{# Top bar, inside the content panel: page title + Manila date, activity search, Ask AI, notification bell (HTMX dropdown). #}
+{# Top bar, inside the content panel: page title + Manila date, global search (/search/), Ask AI, notification bell (HTMX dropdown). #}
 <header class="sticky top-0 z-20 flex min-h-20 items-center gap-4 bg-panel/85 px-5 backdrop-blur-md sm:px-6 xl:px-7">
   <button type="button" class="-ml-2 rounded-full p-2 text-muted hover:bg-slate-200/60 lg:hidden" @click="menuOpen = true" aria-label="Open the menu" aria-controls="sidebar" :aria-expanded="menuOpen.toString()">
     {% include "components/icon.html" with name="menu" class="size-6" %}
@@ -9,10 +9,10 @@
     <p class="mt-0.5 truncate text-sm text-muted">{% if page_subtitle %}{{ page_subtitle }}{% else %}{{ layout.today|long_date }} · Here's what's happening at CSU-TBI{% endif %}</p>
   </div>
 
-  <form action="{% url 'activities:list' %}" method="get" role="search" class="relative hidden w-64 md:block xl:w-72">
-    <label for="topbar-search" class="sr-only">Search activities</label>
+  <form action="{% url 'search' %}" method="get" role="search" class="relative hidden w-64 md:block xl:w-72">
+    <label for="topbar-search" class="sr-only">Search activities, documents and startups</label>
     <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-muted">{% include "components/icon.html" with name="search" class="size-4.5" %}</span>
-    <input id="topbar-search" type="search" name="q" value="{{ q|default:'' }}" placeholder="Search activities…" class="field-input rounded-full border-slate-200 py-2.5 pl-10 shadow-card">
+    <input id="topbar-search" type="search" name="q" value="{{ q|default:'' }}" maxlength="100" placeholder="Search…" class="field-input rounded-full border-slate-200 py-2.5 pl-10 shadow-card">
   </form>
 
   <a href="{% url 'assistant:chat' %}" class="btn btn-primary hidden sm:inline-flex">

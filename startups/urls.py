@@ -1,13 +1,15 @@
 from django.urls import path
 
-from config.views import coming_soon
-
-from . import views
+from . import staff_views, views
 
 app_name = "startups"
 
 urlpatterns = [
-    path("", coming_soon, {"feature": "Startups"}, name="list"),  # page of a later frontend phase (config.views.COMING_SOON_PAGES)
+    # Staff pages (phase F5)
+    path("", staff_views.startup_list, name="list"),
+    path("sync/", staff_views.sync_now, name="sync"),
+    path("<int:startup_id>/", staff_views.startup_detail, name="detail"),
+    path("<int:startup_id>/send-password-link/", staff_views.send_password_link, name="send_password_link"),
     # Staff (TBI members)
     path("api/", views.startups_api, name="api_list"),
     path("api/sync/", views.sync_api, name="api_sync"),

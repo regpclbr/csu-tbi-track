@@ -24,10 +24,11 @@
       </li>
     {% endfor %}
   </ul>
-  {% if total > notifications|length %}
-    <p class="border-t border-line px-4 py-2.5 text-xs text-muted">Showing the latest {{ notifications|length }} of {{ total }}.</p>
-  {% endif %}
 {% else %}
   {% include "components/empty_state.html" with icon="bell" title="No notifications yet" text="Reminders about required documents will appear here." compact=True %}
 {% endif %}
+<div class="flex items-center justify-between gap-3 border-t border-line px-4 py-2.5 text-xs">
+  <span class="text-muted">{% if total > notifications|length %}Showing the latest {{ notifications|length }} of {{ total }}.{% endif %}</span>
+  <a href="{% url 'notifications:list' %}" class="link font-semibold">View all notifications</a>
+</div>
 <span id="bell-count" hx-swap-oob="true">{% include "partials/bell_count.html" %}</span>

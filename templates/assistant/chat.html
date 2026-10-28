@@ -1,0 +1,105 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/assistant/ and /assistant/<id>/ (assistant.page_views.chat_page): my chats on the left, the conversation on the right,
+the message box at the bottom. The form posts with HTMX: the saved question and answer are appended (assistant/_exchange.html);
+a refusal fills #ask-error. While waiting (up to the question time limit) the send button is disabled, the question is
+shown with a typing indicator, and "Stop waiting" aborts only the browser's request (the server may still finish; the
+answer then appears when the chat is opened again). Without JavaScript the form is a normal POST.
+Answers are escaped text with citation links only (assistant.pages.answer_html), never HTML from the model.
+{% endcomment %}
+{% block content %}
+<div class="grid gap-5 lg:h-[calc(100vh-9.5rem)] lg:min-h-[30rem] lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)]">
+  <nav class="card flex min-h-0 flex-col p-4" aria-labelledby="my-chats-title">
+    <div class="mb-3 flex items-center justify-between gap-2 px-1">
+      <h2 id="my-chats-title" class="card-title text-base">My chats</h2>
+      <a href="{% url 'assistant:chat' %}" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
+    </div>
+    {% include "assistant/_chat_list.html" %}
+  </nav>
+
+  <section class="card flex min-h-[32rem] flex-col p-0 lg:min-h-0" aria-labelledby="chat-title"
+           x-data="{ busy: false, stopped: false, pending: '' }"
+           @htmx:before-request="if ($event.target.id === 'ask-form') { busy = true; stopped = false; pending = $refs.question.value }"
+           @htmx:after-request="if ($event.target.id === 'ask-form') { busy = false; pending = '' }"
+           @assistant-answered.window="$refs.question.value = ''; $refs.question.focus()">
+    <header class="flex items-center gap-3 border-b border-line px-6 py-4">
+      <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
+      <div class="min-w-0">
+        <h2 id="chat-title" class="truncate font-semibold text-ink">{% if chat %}{{ chat.title }}{% else %}New chat{% endif %}</h2>
+        <p class="text-xs text-muted">Answers cite approved documents; questions about what is missing or overdue are answered from the records.</p>
+      </div>
+    </header>
+
+    <div id="chat-scroll" class="min-h-0 flex-1 overflow-y-auto px-6 py-5"
+         x-init="$el.scrollTop = $el.scrollHeight" @htmx:after-settle="$el.scrollTop = $el.scrollHeight">
+      {% if suggestions %}
+        <div id="chat-empty" class="mx-auto max-w-xl py-6 text-center">
+          <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" %}</span>
+          <p class="font-semibold text-ink">Ask about your activities and documents</p>
+          <p class="mt-1 text-sm text-muted">For example, try one of these:</p>
+          <ul class="mt-4 space-y-2">
+            {% for suggestion in suggestions %}
+              <li><button type="button" class="hover-lift w-full rounded-2xl border border-line bg-white px-4 py-3 text-left text-sm text-ink shadow-card hover:border-primary"
+                          data-question="{{ suggestion }}" @click="$refs.question.value = $el.dataset.question; $refs.question.focus()">{{ suggestion }}</button></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <ol id="messages" class="space-y-5" aria-label="Conversation">
+        {% for item in conversation %}{% include "assistant/_message.html" %}{% endfor %}
+      </ol>
+
+      {# The question being answered and the typing indicator (only while waiting). #}
+      <div x-cloak x-show="busy" class="mt-5 space-y-5">
+        <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm whitespace-pre-line text-white" x-text="pending"></p></div>
+        <div class="flex items-center gap-3" role="status">
+          <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
+          <span class="inline-flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3" aria-hidden="true">
+            <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce"></span>
+            <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:150ms]"></span>
+            <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:300ms]"></span>
+          </span>
+          <span class="text-sm text-muted">The assistant is answering… this can take up to {{ timeout_seconds }} seconds.</span>
+        </div>
+      </div>
+      <p x-cloak x-show="stopped" class="mt-5 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status">
+        Stopped waiting. If the assistant still finishes, its answer will be in this chat when you open it again.</p>
+    </div>
+
+    {# Screen readers hear each new answer once (assistant/_exchange.html fills it). #}
+    <div id="answer-live" class="sr-only" role="status" aria-live="polite"></div>
+
+    <div class="border-t border-line px-6 pt-4 pb-5">
+      <div id="ask-error">{% include "assistant/_ask_error.html" %}</div>
+      <form id="ask-form" method="post" action="{% url 'assistant:ask' %}" novalidate
+            hx-post="{% url 'assistant:ask' %}" hx-target="#messages" hx-swap="beforeend" hx-sync="this:drop">
+        {% csrf_token %}
+        <input type="hidden" id="ask-chat" name="chat" value="{% if chat %}{{ chat.pk }}{% endif %}">
+        <label for="ask-question" class="sr-only">Your question</label>
+        <textarea id="ask-question" name="question" rows="2" maxlength="{{ question_max }}" x-ref="question" :readonly="busy"
+                  placeholder="Ask about an activity, a document or what is missing…"
+                  @keydown.enter.ctrl.prevent="$el.form.requestSubmit()" @keydown.enter.meta.prevent="$el.form.requestSubmit()"
+                  class="field-input resize-none rounded-2xl" aria-describedby="ask-help{% if errors.question %} ask-question-error{% endif %}"
+                  {% if errors.question %}aria-invalid="true"{% endif %}>{{ question }}</textarea>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <label for="ask-activity" class="sr-only">Search the documents of</label>
+          <select id="ask-activity" name="activity" class="field-input pill-select w-auto max-w-72 py-2 pr-9 pl-4"
+                  {% if errors.activity_id %}aria-invalid="true" aria-describedby="ask-activity-error"{% endif %}>
+            <option value="">All activities</option>
+            {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity_id == activity.pk|stringformat:"s" %} selected{% endif %}>{{ activity.title|truncatechars:48 }}</option>{% endfor %}
+          </select>
+          <p id="ask-help" class="text-xs text-muted">Ctrl + Enter sends. At most {{ question_max }} characters.</p>
+          <div class="ml-auto flex items-center gap-2">
+            <button type="button" x-cloak x-show="busy" class="btn btn-secondary btn-sm"
+                    @click="htmx.trigger('#ask-form', 'htmx:abort'); busy = false; stopped = true; pending = ''">
+              {% include "components/icon.html" with name="x" class="size-4" %}Stop waiting</button>
+            <button type="submit" class="btn btn-primary" :disabled="busy" :aria-busy="busy.toString()">
+              {% include "components/icon.html" with name="send" class="size-4" %}Send</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% comment %}
+HTMX answer to the message box (assistant.page_views.ask): the saved question and answer, appended to #messages.
+Out of band: the error card is cleared, the live region announces the answer (as plain text), and for a new chat the
+suggestions disappear, the title and my chats are updated and the form remembers the chat.
+{% endcomment %}
+{% for item in conversation %}{% include "assistant/_message.html" %}{% endfor %}
+<div id="ask-error" hx-swap-oob="innerHTML"></div>
+{% for item in conversation %}{% if item.is_answer %}<div id="answer-live" hx-swap-oob="innerHTML">The assistant answered: {{ item.message.content }}</div>{% endif %}{% endfor %}
+{% if is_new %}
+  <div id="chat-empty" hx-swap-oob="true"></div>
+  <h2 id="chat-title" hx-swap-oob="true" class="truncate font-semibold text-ink">{{ chat.title }}</h2>
+  <input type="hidden" id="ask-chat" name="chat" value="{{ chat.pk }}" hx-swap-oob="true">
+  {% include "assistant/_chat_list.html" with oob=True %}
+{% endif %}

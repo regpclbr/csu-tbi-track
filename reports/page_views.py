@@ -1,0 +1,71 @@
+"""The Reports page (phase F5): /reports/ with the "New report" form and the history. Thin views: the rules are in
+reports.services (request_report checks can_create_activity and the input; report_state decides pending, ready or
+failed); reports/pages.py prepares what the templates show.
+
+Any active staff member lists and downloads reports; only can_create_activity sees the form and may post it. A
+pending row asks for itself again (HTMX polling, reports:row) until it is ready or failed.
+"""
+
+import json
+
+from django.contrib import messages
+from django.core.exceptions import ValidationError
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.http import require_GET, require_http_methods
+
+from accounts.permissions import Permission, has_permission, is_htmx, staff_login_required
+
+from . import pages, services
+from .models import GeneratedReport
+
+
+def _page(request: HttpRequest, form: pages.ReportForm, status: int = 200) -> HttpResponse:
+    today = pages.today()
+    context = {
+        "page_title": "Reports",
+        "page_subtitle": "Accomplishment, participation, evaluation, document compliance and certificate reports",
+        "can_generate": has_permission(request.user, Permission.CREATE_ACTIVITY),
+        "form": form,
+        "poll_seconds": pages.POLL_SECONDS,
+        **pages.form_options(today),
+        **pages.history(request.GET.get("page", "1")),
+    }
+    context["type_defaults_json"] = json.dumps(context["type_defaults"])
+    return render(request, "reports/list.html", context, status=status)
+
+
+@staff_login_required
+@require_http_methods(["GET", "POST"])
+def report_list(request: HttpRequest) -> HttpResponse:
+    """GET: the form (can_create_activity only) and the history (?page=). An HTMX request (the pager) gets only the
+    history. POST: request a report (services.request_report, which checks the permission and every value);
+    errors come back under their fields (400)."""
+    if request.method == "GET":
+        if is_htmx(request):
+            return render(request, "reports/_history.html", {"poll_seconds": pages.POLL_SECONDS,
+                                                             **pages.history(request.GET.get("page", "1"))})
+        return _page(request, pages.empty_form(pages.today()))
+
+    form = pages.form_from_post(request.POST, pages.today())
+    try:
+        report = services.request_report(request.user, form.service_data())  # PermissionDenied -> the 403 page
+    except ValidationError as error:
+        form.errors = pages.flat_errors(error.message_dict)
+        return _page(request, form, status=400)
+    messages.success(request, f"Report {report.pk} was requested. It appears below as Pending until it is made.")
+    return redirect("reports:list")
+
+
+@staff_login_required
+@require_GET
+def report_row(request: HttpRequest, report_id: int) -> HttpResponse:
+    """One history row (HTMX polling). ?polls=<n>: how often the row has asked already. A ready or failed row comes
+    back without the polling trigger, so polling stops; its new state is announced (HX-Trigger, the live region)."""
+    report = get_object_or_404(GeneratedReport.objects.select_related("generated_by", "activity_type"), pk=report_id)
+    polls = request.GET.get("polls", "0")
+    row = pages.history_row(report, services.report_state(report), int(polls) if polls.isdigit() else 0)
+    response = render(request, "reports/_row.html", {"row": row, "poll_seconds": pages.POLL_SECONDS})
+    if announcement := pages.state_announcement(row):
+        response["HX-Trigger"] = json.dumps({"report-state": announcement})
+    return response

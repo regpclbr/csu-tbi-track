@@ -361,6 +361,16 @@ def list_startups(filters: dict | None = None, page: int | str | None = 1, per_p
     return _paginate(queryset.order_by("name", "startup_id"), page, per_page)
 
 
+def maturity_stages() -> list[str]:
+    """The maturity stages the synced startups have (Navigatu's plain text, ignoring case and outer spaces), by name:
+    the choices of the staff list's filter. Read only; the stages are placeholders until the TBI confirms them."""
+    stages: dict[str, str] = {}
+    for stage in Startup.objects.exclude(maturity_stage__isnull=True).values_list("maturity_stage", flat=True):
+        if cleaned := stage.strip():
+            stages.setdefault(cleaned.lower(), cleaned)
+    return sorted(stages.values(), key=str.lower)
+
+
 def register_as_startup(
     startup: Startup, activity: Activity, *, participant_category=None, answers: dict | None = None,
     now: datetime | None = None,

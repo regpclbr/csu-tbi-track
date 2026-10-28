@@ -1,0 +1,41 @@
+{% load ui %}
+{% comment %}
+One chat message (assistant.pages.message_view). A question is escaped text with line breaks; an answer is item.html,
+already escaped by assistant.pages.answer_html (only our citation links and <br> are added), with its "answered from"
+badge and its numbered sources linking to the document page.
+{% endcomment %}
+{% with message=item.message %}
+{% if item.is_answer %}
+  <li class="flex gap-3" id="message-{{ message.pk }}">
+    <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary" aria-hidden="true">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
+    <div class="min-w-0 max-w-[85%]">
+      <p class="sr-only">The assistant answered:</p>
+      <div class="rounded-2xl rounded-tl-md border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-card [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline">{{ item.html }}</div>
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        {% include "components/badge.html" with text=item.badge.label tone=item.badge.tone %}
+        <time class="text-xs text-muted" datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"M j, g:i A" }}</time>
+      </div>
+      {% if item.sources %}
+        <ol class="mt-2 flex flex-wrap gap-2" aria-label="Sources">
+          {% for source in item.sources %}
+            <li>
+              <a href="{{ source.url }}" class="hover-lift inline-flex max-w-xs items-start gap-2 rounded-xl border border-line bg-slate-50 px-3 py-2 text-xs hover:border-primary">
+                <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">{{ source.number }}</span>
+                <span class="min-w-0">
+                  <span class="block truncate font-semibold text-ink">{{ source.title }}</span>
+                  <span class="block truncate text-slate-700">{{ source.type }} · {{ source.activity }}</span>
+                </span>
+              </a>
+            </li>
+          {% endfor %}
+        </ol>
+      {% endif %}
+    </div>
+  </li>
+{% else %}
+  <li class="flex justify-end" id="message-{{ message.pk }}">
+    <p class="sr-only">You asked:</p>
+    <p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm break-words text-white">{{ message.content|linebreaksbr }}</p>
+  </li>
+{% endif %}
+{% endwith %}

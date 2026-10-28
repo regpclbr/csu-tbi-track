@@ -1,0 +1,65 @@
+{% extends "layouts/app.html" %}
+{% load ui %}
+{% comment %}
+/notifications/ (notifications.views.notification_list): my notifications, newest first, All or Unread. Opening one
+marks it as read and goes to its page (notifications:open, as in the bell's dropdown). Only my own notifications.
+{% endcomment %}
+{% block content %}
+<section class="card p-6" aria-labelledby="notifications-title">
+  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <h2 id="notifications-title" class="card-title">Notifications</h2>
+    <div class="flex flex-wrap items-center gap-3">
+      <nav class="inline-flex rounded-full border border-line bg-slate-50 p-1" aria-label="Which notifications">
+        <a href="{% url 'notifications:list' %}"{% if show == "all" %} aria-current="page"{% endif %}
+           class="rounded-full px-3.5 py-1.5 text-sm font-semibold {% if show == 'all' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">All</a>
+        <a href="{% url 'notifications:list' %}?show=unread"{% if show == "unread" %} aria-current="page"{% endif %}
+           class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if show == 'unread' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">Unread
+          <span class="rounded-full px-1.5 text-xs font-bold {% if unread %}bg-primary text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ unread }}<span class="sr-only"> unread</span></span></a>
+      </nav>
+      {% if unread %}
+        <form method="post" action="{% url 'notifications:read_all' %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="check-check" class="size-4" %}Mark all as read</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if notifications %}
+    <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+      {% for item in notifications %}{% with notification=item.notification %}
+        <li class="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:flex-nowrap {% if not notification.is_read %}bg-blue-50/60{% else %}bg-white{% endif %}">
+          <span class="mt-1.5 size-2.5 shrink-0 rounded-full {% if notification.is_read %}bg-slate-200{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm text-ink">{% if not notification.is_read %}<span class="sr-only">Unread: </span>{% endif %}{{ notification.message }}</p>
+            <p class="mt-0.5 text-xs text-muted">
+              <time datetime="{{ notification.created_at|date:'c' }}" title="{{ notification.created_at|date:'M j, Y g:i A' }}">{{ notification.created_at|relative_time }}</time>{% if notification.activity %} · {{ notification.activity.title }}{% endif %}{% if notification.document_type %} · {{ notification.document_type.name }}{% endif %}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            {% if item.target %}
+              <form method="post" action="{% url 'notifications:open' notification.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-secondary btn-sm">{{ item.target }}<span class="sr-only">: {{ notification.message|truncatechars:60 }}</span></button>
+              </form>
+            {% endif %}
+            {% if not notification.is_read %}
+              <form method="post" action="{% url 'notifications:read' notification.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="btn btn-ghost btn-sm" aria-label="Mark as read: {{ notification.message|truncatechars:60 }}">{% include "components/icon.html" with name="check" class="size-4" %}<span class="hidden xl:inline">Mark as read</span></button>
+              </form>
+            {% endif %}
+          </div>
+        </li>
+      {% endwith %}{% endfor %}
+    </ul>
+    {% include "components/pagination.html" with result=result query=query %}
+  {% elif show == "unread" %}
+    {% include "components/empty_state.html" with icon="circle-check" title="You're all caught up" text="No unread notifications." action_url="?" action_label="Show all notifications" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="bell" title="No notifications yet" text="Reminders about required documents will appear here." %}
+  {% endif %}
+</section>
+{% endblock %}

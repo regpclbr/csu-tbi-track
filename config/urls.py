@@ -10,10 +10,11 @@ from reports.views import dashboard_page
 from startups import page_views as startup_page_views
 from startups import views as startup_views
 
-from . import views
+from . import search, views
 
 urlpatterns = [
     path("", dashboard_page, name="home"),  # the staff dashboard
+    path("search/", search.search_page, name="search"),  # the top bar's search (activities, documents, startups)
     # Must come before admin.site.urls: the admin uses the staff login (with lockout).
     path("admin/login/", admin_login_redirect),
     path("admin/", admin.site.urls),
