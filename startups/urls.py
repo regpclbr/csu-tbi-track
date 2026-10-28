@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import staff_views, views
+from . import portal_views, staff_views, views
 
 app_name = "startups"
 
@@ -17,7 +17,20 @@ urlpatterns = [
     path("api/<int:startup_id>/send-password-link/", views.send_password_link_api, name="api_send_password_link"),
     # The public set-password page (/startups/set-password/<token>/) and its JSON endpoint
     # (/api/startups/set-password/<token>/) are in config/urls.py.
-    # Startup portal (startup login)
+    # Startup portal pages (phase F6; startup login, never staff)
+    path("portal/", portal_views.home, name="portal_home"),
+    path("portal/login/", portal_views.login_page, name="portal_login_page"),
+    path("portal/logout/", portal_views.logout_page, name="portal_logout_page"),
+    path("portal/activities/", portal_views.open_activities, name="portal_activities"),
+    path("portal/activities/<int:activity_id>/register/", portal_views.register_page, name="portal_register_page"),
+    path("portal/activities/<int:activity_id>/registered/", portal_views.registered, name="portal_registered"),
+    path("portal/registrations/", portal_views.my_registrations, name="portal_registrations_page"),
+    path("portal/certificates/", portal_views.my_certificates, name="portal_certificates_page"),
+    path("portal/notifications/", portal_views.notifications, name="portal_notifications_page"),
+    path("portal/notifications/read-all/", portal_views.mark_all_read, name="portal_read_all_page"),
+    path("portal/notifications/<int:notification_id>/read/", portal_views.mark_read, name="portal_read_page"),
+    path("portal/profile/", portal_views.profile, name="portal_profile"),
+    # Startup portal JSON API (startup login)
     path("portal/api/login/", views.portal_login, name="portal_login"),
     path("portal/api/logout/", views.portal_logout, name="portal_logout"),
     path("portal/api/me/", views.portal_me, name="portal_me"),

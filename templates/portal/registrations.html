@@ -1,0 +1,26 @@
+{% extends "layouts/portal.html" %}
+{% comment %}
+/startups/portal/registrations/ (portal_pages.registration_rows): my registrations (registrations_for: linked ones and older
+public ones with my email), upcoming and past, with attendance and the evaluation (link only when evaluation_state is open).
+{% endcomment %}
+{% block content %}
+<section class="card p-0" aria-labelledby="upcoming-title">
+  <div class="px-5 pt-5 pb-3 sm:px-6"><h2 id="upcoming-title" class="card-title">Upcoming</h2></div>
+  {% if upcoming %}
+    <div class="hidden border-y border-line bg-slate-50 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase md:grid md:grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1.2fr)] sm:px-6" aria-hidden="true"><span>Activity</span><span>Attendance</span><span>Evaluation</span></div>
+    <ul class="divide-y divide-line">{% for row in upcoming %}{% include "portal/_registration_item.html" %}{% endfor %}</ul>
+  {% else %}
+    <div class="px-5 pb-6 sm:px-6">{% include "components/empty_state.html" with icon="calendar" title="No upcoming registrations" text="Activities you register for appear here." action_url=activities_url action_label="See open activities" %}</div>
+  {% endif %}
+</section>
+
+<section class="card mt-5 p-0" aria-labelledby="past-title">
+  <div class="px-5 pt-5 pb-3 sm:px-6"><h2 id="past-title" class="card-title">Past</h2></div>
+  {% if past %}
+    <div class="hidden border-y border-line bg-slate-50 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase md:grid md:grid-cols-[minmax(0,1.6fr)_minmax(0,0.8fr)_minmax(0,1.2fr)] sm:px-6" aria-hidden="true"><span>Activity</span><span>Attendance</span><span>Evaluation</span></div>
+    <ul class="divide-y divide-line">{% for row in past %}{% include "portal/_registration_item.html" %}{% endfor %}</ul>
+  {% else %}
+    <div class="px-5 pb-6 sm:px-6">{% include "components/empty_state.html" with icon="history" title="No past activities yet" text="After an activity ends it moves here, with your attendance and evaluation." %}</div>
+  {% endif %}
+</section>
+{% endblock %}

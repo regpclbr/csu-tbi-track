@@ -1,0 +1,26 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/accounts/console/system/ (accounts.console_views.system, accounts.system_status): read-only checks, each green or amber
+with a one-line fix (blue: development mode). Never calls Gemini and never shows a secret. The PDF check is loaded
+by HTMX when the page opens (console_system_pdf); without JavaScript a link opens it.
+{% endcomment %}
+{% block content %}
+{% include "console/_tabs.html" %}
+<section class="card p-6" aria-labelledby="system-title">
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 id="system-title" class="card-title">System status</h2>
+      <p class="card-subtitle">Checked <time datetime="{{ checked_at|date:'c' }}">{{ checked_at|date:"M j, Y g:i A" }}</time>. Nothing here changes data or sends anything.</p>
+    </div>
+    <a href="{% url 'accounts:console_system' %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="refresh-cw" class="size-4" %}Check again</a>
+  </div>
+  <ul class="space-y-3">
+    {% for item in items %}{% include "console/_status_item.html" %}{% endfor %}
+    <li id="status-pdf-slot" hx-get="{% url 'accounts:console_system_pdf' %}" hx-trigger="load" hx-swap="outerHTML"
+        class="flex items-center gap-3 rounded-2xl border border-line px-4 py-4 text-sm text-muted" role="status">
+      {% include "components/spinner.html" %} Checking PDF rendering…
+      <noscript><a href="{% url 'accounts:console_system_pdf' %}" class="link">Run the PDF check</a></noscript>
+    </li>
+  </ul>
+</section>
+{% endblock %}

@@ -3,7 +3,8 @@
 The staff sign-in pages (docs/design/login.png): login, forgot password, reset password and the first-sign-in
 password change. The whole page is one gradient (#22378F top left -> #60CDEE bottom right, CSS .auth-bg) with two
 columns: logo, headline, sentence and illustration on the left; the frosted glass card (.auth-card) on the right.
-Only the card changes from page to page. Blocks: card_heading, card_text (the helper line under the heading), card (the form).
+Only the card changes from page to page. Blocks: card_heading, card_text (the helper line under the heading), card (the form),
+below_card (a small link under the card); the startup portal login (F6) also changes headline, panel_text and home_url.
 Animations (CSS only, frontend/tailwind/app.css "Sign-in panel animations"): the headline lines, the illustration and
 the card enter once; only the illustration floats. All off with prefers-reduced-motion.
 From 1024 px (lg) the page fits the screen without scrolling (the illustration shrinks with the window height).
@@ -22,7 +23,7 @@ Never put hx-headers or another per-request value here (the forgot-password page
   <div class="mx-auto flex min-h-screen max-w-[1440px] flex-col gap-8 px-5 py-8 sm:px-10 lg:flex-row lg:items-stretch lg:gap-12 lg:px-14 lg:py-9">
     {# Left: logo, headline, the sentence and the illustration #}
     <section class="on-dark flex flex-col text-white lg:min-w-0 lg:flex-1" aria-label="About CSU-TBI Track">
-      <a href="{% url 'accounts:login' %}" class="flex w-fit items-center gap-3.5 rounded-lg">
+      <a href="{% block home_url %}{% url 'accounts:login' %}{% endblock %}" class="flex w-fit items-center gap-3.5 rounded-lg">
         <img src="{% static 'img/logo-96.png' %}" alt="" width="48" height="48" class="size-12 rounded-xl">
         <span class="text-xl font-bold tracking-tight">CSU-TBI Track</span>
       </a>
@@ -30,11 +31,13 @@ Never put hx-headers or another per-request value here (the forgot-password page
       <div class="mt-8 lg:mt-9">
         {# The three lines fade up one after another (CSS "rise", off with prefers-reduced-motion) #}
         <p class="text-[28px] leading-[1.12] font-extrabold tracking-[-0.01em] sm:text-4xl lg:text-[44px]">
+          {% block headline %}
           <span class="rise block" style="--d: 0ms">Track activities.</span>
           <span class="rise block" style="--d: 80ms">Monitor documents.</span>
           <span class="rise block text-[#5EEAD4]" style="--d: 160ms">All in one place.</span>
+          {% endblock %}
         </p>
-        <p class="rise mt-4 max-w-[530px] text-[15px] leading-relaxed text-blue-100 lg:mt-5 lg:text-base" style="--d: 240ms">Sign in to continue with the Technology Business Incubator at Caraga State University.</p>
+        <p class="rise mt-4 max-w-[530px] text-[15px] leading-relaxed text-blue-100 lg:mt-5 lg:text-base" style="--d: 240ms">{% block panel_text %}Sign in to continue with the Technology Business Incubator at Caraga State University.{% endblock %}</p>
       </div>
 
       <div class="mt-auto hidden pt-6 lg:block">
@@ -49,6 +52,7 @@ Never put hx-headers or another per-request value here (the forgot-password page
         <p class="mt-2 text-[15px] text-slate-700">{% block card_text %}{% endblock %}</p>
         {% block card %}{% endblock %}
       </div>
+      {% block below_card %}{% endblock %}
       {# Dark text on a small glass pill: readable wherever the gradient puts it (contrast in docs/ASSUMPTIONS.md item 257) #}
       <p class="auth-footnote mt-5 rounded-full px-3.5 py-1 text-center text-sm font-medium text-ink">© {% now "Y" %} CSU Technology Business Incubator</p>
     </main>

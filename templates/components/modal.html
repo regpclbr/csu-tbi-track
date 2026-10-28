@@ -2,12 +2,13 @@
 A button that opens a modal dialog (native <dialog> + showModal(): focus stays inside, Escape closes it, the page
 behind is inert; focus goes back to the button when it closes).
 {% include "components/modal.html" with id="status-modal" title="Change status" body="activities/_status_form.html" trigger_label="Change status" trigger_icon="refresh-cw" trigger_class="btn btn-secondary btn-sm" %}
+trigger_sr (optional): extra words for screen readers only ("for Ana Cruz") when the same button repeats per row.
 body: the template shown inside. Inside it, a button with @click="close()" closes the dialog; put `autofocus` on the
 element that should get the focus first (otherwise the close button gets it).
 {% endcomment %}
 <div x-data="{ open() { $refs.dialog.showModal() }, close() { $refs.dialog.close() } }">
   <button type="button" class="{{ trigger_class|default:'btn btn-secondary' }}" x-ref="trigger" @click="open()" aria-haspopup="dialog">
-    {% if trigger_icon %}{% include "components/icon.html" with name=trigger_icon class="size-4" %}{% endif %}{{ trigger_label }}
+    {% if trigger_icon %}{% include "components/icon.html" with name=trigger_icon class="size-4" %}{% endif %}{{ trigger_label }}{% if trigger_sr %}<span class="sr-only"> {{ trigger_sr }}</span>{% endif %}
   </button>
   <dialog id="{{ id }}" x-ref="dialog" class="modal" aria-labelledby="{{ id }}-title" @close="$refs.trigger.focus()" @click.self="close()">
     <div class="p-6">

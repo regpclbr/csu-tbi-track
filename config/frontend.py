@@ -1,4 +1,5 @@
 """What every staff page's layout needs: the sidebar items, the member's badge counts and the date.
+The startup portal's layout (phase F6) is `portal` (portal_layout), with its own list of items.
 
 Used as a context processor (settings.TEMPLATES), so every template can use `layout`. The counts are
 computed only when a template reads them (the Django admin, emails and PDFs never do).
@@ -59,7 +60,7 @@ class StaffLayout:
         match = self.request.resolver_match
         if match is None:
             return ""
-        if match.view_name == "accounts:console":
+        if match.view_name.startswith("accounts:console"):
             return "console"
         return match.namespace or match.view_name
 
@@ -115,6 +116,65 @@ def staff_layout(request: HttpRequest) -> dict:
     if not is_staff_member(user) or user.must_change_password:
         return {}
     return {"layout": StaffLayout(request)}
+
+
+PORTAL = [
+    NavItem("Overview", "startups:portal_home", "layout-grid", "startups:portal_home"),
+    NavItem("Open activities", "startups:portal_activities", "calendar", "activities"),
+    NavItem("My registrations", "startups:portal_registrations_page", "clipboard-list", "startups:portal_registrations_page"),
+    NavItem("My certificates", "startups:portal_certificates_page", "award", "startups:portal_certificates_page"),
+    NavItem("Notifications", "startups:portal_notifications_page", "bell", "startups:portal_notifications_page", badge="unread_count"),
+    NavItem("Profile", "startups:portal_profile", "user-round", "startups:portal_profile"),
+]
+# Pages that mark "Open activities" as active (the list and registering).
+PORTAL_ACTIVITY_VIEWS = {"startups:portal_activities", "startups:portal_register_page", "startups:portal_registered"}
+
+
+class PortalLayout:
+    """The layout data for one portal request by a logged-in startup (request.startup, set by portal_page_required)."""
+
+    def __init__(self, request: HttpRequest) -> None:
+        self.request = request
+        self.startup = request.startup
+
+    def _section(self) -> str:
+        match = self.request.resolver_match
+        view_name = match.view_name if match else ""
+        return "activities" if view_name in PORTAL_ACTIVITY_VIEWS else view_name
+
+    @cached_property
+    def items(self) -> list[dict]:
+        section = self._section()
+        return [
+            {
+                "label": item.label,
+                "url": reverse(item.url_name),
+                "icon": item.icon,
+                "active": item.section == section,
+                "badge": getattr(self, item.badge) if item.badge else 0,
+                "badge_label": "unread" if item.badge else "",
+            }
+            for item in PORTAL
+        ]
+
+    @cached_property
+    def unread_count(self) -> int:
+        return unread_count(self.startup)
+
+    @cached_property
+    def today(self) -> date:
+        return today_in_manila()
+
+    @cached_property
+    def initials(self) -> str:
+        return initials(self.startup.name)
+
+
+def portal_layout(request: HttpRequest) -> dict:
+    """Context processor: `portal` on the startup portal's pages (a logged-in startup); nothing otherwise."""
+    if getattr(request, "startup", None) is None:
+        return {}
+    return {"portal": PortalLayout(request)}
 
 
 def public_footer(request: HttpRequest) -> dict:

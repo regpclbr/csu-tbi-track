@@ -11,6 +11,8 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db.models import Q
 from django.db import transaction
 from django.http import HttpRequest
 
@@ -196,7 +198,13 @@ def save_new_member_with_invitation(member: TBIMember) -> TBIMember:
 def create_member(acting_member: TBIMember, *, name: str, email: str, role: Role) -> TBIMember:
     """Admin Console: create a staff member and email them a temporary password."""
     require_permission(acting_member, Permission.MANAGE_USERS)
+    if not name.strip():
+        raise MemberManagementError("Enter the member's name.")
     email = TBIMember.objects.normalize_email(email.strip()).lower()
+    try:
+        validate_email(email)
+    except ValidationError:
+        raise MemberManagementError("Enter a valid email address.") from None
     if TBIMember.objects.filter(email__iexact=email).exists():
         raise MemberManagementError("A member with this email already exists.")
 
@@ -273,6 +281,25 @@ def reactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
     member.save(update_fields=["is_active", "updated_at"])
     security_log.info("Member reactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
     return member
+
+
+MEMBERS_PAGE_SIZE = 20
+
+
+def list_members(filters: dict | None = None, page: int | str | None = 1, per_page: int = MEMBERS_PAGE_SIZE):
+    """Admin Console list (read only): q (name or email), role (a role ID), is_active (True/False). By name, 20 a page."""
+    from activities.services import _paginate  # activities imports accounts: import here, not at the top
+
+    filters = filters or {}
+    queryset = TBIMember.objects.select_related("role")
+    search = (filters.get("q") or "").strip()
+    if search:
+        queryset = queryset.filter(Q(name__icontains=search) | Q(email__icontains=search))
+    if filters.get("role"):
+        queryset = queryset.filter(role_id=filters["role"])
+    if filters.get("is_active") is not None:
+        queryset = queryset.filter(is_active=filters["is_active"])
+    return _paginate(queryset.order_by("name", "member_id"), page, per_page)
 
 
 # --- Admin Console: role permission flags -------------------------------------------------

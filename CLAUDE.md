@@ -20,7 +20,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Local file storage for uploads (`MEDIA_ROOT`)
 - Local Django login now; Navigatu SSO is a later phase
 - Frontend: Django Templates, HTMX, Alpine.js, Tailwind CSS v4 (standalone CLI, no Node.js). Built phase by
-  phase (F1 done); see "Frontend" below.
+  phase (F1–F6 done); see "Frontend" below.
 
 ## Apps
 `accounts`, `activities`, `registrations`, `documents`, `certificates`, `reports`,
@@ -273,8 +273,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (`/search/`, the top bar's box: the lists' own services, 5 per group). **Model answers are untrusted:** render them only through
   `assistant.pages.answer_html()` (escapes everything, then adds our `[n]` links and `<br>`); never `|safe`, HTML or Markdown from the
   model. A first question that fails removes its new chat (`services.discard_if_empty`).
-- Pages of later phases use `config.views.coming_soon` under their final URL names (`COMING_SOON_PAGES`); remove an
-  entry when its page is built.
+- Startup portal pages (F6, ASSUMPTIONS 312–319): `startups/portal_views.py` + `startups/portal_pages.py`, `templates/portal/` on
+  `layouts/portal.html` (sidebar `config.frontend.PORTAL`, context `portal`). Every page uses `startups.decorators.portal_page_required`
+  (staff: 403; nobody: portal login). Login through `authenticate_startup`; `next` only within `/startups/portal/`. Registering only through
+  `register_as_startup`; evaluation links only when `evaluation_state()` is open. Portal pages must work at phone width.
+- Admin Console (F6, ASSUMPTIONS 320–322): `accounts/console_views.py` + `accounts/console_pages.py`, `templates/console/`, all
+  `permission_required(MANAGE_USERS)`. Members through `accounts.services` (`list_members` for the list), designs and signatories through
+  `certificates.services` (no delete URL, ever), System status through `accounts/system_status.py` (read only; never calls Gemini, never
+  shows a secret; the PDF check goes through `get_renderer()`).
 - Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
   list for every chart, an empty state for every list, a loading indicator (`htmx-indicator`) for HTMX swaps.
 
@@ -338,6 +344,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Tests and the time of day (2026-10-28): fake clock, walkthrough fix (289).
 - Frontend F4 (2026-10-28): documents tab, repository + review queue, document page, certificates tab and page, links (290–300).
 - Frontend F5 (2026-10-28): reports page with polling, AI assistant chat, startups pages, notifications page, global search (301–311).
+- Frontend F6 (2026-10-28): startup portal pages and the Admin Console (members, roles, certificate design, system status) (312–323).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

@@ -1,0 +1,45 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/accounts/console/roles/: the roles and their two flags, read only. Roles and master data are changed only in the
+Django admin (ASSUMPTIONS 224), where the flags go through accounts.services.update_role_permissions.
+{% endcomment %}
+{% block content %}
+{% include "console/_tabs.html" %}
+<section class="card p-6" aria-labelledby="roles-title">
+  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 id="roles-title" class="card-title">Roles</h2>
+      <p class="card-subtitle">What each role may do. Every active member can view activities, documents, certificates, startups and reports.</p>
+    </div>
+    <a href="{{ admin_url }}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="external-link" class="size-4" %}Edit in the administration site</a>
+  </div>
+  {% if roles %}
+    <div class="relative overflow-x-auto rounded-2xl border border-line">
+      <table class="w-full text-left text-sm">
+        <caption class="sr-only">Roles and their permissions</caption>
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+          <tr>
+            <th scope="col" class="px-4 py-2.5">Role</th>
+            <th scope="col" class="px-4 py-2.5">Create and edit activities</th>
+            <th scope="col" class="px-4 py-2.5">Manage users (Admin Console)</th>
+            <th scope="col" class="px-4 py-2.5">Active members</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {% for role in roles %}
+            <tr>
+              <th scope="row" class="px-4 py-3 font-semibold text-ink">{{ role.role_name }}</th>
+              <td class="px-4 py-3">{% if role.can_create_activity %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}</td>
+              <td class="px-4 py-3">{% if role.can_manage_users %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}</td>
+              <td class="px-4 py-3 text-slate-700">{{ role.member_count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {% include "components/empty_state.html" with icon="shield" title="No roles yet" text="Run python manage.py seed_data to create them." %}
+  {% endif %}
+  <p class="mt-4 text-xs text-muted">Roles are never renamed or deleted. At least one active member must always be able to manage users.</p>
+</section>
+{% endblock %}

@@ -9,7 +9,7 @@ from django.conf import settings
 from django.test import Client, RequestFactory
 from django.urls import reverse
 
-from config.views import COMING_SOON_PAGES, server_error
+from config.views import server_error
 from documents.models import Document, DocumentStatus, DocumentType
 
 pytestmark = pytest.mark.django_db
@@ -157,14 +157,15 @@ def test_dropdown_needs_login() -> None:
     assert response.status_code == 401 and response["HX-Redirect"].startswith(reverse("accounts:login"))
 
 
-# --- Coming-soon pages ----------------------------------------------------------------------------------------
+# --- No placeholder pages are left (phase F6 built the last one) -----------------------------------------------
 
 
-def test_only_the_admin_console_is_still_coming_soon(admin_staff) -> None:
-    """Phase F5 built Reports, the AI Assistant and Startups; the Admin Console stays a placeholder until F6."""
-    assert list(COMING_SOON_PAGES) == ["accounts:console"]
-    for url_name in ("reports:list", "assistant:chat", "startups:list"):
-        response = logged_in(admin_staff).get(reverse(url_name))
+def test_no_coming_soon_page_is_left(admin_member) -> None:
+    import config.views
+
+    assert not hasattr(config.views, "coming_soon") and not hasattr(config.views, "COMING_SOON_PAGES")
+    for url_name in ("reports:list", "assistant:chat", "startups:list", "accounts:console"):
+        response = logged_in(admin_member).get(reverse(url_name))
         assert response.status_code == 200 and "is coming soon" not in response.content.decode()
         assert Client().get(reverse(url_name)).status_code == 302
 

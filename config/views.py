@@ -1,4 +1,4 @@
-"""Project-wide views: error pages, the coming-soon page and the staff lookups."""
+"""Project-wide views: error pages and the staff lookups."""
 
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
@@ -41,22 +41,6 @@ def server_error(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"error": SERVER_ERROR}, status=500)
     # errors/500.html is rendered without the request (no database, no user): it must not need them.
     return defaults.server_error(request, template_name="errors/500.html")
-
-
-# Pages of later frontend phases (F2–F6). Each sidebar link already has its real URL name; until its
-# page is built, the URL shows this placeholder. Remove an entry from COMING_SOON_PAGES (and its
-# URL's use of coming_soon) when the page is built:
-COMING_SOON_PAGES = {
-    "accounts:console": "Admin Console",
-}
-
-
-@staff_login_required
-@require_GET
-def coming_soon(request: HttpRequest, feature: str = "This page") -> HttpResponse:
-    """A staff page that is planned for a later frontend phase (now only the Admin Console, phase F6)."""
-    context = {"page_title": feature, "feature": feature}
-    return render(request, "pages/coming_soon.html", context)
 
 
 @staff_login_required

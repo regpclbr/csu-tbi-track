@@ -1,0 +1,141 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/accounts/console/certificates/ (accounts.console_views.certificate_design): certificate designs and signatories through
+certificates.services (image checks; a new design or signature is a new row, files never change; one active design and
+one active VP and Director). Nothing here is ever deleted (there is no delete URL): rows are deactivated.
+Thumbnails come from the Admin-only views certificates:template_image / signature_image (never /media/).
+Errors of a refused upload appear under their fields (template_errors / signatory_errors), with that form open.
+{% endcomment %}
+{% block content %}
+{% include "console/_tabs.html" %}
+<div class="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+  <section class="card p-6" aria-labelledby="templates-title">
+    <div class="mb-4">
+      <h2 id="templates-title" class="card-title">Certificate designs</h2>
+      <p class="card-subtitle">The background image of every certificate. Each certificate keeps the design it was generated with.</p>
+    </div>
+    {% if not active_template %}
+      <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4" %}No design is active: certificates cannot be generated.</p>
+    {% endif %}
+
+    <details class="group mb-5 rounded-2xl border border-line" {% if template_errors %}open{% endif %} id="upload-template">
+      <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+        <span class="inline-flex items-center gap-2">{% include "components/icon.html" with name="upload" class="size-4" %}Upload a new design</span>
+        {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
+      </summary>
+      <form method="post" action="{% url 'accounts:console_template_upload' %}" enctype="multipart/form-data" novalidate class="space-y-4 border-t border-line px-4 pt-4 pb-5"
+            x-data="{ busy: false }" @submit="busy = true">
+        {% csrf_token %}
+        <div>
+          <label for="template-name" class="text-sm font-semibold text-ink">Name</label>
+          <input id="template-name" name="name" value="{{ template_values.name|default:'' }}" maxlength="255" class="field-input mt-1.5" placeholder="e.g. TBI 2026 design"{% if template_errors.name %} aria-invalid="true" aria-describedby="template-name-error" autofocus{% endif %}>
+          {% if template_errors.name %}<p id="template-name-error" class="field-error">{{ template_errors.name }}</p>{% endif %}
+        </div>
+        {% include "console/_image_input.html" with id="template-file" accept="image/png,image/jpeg" help=template_help error=template_errors.file %}
+        <label class="flex items-center gap-3 text-sm text-ink">
+          <input type="checkbox" name="activate" value="true" class="size-4 accent-primary"{% if not template_errors or template_values.activate %} checked{% endif %}>
+          Make it the active design (the current one is deactivated)
+        </label>
+        <button type="submit" class="btn btn-primary" :disabled="busy">{% include "components/icon.html" with name="upload" class="size-4" %}Upload design</button>
+      </form>
+    </details>
+
+    {% if templates %}
+      <ul class="grid gap-4 sm:grid-cols-2">
+        {% for template in templates %}
+          <li class="overflow-hidden rounded-2xl border {% if template.is_active %}border-primary ring-2 ring-primary/20{% else %}border-line{% endif %} bg-white">
+            <img src="{% url 'certificates:template_image' template.pk %}" alt="Preview of the design {{ template.name }}" loading="lazy" class="aspect-[297/210] w-full bg-slate-100 object-cover">
+            <div class="flex flex-wrap items-start justify-between gap-2 p-3">
+              <div class="min-w-0">
+                <p class="font-semibold break-words text-ink">{{ template.name }}</p>
+                <p class="text-xs text-muted">Uploaded {{ template.created_at|date:"M j, Y" }} by {{ template.uploaded_by.name }}</p>
+              </div>
+              {% if template.is_active %}{% include "components/badge.html" with text="Active" tone="success" %}{% else %}{% include "components/badge.html" with text="Inactive" tone="neutral" %}{% endif %}
+            </div>
+            <form method="post" action="{% if template.is_active %}{% url 'accounts:console_template_action' template.pk 'deactivate' %}{% else %}{% url 'accounts:console_template_action' template.pk 'activate' %}{% endif %}" class="px-3 pb-3">
+              {% csrf_token %}
+              {% if template.is_active %}
+                <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ template.name }}</span></button>
+              {% else %}
+                <button type="submit" class="btn btn-secondary btn-sm">Make active<span class="sr-only">: {{ template.name }}</span></button>
+              {% endif %}
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {% include "components/empty_state.html" with icon="image" title="No designs yet" text="Upload the certificate background above." %}
+    {% endif %}
+  </section>
+
+  <section class="card p-6" aria-labelledby="signatories-title">
+    <div class="mb-4">
+      <h2 id="signatories-title" class="card-title">Signatories</h2>
+      <p class="card-subtitle">The VP and the Director whose signatures are printed. A new one replaces the active one of that position.</p>
+    </div>
+
+    <details class="group mb-5 rounded-2xl border border-line" {% if signatory_errors %}open{% endif %} id="add-signatory">
+      <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+        <span class="inline-flex items-center gap-2">{% include "components/icon.html" with name="pen-line" class="size-4" %}Add a signatory</span>
+        {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
+      </summary>
+      <form method="post" action="{% url 'accounts:console_signatory_add' %}" enctype="multipart/form-data" novalidate class="space-y-4 border-t border-line px-4 pt-4 pb-5"
+            x-data="{ busy: false }" @submit="busy = true">
+        {% csrf_token %}
+        <div>
+          <label for="signatory-name" class="text-sm font-semibold text-ink">Name as printed</label>
+          <input id="signatory-name" name="name" value="{{ signatory_values.name|default:'' }}" maxlength="255" class="field-input mt-1.5" placeholder="e.g. Dr. Maria Santos"{% if signatory_errors.name %} aria-invalid="true" aria-describedby="signatory-name-error" autofocus{% endif %}>
+          {% if signatory_errors.name %}<p id="signatory-name-error" class="field-error">{{ signatory_errors.name }}</p>{% endif %}
+        </div>
+        <fieldset{% if signatory_errors.position %} aria-describedby="signatory-position-error"{% endif %}>
+          <legend class="text-sm font-semibold text-ink">Position</legend>
+          <div class="mt-1.5 flex flex-wrap gap-4">
+            {% for value, label in position_choices %}
+              <label class="flex min-h-10 items-center gap-2 text-sm text-ink"><input type="radio" name="position" value="{{ value }}" class="size-4 accent-primary"{% if signatory_values.position == value %} checked{% endif %}{% if signatory_errors.position %} aria-invalid="true"{% endif %}>{{ label }}</label>
+            {% endfor %}
+          </div>
+          {% if signatory_errors.position %}<p id="signatory-position-error" class="field-error">{{ signatory_errors.position }}</p>{% endif %}
+        </fieldset>
+        {% include "console/_image_input.html" with id="signatory-file" accept="image/png" help="PNG only (a transparent background prints cleanly)." error=signatory_errors.file %}
+        <button type="submit" class="btn btn-primary" :disabled="busy">{% include "components/icon.html" with name="plus" class="size-4" %}Add signatory</button>
+      </form>
+    </details>
+
+    <div class="space-y-5">
+      {% for position in positions %}
+        <div>
+          <h3 class="text-sm font-semibold text-ink">{{ position.label }}</h3>
+          {% if not position.active %}
+            <p class="mt-2 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4" %}No active {{ position.label }}: certificates cannot be generated.</p>
+          {% endif %}
+          {% if position.signatories %}
+            <ul class="mt-2 divide-y divide-line overflow-hidden rounded-2xl border border-line">
+              {% for signatory in position.signatories %}
+                <li class="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap {% if signatory.is_active %}bg-blue-50/50{% endif %}">
+                  <img src="{% url 'certificates:signature_image' signatory.pk %}" alt="Signature of {{ signatory.name }}" loading="lazy" class="h-12 w-28 shrink-0 rounded-lg border border-line bg-white object-contain p-1">
+                  <div class="min-w-0 flex-1">
+                    <p class="font-semibold break-words text-ink">{{ signatory.name }}</p>
+                    <p class="text-xs text-muted">Added {{ signatory.created_at|date:"M j, Y" }}</p>
+                  </div>
+                  {% if signatory.is_active %}
+                    {% include "components/badge.html" with text="Active" tone="success" %}
+                    <form method="post" action="{% url 'accounts:console_signatory_deactivate' signatory.pk %}">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ signatory.name }}</span></button>
+                    </form>
+                  {% else %}
+                    {% include "components/badge.html" with text="Inactive" tone="neutral" %}
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="mt-2 text-sm text-muted">None yet.</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <p class="mt-5 text-xs text-muted">Signatories are never deleted. To change a name or a signature, add a new signatory: the old one stays on the certificates already made.</p>
+  </section>
+</div>
+{% endblock %}

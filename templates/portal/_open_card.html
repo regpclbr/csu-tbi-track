@@ -1,0 +1,30 @@
+{% load ui %}
+{# One open activity in the portal (startups.portal_pages.open_cards): the public facts and "Already registered" or Register. #}
+{% with activity=card.activity summary=card.summary %}
+<li class="card flex flex-col p-5">
+  <div class="flex items-start gap-4">
+    {% include "components/date_tile.html" with activity=activity gradient=True %}
+    <div class="min-w-0">
+      <p class="text-xs font-semibold tracking-wide text-primary-hover uppercase">{{ summary.activity_type }}</p>
+      <h3 class="mt-1 text-base leading-snug font-bold break-words text-ink sm:text-lg">{{ summary.title }}</h3>
+    </div>
+  </div>
+  <dl class="mt-4 space-y-2 text-sm text-slate-700">
+    <div class="flex gap-2.5"><dt class="sr-only">Date</dt><span class="text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><dd>{{ activity|date_span }}</dd></div>
+    <div class="flex gap-2.5"><dt class="sr-only">Time</dt><span class="text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><dd>{{ summary.time_schedule }}</dd></div>
+    <div class="flex gap-2.5"><dt class="sr-only">Venue</dt><span class="text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><dd class="min-w-0 break-words">{{ summary.venue }}</dd></div>
+  </dl>
+  <div class="mt-auto pt-4">
+    {% if card.registered %}
+      <p class="flex items-center gap-2 text-sm font-semibold text-green-800">{% include "components/icon.html" with name="circle-check" class="size-4.5" %}Already registered</p>
+      <a href="{% url 'startups:portal_registrations_page' %}" class="link mt-2 inline-block text-sm">See my registrations</a>
+    {% else %}
+      <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <span class="badge badge-info">{{ summary.slots_remaining|number }} slot{{ summary.slots_remaining|pluralize }} left</span>
+        <span class="text-slate-700">Register by {{ summary.registration_deadline|date_time }}</span>
+      </p>
+      <a href="{% url 'startups:portal_register_page' activity.pk %}" class="btn btn-primary btn-arrow mt-4 w-full">Register<span class="sr-only"> for {{ summary.title }}</span>{% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</a>
+    {% endif %}
+  </div>
+</li>
+{% endwith %}

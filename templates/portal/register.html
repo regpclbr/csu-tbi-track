@@ -1,0 +1,61 @@
+{% extends "layouts/portal.html" %}
+{% comment %}
+/startups/portal/activities/<id>/register/ (startups.portal_views.register_page): the activity, then the form. Name, email
+and contact number come from the startup's Navigatu profile (read-only here; services.register_as_startup uses them).
+The category (text when only one: the service picks it) and the activity's fields (components/answer_field.html).
+novalidate: every check is the service's; the first field with an error gets the focus.
+{% endcomment %}
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <a href="{% url 'startups:portal_activities' %}" class="link inline-flex items-center gap-1 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Open activities</a>
+  <section class="card mt-3 p-5 sm:p-8" aria-label="Activity">
+    {% include "public/_activity_summary.html" with activity=activity summary=summary heading="h2" %}
+  </section>
+
+  <section class="card mt-4 p-5 sm:p-8" aria-labelledby="form-heading">
+    <h2 id="form-heading" class="text-xl font-bold tracking-tight text-ink">Registration form</h2>
+    <p class="mt-1 mb-5 text-sm text-slate-700">Fields marked <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
+    {% include "public/_form_alerts.html" %}
+
+    <div class="mb-6 rounded-2xl border border-line bg-slate-50 p-4">
+      <p class="text-sm font-semibold text-ink">Registering as</p>
+      <dl class="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+        <div class="min-w-0"><dt class="text-xs font-semibold text-muted uppercase">Name</dt><dd class="break-words text-ink">{{ portal.startup.name }}</dd></div>
+        <div class="min-w-0"><dt class="text-xs font-semibold text-muted uppercase">Email</dt><dd class="break-all text-ink">{{ portal.startup.email }}</dd></div>
+        <div class="min-w-0"><dt class="text-xs font-semibold text-muted uppercase">Contact number</dt><dd class="text-ink">{{ portal.startup.contact_number|default:"–" }}</dd></div>
+      </dl>
+      <p class="mt-2 text-xs text-muted">From your Navigatu profile. Changes are made in Navigatu.</p>
+    </div>
+
+    <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate class="space-y-5" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+      {% csrf_token %}
+      {% if categories|length == 1 %}
+        <div>
+          <p class="text-sm font-semibold text-ink">Participant category</p>
+          <p class="mt-1.5 text-[15px] text-slate-800">{{ categories.0.name }}</p>
+        </div>
+      {% else %}
+        <fieldset{% if errors.participant_category %} aria-describedby="id_participant_category-error"{% endif %}>
+          <legend class="text-sm font-semibold text-ink">You are attending as <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span></legend>
+          <div class="mt-1 space-y-0.5">
+            {% for category in categories %}
+              <label class="flex min-h-11 cursor-pointer items-center gap-3 py-1 text-sm text-ink">
+                <input type="radio" name="participant_category" value="{{ category.participant_category_id }}" class="size-5 shrink-0 accent-primary"{% if values.participant_category == category.participant_category_id|stringformat:"s" %} checked{% endif %}{% if focus == "participant_category" and forloop.first %} autofocus{% endif %}{% if errors.participant_category %} aria-invalid="true"{% endif %}>
+                <span>{{ category.name }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          {% if errors.participant_category %}<p id="id_participant_category-error" class="field-error">{{ errors.participant_category }}</p>{% endif %}
+        </fieldset>
+      {% endif %}
+
+      {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
+
+      <button type="submit" class="btn btn-primary btn-arrow w-full sm:w-auto sm:px-8" :disabled="busy">
+        <span x-show="!busy">Register</span><span x-show="busy" x-cloak>Registering…</span>
+        {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}
+      </button>
+    </form>
+  </section>
+</div>
+{% endblock %}

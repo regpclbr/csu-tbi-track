@@ -1,0 +1,79 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/accounts/console/ (accounts.console_views.members): the members (accounts.services.list_members) with search, role and
+active filters (HTMX swaps #member-results), and "Invite a member" (a native <details>, open when the service refused).
+Every action is a POST to the services (accounts.services); refusals (last Admin, yourself) come back as error toasts.
+{% endcomment %}
+{% block content %}
+{% include "console/_tabs.html" %}
+<div class="space-y-5">
+  <details class="card group p-0" id="invite-member"{% if invite_errors %} open{% endif %}>
+    <summary class="flex cursor-pointer list-none items-center justify-between gap-4 rounded-[24px] px-6 py-5 [&::-webkit-details-marker]:hidden">
+      <span>
+        <span class="card-title block">Invite a member</span>
+        <span class="card-subtitle block">They get an email with a temporary password and must change it at the first sign-in.</span>
+      </span>
+      <span class="btn btn-primary btn-sm">{% include "components/icon.html" with name="user-plus" class="size-4" %}Invite</span>
+    </summary>
+    <form method="post" action="{% url 'accounts:console_invite' %}" novalidate x-data="{ busy: false }" @submit="busy = true" class="grid gap-4 border-t border-line px-6 pt-5 pb-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_14rem_auto] md:items-start">
+      {% csrf_token %}
+      <div>
+        <label for="invite-name" class="text-sm font-semibold text-ink">Full name</label>
+        <input id="invite-name" name="name" value="{{ invite.name }}" maxlength="255" autocomplete="off" class="field-input mt-1.5"{% if invite_errors.name %} aria-invalid="true" aria-describedby="invite-name-error" autofocus{% endif %}>
+        {% if invite_errors.name %}<p id="invite-name-error" class="field-error">{{ invite_errors.name }}</p>{% endif %}
+      </div>
+      <div>
+        <label for="invite-email" class="text-sm font-semibold text-ink">Email address</label>
+        <input id="invite-email" name="email" type="email" value="{{ invite.email }}" maxlength="254" autocomplete="off" class="field-input mt-1.5"{% if invite_errors.email %} aria-invalid="true" aria-describedby="invite-email-error" autofocus{% endif %}>
+        {% if invite_errors.email %}<p id="invite-email-error" class="field-error">{{ invite_errors.email }}</p>{% endif %}
+      </div>
+      <div>
+        <label for="invite-role" class="text-sm font-semibold text-ink">Role</label>
+        <select id="invite-role" name="role" class="field-input mt-1.5"{% if invite_errors.role %} aria-invalid="true" aria-describedby="invite-role-error"{% endif %}>
+          <option value="">Choose a role…</option>
+          {% for role in roles %}<option value="{{ role.pk }}"{% if invite.role == role.pk|stringformat:"s" %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
+        </select>
+        {% if invite_errors.role %}<p id="invite-role-error" class="field-error">{{ invite_errors.role }}</p>{% endif %}
+      </div>
+      <div class="md:pt-7">
+        <button type="submit" class="btn btn-primary w-full md:w-auto" :disabled="busy">{% include "components/icon.html" with name="send" class="size-4" %}Send invitation</button>
+      </div>
+    </form>
+  </details>
+
+  <section class="card p-6" aria-labelledby="members-title">
+    <div class="mb-5">
+      <h2 id="members-title" class="card-title">Members</h2>
+      <p class="card-subtitle">Members are never deleted: deactivate them instead. At least one active Admin must always remain.</p>
+    </div>
+    <form method="get" action="{% url 'accounts:console' %}" role="search" aria-label="Filter members"
+          hx-get="{% url 'accounts:console' %}" hx-target="#member-results" hx-push-url="true"
+          hx-trigger="change, keyup changed delay:400ms from:#member-q, search from:#member-q" hx-indicator="#member-results, #member-loading"
+          class="mb-5 flex flex-wrap items-center gap-2.5">
+      <div class="relative w-full sm:w-72">
+        <label for="member-q" class="sr-only">Search by name or email</label>
+        <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4" %}</span>
+        <input id="member-q" type="search" name="q" value="{{ filters.q }}" placeholder="Search name or email…" class="field-input pill-select py-2 pl-10">
+      </div>
+      <div>
+        <label for="member-role" class="sr-only">Role</label>
+        <select id="member-role" name="role" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <option value="">Any role</option>
+          {% for role in roles %}<option value="{{ role.pk }}"{% if filters.role == role.pk|stringformat:"s" %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="member-active" class="sr-only">Active or not</label>
+        <select id="member-active" name="is_active" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <option value="">Active and deactivated</option>
+          <option value="true"{% if filters.is_active is True %} selected{% endif %}>Active</option>
+          <option value="false"{% if filters.is_active is False %} selected{% endif %}>Deactivated</option>
+        </select>
+      </div>
+      <span id="member-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
+      <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
+    </form>
+    {% include "console/_members.html" %}
+  </section>
+</div>
+{% endblock %}

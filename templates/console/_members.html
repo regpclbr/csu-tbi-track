@@ -1,0 +1,73 @@
+{% comment %}
+The members table (accounts.services.list_members, 20 a page, by name), swapped by the filters and the pager.
+Change role: a small form per row. Reset password and Deactivate ask first (components/modal.html); Reactivate is direct.
+The buttons are shown for every member: the services refuse what is not allowed (yourself, the last Admin) with a message.
+{% endcomment %}
+<div id="member-results" class="htmx-dim">
+  {% if filters.ignored %}
+    <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+  {% endif %}
+  <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} member{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
+  {% if members %}
+    <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts inside the scroll box #}
+      <table class="w-full text-left text-sm">
+        <caption class="sr-only">Members</caption>
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+          <tr>
+            <th scope="col" class="px-3 py-2.5">Member</th>
+            <th scope="col" class="px-3 py-2.5">Role</th>
+            <th scope="col" class="px-3 py-2.5">Status</th>
+            <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {% for member in members %}
+            <tr class="hover:bg-slate-50">
+              <th scope="row" class="min-w-52 px-3 py-3 font-normal">
+                <p class="font-semibold text-ink">{{ member.name }}{% if member.pk == user.pk %} <span class="text-xs font-normal text-muted">(you)</span>{% endif %}</p>
+                <p class="text-xs break-all text-muted">{{ member.email }}</p>
+              </th>
+              <td class="px-3 py-3">
+                <form method="post" action="{% url 'accounts:console_member_role' member.pk %}" class="flex items-center gap-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <label for="role-{{ member.pk }}" class="sr-only">Role of {{ member.name }}</label>
+                  <select id="role-{{ member.pk }}" name="role" class="field-input pill-select w-auto min-w-68 shrink-0 py-1.5 pr-9 pl-3 text-sm">
+                    {% for role in roles %}<option value="{{ role.pk }}"{% if role.pk == member.role_id %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the role of {{ member.name }}</span></button>
+                </form>
+              </td>
+              <td class="px-3 py-3 whitespace-nowrap">
+                {% if member.is_active %}{% include "components/badge.html" with text="Active" tone="success" %}{% else %}{% include "components/badge.html" with text="Deactivated" tone="neutral" %}{% endif %}
+                {% if member.is_active and member.must_change_password %}<span class="block pt-1 text-xs text-muted">Temporary password</span>{% endif %}
+              </td>
+              <td class="px-3 py-3">
+                <div class="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
+                  {% if member.is_active %}
+                    {% with pk=member.pk|stringformat:"s" %}{% with reset_id="reset-member-"|add:pk deactivate_id="deactivate-member-"|add:pk %}
+                      {% include "components/modal.html" with id=reset_id title="Reset password" body="console/_confirm_reset.html" trigger_label="Reset password" trigger_sr=member.name trigger_icon="key-round" trigger_class="btn btn-secondary btn-sm" %}
+                      {% include "components/modal.html" with id=deactivate_id title="Deactivate member" body="console/_confirm_deactivate.html" trigger_label="Deactivate" trigger_sr=member.name trigger_icon="lock" trigger_class="btn btn-ghost btn-sm text-danger" %}
+                    {% endwith %}{% endwith %}
+                  {% else %}
+                    <form method="post" action="{% url 'accounts:console_member_reactivate' member.pk %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                      <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="undo-2" class="size-4" %}Reactivate<span class="sr-only"> {{ member.name }}</span></button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "components/pagination.html" with result=result query=filters.query hx_target="#member-results" %}
+  {% elif filters.any_set %}
+    {% include "components/empty_state.html" with icon="search" title="No members match the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="users" title="No members yet" text="Invite the first member above." %}
+  {% endif %}
+</div>

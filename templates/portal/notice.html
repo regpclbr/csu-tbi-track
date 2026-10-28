@@ -1,0 +1,7 @@
+{% extends "layouts/portal.html" %}
+{# A friendly card inside the portal (startups.portal_views.notice): closed registration, already registered. The text is the service's reason. #}
+{% block content %}
+<section class="card mx-auto max-w-2xl p-6 sm:p-10">
+  {% include "public/_notice_card.html" with heading="h2" %}
+</section>
+{% endblock %}

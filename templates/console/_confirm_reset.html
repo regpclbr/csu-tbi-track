@@ -1,0 +1,10 @@
+{# Inside the "Reset password" dialog of one member row (`member`). accounts.services.reset_member_password decides (not yourself, active members only). #}
+<form method="post" action="{% url 'accounts:console_member_reset' member.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <p class="text-sm text-slate-700">A new temporary password will be emailed to <strong class="break-all text-ink">{{ member.email }}</strong>. {{ member.name }}'s open sessions end, and they must choose a new password at the next sign-in.</p>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Email a new password</button>
+  </div>
+</form>

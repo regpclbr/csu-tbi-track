@@ -1,0 +1,10 @@
+{# Inside the "Deactivate member" dialog of one member row (`member`). accounts.services.deactivate_member decides (never yourself, never the last active Admin). #}
+<form method="post" action="{% url 'accounts:console_member_deactivate' member.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <p class="text-sm text-slate-700"><strong class="text-ink">{{ member.name }}</strong> will no longer be able to sign in. Nothing they made is deleted, and you can reactivate the account later.</p>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-danger">Deactivate</button>
+  </div>
+</form>

@@ -84,6 +84,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "config.frontend.staff_layout",  # sidebar, top bar counts (staff pages only)
+                "config.frontend.portal_layout",  # the startup portal's sidebar (portal pages only)
                 "config.frontend.public_footer",  # the contact address in the public pages' footer
             ],
             "libraries": {"ui": "config.ui_tags"},  # {% load ui %}: number, percent, relative_time, ...
