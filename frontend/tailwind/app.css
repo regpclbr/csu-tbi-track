@@ -340,8 +340,9 @@
 }
 /* The sign-in card: light frosted glass. Without backdrop-filter it is nearly solid white (92%), so the dark text
    stays readable. On hover it lifts 4 px and its shadow deepens; it moves only when the mouse enters or leaves it,
-   never while typing. */
-.auth-card {
+   never while typing. The public pages (phase F3) use the same glass as .public-card, which never moves: their
+   forms are long and a card that lifts under the pointer while scrolling would be distracting. */
+.auth-card, .public-card {
   background: rgb(255 255 255 / 0.92);
   border: 1px solid rgb(255 255 255 / 0.5);
   border-radius: 24px;
@@ -349,7 +350,7 @@
   transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 300ms ease, border-color 300ms ease;
 }
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .auth-card {
+  .auth-card, .public-card {
     background: rgb(255 255 255 / 0.7);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
@@ -362,27 +363,50 @@
 }
 /* Inputs on the glass: white 85% with the card's border; focus ring in the primary blue (#1D4ED8). Unlayered, so the
    focus and error states are repeated here. */
-.auth-card .field-input {
+.auth-card .field-input, .public-card .field-input {
   background: rgb(255 255 255 / 0.85);
   border-color: rgb(255 255 255 / 0.5);
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
 }
 /* The glass is a little darker than white: links and placeholders one shade darker keep 4.5:1 or more. */
-.auth-card .link {
+.auth-card .link, .public-card .link {
   color: var(--color-primary-hover);
 }
-.auth-card .field-input::placeholder {
+.auth-card .field-input::placeholder, .public-card .field-input::placeholder {
   color: var(--color-muted);
 }
-.auth-card .field-input:focus {
+.auth-card .field-input:focus, .public-card .field-input:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgb(29 78 216 / 0.35);
 }
-.auth-card .field-input[aria-invalid="true"] {
+.auth-card .field-input[aria-invalid="true"], .public-card .field-input[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
-.auth-card .field-input[aria-invalid="true"]:focus {
+.auth-card .field-input[aria-invalid="true"]:focus, .public-card .field-input[aria-invalid="true"]:focus {
   box-shadow: 0 0 0 3px rgb(220 38 38 / 0.3);
+}
+/* Error text on the glass: red-700 is only 3.7–4.1:1 there (measured, phase F3), red-800 (#991B1B) passes 4.5:1. */
+.auth-card .field-error, .public-card .field-error {
+  color: #991B1B;
+}
+/* Public pages (phase F3, phones first): pill buttons and inputs at least 44 px high (touch targets). */
+.public-shell .btn {
+  border-radius: 9999px;
+  min-height: 2.75rem;
+}
+.public-shell .field-input {
+  min-height: 2.75rem;
+  font-size: 1rem; /* 16 px: phones do not zoom into the field when it gets the focus */
+}
+/* The honeypot of the registration form: out of sight for people (never type="hidden", so simple bots still fill
+   it in), skipped by the keyboard (tabindex -1) and hidden from screen readers (aria-hidden). */
+.hp-field {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 /* fill-mode backwards: after the entrance the group is back to its natural state, so the hover lift below can move it */
 .login-illustration .li-enter { animation: li-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards; }

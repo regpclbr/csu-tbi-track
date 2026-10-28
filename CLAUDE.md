@@ -101,8 +101,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Default form fields are placeholders (validate with the TBI); `seed_data` creates them once.
 - Public JSON lives under `/api/` (`/api/register/<id>/`, `/api/evaluate/<token>/`,
   `/api/startups/set-password/<token>/`). The page URLs `/register/<id>/`, `/evaluate/<token>/`,
-  `/startups/set-password/<token>/` are reserved for the frontend's HTML pages (placeholder until
-  then); emails always link to the page URLs.
+  `/startups/set-password/<token>/` are the HTML pages (phase F3); emails always link to the page URLs.
 - Registration emails (confirmation, evaluation links) are Django-Q2 tasks (`registrations/tasks.py`,
   queued via `queue_confirmation` / `queue_evaluation_link`); never send them inside the request.
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
@@ -252,6 +251,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `evaluation_links_closed_reason()` (the same functions the services use). A locked form shows no edit controls,
   not even move up/down (271). The attendance sheet never shows emails or contact numbers. Participant-facing fields:
   `components/answer_field.html` (F3 reuses it). A scroll box with sr-only text inside must be `relative`.
+- Public pages (F3, ASSUMPTIONS 278–288, no login, phones first): `registrations/public_views.py` + `public_pages.py`
+  (display/parsing only), `startups/page_views.py`, templates in `templates/public/` on `layouts/public.html` (`.public-card`
+  glass without hover lift, `.public-shell`: pill buttons, 44 px targets). Plain forms with CSRF + `novalidate`, no JS needed.
+  Every public registration POST (HTML and JSON) goes through `registrations.public.guard_registration_request()`.
+  Evaluation links: `services.evaluation_state()` is the one rule; the review step uses `services.check_evaluation()`
+  (also inside `submit_evaluation`). Refusal cards show the service's reason, never the name or email. Token pages use
+  `config.headers.private_token_page` (Referrer-Policy same-origin, never no-referrer: it breaks CSRF on the forms; noindex, no-store) and pass `private_page`. Footer contact:
+  `TBI_CONTACT_EMAIL` (placeholder).
 - Pages of later phases use `config.views.coming_soon` under their final URL names (`COMING_SOON_PAGES`); remove an
   entry when its page is built.
 - Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
@@ -287,6 +294,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Tests run in parallel (pytest-xdist, `pytest.ini`): each worker has its own test database, `tmp_path` media
   folder and an empty in-memory cache per test (root `conftest.py`). Never share state between tests (module
   globals, files outside `tmp_path`, fixed ports); after a migration change run `pytest --create-db` once.
+- Tests never depend on the real time of day: pass `now=` or use the `clock` fixture (root conftest); a deadline
+  "later today" is the end of the day, never "now + N hours" (ASSUMPTIONS 289).
 - Never put secrets in code. Never commit `.env`.
 - Use clear names that match the ERD. Use type hints and short docstrings.
 - After each step, report what changed, how to run it, and what to check. Then stop.
@@ -311,6 +320,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Faster tests (2026-10-27): pytest-xdist, 2 workers, kept test databases, fresh cache per test (260).
 - Frontend F2a (2026-10-27): Activities list + calendar, create/edit, activity page with Overview and History (261–269).
 - Frontend F2b (2026-10-27): Forms, Registrations and Evaluation tabs, attendance sheet (270–277).
+- Frontend F3 (2026-10-27): public pages: open activities, registration, evaluation with review step, startup set password (278–288).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -356,4 +366,5 @@ pytest                                    # all tests, 2 workers in parallel (py
 pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
+$env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time
 ```

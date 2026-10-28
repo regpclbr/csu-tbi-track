@@ -84,6 +84,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "config.frontend.staff_layout",  # sidebar, top bar counts (staff pages only)
+                "config.frontend.public_footer",  # the contact address in the public pages' footer
             ],
             "libraries": {"ui": "config.ui_tags"},  # {% load ui %}: number, percent, relative_time, ...
         },
@@ -266,6 +267,10 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "CSU-TBI Track <no-rep
 
 # Public address of the site, used to build links in emails (e.g. personal evaluation links).
 SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:8000").rstrip("/")
+
+# The contact address in the footer of the public pages (phase F3). A PLACEHOLDER until the TBI confirms
+# its address (docs/TBI_QUESTIONS.md); set the real one in .env.
+TBI_CONTACT_EMAIL = os.environ.get("TBI_CONTACT_EMAIL", "tbi.contact@example.com")
 
 
 # --- Background tasks (Django-Q2, database broker, no Redis) ----------------

@@ -1,5 +1,5 @@
 """Strict true/false values in the registration APIs, the evaluation link's privacy once it is of no
-more use, and the placeholder pages at the emailed (page) URLs."""
+more use, and the emailed (page) URLs."""
 
 import json
 from datetime import timedelta
@@ -99,15 +99,11 @@ def test_closed_window_shows_only_the_closed_reason(client, attended, monkeypatc
 # --- Page URLs (frontend phase) --------------------------------------------------------------------------
 
 
-def test_emailed_page_urls_show_a_placeholder_and_never_the_data(client, scheduled, attended) -> None:
+def test_emailed_page_urls_open_the_html_pages(client, scheduled, attended) -> None:
+    """Emails link to the page URLs (phase F3: the real pages, registrations/tests/test_public_pages.py)."""
     person = attended(1)[0]
     token = services.evaluation_token(person)
     assert services.evaluation_link(person).endswith(f"/evaluate/{token}/")  # the email links to the page
     for url in (f"/register/{scheduled.pk}/", f"/evaluate/{token}/", "/startups/set-password/anything/", "/register/999999/"):
         response = client.get(url)
-        assert response.status_code == 200 and response["Content-Type"].startswith("text/html")
-        page = response.content.decode()
-        assert "This page is not available yet" in page
-        assert scheduled.title not in page and person.name not in page and person.email not in page
-        assert client.post(url, "{}", content_type="application/json").status_code == 405
-    assert Registration.objects.count() == 1  # the placeholder never registers anyone
+        assert response["Content-Type"].startswith("text/html")

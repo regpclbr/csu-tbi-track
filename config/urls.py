@@ -4,8 +4,10 @@ from django.contrib import admin
 from django.urls import include, path
 
 from accounts.views import admin_login_redirect
+from registrations import public_views
 from registrations import views as registration_views
 from reports.views import dashboard_page
+from startups import page_views as startup_page_views
 from startups import views as startup_views
 
 from . import views
@@ -15,11 +17,16 @@ urlpatterns = [
     # Must come before admin.site.urls: the admin uses the staff login (with lockout).
     path("admin/login/", admin_login_redirect),
     path("admin/", admin.site.urls),
-    # Public pages (no login). Emails link to these URLs; they are reserved for the HTML pages of
-    # the frontend phase and show a placeholder until then. The JSON endpoints are under /api/.
-    path("register/<int:activity_id>/", views.page_placeholder, name="register"),
-    path("evaluate/<str:token>/", views.page_placeholder, name="evaluate"),
-    path("startups/set-password/<str:token>/", views.page_placeholder, name="startup_set_password"),
+    # Public pages (no login, phase F3). Emails link to these page URLs; the JSON endpoints are under /api/.
+    path("register/", public_views.open_list, name="register_list"),
+    path("register/<int:activity_id>/", public_views.register_page, name="register"),
+    path("register/<int:activity_id>/registered/", public_views.register_done, name="register_done"),
+    path("register/<int:activity_id>/calendar.ics", public_views.activity_calendar, name="register_calendar"),
+    path("evaluate/<str:token>/", public_views.evaluate_page, name="evaluate"),
+    path("evaluate/<str:token>/thanks/", public_views.evaluate_done, name="evaluate_done"),
+    # "done" first: otherwise it would be read as a token.
+    path("startups/set-password/done/", startup_page_views.set_password_done, name="startup_set_password_done"),
+    path("startups/set-password/<str:token>/", startup_page_views.set_password_page, name="startup_set_password"),
     # Public JSON endpoints (no login): registration, personal evaluation links, set-password links.
     path("api/activities/open/", registration_views.public_open_activities, name="api_open_activities"),
     path("api/register/<int:activity_id>/", registration_views.public_register, name="api_register"),

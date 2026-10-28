@@ -354,7 +354,7 @@ def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -
     assert re.search(r'class="rise auth-card [^"]*"', html) and "auth-footnote" in html
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
     assert re.search(r"\.auth-bg\{background:linear-gradient\(135deg,#22378f[^}]*#60cdee 100%\)\}", css)
-    card = re.search(r"\.auth-card\{([^}]*)\}", css).group(1)
+    card = re.search(r"\.auth-card(?:,\.public-card)?\{([^}]*)\}", css).group(1)  # F3: the public pages share the glass
     assert "background:#ffffffeb" in card and "border-radius:24px" in card  # the fallback: white 92%
     glass = css[css.index("@supports ((-webkit-backdrop-filter:blur(1px))"):]
     glass = glass[:glass.index("}")]

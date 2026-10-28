@@ -1,0 +1,30 @@
+{% load ui %}{% comment %}
+The activity at the top of the registration pages. {% include "public/_activity_summary.html" with activity=activity summary=summary %}
+summary (services.public_activity_summary) adds the slots left, the deadline, the categories and the description;
+without it only the title, type, dates, time and venue are shown (Ongoing / Conducted activities). Never who registered.
+{% endcomment %}
+<div class="flex items-start gap-4">
+  {% include "components/date_tile.html" with activity=activity gradient=True %}
+  <div class="min-w-0">
+    <p class="text-xs font-semibold tracking-wide text-primary-hover uppercase">{{ activity.activity_type.name }}</p>
+    <h1 class="mt-1 text-2xl leading-tight font-bold tracking-tight break-words text-ink sm:text-[28px]">{{ activity.title }}</h1>
+  </div>
+</div>
+<dl class="mt-5 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+  <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Date</dt><dd class="text-slate-700">{{ activity|date_span }}</dd></div></div>
+  <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Time</dt><dd class="text-slate-700">{{ activity.time_schedule }}</dd></div></div>
+  <div class="flex gap-3 sm:col-span-2"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><div class="min-w-0"><dt class="font-semibold text-ink">Venue</dt><dd class="break-words text-slate-700">{{ activity.venue }}</dd></div></div>
+  {% if summary %}
+    <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="users" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Slots left</dt><dd class="text-slate-700">{{ summary.slots_remaining|number }}</dd></div></div>
+    <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="calendar-clock" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Register by</dt><dd class="text-slate-700">{{ summary.registration_deadline|date_time }} <span class="whitespace-nowrap">(Philippine time)</span></dd></div></div>
+  {% endif %}
+</dl>
+{% if summary %}
+  {% if summary.participant_categories %}
+    <div class="mt-4">
+      <p class="text-sm font-semibold text-ink">Open to</p>
+      <ul class="mt-1.5 flex flex-wrap gap-1.5">{% for category in summary.participant_categories %}<li class="tag">{{ category.name }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+  {% if summary.description %}<div class="mt-4 space-y-2 text-[15px] leading-relaxed break-words text-slate-800">{{ summary.description|linebreaks }}</div>{% endif %}
+{% endif %}

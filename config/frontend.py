@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from functools import cached_property
 
+from django.conf import settings
 from django.http import HttpRequest
 from django.urls import reverse
 
@@ -114,3 +115,8 @@ def staff_layout(request: HttpRequest) -> dict:
     if not is_staff_member(user) or user.must_change_password:
         return {}
     return {"layout": StaffLayout(request)}
+
+
+def public_footer(request: HttpRequest) -> dict:
+    """Context processor: the TBI's contact address for the footer of the public pages (phase F3)."""
+    return {"tbi_contact_email": settings.TBI_CONTACT_EMAIL}

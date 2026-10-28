@@ -1,6 +1,6 @@
 """Start date and registration deadline cannot be in the past (Manila "today")."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from datetime import timezone as dt_timezone
 
 import pytest
@@ -38,15 +38,16 @@ def test_create_refuses_past_start_date(director, valid_data) -> None:
 
 
 @pytest.mark.django_db
-def test_create_allows_start_today(director, valid_data) -> None:
+@pytest.mark.parametrize("moment", [time(9, 0), time(23, 58)], ids=["09:00", "23:58"])
+def test_create_allows_start_today(director, valid_data, clock, moment) -> None:
+    """A fixed clock (it used to skip itself near midnight): a start today with the deadline at the end of today."""
+    clock(datetime.combine(datetime(2026, 11, 20).date(), moment))
     today = timezone.localdate()
-    later_today = timezone.localtime() + timedelta(minutes=5)
-    if later_today.date() != today:  # test run within 5 minutes of midnight
-        pytest.skip("too close to midnight")
+    end_of_today = timezone.make_aware(datetime.combine(today, time.max))
     activity = services.create_activity(
-        director, valid_data(start_date=today, end_date=today, registration_deadline=later_today)
+        director, valid_data(start_date=today, end_date=today, registration_deadline=end_of_today)
     )
-    assert activity.start_date == today
+    assert activity.start_date == today == datetime(2026, 11, 20).date()
 
 
 @pytest.mark.django_db

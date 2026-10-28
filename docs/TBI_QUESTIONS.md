@@ -21,6 +21,7 @@ all of them are to be validated with the TBI too.
 
 - **Item 105:** Which questions should the registration form and the evaluation form ask by default? (Current placeholders: registration asks for "Affiliation / Organization" and the Data Privacy consent; evaluation asks for an overall rating, a resource person rating, an organization/venue rating, key learnings and suggestions.)
 - **Item 214:** How many people may register from the same campus or office network within one hour (for example a whole class during an orientation)? Public registration now allows 300 attempts per hour from one network address and 10 per email address. Are these limits enough?
+- **Item 280:** Which email address should participants and startups write to with questions? It is shown at the bottom of every public page (registration, evaluation, set password). Placeholder for now: tbi.contact@example.com (setting `TBI_CONTACT_EMAIL`).
 - **Item 111:** When attendance is "confirmed by email", what exactly happens: does the participant reply to an email and a staff member then marks them present? (There is no self check-in now.)
 
 ## Documents

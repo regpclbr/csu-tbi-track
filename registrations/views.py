@@ -2,7 +2,7 @@
 
 Views are thin: parse input, check permission, call registrations.services.
 Public JSON endpoints (no login): /api/register/<activity_id>/ and /api/evaluate/<token>/.
-(/register/<id>/ and /evaluate/<token>/ are the HTML pages of the frontend phase; emails link there.)
+(/register/<id>/ and /evaluate/<token>/ are the HTML pages, registrations/public_views.py; emails link there.)
 Staff endpoints: /registrations/api/... (reading needs staff login; changes need can_create_activity).
 """
 
@@ -19,10 +19,10 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, staff_login_required
 from activities.models import Activity
-from config.network import client_ip
 from config.parsing import parse_bool
 
 from . import services
+from .public import guard_registration_request
 from .models import FormField, FormTemplate
 
 
@@ -84,7 +84,7 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
         return JsonResponse({"activity": services.public_activity_info(activity)})
 
     data = _json_body(request)
-    services.guard_public_registration(client_ip(request), data.get("email"), data.get(services.HONEYPOT_FIELD))
+    guard_registration_request(request, data.get("email"), data.get(services.HONEYPOT_FIELD))
     registration = services.register(
         activity,
         name=str(data.get("name", "")),

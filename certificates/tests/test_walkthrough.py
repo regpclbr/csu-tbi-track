@@ -1,8 +1,11 @@
 """The demo walkthrough command runs the whole flow through the real services (as documented)."""
 
+from datetime import datetime, time
+
 import pytest
 from django.core import mail
 from django.core.management import CommandError, call_command
+from django.utils import timezone
 
 from activities.models import Activity
 from certificates.models import Certificate
@@ -58,3 +61,16 @@ def test_whole_flow(admin_member, defaults, settings, tmp_path, run_tasks, djang
     assert out.count("Issued") >= 3 and "sent=yes" in out
     with pytest.raises(CommandError, match="Wrong arguments"):
         run("sign", str(activity_id))
+
+
+@pytest.mark.parametrize("moment", [time(23, 30), time(23, 59, 59), time(0, 0, 30)], ids=["23:30", "23:59:59", "00:00:30"])
+def test_activity_step_works_at_any_time_of_day(admin_member, defaults, settings, clock, moment) -> None:
+    """The activity starts today and its registration deadline must be on that date. "now + 1 hour" was tomorrow
+    after 23:00 Manila time and the step failed; at 23:59:59 the clock even passes midnight during the step."""
+    settings.DEBUG = True
+    clock(datetime.combine(datetime(2026, 11, 20).date(), moment))
+    run("activity")
+    activity = Activity.objects.get()
+    assert activity.status.name == "Conducted" and activity.registrations.count() == 3
+    assert activity.start_date == datetime(2026, 11, 20).date()
+    assert timezone.localtime(activity.registration_deadline).date() == activity.start_date

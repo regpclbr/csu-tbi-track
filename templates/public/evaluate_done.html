@@ -1,0 +1,9 @@
+{% extends "layouts/public.html" %}
+{# /evaluate/<token>/thanks/: after submitting. Only the activity's title; never the name or the email. #}
+{% block title %}Thank you · CSU-TBI Track{% endblock %}
+{% block content %}
+<section class="public-card p-6 sm:p-10">
+  {% include "public/_notice_card.html" with icon="circle-check" tone="success" title="Thank you!" text="Your evaluation was submitted. Your certificate is emailed to you once the TBI has approved it." %}
+  <p class="mt-6 text-center text-sm break-words text-slate-700">{{ activity.title }}</p>
+</section>
+{% endblock %}

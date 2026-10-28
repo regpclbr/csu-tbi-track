@@ -1,0 +1,12 @@
+{# The alerts on top of a public form: a service message (message) and the number of fields with an error (errors). #}
+{% if message %}
+  <div class="mb-5 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+    {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4.5" %}<p>{{ message }}</p>
+  </div>
+{% endif %}
+{% if errors %}
+  <div class="mb-5 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+    {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4.5" %}
+    <p>Please check {% if errors|length == 1 %}the field{% else %}the {{ errors|length }} fields{% endif %} marked below.</p>
+  </div>
+{% endif %}

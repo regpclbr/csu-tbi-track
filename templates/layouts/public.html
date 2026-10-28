@@ -1,0 +1,41 @@
+{% extends "base.html" %}{% load static %}
+{% comment %}
+The public pages (phase F3, no login): open activities, registration, evaluation, startup set-password. Phones first
+(360–430 px), then centred on desktop. The look of the sign-in pages: the full-screen gradient (.auth-bg, white text
+only on its dark top-left part: the logo line), frosted glass cards with dark text (.public-card, the glass of
+.auth-card without the hover lift), pill buttons and 44 px touch targets (.public-shell). Contrast: ASSUMPTIONS.
+Blocks: content; width (the column's max width; the open list is wider).
+private_page (context): the URL carries a personal token, so it is never sent to another site as a referrer (also a header,
+config.headers.private_token_page).
+Never put hx-headers or another per-request value in this layout (as auth_split.html).
+{% endcomment %}
+{% block head %}{% if private_page %}<meta name="referrer" content="same-origin">{% endif %}{% endblock %}
+{% block body %}
+<div class="public-shell auth-bg relative isolate min-h-full overflow-x-hidden">
+  {# Soft white shapes, as on the sign-in page (decorative) #}
+  <div class="pointer-events-none absolute -top-56 -right-44 -z-10 size-[460px] rounded-full bg-white/[0.07]" aria-hidden="true"></div>
+  <div class="pointer-events-none absolute -bottom-48 -left-36 -z-10 hidden size-[420px] rounded-full bg-white/[0.06] lg:block" aria-hidden="true"></div>
+
+  <div class="mx-auto flex min-h-screen w-full {% block width %}max-w-[640px]{% endblock %} flex-col px-4 pt-5 pb-6 sm:px-6 sm:pt-8 lg:pt-10">
+    <header class="on-dark text-white">
+      <a href="{% url 'register_list' %}" class="flex w-fit items-center gap-3 rounded-lg">
+        <img src="{% static 'img/logo-96.png' %}" alt="" width="40" height="40" class="size-10 rounded-xl">
+        <span class="leading-tight">
+          <span class="block text-lg font-bold tracking-tight">CSU-TBI Track</span>
+          <span class="block text-[13px] text-blue-100">Technology Business Incubator</span>
+        </span>
+      </a>
+    </header>
+
+    <main id="main" class="mt-5 flex-1 sm:mt-7">
+      {% block content %}{% endblock %}
+    </main>
+
+    {# Dark text on small glass pills: readable wherever the gradient puts them (as the sign-in footer) #}
+    <footer class="mt-8 flex flex-col items-center gap-2 text-center text-sm text-ink">
+      <p class="auth-footnote rounded-2xl px-3.5 py-1 font-medium">© {% now "Y" %} CSU Technology Business Incubator · Caraga State University</p>
+      <p class="auth-footnote rounded-2xl px-3.5 py-1">Questions? Email <a href="mailto:{{ tbi_contact_email }}" class="font-semibold text-primary-hover underline underline-offset-2">{{ tbi_contact_email }}</a></p>
+    </footer>
+  </div>
+</div>
+{% endblock %}

@@ -5,6 +5,8 @@ from datetime import date, datetime
 from django import template
 from django.utils import timezone
 
+from activities.formatting import format_datetime
+
 register = template.Library()
 
 
@@ -93,3 +95,9 @@ def date_span(activity) -> str:
     if start.month != end.month:
         return f"{start:%b} {start.day} – {end:%b} {end.day}, {end.year}"
     return f"{start:%b} {start.day}–{end.day}, {end.year}"
+
+
+@register.filter
+def date_time(value: datetime | None) -> str:
+    """Oct 5, 2026 5:00 PM in Manila time (activities.formatting.format_datetime, as the services' messages)."""
+    return format_datetime(value) if value else ""

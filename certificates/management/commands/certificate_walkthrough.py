@@ -108,8 +108,13 @@ class Command(BaseCommand):
         self.say(f"Signatory {vp.pk}: {vp.name} (VP), active. Signatory {director.pk}: {director.name} (Director), active.")
 
     def step_activity(self) -> None:
-        """A Conducted activity ending today: 3 registrations (2 attended) and 1 resource person."""
-        today, now = timezone.localdate(), timezone.now()
+        """A Conducted activity ending today: 3 registrations (2 attended) and 1 resource person.
+
+        One clock reading for the whole step (today = its Manila date), passed to the services that take `now`.
+        Registration stays open until the end of today: a deadline like "now + 1 hour" would fall on tomorrow
+        after 23:00 and be refused (the deadline must be on or before the start date)."""
+        now = timezone.now()
+        today = timezone.localdate(now)
         stamp = timezone.localtime(now).strftime("%Y-%m-%d %H:%M")
         activity = activity_services.create_activity(self.member, {
             "title": f"[Walkthrough] Certificates {stamp}",
@@ -118,16 +123,16 @@ class Command(BaseCommand):
             "participant_categories": [ParticipantCategory.objects.order_by("pk").first()],
             "start_date": today, "end_date": today,
             "time_schedule": "9:00 AM - 4:00 PM", "venue": "CSU TBI Hall", "max_slots": 10,
-            "registration_deadline": now + timedelta(hours=1),
+            "registration_deadline": timezone.make_aware(datetime.combine(today, time.max)),  # 23:59:59.999999 today
             "evaluation_deadline": timezone.make_aware(datetime.combine(today + timedelta(days=7), time(17, 0))),
             "budget_amount": Decimal("0.00"),
-        })
+        }, now=now)
         registration_services.create_form(self.member, activity, FormType.REGISTRATION)
         registration_services.create_form(self.member, activity, FormType.EVALUATION)
         activity_services.change_status(self.member, activity, "Scheduled")
         form = registration_services.get_form(activity, FormType.REGISTRATION)
         answers = {str(f.pk): sample_answer(f) for f in form.fields.all()}
-        people = [registration_services.register(activity, name=n, email=e, answers=answers) for n, e in WALKTHROUGH_PEOPLE]
+        people = [registration_services.register(activity, name=n, email=e, answers=answers, now=now) for n, e in WALKTHROUGH_PEOPLE]
         speaker = activity_services.create_resource_person(self.member, f"Dr. Walkthrough Speaker {stamp}")
         activity_services.add_resource_person(self.member, activity, speaker, topic="Pitch Decks That Work")
         activity_services.change_status(self.member, activity, "Ongoing")

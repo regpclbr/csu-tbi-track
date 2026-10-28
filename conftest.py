@@ -1,5 +1,6 @@
 """Shared pytest fixtures for all apps. App-specific fixtures live in each app's tests/."""
 
+import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -116,6 +117,34 @@ def fresh_cache(settings):
     cache.clear()
     yield
     cache.clear()
+
+
+# --- The clock ---------------------------------------------------------------------------------------------
+# The app reads the time only through django.utils.timezone.now() (localdate/localtime use it too), so replacing
+# that one function moves every "now" and "today". Signed-link timestamps (time.time) are not moved.
+_REAL_NOW = timezone.now
+
+
+def set_clock(monkeypatch, moment: datetime) -> None:
+    """From now on timezone.now() starts at `moment` and keeps ticking with the real clock (so "later" stays later)."""
+    if timezone.is_naive(moment):
+        moment = timezone.make_aware(moment)  # naive = Manila time (TIME_ZONE)
+    real_start = _REAL_NOW()
+    monkeypatch.setattr(timezone, "now", lambda: moment + (_REAL_NOW() - real_start))
+
+
+@pytest.fixture(autouse=True)
+def fake_clock_from_env(monkeypatch) -> None:
+    """TEST_FAKE_NOW=2026-10-28T23:30 (Manila time) runs every test as if it started at that moment, to find tests
+    that depend on the time of day (e.g. after 23:00 "now + 1 hour" is tomorrow). Unset: the real clock."""
+    if value := os.environ.get("TEST_FAKE_NOW"):
+        set_clock(monkeypatch, datetime.fromisoformat(value))
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """Factory: clock(datetime(2026, 10, 28, 23, 30)) sets the time (Manila) for the rest of the test."""
+    return lambda moment: set_clock(monkeypatch, moment)
 
 
 @pytest.fixture

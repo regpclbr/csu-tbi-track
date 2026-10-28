@@ -1,4 +1,4 @@
-"""Project-wide views: error pages, the public page placeholder and the staff lookups."""
+"""Project-wide views: error pages, the coming-soon page and the staff lookups."""
 
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
@@ -41,13 +41,6 @@ def server_error(request: HttpRequest) -> HttpResponse:
         return JsonResponse({"error": SERVER_ERROR}, status=500)
     # errors/500.html is rendered without the request (no database, no user): it must not need them.
     return defaults.server_error(request, template_name="errors/500.html")
-
-
-@require_GET
-def page_placeholder(request: HttpRequest, **kwargs) -> HttpResponse:
-    """The public pages (/register/<id>/, /evaluate/<token>/, /startups/set-password/<token>/) until
-    the frontend phase builds them. It never reads the activity or the token, so it reveals nothing."""
-    return render(request, "pages/placeholder.html")
 
 
 # Pages of later frontend phases (F2–F6). Each sidebar link already has its real URL name; until its

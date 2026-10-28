@@ -5,6 +5,7 @@ Views stay thin and call the functions in this module.
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, time
 
 from django.conf import settings
@@ -361,6 +362,23 @@ def get_public_activity(activity_id: int) -> Activity | None:
     )
 
 
+# The registration page of an Ongoing or Conducted activity (phase F3): the title, dates and venue with this note.
+REGISTRATION_ENDED = "Registration for this activity has closed."
+
+
+def registration_page_activity(activity_id: int) -> Activity | None:
+    """The activity the public registration PAGE may show (phase F3, read only): Scheduled ones as before
+    (get_public_activity), and Ongoing / Conducted ones, whose page shows only the title, dates and venue
+    with REGISTRATION_ENDED. Draft is never public (None, like an unknown ID). The JSON endpoint keeps
+    get_public_activity (Scheduled only)."""
+    return (
+        Activity.objects.select_related("status", "activity_type")
+        .filter(pk=activity_id)
+        .exclude(status__name=ActivityStatus.DRAFT)
+        .first()
+    )
+
+
 REGISTRATION_FORM_NOT_READY = "Registration is not open yet: the registration form is not ready."
 
 
@@ -628,16 +646,49 @@ def _window_reason(activity: Activity, now: datetime) -> str | None:
     return None
 
 
+NOT_ATTENDED = "Only people marked as attended can evaluate this activity."
+ALREADY_SUBMITTED = "You have already submitted your evaluation. Thank you!"
+EVALUATION_FORM_NOT_READY = "The evaluation form is not ready yet."
+
+
+@dataclass(frozen=True)
+class EvaluationState:
+    """Where one person's evaluation link stands (evaluation_state).
+
+    kind: "open", "not_attended", "submitted", "no_form", "not_yet_open" or "closed".
+    reason: None when open; otherwise the message to show.
+    shows_person: whether the link may still show the registrant's name and email (not after the
+    evaluation is submitted or the window has closed: a forwarded or old email should not reveal them).
+    """
+
+    kind: str
+    reason: str | None
+    shows_person: bool
+
+
+def evaluation_state(registration: Registration, now: datetime | None = None) -> EvaluationState:
+    """The one rule for an evaluation link, checked in this order: attended, not submitted yet,
+    a form exists, inside the window. evaluation_closed_reason, evaluation_page and the HTML page use it."""
+    now = now or timezone.now()
+    activity = registration.activity
+    submitted = EvaluationSubmission.objects.filter(registration=registration).exists()
+    shows_person = not submitted and now <= activity.evaluation_deadline
+    if not registration.attendance_confirmed:
+        return EvaluationState("not_attended", NOT_ATTENDED, shows_person)
+    if submitted:
+        return EvaluationState("submitted", ALREADY_SUBMITTED, shows_person)
+    if get_form(activity, FormType.EVALUATION) is None:
+        return EvaluationState("no_form", EVALUATION_FORM_NOT_READY, shows_person)
+    reason = _window_reason(activity, now)
+    if reason is None:
+        return EvaluationState("open", None, shows_person)
+    kind = "not_yet_open" if now < evaluation_window(activity)[0] else "closed"
+    return EvaluationState(kind, reason, shows_person)
+
+
 def evaluation_closed_reason(registration: Registration, now: datetime | None = None) -> str | None:
     """None when this person can submit the evaluation now; otherwise why not."""
-    now = now or timezone.now()
-    if not registration.attendance_confirmed:
-        return "Only people marked as attended can evaluate this activity."
-    if EvaluationSubmission.objects.filter(registration=registration).exists():
-        return "You have already submitted your evaluation. Thank you!"
-    if get_form(registration.activity, FormType.EVALUATION) is None:
-        return "The evaluation form is not ready yet."
-    return _window_reason(registration.activity, now)
+    return evaluation_state(registration, now).reason
 
 
 def evaluation_page(token: str, now: datetime | None = None) -> dict:
@@ -649,19 +700,17 @@ def evaluation_page(token: str, now: datetime | None = None) -> dict:
     """
     registration = registration_from_token(token)
     form = get_form(registration.activity, FormType.EVALUATION)
-    now = now or timezone.now()
-    reason = evaluation_closed_reason(registration, now)
-    submitted = EvaluationSubmission.objects.filter(registration=registration).exists()
-    if submitted or now > registration.activity.evaluation_deadline:
-        return {"is_open": False, "closed_reason": reason}
+    state = evaluation_state(registration, now)
+    if not state.shows_person:
+        return {"is_open": False, "closed_reason": state.reason}
     return {
         "activity": registration.activity.title,
         "name": registration.name,
         # Suggested defaults for the certificate name and email fields (the participant may change them).
         "suggested_certificate_name": registration.name,
         "suggested_certificate_email": registration.email,
-        "is_open": reason is None,
-        "closed_reason": reason,
+        "is_open": state.reason is None,
+        "closed_reason": state.reason,
         "fields": [_field_json(field) for field in form.fields.order_by("sort_order", "field_id")] if form else [],
     }
 
@@ -693,6 +742,31 @@ def clean_certificate_details(certificate_name, certificate_email) -> tuple[str,
     return name, email
 
 
+def check_evaluation(
+    form: FormTemplate, certificate_name, certificate_email, answers: dict | None
+) -> tuple[str, str, dict[FormField, str]]:
+    """Check an evaluation without saving anything: (certificate name, certificate email, stored answers).
+
+    The only check of an evaluation's contents: submit_evaluation calls it, and so does the review step of
+    the evaluation page (phase F3), which shows the result before the participant confirms. Raises one
+    ValidationError with the certificate errors and the answer errors together.
+    """
+    errors: dict[str, str] = {}
+    name = email = ""
+    stored_answers: dict[FormField, str] = {}
+    try:
+        name, email = clean_certificate_details(certificate_name, certificate_email)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    try:
+        stored_answers = validate_answers(form, answers)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    if errors:
+        raise ValidationError(errors)
+    return name, email, stored_answers
+
+
 @transaction.atomic
 def submit_evaluation(
     token: str,
@@ -713,17 +787,7 @@ def submit_evaluation(
     if reason := evaluation_closed_reason(registration, now):
         raise RegistrationError(reason)
     form = get_form(registration.activity, FormType.EVALUATION)
-    errors: dict[str, str] = {}
-    try:
-        name, email = clean_certificate_details(certificate_name, certificate_email)
-    except ValidationError as error:
-        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
-    try:
-        stored_answers = validate_answers(form, answers)
-    except ValidationError as error:
-        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
-    if errors:
-        raise ValidationError(errors)
+    name, email, stored_answers = check_evaluation(form, certificate_name, certificate_email, answers)
     submission = EvaluationSubmission.objects.create(
         template=form,
         registration=registration,
