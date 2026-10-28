@@ -1,13 +1,13 @@
 {% comment %}
 The tabs and the current tab's panel (what HTMX swaps, into #tab-area). Tabs are links (?tab=...), so they also work
-without JavaScript and a reload keeps the tab. Tabs of later phases say which phase builds them.
+without JavaScript and a reload keeps the tab.
 {% endcomment %}
 <nav class="mb-4 flex gap-1 overflow-x-auto rounded-full border border-line bg-white p-1 shadow-card" aria-label="Activity sections">
   {% for item in tabs %}
     <a href="?tab={{ item.key }}" hx-get="?tab={{ item.key }}" hx-target="#tab-area" hx-push-url="true" hx-indicator="#tab-loading"
        {% if item.current %}aria-current="page"{% endif %}
        class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap {% if item.current %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100 hover:text-ink{% endif %}">
-      {{ item.label }}{% if item.phase %}<span class="rounded-full px-1.5 text-[11px] font-semibold {% if item.current %}bg-white/20 text-white{% else %}bg-slate-100 text-slate-600{% endif %}">{{ item.phase }}</span>{% endif %}
+      {{ item.label }}
     </a>
   {% endfor %}
   <span id="tab-loading" class="htmx-indicator ml-auto items-center px-3" aria-label="Loading">{% include "components/spinner.html" %}</span>
@@ -23,7 +23,9 @@ without JavaScript and a reload keeps the tab. Tabs of later phases say which ph
     {% include "registrations/_tab_registrations.html" %}
   {% elif tab == "evaluation" %}
     {% include "registrations/_tab_evaluation.html" %}
-  {% else %}
-    {% include "activities/_tab_placeholder.html" %}
+  {% elif tab == "documents" %}
+    {% include "documents/_tab_documents.html" %}
+  {% elif tab == "certificates" %}
+    {% include "certificates/_tab_certificates.html" %}
   {% endif %}
 </div>

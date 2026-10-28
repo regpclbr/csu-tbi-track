@@ -1,8 +1,0 @@
-{% comment %}A tab of a later frontend phase (activities.pages.TABS): says which phase builds it.{% endcomment %}
-<section class="card p-6">
-  {% for item in tabs %}{% if item.current %}
-    {% with text="This tab is built in phase "|add:item.phase|add:". Until then, the Django admin and the API have this information." %}
-      {% include "components/empty_state.html" with icon="layout-grid" title=item.label|add:" is coming in phase "|add:item.phase text=text %}
-    {% endwith %}
-  {% endif %}{% endfor %}
-</section>

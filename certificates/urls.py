@@ -2,14 +2,15 @@
 
 from django.urls import path
 
-from config.views import coming_soon
-
-from . import views
+from . import page_views, views
 
 app_name = "certificates"
 
 urlpatterns = [
-    path("", coming_soon, {"feature": "Certificates"}, name="list"),  # page of a later frontend phase (config.views.COMING_SOON_PAGES)
+    # Pages (phase F4)
+    path("", page_views.certificate_list, name="list"),
+    path("<int:certificate_id>/evidence/", page_views.evidence, name="evidence"),
+    path("<int:certificate_id>/evidence/upload/", page_views.evidence_upload, name="evidence_upload"),
     # Staff: reading and files
     path("api/", views.list_api, name="api_list"),
     path("api/<int:certificate_id>/", views.detail_api, name="api_detail"),

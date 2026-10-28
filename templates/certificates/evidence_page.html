@@ -1,0 +1,8 @@
+{% extends "layouts/app.html" %}
+{# A certificate's evidence without JavaScript: the same content as the dialog, on a page of its own. #}
+{% block content %}
+<section class="card mx-auto max-w-2xl p-6">
+  <div id="evidence-dialog-body">{% include "certificates/_evidence.html" %}</div>
+</section>
+{% include "documents/_dialog.html" %}
+{% endblock %}

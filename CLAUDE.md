@@ -230,7 +230,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (one list of nav items, each with an optional `Permission`).
 - Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
   classes `btn btn-primary|danger|warning|secondary|ghost`, empty_state, form_field, form_errors, pagination, toasts,
-  progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills, options_editor, answer_field). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
+  progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills, options_editor, answer_field, file_drop). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
   (button whose arrow slides); movement only under `motion-safe` (ASSUMPTIONS 254). Icons only through `components/icon.html` (add Lucide 1.52.0 SVGs there).
   Display filters: `{% load ui %}` (`config/ui_tags.py`: number, percent, rating, relative_time, ...).
 - Everything is self-hosted (`static/vendor/VERSIONS.md`); never link a CDN (a test checks it).
@@ -259,6 +259,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (also inside `submit_evaluation`). Refusal cards show the service's reason, never the name or email. Token pages use
   `config.headers.private_token_page` (Referrer-Policy same-origin, never no-referrer: it breaks CSRF on the forms; noindex, no-store) and pass `private_page`. Footer contact:
   `TBI_CONTACT_EMAIL` (placeholder).
+- Documents and certificates pages (F4, ASSUMPTIONS 290–300): `documents/page_views.py` + `documents/pages.py`,
+  `certificates/page_views.py` + `certificates/pages.py`. Buttons follow `documents.services.allowed_actions()`; the four
+  states (Missing / Waiting for review / Returned / Approved) come only from `documents.pages`. Return / replace / delete use
+  the shared `documents/_dialog.html` (form loaded with HTMX, its own page without JS). Bulk certificate actions: one service
+  call, all or nothing, refusals listed from `CertificateError.problems`; Generate shows `generation_closed_reason()`. An
+  error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The preview is the only
+  inline PDF. New components: `file_drop`.
 - Pages of later phases use `config.views.coming_soon` under their final URL names (`COMING_SOON_PAGES`); remove an
   entry when its page is built.
 - Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
@@ -321,6 +328,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F2a (2026-10-27): Activities list + calendar, create/edit, activity page with Overview and History (261–269).
 - Frontend F2b (2026-10-27): Forms, Registrations and Evaluation tabs, attendance sheet (270–277).
 - Frontend F3 (2026-10-27): public pages: open activities, registration, evaluation with review step, startup set password (278–288).
+- Tests and the time of day (2026-10-28): fake clock, walkthrough fix (289).
+- Frontend F4 (2026-10-28): documents tab, repository + review queue, document page, certificates tab and page, links (290–300).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

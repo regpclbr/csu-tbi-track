@@ -29,15 +29,15 @@ SORT_CHOICES = [
     ("created_at", "First created"),
 ]
 
-# Tabs of the activity page: (key, label, phase that builds it; None = built).
+# Tabs of the activity page: (key, label).
 TABS = [
-    ("overview", "Overview", None),
-    ("history", "History", None),
-    ("forms", "Forms", None),
-    ("registrations", "Registrations", None),
-    ("evaluation", "Evaluation", None),
-    ("documents", "Documents", "F4"),
-    ("certificates", "Certificates", "F4"),
+    ("overview", "Overview"),
+    ("history", "History"),
+    ("forms", "Forms"),
+    ("registrations", "Registrations"),
+    ("evaluation", "Evaluation"),
+    ("documents", "Documents"),
+    ("certificates", "Certificates"),
 ]
 DEFAULT_TAB = "overview"
 
@@ -194,15 +194,11 @@ def month_grid(month: date, today: date | None = None) -> dict:
 
 
 def tabs(current: str) -> list[dict]:
-    return [{"key": key, "label": label, "phase": phase, "current": key == current} for key, label, phase in TABS]
+    return [{"key": key, "label": label, "current": key == current} for key, label in TABS]
 
 
 def tab_key(raw: str | None) -> str:
-    return raw if raw in {key for key, _, _ in TABS} else DEFAULT_TAB
-
-
-def tab_phase(key: str) -> str | None:
-    return next(phase for tab, _, phase in TABS if tab == key)
+    return raw if raw in {key for key, _ in TABS} else DEFAULT_TAB
 
 
 def registration_summary(activity: Activity, now: datetime | None = None) -> dict:

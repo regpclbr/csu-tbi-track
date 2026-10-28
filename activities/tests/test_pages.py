@@ -311,10 +311,11 @@ def test_tabs_with_htmx_get_only_the_tab_and_unknown_tabs_show_the_overview(dire
     assert client.get(detail_url(new_activity, tab="nope")).context["tab"] == "overview"
 
 
-@pytest.mark.parametrize("tab, phase", [("documents", "F4"), ("certificates", "F4")])
-def test_later_tabs_say_which_phase_builds_them(director, login, new_activity, tab, phase) -> None:
+@pytest.mark.parametrize("tab", ["documents", "certificates"])
+def test_every_tab_is_built(director, login, new_activity, tab) -> None:
+    """Phase F4 built the last two tabs: no placeholder, no phase badge."""
     html = login(director).get(detail_url(new_activity, tab=tab)).content.decode()
-    assert f"coming in phase {phase}" in html
+    assert "coming in phase" not in html and f'id="{tab}-tab"' in html
 
 
 # --- Status changes ----------------------------------------------------------------------------------------------

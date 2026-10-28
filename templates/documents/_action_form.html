@@ -1,0 +1,43 @@
+{% comment %}
+The form of return / replace / delete (documents.page_views.action_form), inside documents/_dialog.html or on its own
+page (action_page.html). It posts with HTMX into the same place: an error comes back here under its field (the focus
+moves to it); success answers HX-Redirect. Without JavaScript it is a normal POST.
+{% endcomment %}
+{% url 'documents:detail' document.pk as detail_url %}
+<div class="mb-4 flex items-start justify-between gap-4">
+  <h2 id="document-dialog-title" class="card-title">{% if action == "return" %}Return to the uploader{% elif action == "replace" %}Replace the file{% else %}Delete this document?{% endif %}</h2>
+  <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" onclick="var d = this.closest('dialog'); if (d) d.close(); else window.location = '{{ next|default:detail_url|escapejs }}'" aria-label="Close">
+    {% include "components/icon.html" with name="x" class="size-5" %}</button>
+</div>
+<p class="mb-4 text-sm text-slate-700"><span class="font-semibold text-ink">{{ document.title }}</span> · {{ document.document_type.name }} · uploaded by {{ document.uploaded_by.name }}</p>
+
+<form method="post" action="{% url 'documents:'|add:action document.pk %}"{% if action == "replace" %} enctype="multipart/form-data" hx-encoding="multipart/form-data"{% endif %}
+      hx-post="{% url 'documents:'|add:action document.pk %}" hx-target="#document-dialog-body" hx-indicator="#document-action-loading" novalidate>
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}">
+  {% if action == "return" %}
+    <label for="return-reason" class="text-sm font-semibold text-ink">Reason <span class="text-danger" aria-hidden="true">*</span></label>
+    <textarea id="return-reason" name="reason" rows="4" maxlength="{{ reason_max }}" required autofocus class="field-input mt-1.5"
+              aria-describedby="return-reason-help{% if errors.reason %} return-reason-error{% endif %}"{% if errors.reason %} aria-invalid="true" x-init="$el.focus()"{% endif %}>{{ reason }}</textarea>
+    <p id="return-reason-help" class="field-help">At most {{ reason_max }} characters. {{ document.uploaded_by.name }} gets it as a notification and can then replace the file.</p>
+    {% if errors.reason %}<p id="return-reason-error" class="field-error">{{ errors.reason }}</p>{% endif %}
+  {% elif action == "replace" %}
+    <div{% if errors.file %} x-init="$el.querySelector('input[type=file]').focus()"{% endif %}>
+      {% include "components/file_drop.html" with id="replace-file" name="file" limits=limits error=errors.file label="New file" %}
+    </div>
+    <p class="mt-3 text-sm text-slate-700">The title and type stay the same. The document then waits for a reviewer again.</p>
+  {% else %}
+    <p class="text-sm text-slate-700">The document and its file are removed. This cannot be undone.</p>
+  {% endif %}
+  <div class="mt-5 flex items-center justify-end gap-2">
+    <span id="document-action-loading" class="htmx-indicator mr-auto items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Saving…</span>
+    <button type="button" class="btn btn-secondary"{% if action == "delete" %} autofocus{% endif %} onclick="var d = this.closest('dialog'); if (d) d.close(); else window.location = '{{ next|default:detail_url|escapejs }}'">Cancel</button>
+    {% if action == "return" %}
+      <button type="submit" class="btn btn-warning">{% include "components/icon.html" with name="undo-2" class="size-4" %}Return document</button>
+    {% elif action == "replace" %}
+      <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="upload" class="size-4" %}Replace file</button>
+    {% else %}
+      <button type="submit" class="btn btn-danger">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
+    {% endif %}
+  </div>
+</form>

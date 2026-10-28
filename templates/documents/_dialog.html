@@ -1,0 +1,9 @@
+{% comment %}
+One dialog per page for the document actions that ask something first (return: a reason; replace: a file; delete:
+"are you sure"). A trigger (documents/_actions.html) loads the form into #document-dialog-body with HTMX and opens it;
+Escape closes it and the focus goes back to the trigger. Without JavaScript the trigger is a link to the form's page.
+{% endcomment %}
+<dialog id="document-dialog" class="modal" aria-labelledby="document-dialog-title"
+        onclose="if (window.documentDialogOpener) window.documentDialogOpener.focus()" onclick="if (event.target === this) this.close()">
+  <div class="p-6"><div id="document-dialog-body"></div></div>
+</dialog>

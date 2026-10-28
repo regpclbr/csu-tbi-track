@@ -73,9 +73,11 @@ def _file_response(field_file, filename: str) -> FileResponse:
     return response
 
 
-def _pdf_response(content: bytes, filename: str) -> HttpResponse:
+def _pdf_response(content: bytes, filename: str, inline: bool = False) -> HttpResponse:
+    """inline=True only for the watermarked preview (phase F4: it opens in a new tab). We render it ourselves; it is
+    never an uploaded file. Final PDFs and uploads are always attachments."""
     response = HttpResponse(content, content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Content-Disposition"] = f'{"inline" if inline else "attachment"}; filename="{filename}"'
     response["X-Content-Type-Options"] = "nosniff"
     return response
 
@@ -195,13 +197,13 @@ def download_certificate(request: HttpRequest, certificate_id: int) -> FileRespo
 @staff_login_required
 @require_GET
 def preview_certificate(request: HttpRequest, certificate_id: int) -> HttpResponse:
-    """A watermarked preview without signatures, rendered now and never stored."""
+    """A watermarked preview without signatures, rendered now and never stored. Shown inline (new tab)."""
     certificate = get_object_or_404(Certificate, pk=certificate_id)
     try:
         content = services.preview_pdf(request.user, certificate)
     except Exception as error:  # e.g. WeasyPrint's system libraries are missing
         return JsonResponse({"error": f"The preview could not be rendered ({type(error).__name__}). Run python manage.py check_pdf."}, status=503)
-    return _pdf_response(content, f"PREVIEW-{certificate.certificate_number}.pdf")
+    return _pdf_response(content, f"PREVIEW-{certificate.certificate_number}.pdf", inline=True)
 
 
 # --- Staff: actions (can_create_activity) ------------------------------------------------------

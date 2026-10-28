@@ -11,6 +11,8 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from certificates import pages as certificate_pages
+from documents import pages as document_pages
 from registrations import pages as registration_pages
 
 from . import pages, services
@@ -117,15 +119,21 @@ def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
 @require_GET
 def activity_detail(request: HttpRequest, activity_id: int) -> HttpResponse:
     """GET ?tab=overview|history|forms|registrations|evaluation|documents|certificates (&page= for History;
-    &q, attended, category, page for Registrations). An HTMX request (a tab, a page, a filter) gets only the tab;
-    the Registrations filters pick their table out of it (hx-select)."""
+    &q, attended, category, page for Registrations; &type= for Documents). An HTMX request (a tab, a page, a filter)
+    gets only the tab; the Registrations filters pick their table out of it (hx-select)."""
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type", "created_by"), pk=activity_id)
-    tab = pages.tab_key(request.GET.get("tab"))
+    return render_activity_page(request, activity, pages.tab_key(request.GET.get("tab")))
+
+
+def render_activity_page(request: HttpRequest, activity: Activity, tab: str, extra: dict | None = None,
+                         status: int = 200) -> HttpResponse:
+    """The activity page (or, for HTMX, only its tab) showing `tab`. `extra` adds to the tab's context: the
+    Documents upload form's errors and the Certificates bulk refusals (phase F4) re-render the page with them."""
     detail = services.get_activity_detail(activity)
     can_create = _can_create(request)
     context = {
         "page_title": activity.title, "activity": activity, "detail": detail, "tab": tab, "tabs": pages.tabs(tab),
-        "tab_phase": pages.tab_phase(tab), "can_create": can_create,
+        "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
         "registration": pages.registration_summary(activity),
         "register_url": request.build_absolute_uri(reverse("register", args=[activity.pk])),
@@ -141,9 +149,13 @@ def activity_detail(request: HttpRequest, activity_id: int) -> HttpResponse:
         context.update(registration_pages.registrations_tab(request.user, activity, request.GET))
     elif tab == "evaluation":
         context.update(registration_pages.evaluation_tab(request.user, activity))
+    elif tab == "documents":
+        context.update(document_pages.documents_tab(request, activity, (extra or {}).get("upload")))
+    elif tab == "certificates":
+        context.update(certificate_pages.certificates_tab(request, activity, (extra or {}).get("problems")))
     if is_htmx(request):
-        return render(request, "activities/_tab.html", context)
-    return render(request, "activities/detail.html", context)
+        return render(request, "activities/_tab.html", context, status=status)
+    return render(request, "activities/detail.html", context, status=status)
 
 
 @permission_required(Permission.CREATE_ACTIVITY)

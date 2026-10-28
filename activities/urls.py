@@ -1,5 +1,8 @@
 from django.urls import path
 
+from certificates import page_views as certificate_page_views
+from documents import page_views as document_page_views
+
 from . import page_views, views
 
 app_name = "activities"
@@ -18,6 +21,11 @@ urlpatterns = [
         name="remove_resource_person",
     ),
     path("resource-persons/options/", page_views.resource_person_options, name="resource_person_options"),
+    # Actions of the Documents and Certificates tabs (phase F4). Under /activities/ so the page that comes back
+    # (an upload error, a refused bulk action) keeps "Activities" active in the sidebar; the views live in their apps.
+    path("<int:activity_id>/documents/upload/", document_page_views.upload, name="document_upload"),
+    path("<int:activity_id>/certificates/generate/", certificate_page_views.generate, name="certificates_generate"),
+    path("<int:activity_id>/certificates/bulk/", certificate_page_views.bulk_action, name="certificates_bulk"),
     # JSON API
     path("api/", views.activities_api, name="api_list"),  # GET list, POST create
     path("api/stats/", views.stats_api, name="api_stats"),

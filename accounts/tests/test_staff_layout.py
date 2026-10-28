@@ -53,7 +53,8 @@ def test_workspace_items_and_the_active_one(director) -> None:
     active = re.findall(r'<a href="([^"]+)"[^>]*aria-current="page"', html)
     assert active == [HOME]
     html = logged_in(director).get(reverse("documents:list")).content.decode()
-    assert re.findall(r'<a href="([^"]+)"[^>]*aria-current="page"', html) == [reverse("documents:list")]
+    # The sidebar item and (F4) the page's own "All documents" tab: both are the current page, nothing else is.
+    assert set(re.findall(r'<a href="([^"]+)"[^>]*aria-current="page"', html)) == {reverse("documents:list")}
 
 
 def test_member_name_role_and_initials(director) -> None:

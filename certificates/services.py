@@ -22,7 +22,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection, transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 from PIL import Image
 
@@ -64,7 +64,14 @@ NUMBER_LOCK_KEY = 9_000_001  # PostgreSQL advisory lock: one number allocation a
 
 
 class CertificateError(Exception):
-    """An action on certificates was refused. The message is safe to show to the member."""
+    """An action on certificates was refused. The message is safe to show to the member.
+
+    `problems`: for a refused bulk action, one "<certificate number>: <reason>" per refused certificate
+    (the message lists them too); empty otherwise. The pages show them as a list (phase F4)."""
+
+    def __init__(self, message: str = "", problems: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.problems = list(problems or [])
 
 
 class CertificateStatusError(CertificateError):
@@ -243,6 +250,22 @@ def _certificate_numbers(now: datetime | None = None):
 # --- Generating (can_create_activity) ------------------------------------------------------------
 
 
+NOT_CONDUCTED = "Certificates can be generated only for Conducted activities."
+
+
+def generation_closed_reason(activity: Activity) -> str | None:
+    """None when certificates can be generated for `activity` now; otherwise why not (not Conducted, or the
+    template / VP / Director that active_design() names as missing). Read only: the Certificates tab shows it
+    next to the button, and generate_certificates refuses with the same message."""
+    if activity.status.name != ActivityStatus.CONDUCTED:
+        return NOT_CONDUCTED
+    try:
+        active_design()
+    except CertificateError as error:
+        return str(error)
+    return None
+
+
 @transaction.atomic
 def generate_certificates(member: TBIMember, activity: Activity, now: datetime | None = None) -> dict[str, int]:
     """Create the missing certificates of a Conducted activity. Safe to run twice.
@@ -253,8 +276,8 @@ def generate_certificates(member: TBIMember, activity: Activity, now: datetime |
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
-    if locked.status.name != ActivityStatus.CONDUCTED:
-        raise CertificateError("Certificates can be generated only for Conducted activities.")
+    if reason := generation_closed_reason(locked):
+        raise CertificateError(reason)
     template, vp, director = active_design()
 
     registrations = locked.registrations.filter(attendance_confirmed=True, certificates__isnull=True).order_by("name", "pk")
@@ -378,7 +401,7 @@ def _apply_all(certificates: list[Certificate], action) -> None:
         except CertificateError as error:
             problems.append(f"{certificate.certificate_number}: {error}")
     if problems:
-        raise CertificateError("Nothing was changed. " + " ".join(problems))
+        raise CertificateError("Nothing was changed. " + " ".join(problems), problems=problems)
 
 
 @transaction.atomic
@@ -654,13 +677,11 @@ def retry_pending_certificates() -> dict[str, int]:
 # --- Reading: staff list, startup portal ------------------------------------------------------
 
 
-def list_certificates(filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE) -> PageResult:
-    """Staff list. Filters (optional): activity (ID), status, recipient_type. By activity, then number."""
-    filters = filters or {}
+def _filtered_certificates(filters: dict, with_status: bool = True) -> QuerySet:
     queryset = Certificate.objects.select_related("activity", "registration", "resource_person", "evaluation_submission")
     if filters.get("activity"):
         queryset = queryset.filter(activity_id=filters["activity"])
-    if filters.get("status"):
+    if with_status and filters.get("status"):
         if filters["status"] not in Status.values:
             raise CertificateError(f"status must be one of: {', '.join(Status.values)}.")
         queryset = queryset.filter(status=filters["status"])
@@ -668,7 +689,26 @@ def list_certificates(filters: dict | None = None, page: int | str | None = 1, p
         if filters["recipient_type"] not in RecipientType.values:
             raise CertificateError(f"recipient_type must be one of: {', '.join(RecipientType.values)}.")
         queryset = queryset.filter(recipient_type=filters["recipient_type"])
+    if filters.get("delivery_method"):
+        if filters["delivery_method"] not in DeliveryMethod.values:
+            raise CertificateError(f"delivery_method must be one of: {', '.join(DeliveryMethod.values)}.")
+        queryset = queryset.filter(delivery_method=filters["delivery_method"])
+    return queryset
+
+
+def list_certificates(filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE) -> PageResult:
+    """Staff list. Filters (optional): activity (ID), status, recipient_type, delivery_method. By activity, then number."""
+    queryset = _filtered_certificates(filters or {})
     return _paginate(queryset.order_by("activity_id", "certificate_number"), page, per_page)
+
+
+def certificate_status_counts(filters: dict | None = None) -> dict[str, int]:
+    """{status: count} for every status (0 when none), with the same filters as list_certificates except
+    the status itself (the Certificates page shows them next to the status filter). One query."""
+    counts = dict.fromkeys(Status.values, 0)
+    rows = _filtered_certificates(filters or {}, with_status=False).order_by().values("status").annotate(n=Count("pk"))
+    counts.update({row["status"]: row["n"] for row in rows})
+    return counts
 
 
 def certificates_for_startup(startup) -> QuerySet:

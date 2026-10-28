@@ -1,0 +1,41 @@
+{% comment %}
+Evidence of one certificate (certificates.pages.evidence): scans such as a wet-signed hard copy or a receipt. The same
+Step 6 rules as any document (any active staff member uploads; another member with can_create_activity reviews; the
+uploader replaces or deletes while For Review). Shown in #evidence-dialog, or on its own page without JavaScript.
+{% endcomment %}
+<div class="mb-4 flex items-start justify-between gap-4">
+  <div>
+    <h2 id="evidence-dialog-title" class="card-title">Evidence for {{ certificate.certificate_number }}</h2>
+    <p class="card-subtitle">{{ recipient }} · never listed in the repository and never used by the AI assistant.</p>
+  </div>
+  <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" onclick="var d = this.closest('dialog'); if (d) d.close(); else window.location = '{{ back|escapejs }}'" aria-label="Close">
+    {% include "components/icon.html" with name="x" class="size-5" %}</button>
+</div>
+
+{% if rows %}
+  <ul class="mb-5 divide-y divide-line border-y border-line">
+    {% for row in rows %}{% include "documents/_document_item.html" with row=row next=back %}{% endfor %}
+  </ul>
+{% else %}
+  <p class="mb-5 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">No evidence uploaded yet.</p>
+{% endif %}
+
+<form method="post" action="{% url 'certificates:evidence_upload' certificate.pk %}" enctype="multipart/form-data" novalidate
+      hx-post="{% url 'certificates:evidence_upload' certificate.pk %}" hx-encoding="multipart/form-data" hx-target="#evidence-dialog-body" hx-indicator="#evidence-loading"
+      class="space-y-4">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ back }}">
+  <h3 class="text-sm font-semibold text-ink">Upload evidence</h3>
+  <div>
+    <label for="evidence-title" class="text-sm font-semibold text-ink">Title <span class="font-normal text-muted">(optional)</span></label>
+    <input id="evidence-title" type="text" name="title" value="{{ title }}" maxlength="255" class="field-input mt-1.5"{% if errors.title %} aria-invalid="true" aria-describedby="evidence-title-error"{% endif %}>
+    {% if errors.title %}<p id="evidence-title-error" class="field-error">{{ errors.title }}</p>{% endif %}
+  </div>
+  <div{% if errors.file %} x-init="$el.querySelector('input[type=file]').focus()"{% endif %}>
+    {% include "components/file_drop.html" with id="evidence-file" name="file" limits=limits error=errors.file label="File" autofocus=False %}
+  </div>
+  <div class="flex items-center justify-end gap-2">
+    <span id="evidence-loading" class="htmx-indicator mr-auto items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Uploading…</span>
+    <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="upload" class="size-4" %}Upload evidence</button>
+  </div>
+</form>

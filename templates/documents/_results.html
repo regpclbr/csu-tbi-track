@@ -1,0 +1,65 @@
+{% comment %}
+The documents table of /documents/ and /documents/review/ (swapped by the filters and the pager). The table scrolls
+sideways inside the card on narrow screens. Every row has the member's own actions (documents.services.allowed_actions).
+{% endcomment %}
+<div id="document-results" class="htmx-dim">
+  {% if list_tab == "all" %}
+    {% if filters.ignored %}
+      <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+        {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+    {% endif %}
+    <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} document{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
+  {% else %}
+    <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} document{{ result.total|pluralize }} waiting for your review, oldest first</p>
+  {% endif %}
+
+  {% if rows %}
+    <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts inside the scroll box #}
+      <table class="w-full text-left text-sm">
+        <caption class="sr-only">{% if list_tab == "all" %}Documents{% else %}Documents waiting for your review{% endif %}</caption>
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+          <tr>
+            <th scope="col" class="px-3 py-2.5">Document</th>
+            <th scope="col" class="px-3 py-2.5">Activity</th>
+            <th scope="col" class="px-3 py-2.5">Uploaded</th>
+            <th scope="col" class="px-3 py-2.5">State</th>
+            <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {% for row in rows %}{% with document=row.document %}
+            <tr class="align-top hover:bg-slate-50">
+              <th scope="row" class="min-w-56 px-3 py-3 font-normal">
+                <a href="{% url 'documents:detail' document.pk %}" class="font-semibold break-words text-ink hover:text-primary hover:underline">{{ document.title }}</a>
+                <p class="mt-0.5 text-xs text-slate-700">{{ document.document_type.name }}</p>
+                <p class="text-xs break-all text-muted">{{ document.file_name }} · {{ document.file_size_kb }} KB</p>
+              </th>
+              <td class="min-w-36 px-3 py-3"><a href="{% url 'activities:detail' document.activity_id %}?tab=documents" class="text-slate-700 hover:text-primary hover:underline">{{ document.activity.title }}</a></td>
+              <td class="min-w-36 px-3 py-3 text-slate-700">{{ document.uploaded_by.name }}<br><time class="text-xs whitespace-nowrap text-muted" datetime="{{ document.uploaded_at|date:'c' }}">{{ document.uploaded_at|date:"M j, Y g:i A" }}</time></td>
+              <td class="px-3 py-3">
+                <div class="flex flex-col items-start gap-1">
+                  {% include "components/badge.html" with text=row.state.label tone=row.state.tone %}
+                  {% if row.searchable %}<span class="badge badge-neutral whitespace-nowrap">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}Searchable</span>{% endif %}
+                </div>
+              </td>
+              <td class="px-3 py-3">{% include "documents/_actions.html" with row=row next=request.get_full_path compact=True %}</td>
+            </tr>
+          {% endwith %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if list_tab == "all" %}
+      {% include "components/pagination.html" with result=result query=filters.query hx_target="#document-results" %}
+    {% else %}
+      {% include "components/pagination.html" with result=result hx_target="#document-results" %}
+    {% endif %}
+  {% elif list_tab == "review" and not can_review %}
+    {% include "components/empty_state.html" with icon="file-check" title="Nothing to review" text="Only members whose role can create activities review documents." %}
+  {% elif list_tab == "review" %}
+    {% include "components/empty_state.html" with icon="circle-check" title="Nothing is waiting for your review" text="New uploads by other members will appear here." %}
+  {% elif filters.any_set %}
+    {% include "components/empty_state.html" with icon="search" title="No documents match the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="folder" title="No documents yet" text="Documents are uploaded from an activity's Documents tab." %}
+  {% endif %}
+</div>

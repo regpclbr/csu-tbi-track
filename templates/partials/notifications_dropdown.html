@@ -9,12 +9,18 @@
 {% if notifications %}
   <ul class="max-h-96 divide-y divide-line overflow-y-auto">
     {% for notification in notifications %}
-      <li class="flex gap-3 px-4 py-3 {% if not notification.is_read %}bg-blue-50/60{% endif %}">
-        <span class="mt-1.5 size-2 shrink-0 rounded-full {% if notification.is_read %}bg-transparent{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
-        <div class="min-w-0">
-          <p class="text-sm text-ink">{% if not notification.is_read %}<span class="sr-only">Unread: </span>{% endif %}{{ notification.message }}</p>
-          <p class="mt-0.5 text-xs text-muted">{{ notification.created_at|relative_time }}</p>
-        </div>
+      <li class="{% if not notification.is_read %}bg-blue-50/60{% endif %}">
+        {# A POST (it marks the notification as read), then the page it is about: the activity, its Documents tab for documents. #}
+        <form method="post" action="{% url 'notifications:open' notification.pk %}">
+          {% csrf_token %}
+          <button type="submit" class="flex w-full gap-3 px-4 py-3 text-left hover:bg-slate-50 focus-visible:bg-slate-50">
+            <span class="mt-1.5 size-2 shrink-0 rounded-full {% if notification.is_read %}bg-transparent{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
+            <span class="block min-w-0">
+              <span class="block text-sm text-ink">{% if not notification.is_read %}<span class="sr-only">Unread: </span>{% endif %}{{ notification.message }}</span>
+              <span class="mt-0.5 block text-xs text-muted">{{ notification.created_at|relative_time }}{% if notification.activity_id %} · <span class="text-primary">Open{% if notification.document_type_id %} documents{% else %} activity{% endif %}</span>{% endif %}</span>
+            </span>
+          </button>
+        </form>
       </li>
     {% endfor %}
   </ul>

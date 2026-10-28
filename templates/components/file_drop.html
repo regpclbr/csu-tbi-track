@@ -1,0 +1,22 @@
+{% comment %}
+A file field with drag and drop. {% include "components/file_drop.html" with id="upload-file" name="file" limits=limits error=errors.file label="File" autofocus=False %}
+A real <input type="file"> is always there (keyboard, screen readers, no JavaScript). Alpine adds the drop zone: a file
+dropped on it is put into that same input, and the chosen file's name is shown. limits: documents.pages.upload_limits()
+(extensions, accept, max_mb) - shown as help only; the server's file checks decide. autofocus=True: the first error.
+{% endcomment %}
+<div x-data="{ name: '', over: false,
+               pick(files) { if (files && files.length) { const t = new DataTransfer(); t.items.add(files[0]); $refs.input.files = t.files; this.name = files[0].name; } } }">
+  <label for="{{ id }}" class="text-sm font-semibold text-ink">{{ label|default:"File" }}</label>
+  <div class="mt-1.5 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-5 text-center transition-colors {% if error %}border-danger bg-red-50/40{% else %}border-slate-300 bg-slate-50{% endif %}"
+       :class="over ? '!border-primary !bg-primary-soft/40' : ''"
+       @dragover.prevent="over = true" @dragleave.prevent="over = false" @drop.prevent="over = false; pick($event.dataTransfer.files)">
+    <span class="flex size-10 items-center justify-center rounded-full bg-white text-primary shadow-card" aria-hidden="true">{% include "components/icon.html" with name="upload" class="size-5" %}</span>
+    <p class="text-sm text-slate-700"><span class="hidden sm:inline" x-show="!name">Drag a file here, or choose one: </span><span x-show="name" x-cloak>Chosen: <strong class="break-all text-ink" x-text="name"></strong></span></p>
+    <input id="{{ id }}" x-ref="input" type="file" name="{{ name|default:'file' }}" accept="{{ limits.accept }}" required
+           class="max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-hover"
+           @change="name = $event.target.files.length ? $event.target.files[0].name : ''"
+           aria-describedby="{{ id }}-help{% if error %} {{ id }}-error{% endif %}"{% if error %} aria-invalid="true"{% endif %}{% if autofocus %} autofocus{% endif %}>
+  </div>
+  <p id="{{ id }}-help" class="field-help">{{ limits.extensions }} · up to {{ limits.max_mb }} MB. The file's content is checked, not only its name.</p>
+  {% if error %}<p id="{{ id }}-error" class="field-error">{{ error }}</p>{% endif %}
+</div>

@@ -9,7 +9,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from activities.models import ActivityStatus, ActivityType
+from activities.models import Activity, ActivityStatus, ActivityType
 from certificates.models import Certificate
 from documents.models import DocumentStatus
 from documents.services import review_queue
@@ -231,6 +231,34 @@ def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, 
     assert tones.index("danger") < tones.index("warning") < tones.index("primary")
     html = login(head).get(URL).content.decode()
     assert "btn-danger" in html and "btn-warning" in html
+
+
+def test_needs_attention_links_go_to_the_right_place(make_member, login, data, add_document) -> None:
+    """Phase F4: documents -> the activity's Documents tab with the type preselected; my review queue -> /documents/review/;
+    certificates of one activity -> its Certificates tab."""
+    from documents.models import DocumentType
+
+    head = make_member("Incubation Project Head")
+    add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
+    page = login(head).get(URL).context["page"]
+    by_title = {item.title: item.action_url for item in page.attention}
+    soon = next(url for title, url in by_title.items() if title.startswith("Soon Seminar needs the Invitation Letter"))
+    seminar = Activity.objects.get(title="Soon Seminar")
+    invitation = DocumentType.objects.get(name="Invitation Letter")
+    assert soon == f"{reverse('activities:detail', args=[seminar.pk])}?tab=documents&type={invitation.pk}"
+    overdue = [item.action_url for item in page.attention if item.tone == "danger"]
+    assert overdue and all(f"/activities/{data['conducted'].pk}/?tab=documents&type=" in url for url in overdue)
+    assert by_title["1 document is waiting for your review"] == reverse("documents:review")
+    assert by_title["1 certificate is waiting for sign-off"] == f"{reverse('activities:detail', args=[data['conducted'].pk])}?tab=certificates"
+
+
+def test_certificates_of_several_activities_link_to_the_certificates_page(director, login, data, make_activity, register,
+                                                                       make_certificate_row) -> None:
+    other = make_activity("Second Conducted", start=today() - timedelta(days=30))
+    make_certificate_row(activity=other, registration=register(other, "Q1", attended=True), status=Certificate.Status.PENDING_SIGNOFF)
+    page = login(director).get(URL).context["page"]
+    item = next(item for item in page.attention if "waiting for sign-off" in item.title)
+    assert item.action_url == f"{reverse('certificates:list')}?status=pending_signoff"
 
 
 def test_needs_attention_empty_state(director, login) -> None:

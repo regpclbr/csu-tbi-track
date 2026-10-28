@@ -3,7 +3,7 @@ A member only sees and changes their own."""
 
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
@@ -11,7 +11,7 @@ from config.json import JsonResponse  # date-times in Manila time
 from accounts.permissions import staff_login_required
 from config.parsing import parse_bool
 
-from . import services
+from . import pages, services
 from .models import Notification
 
 
@@ -95,3 +95,12 @@ def dropdown_read_all(request: HttpRequest) -> HttpResponse:
     """POST: mark all my notifications as read, then show the dropdown again."""
     services.mark_all_read(request.user)
     return _dropdown(request)
+
+
+@staff_login_required
+@require_POST
+def open_notification(request: HttpRequest, notification_id: int) -> HttpResponse:
+    """POST from the dropdown: mark one of my notifications as read and go to the page it is about
+    (notifications.pages.target_url). Someone else's notification gives 404."""
+    notification = services.mark_read(request.user, notification_id)
+    return redirect(pages.target_url(notification))

@@ -7,6 +7,7 @@ only picks, groups and lays out those results (percentages for bar widths, donut
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
 
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Min
@@ -230,11 +231,30 @@ def _day(value: date) -> str:
     return f"{value:%b} {value.day}"
 
 
+def documents_tab_url(row: dict) -> str:
+    """The activity's Documents tab with the type preselected (a group of several activities: its first row,
+    the oldest due date; the item's text names all of them)."""
+    url = reverse("activities:detail", args=[row["activity_id"]])
+    return f"{url}?{urlencode({'tab': 'documents', 'type': row['document_type_id']})}"
+
+
+def certificates_url(by_activity: list[dict], signoff: dict) -> str:
+    """One activity: its Certificates tab. Several: the Certificates page, narrowed to the one waiting status
+    when only one of the two (Generated, Pending Sign-off) has certificates."""
+    if len(by_activity) == 1:
+        return reverse("activities:detail", args=[by_activity[0]["activity_id"]]) + "?tab=certificates"
+    url = reverse("certificates:list")
+    if signoff["generated"] and not signoff["pending_signoff"]:
+        return f"{url}?status=generated"
+    if signoff["pending_signoff"] and not signoff["generated"]:
+        return f"{url}?status=pending_signoff"
+    return url
+
+
 def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_create: bool,
                now: datetime | None) -> list[AttentionItem]:
     """Overdue required documents (red), documents due soon (amber), my review queue, certificate sign-off."""
     items: list[AttentionItem] = []
-    documents_url = reverse("documents:list")
     rows = metrics.document_attention(filters, now)
     for type_name, group in _group_by_type(rows["overdue"]).items():
         first = group[0]  # oldest due date first
@@ -246,7 +266,7 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_cr
             title = f"{type_name} is overdue for {len(group)} activities"
             detail = _titles(group)
         action = "Upload" if any(row["state"] == metrics.MISSING for row in group) else "Open"
-        items.append(AttentionItem("danger", title, detail, action, documents_url))
+        items.append(AttentionItem("danger", title, detail, action, documents_tab_url(first)))
     for type_name, group in _group_by_type(rows["due_soon"]).items():
         first = group[0]
         if len(group) == 1:
@@ -255,13 +275,13 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_cr
         else:
             title = f"{type_name} is due soon for {len(group)} activities"
             detail = f"{_titles(group)} · first due {_day(first['due_date'])}"
-        items.append(AttentionItem("warning", title, detail, "Upload", documents_url))
+        items.append(AttentionItem("warning", title, detail, "Upload", documents_tab_url(first)))
 
     if review["mine"] and review["count"]:
         noun = "document is" if review["count"] == 1 else "documents are"
         items.append(AttentionItem(
             "primary", f"{review['count']} {noun} waiting for your review",
-            f"Oldest uploaded {_day(review['oldest'])}" if review["oldest"] else "", "Review", documents_url,
+            f"Oldest uploaded {_day(review['oldest'])}" if review["oldest"] else "", "Review", reverse("documents:review"),
         ))
 
     signoff = cards["certificates_waiting_for_signoff"]
@@ -279,7 +299,7 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_cr
         detail = " · ".join(filter(None, [detail, ", ".join(steps)]))
         items.append(AttentionItem(
             "primary", f"{signoff['value']} {noun} waiting for sign-off", detail,
-            "Review" if can_create else "", reverse("certificates:list") if can_create else "",
+            "Review" if can_create else "", certificates_url(by_activity, signoff) if can_create else "",
         ))
     return items
 

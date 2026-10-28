@@ -1,0 +1,51 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/documents/<id>/ (documents.page_views.document_detail): every fact of one document (activity document or certificate
+evidence), its review history (who and when; the return reason is not stored: it went to the uploader as a
+notification), Download and the actions this member may take (documents.services.allowed_actions).
+{% endcomment %}
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-5">
+  <a href="{{ place }}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to {% if document.related_certificate %}the certificates{% else %}the documents{% endif %} of {{ document.activity.title|truncatechars:60 }}</a>
+
+  <section class="card p-6" aria-labelledby="document-title">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="text-xs font-semibold tracking-wide text-primary uppercase">{{ document.document_type.name }}</p>
+        <h2 id="document-title" class="mt-1 text-2xl leading-tight font-bold break-words text-ink">{{ document.title }}</h2>
+        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+          {% include "components/badge.html" with text=state.label tone=state.tone %}
+          {% if searchable %}<span class="badge badge-neutral">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}Searchable by the AI assistant</span>{% endif %}
+          {% if document.related_certificate %}<span class="badge badge-info">Evidence for certificate {{ document.related_certificate.certificate_number }}</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="mt-5 border-t border-line pt-4">
+      {% include "documents/_actions.html" with row=view_row next=request.get_full_path %}
+    </div>
+  </section>
+
+  <section class="card p-6" aria-labelledby="facts-title">
+    {% include "components/section_header.html" with id="facts-title" title="Details" %}
+    <dl class="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
+      <div><dt class="font-semibold text-ink">Activity</dt><dd class="mt-0.5"><a href="{% url 'activities:detail' document.activity_id %}" class="link">{{ document.activity.title }}</a></dd></div>
+      <div><dt class="font-semibold text-ink">File</dt><dd class="mt-0.5 break-all text-slate-700">{{ document.file_name }} · {{ document.file_extension|upper }} · {{ document.file_size_kb }} KB</dd></div>
+      <div><dt class="font-semibold text-ink">Uploaded</dt><dd class="mt-0.5 text-slate-700">by {{ document.uploaded_by.name }} on <time datetime="{{ document.uploaded_at|date:'c' }}">{{ document.uploaded_at|date:"M j, Y g:i A" }}</time></dd></div>
+      <div><dt class="font-semibold text-ink">Last changed</dt><dd class="mt-0.5 text-slate-700"><time datetime="{{ document.updated_at|date:'c' }}">{{ document.updated_at|date:"M j, Y g:i A" }}</time></dd></div>
+      <div class="sm:col-span-2">
+        <dt class="font-semibold text-ink">Review</dt>
+        <dd class="mt-0.5 text-slate-700">
+          {% if document.review_state == "approved" %}
+            Approved by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. Approved documents are final.
+          {% elif document.review_state == "returned" %}
+            Returned by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. The reason was sent to {{ document.uploaded_by.name }} as a notification. It can be reviewed again after the file is replaced.
+          {% else %}
+            Not reviewed yet. A member who can create activities (not the uploader) approves or returns it.
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+  </section>
+</div>
+{% include "documents/_dialog.html" %}
+{% endblock %}

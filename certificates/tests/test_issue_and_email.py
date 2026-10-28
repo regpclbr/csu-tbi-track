@@ -260,7 +260,8 @@ def test_preview_is_watermarked_without_signatures(generated, director, fake_pdf
     client.force_login(director)
     response = client.get(f"/certificates/{certificate.pk}/preview/")
     assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
-    assert response["Content-Disposition"].startswith("attachment")
+    assert response["Content-Disposition"].startswith("inline")  # F4: the preview opens in a new tab
+    assert response["X-Content-Type-Options"] == "nosniff"
 
 
 def test_preview_of_a_resource_person_shows_their_name(generated, director, fake_pdf_renderer) -> None:
