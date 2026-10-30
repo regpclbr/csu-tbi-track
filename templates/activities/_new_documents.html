@@ -1,0 +1,30 @@
+{% comment %}
+"Documents (optional)" on the New activity form (ASSUMPTIONS 327–328). Context `docs` = documents.pages.new_documents_context:
+only the types documents.services.types_allowed_at_creation() offers (never Attendance Sheet), the posted rows with
+their errors, the file limits. An empty section creates the activity exactly as before. Rows are added and removed with
+Alpine; without JavaScript one empty row is shown. Browsers clear chosen files after an error: the amber note says so.
+{% endcomment %}
+<section class="card p-6" aria-labelledby="section-documents"
+         x-data="{ added: [], next: {{ docs.next_key }}, count: {{ docs.rows|length }}, max: {{ docs.max_rows }},
+                   add() { if (this.count >= this.max) return; const key = this.next++; this.added.push(key); this.count++;
+                           this.$nextTick(() => document.getElementById(`doc-${key}-type`).focus()) },
+                   remove(key) { this.added.splice(this.added.indexOf(key), 1); this.count--; this.$refs.add.focus() },
+                   removeRow(button) { button.closest('[data-document-row]').remove(); this.count--; this.$refs.add.focus() } }">
+  {% include "components/section_header.html" with id="section-documents" title="Documents (optional)" subtitle="Upload documents you already have. Each one waits for review like any upload; you can also add documents later on the activity's Documents tab." %}
+  {% if docs.choose_again %}
+    <div class="mb-4 flex gap-3 rounded-2xl border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}
+      <p>Nothing was saved yet. For security, your browser cleared the chosen files: please choose the file{{ docs.rows|length|pluralize }} again before creating the activity.</p>
+    </div>
+  {% endif %}
+  <p class="field-help -mt-1 mb-4">{{ docs.limits.extensions }}, at most {{ docs.limits.max_mb }} MB each, up to {{ docs.max_rows }} documents.</p>
+  <div class="space-y-3" id="new-document-rows">
+    {% for row in docs.rows %}{% include "activities/_new_document_row.html" with row=row types=docs.types limits=docs.limits alpine=False %}{% endfor %}
+    {% if not docs.rows %}<noscript>{% include "activities/_new_document_row.html" with row=docs.empty_row types=docs.types limits=docs.limits alpine=False %}</noscript>{% endif %}
+    <template x-for="key in added" :key="key">
+      {% include "activities/_new_document_row.html" with types=docs.types limits=docs.limits alpine=True %}
+    </template>
+  </div>
+  <button type="button" x-cloak x-ref="add" class="btn btn-secondary btn-sm mt-4" @click="add()" :disabled="count >= max">
+    {% include "components/icon.html" with name="plus" class="size-4" %}<span x-text="count ? 'Add another document' : 'Add a document'">Add {% if docs.rows %}another{% else %}a{% endif %} document</span></button>
+</section>

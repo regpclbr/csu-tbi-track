@@ -3,9 +3,10 @@
 Create / edit an activity (activities.page_views.activity_create / activity_edit). Every field the service accepts,
 in four sections. The rules are checked by activities.services; their messages appear under the right field, and
 the first field with an error gets the focus. Date-times are typed and shown in Manila time.
+New only: optional documents (activities/_new_documents.html), saved with the activity in one service call.
 {% endcomment %}
 {% block content %}
-<form method="post" novalidate class="mx-auto max-w-4xl space-y-5"
+<form method="post" novalidate{% if not activity %} enctype="multipart/form-data"{% endif %} class="mx-auto max-w-4xl space-y-5"
       x-data x-init="$nextTick(() => { const first = $el.querySelector('[aria-invalid=true]'); if (first) first.focus(); })">
   {% csrf_token %}
   <div class="flex flex-wrap items-center justify-between gap-3">
@@ -65,6 +66,8 @@ the first field with an error gets the focus. Date-times are typed and shown in 
       {% include "components/form_field.html" with field=form.budget_amount prefix="₱" step="0.01" %}
     </div>
   </section>
+
+  {% if not activity %}{% include "activities/_new_documents.html" %}{% endif %}
 
   <div class="flex items-center justify-end gap-3">
     <a href="{% if activity %}{% url 'activities:detail' activity.pk %}{% else %}{% url 'activities:list' %}{% endif %}" class="btn btn-secondary">Cancel</a>

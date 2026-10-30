@@ -81,6 +81,25 @@ def document_detail(request: HttpRequest, document_id: int) -> HttpResponse:
     return render(request, "documents/detail.html", context)
 
 
+@staff_login_required
+@require_GET
+def preview(request: HttpRequest, document_id: int) -> HttpResponse:
+    """The preview panel (ASSUMPTIONS 329): an HTMX request gets it for the shared preview dialog
+    (documents/_preview_dialog.html); without JavaScript it is its own page. Activity documents only (evidence: 404).
+    The file itself comes from views.view_document (PDF in an iframe, images as <img>); other types: Download."""
+    document = get_object_or_404(services.documents_for_listing(), pk=document_id)
+    context = {
+        "document": document,
+        "state": pages.state_badge(document),
+        "kind": pages.preview_kind(document),
+        "download_url": pages.download_url(document),
+        "file_url": reverse("documents:view", args=[document.pk]),
+    }
+    if is_htmx(request):
+        return render(request, "documents/_preview.html", context)
+    return render(request, "documents/preview_page.html", {"page_title": document.title, **context})
+
+
 # --- Upload (any active staff member) ------------------------------------------------------------------------
 
 

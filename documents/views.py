@@ -5,7 +5,8 @@ Views are thin: parse input, call documents.services (which checks the permissio
 - can_create_activity (and not the uploader): approve, return.
 - The uploader only, while For Review: replace, delete.
 
-Files are never served from /media/: only download_document sends them, as attachments.
+Files are never served from /media/: only download_document sends them (as attachments) and view_document shows a
+PDF or image inline inside our own preview dialog (the only view that may be framed, and only by this site).
 """
 
 import json
@@ -14,8 +15,10 @@ from functools import wraps
 
 from django.core.exceptions import ValidationError
 from django.http import FileResponse, Http404, HttpRequest
+from django.utils.http import content_disposition_header
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
@@ -239,5 +242,22 @@ def download_document(request: HttpRequest, document_id: int) -> FileResponse:
     except (FileNotFoundError, ValueError) as error:
         raise Http404("The file is missing.") from error
     response = FileResponse(handle, as_attachment=True, filename=document.file_name)
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@staff_login_required
+@require_GET
+@xframe_options_sameorigin  # the preview dialog's <iframe>; every other page keeps X-Frame-Options: DENY
+def view_document(request: HttpRequest, document_id: int) -> FileResponse:
+    """Same rule as download_document, but inline, for the preview (ASSUMPTIONS 329): PDF, PNG and JPG only, with the
+    type confirmed at upload and checked again on the stored bytes. Anything else, or a missing file: 404."""
+    document = _document(document_id)
+    try:
+        handle = services.open_for_preview(document)
+    except (FileNotFoundError, services.DocumentError) as error:
+        raise Http404("This file cannot be previewed.") from error
+    response = FileResponse(handle, content_type=services.preview_content_type(document))
+    response["Content-Disposition"] = content_disposition_header(False, document.file_name)
     response["X-Content-Type-Options"] = "nosniff"
     return response

@@ -1,0 +1,34 @@
+{% comment %}
+One optional document row of the New activity form (activities/_new_documents.html): type, file, title, Remove.
+Server rows (after an error) have static names `documents-<key>-…` and their errors; rows added in the browser come
+from the <template> (alpine=True) and build the same names from `key`. documents.pages.new_document_rows reads them.
+{% endcomment %}
+<div class="rounded-2xl border border-line bg-slate-50/60 p-4" data-document-row>
+  <div class="grid gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-start">
+    <div>
+      <label class="field-label" {% if alpine %}:for="`doc-${key}-type`"{% else %}for="doc-{{ row.key }}-type"{% endif %}>Document type</label>
+      <select class="field-input field-select" {% if alpine %}:id="`doc-${key}-type`" :name="`documents-${key}-type`"{% else %}id="doc-{{ row.key }}-type" name="documents-{{ row.key }}-type"{% if row.errors.document_type %} aria-invalid="true" aria-describedby="doc-{{ row.key }}-type-error"{% endif %}{% endif %}>
+        <option value="">Choose a type</option>
+        {% for type in types %}<option value="{{ type.pk }}"{% if not alpine and row.document_type == type.pk %} selected{% endif %}>{{ type.name }}</option>{% endfor %}
+      </select>
+      {% if not alpine and row.errors.document_type %}<p id="doc-{{ row.key }}-type-error" class="field-error">{{ row.errors.document_type }}</p>{% endif %}
+    </div>
+    <div>
+      <label class="field-label" {% if alpine %}:for="`doc-${key}-file`"{% else %}for="doc-{{ row.key }}-file"{% endif %}>File</label>
+      <input type="file" accept="{{ limits.accept }}" class="field-input bg-white py-2 file:mr-3 file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-1 file:text-sm file:font-semibold file:text-primary"
+             {% if alpine %}:id="`doc-${key}-file`" :name="`documents-${key}-file`"{% else %}id="doc-{{ row.key }}-file" name="documents-{{ row.key }}-file"{% if row.errors.file %} aria-invalid="true" aria-describedby="doc-{{ row.key }}-file-error"{% endif %}{% endif %}>
+      {% if not alpine and row.errors.file %}<p id="doc-{{ row.key }}-file-error" class="field-error">{{ row.errors.file }}</p>{% endif %}
+    </div>
+    <div>
+      <label class="field-label" {% if alpine %}:for="`doc-${key}-title`"{% else %}for="doc-{{ row.key }}-title"{% endif %}>Title <span class="font-normal text-muted">(optional)</span></label>
+      <input type="text" maxlength="255" class="field-input" placeholder="The type's name"
+             {% if alpine %}:id="`doc-${key}-title`" :name="`documents-${key}-title`"{% else %}id="doc-{{ row.key }}-title" name="documents-{{ row.key }}-title" value="{{ row.title }}"{% if row.errors.title %} aria-invalid="true" aria-describedby="doc-{{ row.key }}-title-error"{% endif %}{% endif %}>
+      {% if not alpine and row.errors.title %}<p id="doc-{{ row.key }}-title-error" class="field-error">{{ row.errors.title }}</p>{% endif %}
+    </div>
+    <div class="md:pt-7">
+      <button type="button" x-cloak class="btn btn-ghost btn-sm text-red-700 hover:bg-red-50"
+              {% if alpine %}@click="remove(key)"{% else %}@click="removeRow($el)"{% endif %}>
+        {% include "components/icon.html" with name="trash-2" class="size-4" %}Remove<span class="sr-only"> this document</span></button>
+    </div>
+  </div>
+</div>

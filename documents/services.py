@@ -247,6 +247,143 @@ def upload_document(
     return document
 
 
+# --- Documents uploaded with a new activity (ASSUMPTIONS 327) ---------------------------------------
+
+MAX_DOCUMENTS_AT_CREATION = 10
+
+
+@dataclass
+class NewDocument:
+    """One optional document row of the New activity form."""
+
+    document_type: DocumentType | None
+    file: UploadedFile | None
+    title: str = ""
+
+
+class NewActivityError(Exception):
+    """Creating the activity with its documents was refused; nothing was saved.
+
+    `activity_error`: the activity's own ValidationError (or None); `row_errors`: {row index: {field: message}}."""
+
+    def __init__(self, activity_error: ValidationError | None, row_errors: dict[int, dict[str, str]]):
+        super().__init__("The activity was not created.")
+        self.activity_error = activity_error
+        self.row_errors = row_errors
+
+
+class _RollBack(Exception):
+    """Undo the transaction of create_activity_with_documents (the errors are raised after it)."""
+
+
+def types_allowed_at_creation() -> QuerySet:
+    """Active types that make sense before the activity happens: not due after the end date and not named in
+    settings.DOCUMENT_TYPES_AFTER_ACTIVITY (types without a due rule, such as Certificate or Evaluation Form)."""
+    return (
+        DocumentType.objects.filter(is_active=True)
+        .exclude(due_reference=DocumentType.DueReference.END_DATE)
+        .exclude(name__in=settings.DOCUMENT_TYPES_AFTER_ACTIVITY)
+    )
+
+
+def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str]]:
+    """Every row's type, file (validate_upload: real content, size) and title, before anything is saved."""
+    allowed = set(types_allowed_at_creation().values_list("pk", flat=True))
+    errors: dict[int, dict[str, str]] = {}
+    for index, row in enumerate(documents):
+        row_errors = {}
+        if row.document_type is None:
+            row_errors["document_type"] = "Choose a document type."
+        elif row.document_type.pk not in allowed:
+            row_errors["document_type"] = (
+                "This document type cannot be uploaded when creating an activity. "
+                "Upload it from the activity's Documents tab later."
+            )
+        try:
+            validate_upload(row.file)
+        except ValidationError as error:
+            row_errors["file"] = error.messages[0]
+        if len((row.title or "").strip()) > 255:
+            row_errors["title"] = "The title can be at most 255 characters."
+        if row_errors:
+            errors[index] = row_errors
+    return errors
+
+
+def create_activity_with_documents(
+    member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None
+) -> Activity:
+    """Create a Draft activity (activities.services.create_activity) and upload its optional documents
+    (upload_document, the same rules as the Documents tab) in one transaction: all or nothing.
+
+    Errors of the activity and of every row are raised together as NewActivityError. Files already stored when
+    something fails are deleted again. upload_document creates no notification, email or task (indexing is
+    queued only on approval, on commit), so a refused create never tells anyone anything."""
+    from activities.services import create_activity  # documents imports activities, never the other way round
+
+    require_permission(member, Permission.CREATE_ACTIVITY)
+    if len(documents) > MAX_DOCUMENTS_AT_CREATION:
+        raise ValidationError({"documents": [f"Add at most {MAX_DOCUMENTS_AT_CREATION} documents here."]})
+    row_errors = check_new_documents(documents)
+    activity_error = None
+    stored: list[str] = []
+    committed = False
+    try:
+        with transaction.atomic():
+            try:
+                activity = create_activity(member, data, now=now)
+            except ValidationError as error:
+                activity_error = error
+                raise _RollBack from error
+            if row_errors:
+                raise _RollBack
+            for index, row in enumerate(documents):
+                try:
+                    document = upload_document(member, activity, row.document_type, row.file, row.title, now=now)
+                except ValidationError as error:  # e.g. the type was deactivated a moment ago
+                    found = error.message_dict if hasattr(error, "error_dict") else {"file": error.messages}
+                    row_errors[index] = {key: messages[0] for key, messages in found.items()}
+                    raise _RollBack from error
+                stored.append(document.file_path.name)
+        committed = True
+    except _RollBack:
+        pass
+    finally:
+        if not committed:
+            for name in stored:
+                _delete_stored_file(name)
+    if not committed:
+        raise NewActivityError(activity_error, row_errors)
+    return activity
+
+
+# --- Preview (ASSUMPTIONS 329) ---------------------------------------------------------------------------
+
+# Types the browser can show inline, keyed by the stored file_extension: the type validate_upload confirmed from the
+# real content at upload (never the uploaded name). Word and Excel files are only downloaded (no converter).
+PREVIEW_CONTENT_TYPES = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg"}
+
+
+def preview_content_type(document: Document) -> str | None:
+    """The content type to show `document` inline with, or None when it can only be downloaded."""
+    return PREVIEW_CONTENT_TYPES.get(document.file_extension)
+
+
+def open_for_preview(document: Document):
+    """Open the stored file for inline display. Raises DocumentError when it cannot be previewed or the stored
+    content does not match its confirmed type, and FileNotFoundError when the file is missing."""
+    if preview_content_type(document) is None:
+        raise DocumentError("This file type cannot be previewed. Download it instead.")
+    try:
+        handle = document.file_path.open("rb")
+    except ValueError as error:  # no file name stored
+        raise FileNotFoundError(document.file_path.name) from error
+    if not _content_matches(handle, document.file_extension):  # checked again on the stored bytes
+        handle.close()
+        raise DocumentError("This file cannot be previewed. Download it instead.")
+    return handle
+
+
 def _ensure_uploader_and_for_review(member: TBIMember, document: Document, action: str) -> None:
     if document.uploaded_by_id != member.pk:
         raise PermissionDenied(f"Only the member who uploaded this document can {action} it.")

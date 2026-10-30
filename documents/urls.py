@@ -25,4 +25,6 @@ urlpatterns = [
     path("api/<int:document_id>/replace/", views.replace_api, name="api_replace"),
     path("api/<int:document_id>/delete/", views.delete_api, name="api_delete"),
     path("<int:document_id>/download/", views.download_document, name="download"),
+    path("<int:document_id>/view/", views.view_document, name="view"),
+    path("<int:document_id>/preview/", page_views.preview, name="preview"),
 ]

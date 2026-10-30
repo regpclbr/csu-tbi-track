@@ -7,3 +7,13 @@ Escape closes it and the focus goes back to the trigger. Without JavaScript the 
         onclose="if (window.documentDialogOpener) window.documentDialogOpener.focus()" onclick="if (event.target === this) this.close()">
   <div class="p-6"><div id="document-dialog-body"></div></div>
 </dialog>
+{% comment %}
+The preview dialog (ASSUMPTIONS 329), one per page like the one above: a Preview button (documents/_actions.html) loads
+documents/_preview.html into #document-preview-body with HTMX and opens it. Escape or Close closes it; the focus goes
+back to the Preview button, and the body is emptied so the PDF stops loading.
+{% endcomment %}
+<dialog id="document-preview" class="modal max-w-5xl" aria-labelledby="document-preview-title"
+        onclose="document.getElementById('document-preview-body').replaceChildren(); if (window.documentPreviewOpener) window.documentPreviewOpener.focus()"
+        onclick="if (event.target === this) this.close()">
+  <div class="p-6"><div id="document-preview-body"></div></div>
+</dialog>

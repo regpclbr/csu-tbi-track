@@ -121,6 +121,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `replace_document_file` / `delete_document`: uploader only, For Review only. Approved: never
   replaced, retyped or deleted. Step 8 queues embeddings at the marked place in `approve_document`.
 - Use `Document.objects.activity_documents()` (via `documents_for_listing()`) everywhere until Step 9.
+- Documents with a new activity: only `create_activity_with_documents()` (one transaction with `create_activity` + `upload_document`,
+  all or nothing, stored files removed on failure, errors as `NewActivityError`); offered types only from
+  `types_allowed_at_creation()` (not due after the end date, not in `DOCUMENT_TYPES_AFTER_ACTIVITY`) (ASSUMPTIONS 327–328).
 - `document_checklist()` is the only "what is missing" check (Step 8 reuses it). Due dates are
   computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
@@ -266,8 +269,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
   states (Missing / Waiting for review / Returned / Approved) come only from `documents.pages`. Return / replace / delete use
   the shared `documents/_dialog.html` (form loaded with HTMX, its own page without JS). Bulk certificate actions: one service
   call, all or nothing, refusals listed from `CertificateError.problems`; Generate shows `generation_closed_reason()`. An
-  error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The preview is the only
-  inline PDF. New components: `file_drop`.
+  error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The certificate preview and
+  `documents:view` (the document preview) are the only inline files. New components: `file_drop`.
+- Document preview (ASSUMPTIONS 329–330): Preview in `documents/_actions.html` opens the shared `#document-preview` dialog (HTMX,
+  `documents.page_views.preview`): PDF iframe / image / "not available" + Download, kind from `preview_kind()` (confirmed stored type,
+  never the name). The file comes only from `documents:view` (Download's login rule, inline, nosniff, stored bytes checked again), the
+  ONLY `xframe_options_sameorigin` view; everything else stays `X-Frame-Options: DENY`. No CSP is set; adding one must allow it.
 - Reports, Assistant, Startups, Notifications and search pages (F5, ASSUMPTIONS 301–311): `reports/page_views.py` + `reports/pages.py`
   (form: quick dates, sections preset by type, the AI switch adds `ai_summary`; a pending history row polls `reports:row` every 4 s and
   stops when ready/failed or after 15 min), `assistant/page_views.py` + `assistant/pages.py`, `startups/staff_views.py` + `startups/pages.py`
@@ -349,6 +356,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F5 (2026-10-28): reports page with polling, AI assistant chat, startups pages, notifications page, global search (301–311).
 - Frontend F6 (2026-10-28): startup portal pages and the Admin Console (members, roles, certificate design, system status) (312–323).
 - UI polish (2026-10-29): shared select style, compact KPI cards, collapsible My chats panel (324–326).
+- Documents at creation + preview (2026-10-30): optional documents on the New activity form, in-page document preview (327–330).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

@@ -32,6 +32,7 @@ all of them are to be validated with the TBI too.
 - **Item 118 (fixing a document):** If a document needs fixing, is it right that only the person who uploaded it can replace or delete it, and only before it is approved? (Approved documents are final; a wrong one is fixed by uploading a new one.)
 - **Item 120:** Should every TBI staff member be able to open and download every activity document, or should some documents be limited to certain roles?
 - **Item 123:** Does the TBI have an official file-naming or folder convention for documents (for example "Year/Activity/Type_Date")? If yes, what is it for each document type?
+- **Item 327:** Should a blank Evaluation Form document be uploadable when creating an activity? (Now it is not offered there, because the system builds the evaluation form itself; it can still be uploaded on the activity's Documents tab.)
 
 ## Reminders
 

@@ -13,6 +13,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
 from certificates import pages as certificate_pages
 from documents import pages as document_pages
+from documents import services as document_services
 from registrations import pages as registration_pages
 
 from . import pages, services
@@ -75,18 +76,34 @@ def _initial(activity: Activity) -> dict:
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
+    """The activity and its optional documents are saved by one service call, all or nothing
+    (documents.services.create_activity_with_documents, ASSUMPTIONS 327)."""
     form = ActivityPageForm(request.POST or None)
-    if request.method == "POST" and form.is_valid():
-        try:
-            activity = services.create_activity(request.user, form.cleaned_data)
-        except ValidationError as error:
-            _put_errors_on_fields(form, error)
-        except services.ActivityError as error:
-            form.add_error(None, str(error))
-        else:
-            messages.success(request, f'"{activity.title}" was created as Draft.')
-            return redirect(_detail_url(activity))
-    return render(request, "activities/form.html", {"page_title": "New activity", "form": form, "activity": None})
+    rows = document_pages.new_document_rows(request) if request.method == "POST" else []
+    if request.method == "POST":
+        uploads = document_pages.new_documents_for_service(rows)
+        if form.is_valid():
+            try:
+                activity = document_services.create_activity_with_documents(request.user, form.cleaned_data, uploads)
+            except document_services.NewActivityError as error:
+                if error.activity_error:
+                    _put_errors_on_fields(form, error.activity_error)
+                document_pages.put_row_errors(rows, error.row_errors)
+            except ValidationError as error:
+                _put_errors_on_fields(form, error)
+            except services.ActivityError as error:
+                form.add_error(None, str(error))
+            else:
+                count = len(uploads)
+                extra = f" with {count} document{'s' if count != 1 else ''} waiting for review" if count else ""
+                messages.success(request, f'"{activity.title}" was created as Draft{extra}.')
+                return redirect(_detail_url(activity, "documents" if count else ""))
+        else:  # show the rows' problems together with the fields' ones
+            document_pages.put_row_errors(rows, document_services.check_new_documents(uploads))
+        if any(row.errors for row in rows):
+            form.add_error(None, "Please correct the documents marked below.")
+    context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows)}
+    return render(request, "activities/form.html", context)
 
 
 @permission_required(Permission.CREATE_ACTIVITY)

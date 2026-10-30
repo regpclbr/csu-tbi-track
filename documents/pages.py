@@ -3,6 +3,7 @@ and the document page. Display only: every rule is in documents.services (who ma
 the checklist; the review state). This module turns their results into what the templates show.
 """
 
+import re
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -43,6 +44,8 @@ def document_row(member: TBIMember, document: Document) -> dict:
         "searchable": bool(getattr(document, "searchable", False)),
         "actions": services.allowed_actions(member, document),
         "download_url": download_url(document),
+        # Activity documents only; certificate evidence keeps its own download (its view checks the certificate).
+        "preview_url": None if document.related_certificate_id else reverse("documents:preview", args=[document.pk]),
     }
 
 
@@ -240,3 +243,73 @@ def place_of(document: Document) -> str:
     """Where a document lives: its certificate's tab (evidence) or its activity's Documents tab."""
     tab = "certificates" if document.related_certificate_id else "documents"
     return f"{reverse('activities:detail', args=[document.activity_id])}?tab={tab}"
+
+
+# --- Documents on the New activity form (ASSUMPTIONS 327–328) ---------------------------------------------------
+
+_NEW_DOCUMENT_FIELD = re.compile(r"^documents-(\d{1,4})-(type|file|title)$")
+
+
+@dataclass
+class NewDocumentRow:
+    """One optional document row of the New activity form, as posted (the file itself is not kept: browsers clear
+    file inputs after an error, so the member chooses it again)."""
+
+    key: int
+    document_type: int | None = None
+    title: str = ""
+    file: object = None
+    errors: dict[str, str] = field(default_factory=dict)
+
+
+def new_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
+    """The posted rows `documents-<key>-type|file|title`, in key order. A row left completely empty is ignored, so
+    an untouched section creates the activity exactly as before."""
+    rows: dict[int, NewDocumentRow] = {}
+    for name in [*request.POST.keys(), *request.FILES.keys()]:
+        match = _NEW_DOCUMENT_FIELD.match(name)
+        if match:
+            rows.setdefault(int(match.group(1)), NewDocumentRow(key=int(match.group(1))))
+    for key, row in rows.items():
+        raw_type = request.POST.get(f"documents-{key}-type", "").strip()
+        row.document_type = int(raw_type) if raw_type.isdigit() else None
+        row.title = request.POST.get(f"documents-{key}-title", "").strip()
+        row.file = request.FILES.get(f"documents-{key}-file")
+    return [row for _, row in sorted(rows.items()) if row.document_type or row.title or row.file]
+
+
+def new_documents_for_service(rows: list[NewDocumentRow]) -> list[services.NewDocument]:
+    """The rows as services.NewDocument. An unknown type id becomes None ("Choose a document type."); a type that is
+    not allowed at creation is passed on, so the service refuses it with its own message."""
+    types = DocumentType.objects.in_bulk([row.document_type for row in rows if row.document_type])
+    return [services.NewDocument(types.get(row.document_type), row.file, row.title) for row in rows]
+
+
+def put_row_errors(rows: list[NewDocumentRow], row_errors: dict[int, dict[str, str]]) -> None:
+    """The service's errors (by row position) under each row's fields."""
+    for index, errors in row_errors.items():
+        rows[index].errors = errors
+
+
+def new_documents_context(rows: list[NewDocumentRow]) -> dict:
+    """What the Documents (optional) section shows: the allowed types, the posted rows and the file limits."""
+    return {
+        "types": services.types_allowed_at_creation().order_by("name"),
+        "rows": rows,
+        "empty_row": NewDocumentRow(key=0),  # the one row shown without JavaScript
+        "next_key": max((row.key for row in rows), default=-1) + 1,
+        "limits": upload_limits(),
+        "max_rows": services.MAX_DOCUMENTS_AT_CREATION,
+        "choose_again": any(row.file for row in rows),  # files were chosen but the browser cleared them
+    }
+
+
+# --- Preview (ASSUMPTIONS 329) ------------------------------------------------------------------------------------
+
+
+def preview_kind(document: Document) -> str:
+    """pdf | image | none, from services.preview_content_type (the confirmed stored type, not the file name)."""
+    content_type = services.preview_content_type(document)
+    if content_type == "application/pdf":
+        return "pdf"
+    return "image" if content_type else "none"
