@@ -213,6 +213,21 @@ def test_my_chats_list_only_mine(director, make_member, login) -> None:
     assert "My own chat" in html and "Someone else" not in html
 
 
+def test_my_chats_panel_can_be_hidden_with_accessible_toggles(director, login) -> None:
+    """ASSUMPTIONS 326: real buttons with aria-controls/aria-expanded, a New chat link when closed, and the choice is
+    remembered only in this browser (localStorage inside try/catch, default open)."""
+    html = login(director).get(reverse("assistant:chat")).content.decode()
+    assert '<nav id="my-chats-panel"' in html and 'x-show="chatsOpen"' in html
+    for button_id, label in (("chats-hide", 'aria-label="Hide my chats"'), ("chats-show", "</svg> Chats</button>")):
+        button = html[html.index(f'<button type="button" id="{button_id}"'):]
+        button = button[:button.index("</button>") + len("</button>")]
+        assert 'aria-controls="my-chats-panel"' in button and 'aria-expanded="true"' in button
+        assert ':aria-expanded="chatsOpen.toString()"' in button and label in " ".join(button.split())
+    assert 'aria-label="New chat"' in html  # New chat stays reachable when the panel is closed
+    assert "try { this.chatsOpen = localStorage.getItem('tbi.assistant.chats')" in html
+    assert "lg:grid-cols-[15rem_minmax(0,1fr)]" in html and "'lg:col-span-2': !chatsOpen" in html
+
+
 def test_discard_if_empty_never_removes_a_chat_with_messages_or_someone_elses(director, make_member) -> None:
     other = make_member("Admin Staff")
     empty, theirs = services.create_chat(director), services.create_chat(other)

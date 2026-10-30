@@ -62,7 +62,7 @@ preselects the type). Uploads are normal POSTs: success comes back here with a t
       {% csrf_token %}
       <div>
         <label for="upload-type" class="text-sm font-semibold text-ink">Document type <span class="text-danger" aria-hidden="true">*</span></label>
-        <select id="upload-type" name="document_type" required class="field-input mt-1.5"{% if upload.errors.document_type %} aria-invalid="true" aria-describedby="upload-type-error"{% endif %}{% if upload_focus == "document_type" %} autofocus{% endif %}>
+        <select id="upload-type" name="document_type" required class="field-input field-select mt-1.5"{% if upload.errors.document_type %} aria-invalid="true" aria-describedby="upload-type-error"{% endif %}{% if upload_focus == "document_type" %} autofocus{% endif %}>
           <option value="">Choose a type…</option>
           {% for document_type in upload_types %}
             <option value="{{ document_type.pk }}"{% if document_type.pk == upload.document_type %} selected{% endif %}>{{ document_type.name }}{% if document_type.is_required %} (required){% endif %}</option>

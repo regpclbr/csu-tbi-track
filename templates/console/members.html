@@ -29,7 +29,7 @@ Every action is a POST to the services (accounts.services); refusals (last Admin
       </div>
       <div>
         <label for="invite-role" class="text-sm font-semibold text-ink">Role</label>
-        <select id="invite-role" name="role" class="field-input mt-1.5"{% if invite_errors.role %} aria-invalid="true" aria-describedby="invite-role-error"{% endif %}>
+        <select id="invite-role" name="role" class="field-input field-select mt-1.5"{% if invite_errors.role %} aria-invalid="true" aria-describedby="invite-role-error"{% endif %}>
           <option value="">Choose a role…</option>
           {% for role in roles %}<option value="{{ role.pk }}"{% if invite.role == role.pk|stringformat:"s" %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
         </select>
@@ -57,14 +57,14 @@ Every action is a POST to the services (accounts.services); refusals (last Admin
       </div>
       <div>
         <label for="member-role" class="sr-only">Role</label>
-        <select id="member-role" name="role" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="member-role" name="role" class="field-input field-select pill-select w-auto pl-4">
           <option value="">Any role</option>
           {% for role in roles %}<option value="{{ role.pk }}"{% if filters.role == role.pk|stringformat:"s" %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label for="member-active" class="sr-only">Active or not</label>
-        <select id="member-active" name="is_active" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="member-active" name="is_active" class="field-input field-select pill-select w-auto pl-4">
           <option value="">Active and deactivated</option>
           <option value="true"{% if filters.is_active is True %} selected{% endif %}>Active</option>
           <option value="false"{% if filters.is_active is False %} selected{% endif %}>Deactivated</option>

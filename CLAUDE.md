@@ -232,6 +232,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   classes `btn btn-primary|danger|warning|secondary|ghost`, empty_state, form_field, form_errors, pagination, toasts,
   progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills, options_editor, answer_field, file_drop). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
   (button whose arrow slides); movement only under `motion-safe` (ASSUMPTIONS 254). Icons only through `components/icon.html` (add Lucide 1.52.0 SVGs there).
+  Every `<select>` is `field-input field-select` (one chevron, same right padding, fixed height shared with date inputs;
+  never on `multiple`/`size` list boxes; a test scans the templates, ASSUMPTIONS 324). KPI cards are compact (325).
   Display filters: `{% load ui %}` (`config/ui_tags.py`: number, percent, rating, relative_time, ...).
 - Everything is self-hosted (`static/vendor/VERSIONS.md`); never link a CDN (a test checks it).
 - Tailwind v4: tokens in the `@theme` block of `frontend/tailwind/app.css` (no tailwind.config.js). A new app's
@@ -273,6 +275,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (`/search/`, the top bar's box: the lists' own services, 5 per group). **Model answers are untrusted:** render them only through
   `assistant.pages.answer_html()` (escapes everything, then adds our `[n]` links and `<br>`); never `|safe`, HTML or Markdown from the
   model. A first question that fails removes its new chat (`services.discard_if_empty`).
+- AI Assistant: "My chats" is 240 px and can be hidden (Alpine + localStorage `tbi.assistant.chats`, default open, ASSUMPTIONS 326).
 - Startup portal pages (F6, ASSUMPTIONS 312–319): `startups/portal_views.py` + `startups/portal_pages.py`, `templates/portal/` on
   `layouts/portal.html` (sidebar `config.frontend.PORTAL`, context `portal`). Every page uses `startups.decorators.portal_page_required`
   (staff: 403; nobody: portal login). Login through `authenticate_startup`; `next` only within `/startups/portal/`. Registering only through
@@ -345,6 +348,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F4 (2026-10-28): documents tab, repository + review queue, document page, certificates tab and page, links (290–300).
 - Frontend F5 (2026-10-28): reports page with polling, AI assistant chat, startups pages, notifications page, global search (301–311).
 - Frontend F6 (2026-10-28): startup portal pages and the Admin Console (members, roles, certificate design, system status) (312–323).
+- UI polish (2026-10-29): shared select style, compact KPI cards, collapsible My chats panel (324–326).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

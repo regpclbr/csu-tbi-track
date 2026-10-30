@@ -22,7 +22,7 @@ the service's messages under the inputs and the focus on the first one. `editor`
   <div class="flex flex-wrap items-end gap-4">
     <div>
       <label for="editor-type-{{ card.form_type }}" class="text-sm font-semibold text-ink">Answer type</label>
-      <select id="editor-type-{{ card.form_type }}" name="field_type" x-model="type" class="field-input mt-1.5 w-auto pr-9"
+      <select id="editor-type-{{ card.form_type }}" name="field_type" x-model="type" class="field-input field-select mt-1.5 w-auto"
               {% if editor.errors.field_type %}aria-invalid="true" aria-describedby="editor-type-{{ card.form_type }}-error"{% endif %}>
         {% for value, label in field_types %}<option value="{{ value }}"{% if value == editor.field_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>

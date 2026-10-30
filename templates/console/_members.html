@@ -33,7 +33,7 @@ The buttons are shown for every member: the services refuse what is not allowed 
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
                   <label for="role-{{ member.pk }}" class="sr-only">Role of {{ member.name }}</label>
-                  <select id="role-{{ member.pk }}" name="role" class="field-input pill-select w-auto min-w-68 shrink-0 py-1.5 pr-9 pl-3 text-sm">
+                  <select id="role-{{ member.pk }}" name="role" class="field-input field-select field-select-sm pill-select w-auto min-w-68 shrink-0 pl-3 text-sm">
                     {% for role in roles %}<option value="{{ role.pk }}"{% if role.pk == member.role_id %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
                   </select>
                   <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the role of {{ member.name }}</span></button>

@@ -34,14 +34,14 @@ with can_manage_users (the view checks it again).
     </div>
     <div>
       <label for="startup-stage" class="sr-only">Maturity stage</label>
-      <select id="startup-stage" name="maturity_stage" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+      <select id="startup-stage" name="maturity_stage" class="field-input field-select pill-select w-auto pl-4">
         <option value="">Any maturity stage</option>
         {% for stage in stages %}<option value="{{ stage }}"{% if stage|lower == filters.maturity_stage|lower %} selected{% endif %}>{{ stage }}</option>{% endfor %}
       </select>
     </div>
     <div>
       <label for="startup-active" class="sr-only">Active or not</label>
-      <select id="startup-active" name="is_active" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+      <select id="startup-active" name="is_active" class="field-input field-select pill-select w-auto pl-4">
         <option value="">Active and inactive</option>
         <option value="true"{% if filters.is_active is True %} selected{% endif %}>Active</option>
         <option value="false"{% if filters.is_active is False %} selected{% endif %}>Inactive</option>

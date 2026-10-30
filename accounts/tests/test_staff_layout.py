@@ -337,6 +337,36 @@ def test_templates_load_nothing_from_a_cdn() -> None:
     assert offenders == []
 
 
+def test_every_select_in_our_templates_uses_the_shared_select_style() -> None:
+    """One select style (.field-select: our chevron, same right padding). Django admin templates (templates/admin/)
+    keep the admin's own look; list boxes (multiple / size) have no arrow, so they must not use it."""
+    base = Path(settings.BASE_DIR)
+    folders = [base / "templates", *base.glob("*/templates")]
+    offenders = []
+    for folder in folders:
+        for template in folder.rglob("*.html"):
+            if "admin" in template.relative_to(folder).parts:
+                continue
+            for tag in re.findall(r"<select\b[^>]*>", template.read_text(encoding="utf-8")):
+                classes = (re.search(r'class="([^"]*)"', tag) or [None, ""])[1].split()
+                list_box = re.search(r"\s(multiple|size=)", tag)
+                # A list box must not use it; every other select must, without its own padding (pr-*/py-*).
+                if ("field-select" in classes) == bool(list_box) or any(re.match(r"p[ry]-", c) for c in classes):
+                    offenders.append(f"{template.relative_to(base)}: {tag}")
+    assert offenders == []
+
+
+def test_select_and_date_input_styles_in_the_built_css() -> None:
+    css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").replace(" ", "")
+    rule = ";".join(re.findall(r"\.field-select\{([^}]*)\}", css))  # the minifier may split it in two
+    assert "appearance:none" in rule and "stroke='%2364748B'" in rule
+    assert "background-position:right.875remcenter" in rule  # the same place on every select
+    assert re.search(r"select\.field-input,input\[type=\"?date\"?\]\.field-input\{[^}]*height:2\.625rem", css)
+    # The glass inputs set only the colour, so the chevron of a select on a glass card stays.
+    glass = re.search(r"\.auth-card\.field-input,\.public-card\.field-input\{([^}]*)\}", css).group(1)
+    assert "background-color:#ffffffd9" in glass.lower() and "background:" not in glass
+
+
 def test_hover_styles_exist_and_motion_stops_for_reduced_motion() -> None:
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").replace(" ", "")
     card_hover = re.search(r"\.login-illustration\.li-card:hover\{([^}]*)\}", css).group(1)

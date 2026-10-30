@@ -49,7 +49,7 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
       </div>
       <div>
         <label for="reg-attended" class="sr-only">Attendance</label>
-        <select id="reg-attended" name="attended" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="reg-attended" name="attended" class="field-input field-select pill-select w-auto pl-4">
           <option value="">Everyone</option>
           <option value="true"{% if filters.attended is True %} selected{% endif %}>Attended</option>
           <option value="false"{% if filters.attended is False %} selected{% endif %}>Not marked attended</option>
@@ -58,7 +58,7 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
       {% if categories|length > 1 %}
         <div>
           <label for="reg-category" class="sr-only">Participant category</label>
-          <select id="reg-category" name="category" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <select id="reg-category" name="category" class="field-input field-select pill-select w-auto pl-4">
             <option value="">All categories</option>
             {% for category in categories %}<option value="{{ category.pk }}"{% if category.pk == filters.category %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
           </select>

@@ -184,9 +184,39 @@
   .field-input[aria-invalid="true"] {
     @apply border-danger focus:ring-danger/20;
   }
-  /* Pill-shaped select or date input (dashboard filters) */
+  /* Every <select>: class="field-input field-select" (a test checks all our templates). One chevron (Lucide
+     chevron-down, slate-500), vertically centred, and the same right padding everywhere so text never runs under it.
+     Never on list boxes (multiple / size): they have no arrow. */
+  .field-select {
+    @apply cursor-pointer appearance-none bg-no-repeat pr-10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.875rem center;
+    background-size: 1rem 1rem;
+  }
+  .field-select:disabled {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CBD5E1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+  /* Selects and date inputs share one height, so they line up in a row of filters (42 px, pills 40 px). */
+  select.field-input, input[type="date"].field-input {
+    @apply h-[2.625rem] py-0;
+  }
+  input[type="date"].field-input::-webkit-datetime-edit {
+    padding: 0;
+  }
+  input[type="date"].field-input::-webkit-calendar-picker-indicator {
+    margin: 0;
+    cursor: pointer;
+  }
+  /* Pill-shaped select or date input (filter bars) */
   .pill-select {
     @apply rounded-full border-slate-200 bg-white shadow-card;
+  }
+  select.pill-select, input[type="date"].pill-select {
+    @apply h-10;
+  }
+  /* A compact select inside a table row (Admin Console members) */
+  select.field-select-sm {
+    @apply h-9;
   }
   .field-error {
     @apply mt-1.5 text-sm text-red-700;
@@ -363,8 +393,9 @@
 }
 /* Inputs on the glass: white 85% with the card's border; focus ring in the primary blue (#1D4ED8). Unlayered, so the
    focus and error states are repeated here. */
+/* background-color, not the background shorthand: the shorthand would remove the chevron of .field-select. */
 .auth-card .field-input, .public-card .field-input {
-  background: rgb(255 255 255 / 0.85);
+  background-color: rgb(255 255 255 / 0.85);
   border-color: rgb(255 255 255 / 0.5);
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
 }

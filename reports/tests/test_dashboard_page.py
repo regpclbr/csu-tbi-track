@@ -29,7 +29,7 @@ def today() -> date:
 def kpis(html: str) -> dict[str, str]:
     """KPI card label -> value as shown on the page (components/kpi_card.html)."""
     found = re.findall(
-        r'<p class="text-\[13px\] leading-snug font-medium text-muted">([^<]+)</p>\s*<div[^>]*>\s*<p class="text-3xl[^"]*">([^<]+)</p>', html
+        r'<p class="[^"]*text-\[13px\][^"]*text-muted">([^<]+)</p>\s*</div>\s*<div[^>]*>\s*<p class="text-2xl[^"]*">([^<]+)</p>', html
     )
     return {label.strip(): value.strip() for label, value in found}
 

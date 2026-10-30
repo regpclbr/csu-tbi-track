@@ -12,28 +12,28 @@ with the counts per status for the other filters (services.certificate_status_co
         class="mb-5 flex flex-wrap items-center gap-2.5">
     <div>
       <label for="cert-activity" class="sr-only">Activity</label>
-      <select id="cert-activity" name="activity" class="field-input pill-select w-auto max-w-64 py-2 pr-9 pl-4">
+      <select id="cert-activity" name="activity" class="field-input field-select pill-select w-auto max-w-64 pl-4">
         <option value="">All activities</option>
         {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity.pk == filters.activity %} selected{% endif %}>{{ activity.title|truncatechars:45 }}</option>{% endfor %}
       </select>
     </div>
     <div>
       <label for="cert-status" class="sr-only">Status</label>
-      <select id="cert-status" name="status" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+      <select id="cert-status" name="status" class="field-input field-select pill-select w-auto pl-4">
         <option value="">Any status</option>
         {% for value, label in statuses %}<option value="{{ value }}"{% if value == filters.status %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
     </div>
     <div>
       <label for="cert-type" class="sr-only">Recipient type</label>
-      <select id="cert-type" name="recipient_type" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+      <select id="cert-type" name="recipient_type" class="field-input field-select pill-select w-auto pl-4">
         <option value="">Participation and Appreciation</option>
         {% for value, label in recipient_types %}<option value="{{ value }}"{% if value == filters.recipient_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
     </div>
     <div>
       <label for="cert-delivery" class="sr-only">Delivery</label>
-      <select id="cert-delivery" name="delivery_method" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+      <select id="cert-delivery" name="delivery_method" class="field-input field-select pill-select w-auto pl-4">
         <option value="">Any delivery</option>
         {% for value, label in delivery_methods %}<option value="{{ value }}"{% if value == filters.delivery_method %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>

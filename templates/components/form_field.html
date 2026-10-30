@@ -16,7 +16,7 @@ Handles text-like inputs (text, email, password, date, number), select and texta
     {% if aside_url %}<a href="{{ aside_url }}" class="link text-sm">{{ aside_label }}</a>{% endif %}
   </div>
   {% if field.field.widget.input_type == "select" %}
-    <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="field-input"{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% elif field.help_text %} aria-describedby="{{ field.id_for_label }}-help"{% endif %}>
+    <select name="{{ field.html_name }}" id="{{ field.id_for_label }}" class="field-input field-select"{% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true" aria-describedby="{{ field.id_for_label }}-error"{% elif field.help_text %} aria-describedby="{{ field.id_for_label }}-help"{% endif %}>
       {% for value, label in field.field.choices %}<option value="{{ value }}"{% if field.value|stringformat:"s" == value|stringformat:"s" %} selected{% endif %}>{{ label }}</option>{% endfor %}
     </select>
   {% elif field.field.widget.input_type %}

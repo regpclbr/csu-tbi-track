@@ -6,23 +6,45 @@ a refusal fills #ask-error. While waiting (up to the question time limit) the se
 shown with a typing indicator, and "Stop waiting" aborts only the browser's request (the server may still finish; the
 answer then appears when the chat is opened again). Without JavaScript the form is a normal POST.
 Answers are escaped text with citation links only (assistant.pages.answer_html), never HTML from the model.
+My chats can be hidden (ASSUMPTIONS 326): open or closed is remembered per browser (localStorage, default open).
+When closed, the chat card spans both columns and its header shows "Chats" and a "New chat" button. Without
+JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
 {% endcomment %}
 {% block content %}
-<div class="grid gap-5 lg:h-[calc(100vh-9.5rem)] lg:min-h-[30rem] lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[18rem_minmax(0,1fr)]">
-  <nav class="card flex min-h-0 flex-col p-4" aria-labelledby="my-chats-title">
-    <div class="mb-3 flex items-center justify-between gap-2 px-1">
-      <h2 id="my-chats-title" class="card-title text-base">My chats</h2>
-      <a href="{% url 'assistant:chat' %}" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
+<div class="grid gap-5 lg:h-[calc(100vh-9.5rem)] lg:min-h-[30rem] lg:grid-cols-[15rem_minmax(0,1fr)]"
+     x-data="{
+       chatsOpen: true,
+       init() { try { this.chatsOpen = localStorage.getItem('tbi.assistant.chats') !== 'closed' } catch (e) {} },
+       setChats(open) {
+         this.chatsOpen = open;
+         try { localStorage.setItem('tbi.assistant.chats', open ? 'open' : 'closed') } catch (e) {}
+         this.$nextTick(() => document.getElementById(open ? 'chats-hide' : 'chats-show').focus());
+       },
+     }">
+  <nav id="my-chats-panel" class="card flex min-h-0 flex-col p-3" aria-labelledby="my-chats-title" x-show="chatsOpen">
+    <div class="mb-3 flex items-center gap-1.5 px-1">
+      <h2 id="my-chats-title" class="card-title min-w-0 flex-1 truncate text-base">My chats</h2>
+      <a href="{% url 'assistant:chat' %}" class="btn btn-primary btn-sm px-3">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
+      <button type="button" id="chats-hide" x-cloak class="btn btn-ghost btn-sm px-2" aria-label="Hide my chats"
+              aria-controls="my-chats-panel" aria-expanded="true" :aria-expanded="chatsOpen.toString()" @click="setChats(false)">
+        {% include "components/icon.html" with name="panel-left-close" class="size-4" %}</button>
     </div>
     {% include "assistant/_chat_list.html" %}
   </nav>
 
-  <section class="card flex min-h-[32rem] flex-col p-0 lg:min-h-0" aria-labelledby="chat-title"
+  <section class="card flex min-h-[32rem] flex-col p-0 lg:min-h-0" :class="{ 'lg:col-span-2': !chatsOpen }" aria-labelledby="chat-title"
            x-data="{ busy: false, stopped: false, pending: '' }"
            @htmx:before-request="if ($event.target.id === 'ask-form') { busy = true; stopped = false; pending = $refs.question.value }"
            @htmx:after-request="if ($event.target.id === 'ask-form') { busy = false; pending = '' }"
            @assistant-answered.window="$refs.question.value = ''; $refs.question.focus()">
     <header class="flex items-center gap-3 border-b border-line px-6 py-4">
+      <div x-cloak x-show="!chatsOpen" class="flex shrink-0 items-center gap-2 border-r border-line pr-3">
+        <button type="button" id="chats-show" class="btn btn-secondary btn-sm" aria-controls="my-chats-panel" aria-expanded="true"
+                :aria-expanded="chatsOpen.toString()" @click="setChats(true)">
+          {% include "components/icon.html" with name="messages-square" class="size-4" %}Chats</button>
+        <a href="{% url 'assistant:chat' %}" class="btn btn-secondary btn-sm px-2.5" aria-label="New chat">
+          {% include "components/icon.html" with name="plus" class="size-4" %}</a>
+      </div>
       <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
       <div class="min-w-0">
         <h2 id="chat-title" class="truncate font-semibold text-ink">{% if chat %}{{ chat.title }}{% else %}New chat{% endif %}</h2>
@@ -84,7 +106,7 @@ Answers are escaped text with citation links only (assistant.pages.answer_html),
                   {% if errors.question %}aria-invalid="true"{% endif %}>{{ question }}</textarea>
         <div class="mt-3 flex flex-wrap items-center gap-3">
           <label for="ask-activity" class="sr-only">Search the documents of</label>
-          <select id="ask-activity" name="activity" class="field-input pill-select w-auto max-w-72 py-2 pr-9 pl-4"
+          <select id="ask-activity" name="activity" class="field-input field-select pill-select w-auto max-w-72 pl-4"
                   {% if errors.activity_id %}aria-invalid="true" aria-describedby="ask-activity-error"{% endif %}>
             <option value="">All activities</option>
             {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity_id == activity.pk|stringformat:"s" %} selected{% endif %}>{{ activity.title|truncatechars:48 }}</option>{% endfor %}

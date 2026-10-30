@@ -118,7 +118,7 @@ Every value is checked by reports.services.request_report; its messages appear u
 
             <div>
               <label for="report-activity-type" class="mb-1.5 block text-sm font-semibold text-ink">Activity type <span class="font-normal text-muted">(optional)</span></label>
-              <select id="report-activity-type" name="activity_type" class="field-input"
+              <select id="report-activity-type" name="activity_type" class="field-input field-select"
                       {% if form.errors.activity_type %}aria-invalid="true" aria-describedby="report-activity-type-error"{% endif %}>
                 <option value="">All activity types</option>
                 {% for activity_type in activity_types %}<option value="{{ activity_type.pk }}"{% if form.activity_type == activity_type.pk|stringformat:"s" %} selected{% endif %}>{{ activity_type.name }}{% if not activity_type.is_active %} (inactive){% endif %}</option>{% endfor %}

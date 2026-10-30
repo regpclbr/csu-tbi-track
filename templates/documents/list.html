@@ -31,35 +31,35 @@ only #document-results (HTMX) and stay in the URL; without JavaScript the Apply 
       </div>
       <div>
         <label for="doc-activity" class="sr-only">Activity</label>
-        <select id="doc-activity" name="activity" class="field-input pill-select w-auto max-w-56 py-2 pr-9 pl-4">
+        <select id="doc-activity" name="activity" class="field-input field-select pill-select w-auto max-w-56 pl-4">
           <option value="">All activities</option>
           {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity.pk == filters.activity %} selected{% endif %}>{{ activity.title|truncatechars:40 }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label for="doc-type" class="sr-only">Document type</label>
-        <select id="doc-type" name="document_type" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="doc-type" name="document_type" class="field-input field-select pill-select w-auto pl-4">
           <option value="">All types</option>
           {% for document_type in document_types %}<option value="{{ document_type.pk }}"{% if document_type.pk == filters.document_type %} selected{% endif %}>{{ document_type.name }}{% if not document_type.is_active %} (inactive){% endif %}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label for="doc-state" class="sr-only">State</label>
-        <select id="doc-state" name="review_state" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="doc-state" name="review_state" class="field-input field-select pill-select w-auto pl-4">
           <option value="">Any state</option>
           {% for value, label in review_states %}<option value="{{ value }}"{% if value == filters.review_state %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label for="doc-uploader" class="sr-only">Uploaded by</label>
-        <select id="doc-uploader" name="uploaded_by" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="doc-uploader" name="uploaded_by" class="field-input field-select pill-select w-auto pl-4">
           <option value="">Anyone</option>
           {% for member in uploaders %}<option value="{{ member.pk }}"{% if member.pk == filters.uploaded_by %} selected{% endif %}>{{ member.name }}</option>{% endfor %}
         </select>
       </div>
       <div>
         <label for="doc-searchable" class="sr-only">Searchable by the assistant</label>
-        <select id="doc-searchable" name="searchable" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+        <select id="doc-searchable" name="searchable" class="field-input field-select pill-select w-auto pl-4">
           <option value="">Searchable or not</option>
           <option value="true"{% if filters.searchable is True %} selected{% endif %}>Searchable</option>
           <option value="false"{% if filters.searchable is False %} selected{% endif %}>Not searchable</option>

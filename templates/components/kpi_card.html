@@ -3,13 +3,17 @@ KPI card. {% include "components/kpi_card.html" with label="Upcoming activities"
 value: a number or text (already formatted). icon: a components/icon.html name, shown on a light tint
 (chip: blue | amber | teal | violet | green). pill_tone: success | warning | neutral | danger | info.
 note: small text under the value (optional).
+Compact (ASSUMPTIONS 325): icon and label on one row, the number below. In a narrow card (portal on a phone: three
+cards side by side) the label wraps under the icon instead of overflowing.
 {% endcomment %}
-<div class="kpi-card hover-lift flex min-h-36 flex-col gap-2.5 p-4">
-  {% if icon %}<span class="chip chip-{{ chip|default:'blue' }} size-10 rounded-xl">{% include "components/icon.html" with name=icon class="size-5" %}</span>{% endif %}
-  <p class="text-[13px] leading-snug font-medium text-muted">{{ label }}</p>
-  <div class="mt-auto flex flex-col items-start gap-2">
-    <p class="text-3xl leading-none font-bold tracking-tight text-kpi tabular-nums">{{ value }}</p>
+<div class="kpi-card hover-lift flex flex-col gap-2 p-3.5">
+  <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+    {% if icon %}<span class="chip chip-{{ chip|default:'blue' }} size-8 rounded-lg">{% include "components/icon.html" with name=icon class="size-4" %}</span>{% endif %}
+    <p class="min-w-0 flex-1 basis-16 text-[13px] leading-snug font-medium break-words text-muted">{{ label }}</p>
+  </div>
+  <div class="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1">
+    <p class="text-2xl leading-none font-bold tracking-tight text-kpi tabular-nums">{{ value }}</p>
     {% if pill %}<span class="badge badge-{{ pill_tone|default:'neutral' }} rounded-full leading-tight whitespace-nowrap">{{ pill }}</span>{% endif %}
   </div>
-  {% if note %}<p class="-mt-1 text-xs text-muted">{{ note }}</p>{% endif %}
+  {% if note %}<p class="text-xs text-muted">{{ note }}</p>{% endif %}
 </div>

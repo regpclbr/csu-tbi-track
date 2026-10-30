@@ -43,34 +43,34 @@ Without JavaScript the Apply button submits the filters.
         </div>
         <div>
           <label for="filter-type" class="sr-only">Activity type</label>
-          <select id="filter-type" name="activity_type" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <select id="filter-type" name="activity_type" class="field-input field-select pill-select w-auto pl-4">
             <option value="">All types</option>
             {% for type in activity_types %}<option value="{{ type.pk }}"{% if type.pk == filters.activity_type %} selected{% endif %}>{{ type.name }}{% if not type.is_active %} (inactive){% endif %}</option>{% endfor %}
           </select>
         </div>
         <div>
           <label for="filter-status" class="sr-only">Status</label>
-          <select id="filter-status" name="status" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <select id="filter-status" name="status" class="field-input field-select pill-select w-auto pl-4">
             <option value="">All statuses</option>
             {% for status in statuses %}<option value="{{ status.pk }}"{% if status.pk == filters.status %} selected{% endif %}>{{ status.name }}</option>{% endfor %}
           </select>
         </div>
         <div>
           <label for="filter-category" class="sr-only">Participant category</label>
-          <select id="filter-category" name="participant_category" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <select id="filter-category" name="participant_category" class="field-input field-select pill-select w-auto pl-4">
             <option value="">All categories</option>
             {% for category in categories %}<option value="{{ category.pk }}"{% if category.pk == filters.participant_category %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
           </select>
         </div>
         <div class="flex items-center gap-1.5">
           <label for="filter-from" class="text-sm text-muted">From</label>
-          <input id="filter-from" type="date" name="date_from" value="{{ filters.date_from|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3 py-2">
+          <input id="filter-from" type="date" name="date_from" value="{{ filters.date_from|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3">
           <label for="filter-to" class="text-sm text-muted">to</label>
-          <input id="filter-to" type="date" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3 py-2">
+          <input id="filter-to" type="date" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3">
         </div>
         <div class="ml-auto flex items-center gap-1.5">
           <label for="filter-sort" class="text-sm text-muted">Sort</label>
-          <select id="filter-sort" name="sort" class="field-input pill-select w-auto py-2 pr-9 pl-4">
+          <select id="filter-sort" name="sort" class="field-input field-select pill-select w-auto pl-4">
             {% for value, label in sort_choices %}<option value="{{ value }}"{% if value == filters.sort %} selected{% endif %}>{{ label }}</option>{% endfor %}
           </select>
         </div>
