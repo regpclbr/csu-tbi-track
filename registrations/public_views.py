@@ -1,5 +1,6 @@
 """The public HTML pages (no login, phase F3): the open activities list, registration, the "Add to calendar"
-file and the personal evaluation page. Participants open them from email links, often on phones.
+file, the personal evaluation page and the general evaluation page (one link per activity, which emails
+the personal link). Participants open them from email links, often on phones.
 
 Thin views: every rule is in registrations.services (the same functions as the JSON endpoints under /api/);
 registrations/public_pages.py parses the posted forms and prepares what the templates show. Plain HTML forms with
@@ -17,7 +18,7 @@ from config.headers import private_token_page
 from . import public_pages as pages
 from . import services
 from .models import EvaluationSubmission, FormType
-from .public import guard_registration_request
+from .public import guard_evaluation_request, guard_registration_request
 
 NOT_AVAILABLE_TITLE = "This activity is not available"
 NOT_AVAILABLE_TEXT = "The link may be wrong, or the activity is not open to the public. See the activities you can register for now."
@@ -237,3 +238,58 @@ def evaluate_done(request: HttpRequest, token: str) -> HttpResponse:
     if not EvaluationSubmission.objects.filter(registration=registration).exists():
         return redirect("evaluate", token=token)
     return render(request, "public/evaluate_done.html", {"activity": registration.activity, "private_page": True})
+
+
+# --- General evaluation link (one per activity; emails the personal link) ---------------------------
+
+
+def _evaluation_request_activity(request: HttpRequest, activity_id: int):
+    """The activity, or the "not available" card (404) for Draft and unknown IDs (the registration page's rule)."""
+    activity = services.registration_page_activity(activity_id)
+    if activity is None:
+        return None, notice(request, title=NOT_AVAILABLE_TITLE, text=NOT_AVAILABLE_TEXT, icon="calendar", status=404)
+    return activity, None
+
+
+@require_http_methods(["GET", "POST"])
+def evaluation_request_page(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """/evaluation/<id>/: the activity's general evaluation link (shared as a QR code). The participant types the
+    email they registered with; services.request_evaluation_link emails that registration's personal link when
+    they attended and have not evaluated yet. Every accepted request (and a rate-limited or honeypot one) ends on
+    the same neutral page, so it never reveals who attended. Before the window opens (or after it closes, or
+    without an evaluation form) only the reason is shown.
+    """
+    activity, refusal = _evaluation_request_activity(request, activity_id)
+    if refusal:
+        return refusal
+    state = services.evaluation_request_state(activity)
+    if state.kind != "open":
+        title, icon, tone = EVALUATION_NOTICES["closed" if state.kind == "closed" else "not_yet_open"]
+        return notice(request, title=title, text=state.reason, icon=icon, tone=tone, ended=activity)
+
+    values, errors, status = {"email": ""}, {}, 200
+    if request.method == "POST":
+        values["email"] = request.POST.get("email", "")
+        if not guard_evaluation_request(request, values["email"], request.POST.get(services.HONEYPOT_FIELD)):
+            return redirect("evaluation_request_sent", activity_id=activity.pk)
+        try:
+            services.request_evaluation_link(activity, values["email"])
+        except ValidationError as error:
+            errors, status = pages.flat_errors(error.message_dict), 400
+        except services.RegistrationError as error:  # the window closed while the page was open
+            return notice(request, title=EVALUATION_NOTICES["closed"][0], text=str(error), icon="lock", tone="warning", ended=activity)
+        else:
+            return redirect("evaluation_request_sent", activity_id=activity.pk)
+    context = {"activity": activity, "values": values, "errors": errors, "focus": "email" if errors else "",
+               "honeypot_field": services.HONEYPOT_FIELD}
+    return render(request, "public/evaluation_request.html", context, status=status)
+
+
+@require_GET
+def evaluation_request_sent(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """The same neutral message for everyone (services.EVALUATION_REQUEST_SENT): it reveals nothing about anyone."""
+    activity, refusal = _evaluation_request_activity(request, activity_id)
+    if refusal:
+        return refusal
+    return notice(request, title="Check your email", text=services.EVALUATION_REQUEST_SENT, icon="mail", tone="success",
+                  ended=activity)

@@ -1,8 +1,7 @@
 {% extends "layouts/public.html" %}
 {% comment %}
 /register/<id>/ while registration is open (public_views.register_page). The activity summary, then the form: name,
-email, contact number, participant category (shown as text when the activity has only one: services.register picks
-it), the activity's form fields (components/answer_field.html) and the hidden honeypot. novalidate: every check is
+email, contact number, participant category (components/category_choice.html: one category is preselected), the activity's form fields (components/answer_field.html) and the hidden honeypot. novalidate: every check is
 the server's, so all messages appear together under their fields; the first field with an error gets the focus.
 {% endcomment %}
 {% block title %}Register: {{ activity.title }} · CSU-TBI Track{% endblock %}
@@ -22,25 +21,7 @@ the server's, so all messages appear together under their fields; the first fiel
     {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="email" required=True focus=focus help="Your confirmation email is sent here." %}
     {% include "public/_input.html" with name="contact_number" label="Contact number" type="tel" inputmode="tel" value=values.contact_number error=errors.contact_number autocomplete="tel" optional=True focus=focus %}
 
-    {% if categories|length == 1 %}
-      <div>
-        <p class="text-sm font-semibold text-ink">Participant category</p>
-        <p class="mt-1.5 text-[15px] text-slate-800">{{ categories.0.name }}</p>
-      </div>
-    {% else %}
-      <fieldset{% if errors.participant_category %} aria-describedby="id_participant_category-error"{% endif %}>
-        <legend class="text-sm font-semibold text-ink">You are attending as <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span></legend>
-        <div class="mt-1 space-y-0.5">
-          {% for category in categories %}
-            <label class="flex min-h-11 cursor-pointer items-center gap-3 py-1 text-sm text-ink">
-              <input type="radio" name="participant_category" value="{{ category.participant_category_id }}" class="size-5 shrink-0 accent-primary"{% if values.participant_category == category.participant_category_id|stringformat:"s" %} checked{% endif %}{% if focus == "participant_category" and forloop.first %} autofocus{% endif %}{% if errors.participant_category %} aria-invalid="true"{% endif %}>
-              <span>{{ category.name }}</span>
-            </label>
-          {% endfor %}
-        </div>
-        {% if errors.participant_category %}<p id="id_participant_category-error" class="field-error">{{ errors.participant_category }}</p>{% endif %}
-      </fieldset>
-    {% endif %}
+    {% include "components/category_choice.html" %}
 
     {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
 

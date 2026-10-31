@@ -79,8 +79,10 @@ def test_registration_page_shows_the_activity_and_the_form(client, scheduled) ->
     assert 'name="name"' in text and 'name="email"' in text and 'name="contact_number"' in text
     assert "Affiliation / Organization" in text and DATA_PRIVACY_CONSENT in text
     assert "csrfmiddlewaretoken" in text and "novalidate" in text
-    # One category: shown as text, no choice to make (services.register picks it).
-    assert "Incubatees" in text and 'name="participant_category"' not in text
+    # One category: a single radio, already checked (its ID is sent; services.register would also pick it).
+    incubatees = ParticipantCategory.objects.get(name="Incubatees")
+    radios = re.findall(r'<input type="radio" name="participant_category"[^>]*>', text)
+    assert len(radios) == 1 and f'value="{incubatees.pk}"' in radios[0] and " checked" in radios[0]
 
 
 def test_honeypot_is_hidden_with_css_not_type_hidden(client, scheduled) -> None:

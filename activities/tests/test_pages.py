@@ -354,7 +354,9 @@ def test_registration_link_only_while_registration_is_open(director, login, new_
     assert "Copy registration link" not in html and pages.FORM_MISSING_NOTICE not in html  # Draft: no notice
     move_to(new_activity, "Scheduled")
     html = client.get(detail_url(new_activity)).content.decode()
-    assert pages.FORM_MISSING_NOTICE in html and "Copy registration link" not in html and register_url not in html
+    assert pages.FORM_MISSING_NOTICE in html and "Copy registration link" not in html
+    # The Share card still shows the link of a Scheduled activity, marked Closed (owner decision, ASSUMPTIONS 332).
+    assert register_url in html and ">Closed<" in html
     with_registration_form(new_activity, director)
     html = client.get(detail_url(new_activity)).content.decode()
     assert "Copy registration link" in html and register_url in html and pages.FORM_MISSING_NOTICE not in html

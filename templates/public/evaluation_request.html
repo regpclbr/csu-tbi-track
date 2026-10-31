@@ -1,0 +1,34 @@
+{% extends "layouts/public.html" %}
+{% comment %}
+/evaluation/<id>/ while the evaluation is open (public_views.evaluation_request_page): the activity's general evaluation
+link, shared as a QR code. One field (the email used to register) and the hidden honeypot. Whatever is typed, the next
+page is the same neutral message (services.EVALUATION_REQUEST_SENT); only an invalid address gets a field error.
+{% endcomment %}
+{% block title %}Evaluate: {{ activity.title }} · CSU-TBI Track{% endblock %}
+{% block content %}
+<section class="public-card p-5 sm:p-8" aria-label="Activity">
+  {% include "public/_activity_summary.html" with activity=activity %}
+</section>
+
+<section class="public-card mt-4 p-5 sm:p-8" aria-labelledby="form-heading">
+  <h2 id="form-heading" class="text-xl font-bold tracking-tight text-ink">Evaluate this activity</h2>
+  <p class="mt-1 mb-5 text-[15px] leading-relaxed text-slate-700">Enter the email address you used to register. If you attended, we'll email you your personal evaluation link.</p>
+  {% include "public/_form_alerts.html" %}
+
+  <form method="post" action="{% url 'evaluation_request' activity.pk %}" novalidate class="space-y-5" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+    {% csrf_token %}
+    {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="email" required=True focus=focus help="The same address you registered with." %}
+
+    {# Honeypot: hidden from people with CSS (not type="hidden"); bots fill it in. #}
+    <div class="hp-field" aria-hidden="true">
+      <label for="id_{{ honeypot_field }}">Leave this field empty</label>
+      <input type="text" id="id_{{ honeypot_field }}" name="{{ honeypot_field }}" value="" tabindex="-1" autocomplete="off">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-arrow w-full sm:w-auto sm:px-8" :disabled="busy">
+      <span x-show="!busy">Email my evaluation link</span><span x-show="busy" x-cloak>Sending…</span>
+      {% include "components/icon.html" with name="send" class="size-4.5" %}
+    </button>
+  </form>
+</section>
+{% endblock %}

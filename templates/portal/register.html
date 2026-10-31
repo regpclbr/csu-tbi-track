@@ -2,7 +2,7 @@
 {% comment %}
 /startups/portal/activities/<id>/register/ (startups.portal_views.register_page): the activity, then the form. Name, email
 and contact number come from the startup's Navigatu profile (read-only here; services.register_as_startup uses them).
-The category (text when only one: the service picks it) and the activity's fields (components/answer_field.html).
+The category (components/category_choice.html: one category is preselected) and the activity's fields (components/answer_field.html).
 novalidate: every check is the service's; the first field with an error gets the focus.
 {% endcomment %}
 {% block content %}
@@ -29,25 +29,7 @@ novalidate: every check is the service's; the first field with an error gets the
 
     <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate class="space-y-5" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
       {% csrf_token %}
-      {% if categories|length == 1 %}
-        <div>
-          <p class="text-sm font-semibold text-ink">Participant category</p>
-          <p class="mt-1.5 text-[15px] text-slate-800">{{ categories.0.name }}</p>
-        </div>
-      {% else %}
-        <fieldset{% if errors.participant_category %} aria-describedby="id_participant_category-error"{% endif %}>
-          <legend class="text-sm font-semibold text-ink">You are attending as <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span></legend>
-          <div class="mt-1 space-y-0.5">
-            {% for category in categories %}
-              <label class="flex min-h-11 cursor-pointer items-center gap-3 py-1 text-sm text-ink">
-                <input type="radio" name="participant_category" value="{{ category.participant_category_id }}" class="size-5 shrink-0 accent-primary"{% if values.participant_category == category.participant_category_id|stringformat:"s" %} checked{% endif %}{% if focus == "participant_category" and forloop.first %} autofocus{% endif %}{% if errors.participant_category %} aria-invalid="true"{% endif %}>
-                <span>{{ category.name }}</span>
-              </label>
-            {% endfor %}
-          </div>
-          {% if errors.participant_category %}<p id="id_participant_category-error" class="field-error">{{ errors.participant_category }}</p>{% endif %}
-        </fieldset>
-      {% endif %}
+      {% include "components/category_choice.html" %}
 
       {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
 

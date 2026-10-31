@@ -13,6 +13,7 @@ urlpatterns = [
     path("new/", page_views.activity_create, name="create"),
     path("<int:activity_id>/", page_views.activity_detail, name="detail"),
     path("<int:activity_id>/edit/", page_views.activity_edit, name="edit"),
+    path("<int:activity_id>/qr/<str:kind>.png", page_views.qr_code, name="qr_code"),  # the Share card's QR codes
     path("<int:activity_id>/status/", page_views.activity_change_status, name="change_status"),
     path("<int:activity_id>/resource-persons/add/", page_views.resource_person_add, name="add_resource_person"),
     path(

@@ -10,7 +10,6 @@ from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
 from django.http import HttpRequest, QueryDict
-from django.urls import reverse
 from django.utils import timezone
 
 from activities.models import Activity
@@ -163,7 +162,7 @@ def activity_ics(activity: Activity, now: datetime | None = None) -> str:
     """A calendar file for one activity: one all-day event from the start date to the end date (the time
     schedule is free text, so it goes in the description). Only public facts: never who registered and
     nothing about the person who downloads it."""
-    page_url = settings.SITE_URL + reverse("register", args=[activity.pk])
+    page_url = services.registration_page_url(activity)
     host = settings.SITE_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0] or "localhost"
     stamp = (now or timezone.now()).astimezone(UTC)
     description = f"Time: {activity.time_schedule}\nTechnology Business Incubator, Caraga State University\n{page_url}"

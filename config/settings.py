@@ -163,6 +163,12 @@ REGISTRATION_MAX_ATTEMPTS_PER_IP = 300
 REGISTRATION_MAX_ATTEMPTS_PER_EMAIL = 10
 REGISTRATION_RATE_WINDOW_MINUTES = 60
 
+# The general evaluation link (/evaluation/<id>/): "email me my evaluation link" requests, counted in the
+# same cache. Over a limit the page shows the same neutral message and sends nothing (ASSUMPTIONS 335).
+EVALUATION_REQUEST_MAX_PER_IP = 300  # high on purpose: a whole campus can share one public IP address
+EVALUATION_REQUEST_MAX_PER_EMAIL = 3
+EVALUATION_REQUEST_RATE_WINDOW_MINUTES = 60
+
 # The failed-login counters live in Django's cache. A database cache is shared by
 # all server processes and survives restarts. Create its table once with:
 #   python manage.py createcachetable

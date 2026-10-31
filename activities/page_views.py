@@ -5,7 +5,7 @@ for the registration state); activities/pages.py prepares what the templates sho
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -15,8 +15,9 @@ from certificates import pages as certificate_pages
 from documents import pages as document_pages
 from documents import services as document_services
 from registrations import pages as registration_pages
+from registrations import services as registration_services
 
-from . import pages, services
+from . import pages, services, share
 from .forms import ActivityPageForm
 from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory, ResourcePerson
 
@@ -153,10 +154,12 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
         "registration": pages.registration_summary(activity),
-        "register_url": request.build_absolute_uri(reverse("register", args=[activity.pk])),
+        # The public address (SITE_URL), never the Host header of this request.
+        "register_url": registration_services.registration_page_url(activity),
     }
     if tab == "overview":
         context["detail_rows"] = pages.detail_rows(detail)
+        context["share"] = share.share_card(activity, context["registration"])
     elif tab == "history":
         context["history"], context["history_rows"] = pages.history(activity, request.GET.get("page", 1))
     elif tab == "forms":
@@ -173,6 +176,23 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     if is_htmx(request):
         return render(request, "activities/_tab.html", context, status=status)
     return render(request, "activities/detail.html", context, status=status)
+
+
+@staff_login_required
+@require_GET
+def qr_code(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
+    """The QR code (PNG) of a link on the Share card: kind "registration" or "evaluation" (activities.share.qr_url;
+    anything the card does not show, Draft included, is 404). Any active staff member. ?download=1 sends it as a
+    file for posters."""
+    activity = get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)
+    url = share.qr_url(activity, kind)
+    if url is None:
+        raise Http404("No QR code for this activity.")
+    response = HttpResponse(share.qr_png(url), content_type="image/png")
+    if request.GET.get("download") == "1":
+        response["Content-Disposition"] = f'attachment; filename="activity-{activity.pk}-{kind}-qr.png"'
+    response["Cache-Control"] = "private, no-cache"  # the link (and so the image) can change with the status
+    return response
 
 
 @permission_required(Permission.CREATE_ACTIVITY)

@@ -620,6 +620,7 @@ def evaluation_token(registration: Registration) -> str:
 
 
 def evaluation_link(registration: Registration) -> str:
+    """One person's personal evaluation link (SITE_URL, never the request's Host)."""
     return settings.SITE_URL + reverse("evaluate", args=[evaluation_token(registration)])
 
 
@@ -836,3 +837,91 @@ def send_evaluation_links(member: TBIMember, activity: Activity, now: datetime |
     for registration_id in registration_ids:
         queue_evaluation_link(registration_id)
     return len(registration_ids)
+
+
+# --- Shareable links and the general evaluation link (one per activity) --------------------------
+# Links always start with settings.SITE_URL (the public address), never the Host of the request.
+
+
+def registration_page_url(activity: Activity) -> str:
+    """The full public registration page URL (shared by staff, printed as a QR code)."""
+    return settings.SITE_URL + reverse("register", args=[activity.pk])
+
+
+def evaluation_request_url(activity: Activity) -> str:
+    """The full URL of the activity's general evaluation page (one link for everyone, printed as a QR code)."""
+    return settings.SITE_URL + reverse("evaluation_request", args=[activity.pk])
+
+
+# Always the same answer to a request, whoever typed the email: it never reveals who attended.
+EVALUATION_REQUEST_SENT = "If you attended this activity, we've sent your evaluation link to that email."
+EVALUATION_REQUEST_NOT_READY = "The evaluation is not open yet."
+
+
+@dataclass(frozen=True)
+class EvaluationRequestState:
+    """Whether the general evaluation page takes requests now. kind: "open", "not_yet_open" or "closed"."""
+
+    kind: str
+    reason: str | None
+
+
+def evaluation_request_state(activity: Activity, now: datetime | None = None) -> EvaluationRequestState:
+    """The one rule for the general evaluation link: the evaluation window (00:00 Manila on the end date until
+    the evaluation deadline, the same as the personal links) and an evaluation form. Nothing about people."""
+    now = now or timezone.now()
+    opens, _closes = evaluation_window(activity)
+    if reason := _window_reason(activity, now):
+        return EvaluationRequestState("not_yet_open" if now < opens else "closed", reason)
+    if get_form(activity, FormType.EVALUATION) is None:
+        return EvaluationRequestState("not_yet_open", EVALUATION_REQUEST_NOT_READY)
+    return EvaluationRequestState("open", None)
+
+
+def _count_evaluation_request(kind: str, value: str, limit: int) -> bool:
+    return count_attempt("evaluation_request", kind, value, limit, settings.EVALUATION_REQUEST_RATE_WINDOW_MINUTES)
+
+
+def guard_evaluation_request(ip: str, email, honeypot) -> bool:
+    """Checks for a POST to the general evaluation page, before request_evaluation_link.
+
+    - Rate limit: at most EVALUATION_REQUEST_MAX_PER_IP requests per IP address and EVALUATION_REQUEST_MAX_PER_EMAIL
+      per email (lowercased, any activity) in EVALUATION_REQUEST_RATE_WINDOW_MINUTES. Every request counts.
+    - Honeypot: HONEYPOT_FIELD filled in.
+    Returns False when the request must go no further. The page then shows the same neutral message as always
+    (EVALUATION_REQUEST_SENT) and sends nothing, so it reveals neither the limit nor who attended.
+    Logged as a WARNING with the IP address only, never the email.
+    """
+    email = str(email or "").strip().lower()
+    ip_ok = _count_evaluation_request("ip", ip, settings.EVALUATION_REQUEST_MAX_PER_IP)
+    email_ok = _count_evaluation_request("email", email, settings.EVALUATION_REQUEST_MAX_PER_EMAIL) if email else True
+    if not (ip_ok and email_ok):
+        security_log.warning("Evaluation link request rate limit reached (ip=%s, by %s).", ip, "ip" if not ip_ok else "email")
+        return False
+    if str(honeypot or "").strip():
+        security_log.warning("Evaluation link request refused: the hidden field was filled in (ip=%s).", ip)
+        return False
+    return True
+
+
+def request_evaluation_link(activity: Activity, email, now: datetime | None = None) -> None:
+    """Someone typed an email on the general evaluation page: email the personal evaluation link (the same
+    Django-Q2 task as send_evaluation_links) to every registration of this activity with that email that
+    attended and has not evaluated yet. The database allows one registration per email per activity
+    (unique_registration_per_activity_email), but every match is handled anyway.
+
+    Returns nothing on purpose: the caller always shows EVALUATION_REQUEST_SENT. The link goes only to the
+    registered address, so typing someone's email never shows their link. Raises RegistrationError when the
+    page takes no requests now (evaluation_request_state) and ValidationError for an invalid email address.
+    """
+    state = evaluation_request_state(activity, now)
+    if state.reason:
+        raise RegistrationError(state.reason)
+    email = str(email or "").strip().lower()
+    try:
+        validate_email(email)
+    except ValidationError as error:
+        raise ValidationError({"email": "Enter a valid email address."}) from error
+    recipients = evaluation_link_recipients(activity).filter(email__iexact=email)
+    for registration_id in recipients.order_by("pk").values_list("pk", flat=True):
+        transaction.on_commit(lambda registration_id=registration_id: queue_evaluation_link(registration_id), robust=True)

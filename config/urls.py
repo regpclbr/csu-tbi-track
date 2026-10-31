@@ -25,6 +25,9 @@ urlpatterns = [
     path("register/<int:activity_id>/calendar.ics", public_views.activity_calendar, name="register_calendar"),
     path("evaluate/<str:token>/", public_views.evaluate_page, name="evaluate"),
     path("evaluate/<str:token>/thanks/", public_views.evaluate_done, name="evaluate_done"),
+    # The general evaluation link of an activity (one per activity, shared as a QR code): emails the personal link.
+    path("evaluation/<int:activity_id>/", public_views.evaluation_request_page, name="evaluation_request"),
+    path("evaluation/<int:activity_id>/sent/", public_views.evaluation_request_sent, name="evaluation_request_sent"),
     # "done" first: otherwise it would be read as a token.
     path("startups/set-password/done/", startup_page_views.set_password_done, name="startup_set_password_done"),
     path("startups/set-password/<str:token>/", startup_page_views.set_password_page, name="startup_set_password"),

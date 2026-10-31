@@ -95,7 +95,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - All rules live in `registrations/services.py`: forms (`create_form`, field edits, locked once
   submitted), `validate_answers` (the only answer check), `register` (locks the activity row;
   reuses `is_registration_open`), `set_attendance`, evaluation links and `submit_evaluation`.
-- REGISTRATION.participant_category must be one of the activity's categories (auto when only one).
+- REGISTRATION.participant_category must be one of the activity's categories (auto when only one); the forms use
+  `components/category_choice.html` (one category: a preselected radio; several: required, no default).
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
   never "type your email". Public pages never show who registered.
 - Default form fields are placeholders (validate with the TBI); `seed_data` creates them once.
@@ -109,6 +110,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - An evaluation link that is submitted or past its window shows only the closed reason.
 - "Open for registration" lists use `open_activities()` + `public_activity_summary()` (public
   `/api/activities/open/`, portal `/startups/portal/api/activities/`); never a second rule.
+- Shared links start with `SITE_URL`, never the request's Host: `registration_page_url()`, `evaluation_request_url()`,
+  `evaluation_link()`. The Share card (`activities/share.py`: Scheduled = registration link, Open/Closed; Ongoing/Conducted =
+  evaluation link while open; Draft = none) and its QR codes (`activities:qr_code`, segno PNG, staff login, 404 for any link
+  the card does not show) (ASSUMPTIONS 331–337).
+- General evaluation link `/evaluation/<id>/` (one per activity): the email used to register → `request_evaluation_link()`
+  queues the existing personal link for attendees who have not evaluated; `evaluation_request_state()` is its window (the
+  personal links' window + a form). Always the same neutral page (`EVALUATION_REQUEST_SENT`), also when
+  `guard_evaluation_request()` refuses (rate limit per email/IP, honeypot). Security logs never contain an email (IP only).
 
 ## Documents, checklist and reminders
 - All rules live in `documents/services.py`. Upload: any active staff member, any activity status
@@ -233,7 +242,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (one list of nav items, each with an optional `Permission`).
 - Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
   classes `btn btn-primary|danger|warning|secondary|ghost`, empty_state, form_field, form_errors, pagination, toasts,
-  progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills, options_editor, answer_field, file_drop). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
+  progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills, options_editor, answer_field, file_drop,
+  category_choice). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
   (button whose arrow slides); movement only under `motion-safe` (ASSUMPTIONS 254). Icons only through `components/icon.html` (add Lucide 1.52.0 SVGs there).
   Every `<select>` is `field-input field-select` (one chevron, same right padding, fixed height shared with date inputs;
   never on `multiple`/`size` list boxes; a test scans the templates, ASSUMPTIONS 324). KPI cards are compact (325).
@@ -357,6 +367,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F6 (2026-10-28): startup portal pages and the Admin Console (members, roles, certificate design, system status) (312–323).
 - UI polish (2026-10-29): shared select style, compact KPI cards, collapsible My chats panel (324–326).
 - Documents at creation + preview (2026-10-30): optional documents on the New activity form, in-page document preview (327–330).
+- Category + share (2026-10-31): preselected single category, Share card with QR codes, general evaluation link (331–337).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

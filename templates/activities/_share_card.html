@@ -1,0 +1,27 @@
+{% comment %}
+The Share card of the Overview tab (activities.share.share_card; not shown for Draft).
+Scheduled: the registration link with Open / Closed (registrations.services.registration_closed_reason).
+Ongoing / Conducted: the general evaluation link, only while evaluation_request_state is open; otherwise the reason.
+{% endcomment %}
+<section class="card p-6" aria-labelledby="share-title">
+  {% include "components/section_header.html" with id="share-title" title="Share" %}
+  {% if share.registration %}
+    <div class="flex flex-wrap items-center gap-2">
+      <h3 class="text-sm font-semibold text-ink">Registration</h3>
+      {% if share.registration.open %}{% include "components/badge.html" with text="Open" tone="success" %}{% else %}{% include "components/badge.html" with text="Closed" tone="warning" %}{% endif %}
+    </div>
+    {% if not share.registration.open %}<p class="mt-1.5 text-sm text-slate-700">{{ share.registration.reason }}</p>{% endif %}
+    {% include "activities/_share_link.html" with kind="registration" url=share.registration.url label="Registration link" done="Registration link copied." %}
+  {% elif share.evaluation %}
+    <div class="flex flex-wrap items-center gap-2">
+      <h3 class="text-sm font-semibold text-ink">Evaluation</h3>
+      {% if share.evaluation.open %}{% include "components/badge.html" with text="Open" tone="success" %}{% else %}{% include "components/badge.html" with text="Not open" tone="neutral" %}{% endif %}
+    </div>
+    {% if share.evaluation.open %}
+      <p class="mt-1.5 text-sm text-slate-700">One link for everyone. Attendees enter the email they registered with and get their personal evaluation link by email.</p>
+      {% include "activities/_share_link.html" with kind="evaluation" url=share.evaluation.url label="Evaluation link" done="Evaluation link copied." %}
+    {% else %}
+      <p class="mt-1.5 flex gap-2 text-sm text-slate-700">{% include "components/icon.html" with name="info" class="mt-0.5 size-4.5 text-muted" %}{{ share.evaluation.reason }}</p>
+    {% endif %}
+  {% endif %}
+</section>

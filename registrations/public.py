@@ -16,3 +16,9 @@ def guard_registration_request(request: HttpRequest, email, honeypot) -> None:
     the service itself is never limited (startup portal, Django admin, demo seed).
     """
     services.guard_public_registration(client_ip(request), email, honeypot)
+
+
+def guard_evaluation_request(request: HttpRequest, email, honeypot) -> bool:
+    """Rate limit (per IP address and per email) and honeypot check of one request on the general evaluation
+    page (/evaluation/<id>/). False: send nothing, but show the usual neutral message (services.guard_evaluation_request)."""
+    return services.guard_evaluation_request(client_ip(request), email, honeypot)
