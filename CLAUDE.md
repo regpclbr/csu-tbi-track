@@ -215,6 +215,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Reports are never deleted; generating again = new row. Download only via `reports.views.download_report`.
 - PDF via `certificates.pdf.get_renderer()` (fake in tests); Excel cells only through `excel.safe_cell`
   (text starting with = + - @ tab CR stays text).
+- Excel layout (`reports/excel.py`, ASSUMPTIONS 338, all report types): "Report info" + short sheet names, a 5-row title
+  block + blank row, real Excel tables (unique names without spaces, non-empty unique string headers, totals/notes
+  BELOW the range, no merges inside), totals only from `Table.total` (= `period_summary`, never summed rows), date-times
+  through `excel_datetime` (Manila, no tzinfo), money `"₱"#,##0.00`, print setup on every sheet. Layout only: never count here.
 - AI narrative only through `reports/narrative.py`: Gemini gets figures, activity titles and dates only
   (`for_ai=False` columns removed), the exact prompt goes in `ai_prompt`, a failure never stops the report.
 
@@ -368,6 +372,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - UI polish (2026-10-29): shared select style, compact KPI cards, collapsible My chats panel (324–326).
 - Documents at creation + preview (2026-10-30): optional documents on the New activity form, in-page document preview (327–330).
 - Category + share (2026-10-31): preselected single category, Share card with QR codes, general evaluation link (331–337).
+- Excel report layout (2026-10-31): title block, real Excel tables, formats, totals, print setup, Report info (338).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

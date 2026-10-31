@@ -12,7 +12,8 @@ from . import metrics
 from .metrics import ReportFilters
 
 # Column kinds: how a value is formatted (PDF) and which number format it gets (Excel).
-TEXT, INT, PERCENT, DECIMAL, DATE = "text", "int", "percent", "decimal", "date"
+# MONEY has an Excel format ("₱"#,##0.00) but no report column uses it yet.
+TEXT, INT, PERCENT, DECIMAL, DATE, MONEY = "text", "int", "percent", "decimal", "date", "money"
 
 
 @dataclass
@@ -36,6 +37,9 @@ class Table:
     columns: list[Column]
     rows: list[list]
     note: str = ""
+    # The totals row (Excel only, below the table). Its values come from metrics.period_summary(), never from adding
+    # up the rows: one activity can count under several participant categories (distinct activities).
+    total: list | None = None
 
 
 @dataclass
@@ -183,34 +187,42 @@ def _activities(filters: ReportFilters) -> Section:
     return Section("activities", SECTIONS["activities"], tables=[Table("Activities", columns, rows)])
 
 
-def _by_type(filters: ReportFilters) -> Section:
+def _total_row(label: str, summary: dict, *, with_rate: bool = True) -> list:
+    """The totals row of the by-type, by-category and per-month tables: the period's own numbers."""
+    row = [label, summary["activities_conducted"], summary["registered"], summary["attended"]]
+    return row + [summary["attendance_rate"]] if with_rate else row
+
+
+def _by_type(filters: ReportFilters, summary: dict) -> Section:
     data = metrics.by_type(filters)
     rows = [[r["name"], r["activities"], r["registered"], r["attended"], r["attendance_rate"]] for r in data]
     columns = [Column("Activity type"), Column("Activities", INT), Column("Registered", INT), Column("Attended", INT),
                Column("Attendance rate", PERCENT)]
     return Section(
-        "by_type", SECTIONS["by_type"], tables=[Table("By activity type", columns, rows)],
+        "by_type", SECTIONS["by_type"], tables=[Table("By activity type", columns, rows, total=_total_row("Total", summary))],
         chart=Chart("Activities conducted by type", [(r["name"], r["activities"]) for r in data]),
     )
 
 
-def _by_category(filters: ReportFilters) -> Section:
+def _by_category(filters: ReportFilters, summary: dict) -> Section:
     data = metrics.by_category(filters)
     rows = [[r["name"], r["activities"], r["registered"], r["attended"], r["attendance_rate"]] for r in data]
     columns = [Column("Participant category"), Column("Activities for this category", INT), Column("Registered", INT),
                Column("Attended", INT), Column("Attendance rate", PERCENT)]
     return Section(
-        "by_category", SECTIONS["by_category"], tables=[Table("By participant category", columns, rows, note=metrics.CATEGORY_NOTE)],
+        "by_category", SECTIONS["by_category"], tables=[Table("By participant category", columns, rows, note=metrics.CATEGORY_NOTE,
+                      total=_total_row("Total (distinct activities)", summary))],
         chart=Chart("Attendees by participant category", [(r["name"], r["attended"]) for r in data]),
     )
 
 
-def _monthly(filters: ReportFilters) -> Section:
+def _monthly(filters: ReportFilters, summary: dict) -> Section:
     data = metrics.per_month(filters)
     rows = [[r["label"], r["activities"], r["registered"], r["attended"]] for r in data]
     columns = [Column("Month"), Column("Activities", INT), Column("Registered", INT), Column("Attended", INT)]
     return Section(
-        "monthly", SECTIONS["monthly"], tables=[Table("Per month (by end date)", columns, rows)],
+        "monthly", SECTIONS["monthly"],
+        tables=[Table("Per month (by end date)", columns, rows, total=_total_row("Total", summary, with_rate=False))],
         chart=Chart("Activities conducted per month", [(r["label"], r["activities"]) for r in data]),
     )
 
@@ -303,9 +315,9 @@ def build_content(
         "summary": lambda: _summary(filters, summary),
         AI_SUMMARY: lambda: Section(AI_SUMMARY, SECTIONS[AI_SUMMARY]),
         "activities": lambda: _activities(filters),
-        "by_type": lambda: _by_type(filters),
-        "by_category": lambda: _by_category(filters),
-        "monthly": lambda: _monthly(filters),
+        "by_type": lambda: _by_type(filters, summary),
+        "by_category": lambda: _by_category(filters, summary),
+        "monthly": lambda: _monthly(filters, summary),
         "evaluation": lambda: _evaluation(filters),
         "documents": lambda: _documents(filters, now),
         "certificates": lambda: _certificates(filters, summary, today),

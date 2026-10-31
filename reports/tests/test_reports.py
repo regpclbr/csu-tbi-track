@@ -139,19 +139,19 @@ def test_excel_report_has_real_numbers_formats_and_frozen_headers(director, queu
     report.refresh_from_db()
     assert report.file_path.name.endswith(".xlsx")
     workbook = load_workbook(report.file_path.path)
-    assert workbook.sheetnames == ["Filters", "Summary", "Activities conducted", "By activity type",
-                                   "By participant category", "Per month", "Evaluation results"]
-    activities = workbook["Activities conducted"]
-    assert activities.freeze_panes == "A2"
-    header = [cell.value for cell in activities[1]]
+    assert workbook.sheetnames == ["Report info", "Summary", "Activities", "By type", "By category", "Per month",
+                                   "Evaluation"]
+    activities = workbook["Activities"]
+    assert activities.freeze_panes == "A8"  # the title block (5 rows + 1 blank), then the header on row 7
+    header = [cell.value for cell in activities[7]]
     assert header[:5] == ["Title", "Type", "Categories", "Start", "End"]
-    row = {name: cell for name, cell in zip(header, activities[2])}
+    row = {name: cell for name, cell in zip(header, activities[8])}
     assert row["Title"].value == "Pitching Workshop"
-    assert isinstance(row["Start"].value, datetime) and row["Start"].number_format == "yyyy-mm-dd"
+    assert isinstance(row["Start"].value, datetime) and row["Start"].number_format == "mmm d, yyyy"
     assert row["Registered"].value == 2 and isinstance(row["Registered"].value, int)
     assert row["Attendance rate"].value == 0.5 and row["Attendance rate"].number_format == "0.0%"
     assert row["Average rating"].value == 5.0 and row["Average rating"].number_format == "0.00"
-    summary = {r[0].value: r[1] for r in workbook["Summary"].iter_rows(min_row=2) if r[0].value}
+    summary = {r[0].value: r[1] for r in workbook["Summary"].iter_rows(min_row=8) if r[0].value}
     assert summary["Attendance rate (attended / registered)"].number_format == "0.0%"
 
 
@@ -163,8 +163,8 @@ def test_excel_writes_formula_like_titles_as_text(director, queued, make_activit
     services.build_report(report.pk, now=TEST_NOW)
     report.refresh_from_db()
 
-    sheet = load_workbook(report.file_path.path)["Activities conducted"]
-    titles = [sheet.cell(row=row, column=1) for row in range(2, 5)]
+    sheet = load_workbook(report.file_path.path)["Activities"]
+    titles = [sheet.cell(row=row, column=1) for row in range(8, 11)]
     assert [cell.value for cell in titles] == [FORMULA_TITLE, "+cmd|' /C calc'!A0", "@SUM(1+1)"]
     assert all(cell.data_type == "s" for cell in titles)  # text, not a formula
     with zipfile.ZipFile(report.file_path.path) as archive:
@@ -237,8 +237,8 @@ def test_report_is_still_generated_when_gemini_is_not_set_up(director, queued, y
     services.build_report(report.pk, now=TEST_NOW)
     report.refresh_from_db()
     assert report.ai_prompt is None  # nothing was sent
-    sheet = load_workbook(report.file_path.path)["AI-generated summary"]
-    assert sheet["A2"].value.startswith("AI summary not included: The AI assistant is not set up")
+    sheet = load_workbook(report.file_path.path)["AI summary"]
+    assert sheet["A7"].value.startswith("AI summary not included: The AI assistant is not set up")
 
 
 def test_unexpected_ai_error_never_stops_the_report(director, queued, year_data, fake_gemini, fake_pdf_renderer) -> None:

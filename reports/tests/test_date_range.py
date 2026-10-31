@@ -123,14 +123,14 @@ def test_pdf_header_shows_the_exact_range_in_words(director, queued, make_activi
     assert "Period: January 1 – June 30, 2026 (2026-01-01 to 2026-06-30)" in text
 
 
-def test_excel_filters_sheet_shows_the_exact_range(director, queued, make_activity) -> None:
+def test_excel_report_info_sheet_shows_the_exact_range(director, queued, make_activity) -> None:
     make_activity(start=date(2026, 3, 10))
     report = request(director, "2026-01-01", "2026-06-30", format="excel")
     services.build_report(report.pk, now=TEST_NOW)
     report.refresh_from_db()
     workbook = load_workbook(report.file_path.path)
-    assert workbook.sheetnames[0] == "Filters"
-    rows = {row[0].value: row[1].value for row in workbook["Filters"].iter_rows(min_row=2)}
+    assert workbook.sheetnames[0] == "Report info"
+    rows = {row[0].value: row[1].value for row in workbook["Report info"].iter_rows(min_row=7)}
     assert rows["Period"] == "January 1 – June 30, 2026"
     assert rows["Period start"].date() == date(2026, 1, 1) and rows["Period end"].date() == date(2026, 6, 30)
     assert "Result" not in rows  # there were conducted activities
@@ -169,11 +169,11 @@ def test_future_range_in_excel(director, queued) -> None:
     services.build_report(report.pk, now=TEST_NOW)
     report.refresh_from_db()
     workbook = load_workbook(report.file_path.path)
-    rows = {row[0].value: row[1].value for row in workbook["Filters"].iter_rows(min_row=2)}
+    rows = {row[0].value: row[1].value for row in workbook["Report info"].iter_rows(min_row=7)}
     assert rows["Result"] == NO_ACTIVITIES
-    for name in ("Summary", "Activities conducted"):
+    for name in ("Summary", "Activities"):
         sheet = workbook[name]
-        assert sheet["A1"].value == NO_ACTIVITIES and sheet.max_row == 1, name
+        assert sheet["A7"].value == NO_ACTIVITIES and sheet.max_row == 7 and not sheet.tables, name
 
 
 def test_certificates_section_keeps_its_own_dates(director, queued, fake_pdf_renderer) -> None:
