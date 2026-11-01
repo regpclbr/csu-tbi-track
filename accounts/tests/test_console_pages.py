@@ -95,7 +95,7 @@ def test_members_list_with_search_and_filters(admin, make_member, roles) -> None
 
 def test_list_members_service(admin_member, make_member, roles) -> None:
     make_member("Director")
-    assert services.list_members({"q": "ADMIN@"}).total == 1
+    assert services.list_members({"q": "SYSTEM.ADMINISTRATOR@"}).total == 1
     assert services.list_members({"role": roles["Director"].pk}).items[0].role.role_name == "Director"
     assert services.list_members({"is_active": False}).total == 0
 
@@ -111,7 +111,7 @@ def test_invite_a_member_sends_the_invitation(admin, roles) -> None:
 @pytest.mark.parametrize(("data", "field", "message"), [
     ({"name": "Ana", "email": "ana@example.com", "role": ""}, "role", "Choose a role."),
     ({"name": "Ana", "email": "not-an-email", "role": "DIRECTOR"}, "email", "Enter a valid email address."),
-    ({"name": "Again", "email": "ADMIN@example.com", "role": "DIRECTOR"}, "email", "A member with this email already exists."),
+    ({"name": "Again", "email": "SYSTEM.Administrator@example.com", "role": "DIRECTOR"}, "email", "A member with this email already exists."),
     ({"name": "  ", "email": "ana@example.com", "role": "DIRECTOR"}, "name", "Enter the member&#x27;s name."),
 ])
 def test_invite_errors_appear_under_their_fields(admin, roles, data, field, message) -> None:
@@ -125,9 +125,9 @@ def test_invite_errors_appear_under_their_fields(admin, roles, data, field, mess
 
 def test_the_last_admin_guard_message_is_shown(admin, admin_member, roles) -> None:
     response = admin.post(reverse("accounts:console_member_role", args=[admin_member.pk]), {"role": roles["Director"].pk})
-    assert "At least one active Admin must always exist." in toasts(admin, response)
+    assert "At least one active System Administrator must always exist." in toasts(admin, response)
     admin_member.refresh_from_db()
-    assert admin_member.role.role_name == "Admin"
+    assert admin_member.role.role_name == "System Administrator"
 
 
 def test_you_cannot_deactivate_or_reset_yourself(admin, admin_member) -> None:

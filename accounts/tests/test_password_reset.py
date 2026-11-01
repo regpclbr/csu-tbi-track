@@ -28,7 +28,7 @@ def temporary_password() -> str:
 
 def test_admin_reset_emails_a_temporary_password_and_forces_a_change(client, admin_member, make_member, caplog) -> None:
     member = make_member("Director")
-    with caplog.at_level("INFO", logger="accounts.security"):
+    with caplog.at_level("INFO", logger="accounts.audit"):
         services.reset_member_password(admin_member, member)
     member.refresh_from_db()
     assert member.must_change_password is True and not member.check_password(STRONG_PASSWORD)
@@ -36,7 +36,7 @@ def test_admin_reset_emails_a_temporary_password_and_forces_a_change(client, adm
     assert message.to == [member.email] and "password was reset" in message.subject
     password = temporary_password()
     assert member.check_password(password)
-    assert password not in caplog.text and f"Password reset by an Admin: member_id={member.pk}" in caplog.text
+    assert password not in caplog.text and f"Password reset by an administrator: member_id={member.pk}" in caplog.text
 
     response = client.post("/accounts/login/", {"email": member.email, "password": password})
     assert response.status_code == 302 and response.url == "/accounts/password/change/"

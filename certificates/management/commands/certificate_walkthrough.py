@@ -1,7 +1,8 @@
 """DEMO ONLY: try the Step 9 certificate flow step by step on the development database.
 
-Every step calls the same services as the JSON API (no shortcuts), acting as the first active
-Admin (or --member <email>). Refuses to run when DEBUG is False.
+Every step calls the same services as the JSON API (no shortcuts), acting as --member <email> or, by default, the
+first active member allowed to do that step: the System Administrator for "design" (can_manage_users), a member who
+can create activities for every other step (separation of duties, ASSUMPTIONS 339). Refuses to run when DEBUG is False.
 
     python manage.py certificate_walkthrough design <folder with the sample PNGs>
     python manage.py certificate_walkthrough activity
@@ -61,16 +62,16 @@ class Command(BaseCommand):
         parser.add_argument("step", choices=["design", "activity", "generate", "preview", "review", "sign", "approve", "reject",
                                              "handover", "evaluate", "status", "save-pdf"])
         parser.add_argument("values", nargs="*", help="The step's values (IDs, folder, position, output file).")
-        parser.add_argument("--member", help="Act as this staff member (default: the first active Admin).")
+        parser.add_argument("--member", help="Act as this staff member (default: the first active member allowed to do the step).")
         parser.add_argument("--name", help="evaluate: the name to print on the certificate.")
         parser.add_argument("--email", help="evaluate: the address to send the certificate to.")
 
     def handle(self, *args, **options) -> None:
         if not settings.DEBUG:
             raise CommandError("certificate_walkthrough is demo-only and refuses to run when DEBUG is False.")
-        self.member = self.find_member(options["member"])
-        self.options = options
         step, values = options["step"], options["values"]
+        self.member = self.find_member(options["member"], manages_users=step == "design")
+        self.options = options
         method = getattr(self, "step_" + step.replace("-", "_"))
         try:
             inspect.signature(method).bind(*values)
@@ -83,9 +84,10 @@ class Command(BaseCommand):
 
     # --- helpers ---
 
-    def find_member(self, email: str | None) -> TBIMember:
+    def find_member(self, email: str | None, manages_users: bool) -> TBIMember:
         members = TBIMember.objects.filter(is_active=True).select_related("role")
-        member = members.filter(email__iexact=email).first() if email else members.filter(role__can_manage_users=True).order_by("pk").first()
+        flag = {"role__can_manage_users": True} if manages_users else {"role__can_create_activity": True}
+        member = members.filter(email__iexact=email).first() if email else members.filter(**flag).order_by("pk").first()
         if member is None:
             raise CommandError("No active member found (run seed_data, or pass --member <email>).")
         return member

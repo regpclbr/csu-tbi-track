@@ -222,7 +222,7 @@ def active_design() -> tuple[CertificateTemplate, CertificateSignatory, Certific
     director = CertificateSignatory.objects.filter(position=Position.DIRECTOR, is_active=True).first()
     missing = [label for label, row in (("certificate template", template), ("VP signatory", vp), ("Director signatory", director)) if row is None]
     if missing:
-        raise CertificateError(f"Cannot generate certificates: there is no active {', no active '.join(missing)}. The Admin must add it first.")
+        raise CertificateError(f"Cannot generate certificates: there is no active {', no active '.join(missing)}. The System Administrator must add it in the Admin Console first.")
     return template, vp, director
 
 

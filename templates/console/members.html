@@ -44,7 +44,7 @@ Every action is a POST to the services (accounts.services); refusals (last Admin
   <section class="card p-6" aria-labelledby="members-title">
     <div class="mb-5">
       <h2 id="members-title" class="card-title">Members</h2>
-      <p class="card-subtitle">Members are never deleted: deactivate them instead. At least one active Admin must always remain.</p>
+      <p class="card-subtitle">Members are never deleted: deactivate them instead. At least one active System Administrator must always remain.</p>
     </div>
     <form method="get" action="{% url 'accounts:console' %}" role="search" aria-label="Filter members"
           hx-get="{% url 'accounts:console' %}" hx-target="#member-results" hx-push-url="true"

@@ -232,8 +232,8 @@ def test_activities_work_with_added_categories(client, director, valid_data, fiv
 
 
 @pytest.mark.django_db
-def test_admin_activity_form_offers_every_category(client, admin_member, five_categories) -> None:
-    client.force_login(admin_member)
+def test_admin_activity_form_offers_every_category(client, both_flags_member, five_categories) -> None:
+    client.force_login(both_flags_member)
     choices = client.get("/admin/activities/activity/add/").context["adminform"].form.fields["participant_categories"].queryset
     assert sorted(c.name for c in choices) == ["Alumni", "Faculty", "Incubatees", "MSMEs", "Students"]
 

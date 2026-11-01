@@ -18,7 +18,7 @@ ROLE_PERMISSIONS = {
     "Incubation Project Head": (True, False),
     "Community Development Head": (True, False),
     "Admin Staff": (False, False),
-    "Admin": (True, True),
+    "System Administrator": (False, True),  # separation of duties (ASSUMPTIONS 85, 339)
 }
 
 
@@ -32,7 +32,7 @@ def test_has_permission_for_each_role(make_member, role_name, expected) -> None:
 
 @pytest.mark.django_db
 def test_inactive_anonymous_and_startup_have_no_permissions(make_member) -> None:
-    inactive_admin = make_member("Admin", is_active=False)
+    inactive_admin = make_member("System Administrator", is_active=False)
     startup = Startup(name="Acme", email="acme@example.com")
     for user in (inactive_admin, AnonymousUser(), startup, None):
         assert not has_permission(user, Permission.CREATE_ACTIVITY)

@@ -106,7 +106,7 @@ watermarked PDF in a new tab; Download appears once the final PDF exists. Eviden
         </div>
       </form>
     {% elif activity.status.name == "Conducted" %}
-      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Generate them once the attendance is complete and the Admin has set up the certificate design and signatories." %}
+      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Generate them once the attendance is complete and the System Administrator has set up the certificate design and signatories." %}
     {% else %}
       {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Certificates are generated after the activity is Conducted." %}
     {% endif %}

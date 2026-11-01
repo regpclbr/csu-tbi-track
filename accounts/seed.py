@@ -30,7 +30,10 @@ ROLES: dict[str, tuple[bool, bool, str]] = {
     "Incubation Project Head": (True, False, "Leads incubation programs for startups."),
     "Community Development Head": (True, False, "Leads community and MSME programs."),
     "Admin Staff": (False, False, "Supports activities and documents; cannot create activities."),
-    Role.ADMIN: (True, True, "System administrator; manages user accounts."),
+    # Separation of duties (ASSUMPTIONS 85, 339): manages users, never creates activities.
+    Role.SYSTEM_ADMINISTRATOR: (
+        False, True, "System administrator: manages user accounts and system settings; does not create activities."
+    ),
 }
 
 START = DocumentType.DueReference.START_DATE
@@ -161,7 +164,7 @@ def ensure_admin_account(email: str, password: str, name: str) -> tuple[TBIMembe
     The password and must_change_password are only set when the account is created,
     so running the seed again never resets a password the admin has changed.
     """
-    admin_role = Role.objects.get(role_name=Role.ADMIN)
+    admin_role = Role.objects.get(role_name=Role.SYSTEM_ADMINISTRATOR)
     existing = TBIMember.objects.filter(email__iexact=email).first()
     if existing:
         if existing.role_id != admin_role.pk:

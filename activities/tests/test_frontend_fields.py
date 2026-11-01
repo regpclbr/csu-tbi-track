@@ -49,7 +49,7 @@ def test_lookups_list_id_and_name(client, director) -> None:
     assert names["participant_categories"] == ["Faculty", "Incubatees", "MSMEs"]
     assert names["activity_statuses"] == ["Draft", "Scheduled", "Ongoing", "Conducted"]
     assert names["document_statuses"] == ["For Review", "Approved"]
-    assert "Admin" in names["roles"] and len(names["roles"]) == 5
+    assert "System Administrator" in names["roles"] and len(names["roles"]) == 5
 
 
 def test_lookups_need_a_staff_login(client) -> None:

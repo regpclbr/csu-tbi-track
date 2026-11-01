@@ -8,7 +8,8 @@ on purpose, to show that the Excel report writes it as text, never as a formula.
 
 - Refuses to run when DEBUG is False, so it can never touch a production database.
 - All people and companies are invented. Every email ends in @demo.example.com.
-- Demo staff accounts have unusable passwords (they cannot log in).
+- One demo staff account per role (System Administrator included), with unusable passwords: set one with
+  `python manage.py changepassword <email>` to log in during a demo (never stored in code or .env).
 - Safe to run twice: an activity that already exists (by title) is skipped; certificates are
   only created for a demo activity that has none yet.
 """
@@ -237,13 +238,18 @@ class Command(BaseCommand):
     # --- people -----------------------------------------------------------------
 
     def create_demo_staff(self) -> dict[str, TBIMember]:
-        """One demo account per non-Admin role. Unusable passwords: they cannot log in."""
+        """One demo account per role (System Administrator included), e.g. director@demo.example.com, to show what
+        each role may do. Unusable passwords: nobody can log in until a password is set on this machine with
+        `python manage.py changepassword <email>` (typed in the terminal, never stored in code or .env).
+        must_change_password is off so a demo is not interrupted (ASSUMPTIONS 339)."""
         staff = {}
-        for role in Role.objects.exclude(role_name=Role.ADMIN):
+        for role in Role.objects.order_by("role_name"):
             email = f"{slugify(role.role_name)}@{DEMO_DOMAIN}"
             member = TBIMember.objects.filter(email=email).first()
             if member is None:
-                member = TBIMember.objects.create_user(email, f"Demo {role.role_name}", role, password=None)
+                member = TBIMember.objects.create_user(
+                    email, f"Demo {role.role_name}", role, password=None, must_change_password=False
+                )
             staff[role.role_name] = member
         return staff
 
@@ -447,15 +453,17 @@ class Command(BaseCommand):
     # --- certificates (Step 10: so the certificate cards have numbers) -----------------
 
     def demo_design(self) -> bool:
-        """Use the active design; if there is none, add an invented one as the first active Admin."""
+        """Use the active design; if there is none, add an invented one as the first active System Administrator."""
         try:
             certificate_services.active_design()
             return True
         except certificate_services.CertificateError:
             pass
-        admin = TBIMember.objects.filter(role__role_name=Role.ADMIN, is_active=True).order_by("pk").first()
+        admin = TBIMember.objects.filter(role__can_manage_users=True, is_active=True).order_by("pk").first()
         if admin is None:
-            self.stdout.write(self.style.WARNING("  certificates skipped: no active design and no active Admin (run seed_data)."))
+            self.stdout.write(self.style.WARNING(
+                "  certificates skipped: no active design and no active System Administrator (run seed_data)."
+            ))
             return False
 
         def png(draw, *args) -> SimpleUploadedFile:

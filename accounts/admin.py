@@ -1,4 +1,4 @@
-"""Admin for roles and TBI members. Only Admin-role members can open the admin site.
+"""Admin for roles and TBI members. Only members whose role can manage users (System Administrator) open the admin site.
 
 Member changes in the Django admin go through accounts.services, so the same rules
 apply as in the Admin Console: temporary password + invitation, no deleting, an Admin
@@ -7,9 +7,11 @@ cannot deactivate themselves, and at least one active Admin always remains.
 
 from django import forms
 from django.contrib import admin, messages
+from django.contrib.admin.options import ActionLocation
 
 from . import services
 from .models import Role, TBIMember
+from .permissions import Permission, has_permission
 
 
 class NoDeleteAdminMixin:
@@ -33,9 +35,37 @@ class ReadOnlyAdminMixin:
         return False
 
 
+class ActivityDataAdminMixin:
+    """Activity data (activities, resource-person links, registrations) in the Django admin: view only, with no
+    actions, for a member without can_create_activity. The System Administrator opens the admin site (it manages
+    users and master data) but must not change activity data (separation of duties, ASSUMPTIONS 339). The services
+    refuse anyway; this keeps the admin from offering what would only be refused."""
+
+    def _can_change_activity_data(self, request) -> bool:
+        return has_permission(request.user, Permission.CREATE_ACTIVITY)
+
+    def has_add_permission(self, request, *args) -> bool:
+        return self._can_change_activity_data(request) and super().has_add_permission(request, *args)
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._can_change_activity_data(request) and super().has_change_permission(request, obj)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return self._can_change_activity_data(request) and super().has_delete_permission(request, obj)
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return request.user.is_active and request.user.is_staff
+
+    def get_actions(self, request, action_location=ActionLocation.CHANGE_LIST):
+        if not self._can_change_activity_data(request):
+            return {}
+        return super().get_actions(request, action_location=action_location)
+
+
 class RoleAdminForm(forms.ModelForm):
-    """Only the two permission flags can change. The last-Admin rule is checked here so the
-    error shows on the form; the save goes through accounts.services.update_role_permissions."""
+    """Only the two permission flags can change. The separation-of-duties rule (never both flags) and the
+    last-System-Administrator rule are checked here so the errors show on the form; the save goes through
+    accounts.services.update_role_permissions (which checks both again and writes the audit log)."""
 
     class Meta:
         model = Role
@@ -43,11 +73,15 @@ class RoleAdminForm(forms.ModelForm):
 
     def clean(self) -> dict:
         cleaned = super().clean()
-        if self.instance.can_manage_users and not cleaned.get("can_manage_users"):
-            try:
+        try:
+            services.check_role_flags(
+                can_create_activity=bool(cleaned.get("can_create_activity")),
+                can_manage_users=bool(cleaned.get("can_manage_users")),
+            )
+            if self.instance.can_manage_users and not cleaned.get("can_manage_users"):
                 services.ensure_admins_remain_without_role(self.instance)
-            except services.MemberManagementError as error:
-                raise forms.ValidationError(str(error)) from error
+        except services.MemberManagementError as error:
+            raise forms.ValidationError(str(error)) from error
         return cleaned
 
 
@@ -130,7 +164,13 @@ class TBIMemberAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
 
     def save_model(self, request, obj: TBIMember, form, change: bool) -> None:
         if change:
-            super().save_model(request, obj, form, change)
+            new_role = obj.role
+            if "role" in form.changed_data:  # through the service: the last-admin guard and the audit log
+                obj.role = TBIMember.objects.select_related("role").get(pk=obj.pk).role
+                super().save_model(request, obj, form, change)  # name / email
+                services.change_member_role(request.user, obj, new_role)
+            else:
+                super().save_model(request, obj, form, change)
         else:
             services.save_new_member_with_invitation(obj)
             self.message_user(request, f"Invitation with a temporary password sent to {obj.email}.")

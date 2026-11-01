@@ -24,7 +24,7 @@ def test_refuses_without_debug(admin_member, settings) -> None:
         run("status", "1")
 
 
-def test_whole_flow(admin_member, defaults, settings, tmp_path, run_tasks, django_capture_on_commit_callbacks, capsys) -> None:
+def test_whole_flow(admin_member, director, defaults, settings, tmp_path, run_tasks, django_capture_on_commit_callbacks, capsys) -> None:
     settings.DEBUG = True
     call_command("make_sample_certificate_images", str(tmp_path))
     with django_capture_on_commit_callbacks(execute=True):
@@ -64,8 +64,9 @@ def test_whole_flow(admin_member, defaults, settings, tmp_path, run_tasks, djang
 
 
 @pytest.mark.parametrize("moment", [time(23, 30), time(23, 59, 59), time(0, 0, 30)], ids=["23:30", "23:59:59", "00:00:30"])
-def test_activity_step_works_at_any_time_of_day(admin_member, defaults, settings, clock, moment) -> None:
-    """The activity starts today and its registration deadline must be on that date. "now + 1 hour" was tomorrow
+def test_activity_step_works_at_any_time_of_day(director, defaults, settings, clock, moment) -> None:
+    """(Acts as the Director: since ASSUMPTIONS 339 only "design" defaults to the System Administrator.)
+    The activity starts today and its registration deadline must be on that date. "now + 1 hour" was tomorrow
     after 23:00 Manila time and the step failed; at 23:59:59 the clock even passes midnight during the step."""
     settings.DEBUG = True
     clock(datetime.combine(datetime(2026, 11, 20).date(), moment))

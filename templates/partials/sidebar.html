@@ -1,6 +1,8 @@
 {% load static %}
-{# Sidebar (on the gradient): logo, WORKSPACE items, ADMIN items (only with can_manage_users), the member in a glass card and Log out. Items come from config.frontend. #}
-<div class="flex h-20 shrink-0 items-center gap-3 px-6">
+{% comment %}Sidebar (on the gradient): logo, WORKSPACE items, SYSTEM items (only with can_manage_users), the member in a glass card
+and Log out. Items come from config.frontend. Compact spacing: everything fits in a 1366x768 browser window (about 620 px
+tall) without a scrollbar; only smaller heights scroll the nav (ASSUMPTIONS 339).{% endcomment %}
+<div class="flex h-16 shrink-0 items-center gap-3 px-6">
   <a href="{% url 'home' %}" class="flex items-center gap-3 rounded-lg">
     <img src="{% static 'img/logo-96.png' %}" alt="" width="40" height="40" class="size-10 rounded-[12px] ring-1 ring-white/25">
     <span class="text-lg font-bold tracking-tight">CSU-TBI Track</span>
@@ -10,16 +12,16 @@
   </button>
 </div>
 
-<nav class="flex-1 overflow-y-auto px-4 py-4" aria-label="Main">
-  <p class="px-3 pb-3 text-xs font-semibold tracking-wider text-sidebar-muted uppercase" id="nav-workspace">Workspace</p>
-  <ul class="space-y-1" aria-labelledby="nav-workspace">
+<nav class="flex-1 overflow-y-auto px-4 pt-2 pb-3" aria-label="Main">
+  <p class="px-3 pb-2 text-xs font-semibold tracking-wider text-sidebar-muted uppercase" id="nav-workspace">Workspace</p>
+  <ul class="space-y-0.5" aria-labelledby="nav-workspace">
     {% for item in layout.workspace %}
       <li>{% include "partials/nav_item.html" %}</li>
     {% endfor %}
   </ul>
   {% if layout.admin %}
-    <p class="px-3 pt-6 pb-3 text-xs font-semibold tracking-wider text-sidebar-muted uppercase" id="nav-admin">Admin</p>
-    <ul class="space-y-1" aria-labelledby="nav-admin">
+    <p class="px-3 pt-4 pb-2 text-xs font-semibold tracking-wider text-sidebar-muted uppercase" id="nav-system">System</p>
+    <ul class="space-y-0.5" aria-labelledby="nav-system">
       {% for item in layout.admin %}
         <li>{% include "partials/nav_item.html" %}</li>
       {% endfor %}
@@ -27,9 +29,9 @@
   {% endif %}
 </nav>
 
-<div class="space-y-1.5 px-4 pt-3 pb-5">
-  <a href="{% url 'accounts:password_change' %}" class="sidebar-glass flex items-center gap-3 rounded-2xl px-3 py-3 transition-colors" title="Change your password">
-    <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-sidebar" aria-hidden="true">{{ layout.initials }}</span>
+<div class="space-y-1 px-4 pt-2 pb-3">
+  <a href="{% url 'accounts:password_change' %}" class="sidebar-glass flex items-center gap-3 rounded-2xl px-3 py-2 transition-colors" title="Change your password">
+    <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-sidebar" aria-hidden="true">{{ layout.initials }}</span>
     <span class="min-w-0">
       <span class="block truncate text-sm font-semibold">{{ user.name }}</span>
       <span class="block truncate text-xs text-white/90">{{ user.role.role_name }}</span>
@@ -38,7 +40,7 @@
   </a>
   <form method="post" action="{% url 'accounts:logout' %}">
     {% csrf_token %}
-    <button type="submit" class="flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/10">
+    <button type="submit" class="flex w-full items-center gap-3 rounded-full px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10">
       {% include "components/icon.html" with name="log-out" %}
       Log out
     </button>

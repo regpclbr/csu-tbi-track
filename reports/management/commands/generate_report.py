@@ -5,7 +5,7 @@
     python manage.py generate_report --type accomplishment --format pdf --start 2026-01-01 --end 2026-12-31 --sections summary,ai_summary,activities
     python manage.py generate_report --report 12        # build a report that is still pending (or failed)
 
-Acts as --member <email> (default: the first active Admin). The member needs can_create_activity.
+Acts as --member <email> (default: the first active member who can create activities; never the System Administrator).
 Prints the report ID, the file on disk and the download URL.
 """
 
@@ -30,7 +30,7 @@ class Command(BaseCommand):
         parser.add_argument("--end", help="Last day, YYYY-MM-DD, on or after --start (required).")
         parser.add_argument("--activity-type", help="Activity type ID (optional filter).")
         parser.add_argument("--sections", help="Comma-separated section keys (default: the type's sections).")
-        parser.add_argument("--member", help="Email of the member generating it (default: the first active Admin).")
+        parser.add_argument("--member", help="Email of the member generating it (default: the first active member who can create activities).")
         parser.add_argument("--report", type=int, help="Build an existing report that has no file yet.")
 
     def handle(self, *args, **options) -> None:
@@ -80,7 +80,8 @@ class Command(BaseCommand):
             if member is None:
                 raise CommandError(f"No active member with the email {email}.")
             return member
-        member = TBIMember.objects.filter(role__role_name=Role.ADMIN, is_active=True).order_by("pk").first()
+        # By the permission flag, never the role name: the System Administrator cannot generate reports (ASSUMPTIONS 339).
+        member = TBIMember.objects.filter(role__can_create_activity=True, is_active=True).order_by("pk").first()
         if member is None:
-            raise CommandError("No active Admin found. Use --member <email>.")
+            raise CommandError("No active member who can create activities found. Use --member <email>.")
         return member

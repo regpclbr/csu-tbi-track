@@ -149,7 +149,7 @@ def clock(monkeypatch):
 
 @pytest.fixture
 def admin_role() -> Role:
-    return Role.objects.create(role_name="Admin", can_create_activity=True, can_manage_users=True)
+    return Role.objects.create(role_name=Role.SYSTEM_ADMINISTRATOR, can_create_activity=False, can_manage_users=True)
 
 
 @pytest.fixture
@@ -276,4 +276,14 @@ def make_member(roles):
 
 @pytest.fixture
 def admin_member(make_member) -> TBIMember:
-    return make_member("Admin")
+    return make_member(Role.SYSTEM_ADMINISTRATOR)
+
+
+@pytest.fixture
+def both_flags_member(roles) -> TBIMember:
+    """For the tests of the Django-admin activity screens, which need is_staff (can_manage_users) AND
+    can_create_activity. No real role may have both (separation of duties, ASSUMPTIONS 339: the services refuse
+    it), so in practice those screens are view only; this test-only role is written straight to the database."""
+    role = Role.objects.create(role_name="Test role with both flags", can_create_activity=True, can_manage_users=True)
+    return TBIMember.objects.create_user("both.flags@example.com", "Test Both Flags", role, STRONG_PASSWORD,
+                                         must_change_password=False)

@@ -8,9 +8,13 @@ from django.db.models.functions import Lower
 
 
 class Role(models.Model):
-    """A staff role. Never deleted: the app depends on the fixed role names."""
+    """A staff role. Never deleted. Permissions come only from the two flags, never from the name.
 
-    ADMIN = "Admin"  # role_name used by create_superuser
+    SYSTEM_ADMINISTRATOR is the role create_superuser and seed_data give the system administrator: it manages users
+    and does not create activities (separation of duties, ASSUMPTIONS 85 and 339).
+    """
+
+    SYSTEM_ADMINISTRATOR = "System Administrator"
 
     role_id = models.BigAutoField(primary_key=True)
     role_name = models.CharField(max_length=100, unique=True)
@@ -46,14 +50,14 @@ class TBIMemberManager(BaseUserManager):
         return member
 
     def create_superuser(self, email: str, name: str, password: str | None = None, **extra_fields) -> TBIMember:
-        """Create an Admin account (used by `manage.py createsuperuser`).
+        """Create a System Administrator account (used by `manage.py createsuperuser`).
 
-        The Admin role must already exist (it is loaded by the seed command in Step 2).
+        The System Administrator role must already exist (it is loaded by the seed command in Step 2).
         """
         try:
-            role = Role.objects.get(role_name=Role.ADMIN)
+            role = Role.objects.get(role_name=Role.SYSTEM_ADMINISTRATOR)
         except Role.DoesNotExist as exc:
-            raise ValueError("Load the roles first: the 'Admin' role does not exist.") from exc
+            raise ValueError(f"Load the roles first: the '{Role.SYSTEM_ADMINISTRATOR}' role does not exist.") from exc
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("must_change_password", False)
         return self.create_user(email, name, role, password, **extra_fields)
@@ -97,11 +101,12 @@ class TBIMember(AbstractBaseUser):
 
     @property
     def is_staff(self) -> bool:
-        """Only members whose role can manage users (Admin) may open the Django admin site."""
+        """Only members whose role can manage users (System Administrator) may open the Django admin site."""
         return self.role.can_manage_users
 
     def has_perm(self, perm: str, obj: object | None = None) -> bool:
-        """Admin-site permission check: active Admin-role members may do everything."""
+        """Admin-site permission check: active members whose role can manage users. Screens that change activity
+        data also need can_create_activity (config.admin_access, ASSUMPTIONS 339)."""
         return self.is_active and self.is_staff
 
     def has_module_perms(self, app_label: str) -> bool:

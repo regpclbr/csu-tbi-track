@@ -138,11 +138,13 @@ def test_registrations_and_answers_are_view_only(admin_member, rf, scheduled, si
 
 
 @pytest.mark.django_db
-def test_admin_attendance_actions(client, admin_member, director, scheduled, signup) -> None:
+def test_admin_attendance_actions(client, both_flags_member, director, scheduled, signup) -> None:
+    """The admin actions themselves; a test-only role with both flags opens them (a real role never has both,
+    ASSUMPTIONS 339)."""
     from activities import services as activity_services
 
     person = signup(scheduled, "ana@example.com")
-    client.force_login(admin_member)
+    client.force_login(both_flags_member)
     url = "/admin/registrations/registration/"
     response = client.post(url, {"action": "mark_attended_email", "_selected_action": [person.pk]}, follow=True)
     assert "only when the activity is Ongoing or Conducted" in response.content.decode()
@@ -154,10 +156,31 @@ def test_admin_attendance_actions(client, admin_member, director, scheduled, sig
 
 
 @pytest.mark.django_db
-def test_admin_create_forms_action(client, admin_member, new_activity, defaults) -> None:
-    client.force_login(admin_member)
+def test_admin_create_forms_action(client, both_flags_member, new_activity, defaults) -> None:
+    client.force_login(both_flags_member)
     client.post("/admin/activities/activity/", {"action": "create_forms", "_selected_action": [new_activity.pk]})
     assert sorted(new_activity.form_templates.values_list("form_type", flat=True)) == ["evaluation", "registration"]
+
+
+@pytest.mark.django_db
+def test_system_administrator_gets_no_attendance_action(client, admin_member, director, scheduled, signup) -> None:
+    """The System Administrator cannot create activities, so the admin attendance actions do nothing."""
+    from activities import services as activity_services
+
+    person = signup(scheduled, "ana@example.com")
+    activity_services.change_status(director, scheduled, "Ongoing")
+    client.force_login(admin_member)
+    client.post("/admin/registrations/registration/", {"action": "mark_attended_wet_signature",
+                                                       "_selected_action": [person.pk]})
+    person.refresh_from_db()
+    assert not person.attendance_confirmed
+
+
+@pytest.mark.django_db
+def test_system_administrator_gets_no_create_forms_action(client, admin_member, new_activity, defaults) -> None:
+    client.force_login(admin_member)
+    client.post("/admin/activities/activity/", {"action": "create_forms", "_selected_action": [new_activity.pk]})
+    assert not new_activity.form_templates.exists()
 
 
 @pytest.mark.django_db

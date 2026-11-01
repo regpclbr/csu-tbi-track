@@ -12,7 +12,8 @@ from activities.models import Activity
 from documents.models import Document
 from registrations.models import EvaluationSubmission, Registration
 from accounts.management.commands.seed_demo import FORMULA_TEST_TITLE
-from certificates.models import Certificate
+from accounts.models import Role, TBIMember
+from certificates.models import Certificate, CertificateTemplate
 from reports import metrics
 from startups.models import Startup
 
@@ -116,7 +117,21 @@ def test_demo_certificates_go_through_the_services_and_are_not_duplicated(demo_s
 
 
 @pytest.mark.django_db
-def test_demo_skips_certificates_without_an_admin(demo_settings) -> None:
-    output = run_demo()
-    assert "certificates skipped" in output
-    assert not Certificate.objects.exists()
+def test_demo_creates_one_account_per_role(demo_settings) -> None:
+    """For showing the differences between roles (ASSUMPTIONS 339). Nobody can log in until a password is set with
+    `python manage.py changepassword <email>`; no first-sign-in password change in the way of a demo."""
+    run_demo()
+    demo = TBIMember.objects.filter(email__endswith="@demo.example.com").select_related("role")
+    by_role = {member.role.role_name: member for member in demo}
+    assert set(by_role) == set(Role.objects.values_list("role_name", flat=True))
+    assert by_role[Role.SYSTEM_ADMINISTRATOR].email == "system-administrator@demo.example.com"
+    assert all(not member.has_usable_password() and not member.must_change_password for member in demo)
+
+
+@pytest.mark.django_db
+def test_demo_design_is_added_by_the_demo_system_administrator(demo_settings) -> None:
+    """Without a real System Administrator, the demo one adds the invented design, so certificates are still made."""
+    run_demo()
+    template = CertificateTemplate.objects.get(name="[DEMO] Sample design")
+    assert template.uploaded_by.email == "system-administrator@demo.example.com"
+    assert Certificate.objects.exists()

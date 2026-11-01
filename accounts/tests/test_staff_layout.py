@@ -40,7 +40,7 @@ def admin_staff(make_member):
 def test_admin_section_only_with_can_manage_users(admin_member, director, admin_staff) -> None:
     console = reverse("accounts:console")
     admin_html = logged_in(admin_member).get(HOME).content.decode()
-    assert "Admin Console" in admin_html and console in admin_html and ">Admin</p>" in admin_html
+    assert "Admin Console" in admin_html and console in admin_html and ">System</p>" in admin_html
     for member in (director, admin_staff):
         html = logged_in(member).get(HOME).content.decode()
         assert "Admin Console" not in html and console not in html

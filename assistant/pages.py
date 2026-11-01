@@ -32,9 +32,9 @@ FROM_BADGES = {
 
 # A friendly hint under the service's own message, per AssistantUnavailable.kind.
 ERROR_HINTS = {
-    "not_configured": "An Admin must add the Gemini API key to .env and restart the server.",
-    "rejected": "An Admin must check the Gemini API key in .env.",
-    "model_unavailable": "An Admin can run python manage.py check_gemini to see the models this key can use.",
+    "not_configured": "The System Administrator must add the Gemini API key to .env and restart the server.",
+    "rejected": "The System Administrator must check the Gemini API key in .env.",
+    "model_unavailable": "The System Administrator can run python manage.py check_gemini to see the models this key can use.",
     "rate_limit": "Wait a minute, then send your question again. It was not saved.",
     "timeout": "Try a shorter or more specific question, or choose an activity. It was not saved.",
     "unavailable": "Try again in a few minutes. Your question was not saved.",

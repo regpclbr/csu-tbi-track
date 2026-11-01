@@ -53,7 +53,7 @@
     - counts and positions (`max_slots`, `sort_order`, `file_size_kb`, `chunk_index`) cannot be negative.
 35. Delete rules: **PROTECT** for lookups, members, signatories, templates and official records (activities, registrations with certificates, documents, certificates; a document cited by the assistant). **CASCADE** only for rows that belong to one parent (resource-person links, form templates and fields, a registration's evaluation and answers, notifications, embeddings, chat messages). REGISTRATION.startup is SET_NULL.
 36. `registration.confirmation_method` is empty until attendance is confirmed.
-37. `manage.py createsuperuser` gives the new account the Admin role, so the roles must be loaded first (Step 2 seed command).
+37. `manage.py createsuperuser` gives the new account the Admin role *(since 2026-10-31: "System Administrator", item 339)*, so the roles must be loaded first (Step 2 seed command).
 38. In the Django admin, lookups, signatories and templates have no Delete button, and the activity audit log is read-only.
 39. Lookup tables (ROLE, ACTIVITY_STATUS, ACTIVITY_TYPE, PARTICIPANT_CATEGORY, DOCUMENT_STATUS, DOCUMENT_TYPE) have **unique names**, so the seed command and the code can look rows up by name. *(Confirmed by the owner.)*
 
@@ -87,7 +87,7 @@
     - roles: `can_create_activity`, `can_manage_users`;
     - document types: `is_required`, `due_reference`, `due_offset_days`.
     Descriptions and `is_active` are only set when a row is first created, so an admin's edits survive. Statuses, categories and activity types are only created, never changed.
-50. The first Admin account comes from `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` and `SEED_ADMIN_NAME` (optional, default "TBI Admin") in `.env`.
+50. The first Admin account *(System Administrator role since 2026-10-31, item 339)* comes from `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` and `SEED_ADMIN_NAME` (optional, default "TBI Admin") in `.env`.
     - If email or password is missing, the account is skipped with a warning (lookups are still loaded).
     - The password must pass Django's password validators, otherwise the command stops.
     - The account is created with the Admin role, `is_superuser = True` and `must_change_password = False`.
@@ -95,7 +95,7 @@
 51. Both seed commands live in the `accounts` app (`accounts/management/commands/`); the lookup lists are in `accounts/seed.py`.
 52. `python manage.py seed_demo` is **demo-only**:
     - It refuses to run when `DEBUG` is False.
-    - All people and companies are invented; every email ends in `@demo.example.com`. Demo staff accounts (one per non-Admin role) have unusable passwords and cannot log in.
+    - All people and companies are invented; every email ends in `@demo.example.com`. Demo staff accounts (one per non-Admin role) have unusable passwords and cannot log in. *(2026-10-31: one per role, System Administrator included, item 339.)*
     - Activity dates are relative to the day it is run (three Conducted in the past, one Ongoing today, three Scheduled, one Draft). "Startup Pitch Competition" uses the Forum type because there is no Competition type.
     - "Investor Networking" is deliberately full (10/10) to show a closed registration. Some required documents are deliberately missing to show checklist gaps.
     - Documents are small placeholder `.txt` files saved under `media/demo/`.
@@ -116,7 +116,7 @@
 56. Logout only accepts POST (a link on another site cannot log a member out).
 57. **First-sign-in password change.** While `must_change_password` is true, every URL — including the Django admin — redirects to the change-password page; the JSON API answers 403 `{"error": "Change your password first (first sign-in)."}` instead (item 225). Only the change-password page, logout and static files (CSS/JS) are reachable; uploaded files are not. The new password must pass Django's password validators and must differ from the current one.
 58. **Permissions** are written once in `accounts/permissions.py`: `has_permission()`, `require_permission()` (raises a 403), and the view decorators `staff_login_required` and `permission_required(Permission.X)`. Someone not logged in is sent to the login page (the JSON API answers 401 `{"error": "Login required."}`, item 225); a logged-in member without the permission gets a 403 with the reason (JSON `{"error": ...}` for `/api/` URLs, plain text otherwise).
-59. **Admin guardrails.** "Admin" means an active member whose role has `can_manage_users` (not the role's name).
+59. **Admin guardrails.** "Admin" means an active member whose role has `can_manage_users` (not the role's name; the seeded role is "System Administrator" since 2026-10-31, item 339).
     - An Admin cannot deactivate their own account.
     - The last active Admin can be neither deactivated nor moved to a role without `can_manage_users` (the role-change check is how "at least one active Admin" is kept when only one Admin exists).
     - The check locks the Admin rows, so two Admins cannot remove each other at the same moment.
@@ -173,7 +173,7 @@
       - Nothing assumes there are only three categories: forms, list filters, the API, counts and the demo all work with any number.
     - ACTIVITY_TYPE and DOCUMENT_TYPE can be added and edited (and deactivated), never deleted.
     - ROLE: only `can_create_activity` and `can_manage_users` can be edited. Roles cannot be added, renamed or deleted, and the description is read-only. Taking `can_manage_users` away from a role is refused if no active member of another role could still manage users (`accounts.services.update_role_permissions`).
-85. **To be decided with the TBI before the defense:** whether the Admin role keeps `can_create_activity`. For now Admin keeps it (seeded flags unchanged).
+85. **Decided (owner, 2026-10-31):** the system administrator role (renamed "System Administrator") keeps `can_manage_users` and **no longer has `can_create_activity`** (separation of duties). Details: item 339.
 86. **Changing status in the Django admin.**
     - The activity edit page shows the status as plain text (no link to the status lookup row).
     - A "Change status (now: …)" button opens a small form that offers only the allowed next statuses (`activities.services.allowed_next_statuses()`; Draft is not offered once anyone has registered).
@@ -659,3 +659,16 @@
      - **Report info:** two columns, bold labels, values left-aligned, period start/end as dates in the report format and "Generated at" as a Manila date-time; the same items as the old "Filters" sheet.
      - **Empty cases:** a period without conducted activities: each period section is one row "No conducted activities in this period." (item 213); an empty table in a period that has activities (e.g. no startups engaged): one row "Nothing to show for this period." instead of a table.
      - **Print setup** on every sheet: A4 landscape, fit to 1 page wide (as many pages tall as needed), narrow margins, footer "Page x of y".
+
+## System Administrator: separation of duties (2026-10-31)
+
+339. **The role "Admin" is now "System Administrator"** and it no longer creates activities (decides item 85).
+     - **Migration `accounts/0003_system_administrator`** renames the row (role names are unique: it stops and changes nothing if a "System Administrator" role already exists), sets `can_create_activity = False` and a new description. It can be reversed. `seed_data` creates and re-applies the same flags (`Role.SYSTEM_ADMINISTRATOR`, `accounts/seed.py`); `createsuperuser` gives that role. "Admin Staff" is unchanged.
+     - **Permissions still come only from the flags**, never from the name. Code that used the role name now uses a flag: `generate_report` without `--member` acts as the first active member who can create activities; `seed_demo` adds the invented certificate design as the first active member who can manage users.
+     - **What the System Administrator can do:** the Admin Console and the Django admin (members, role flags, master data, certificate designs and signatories, startup set-password links), view every staff page for support (dashboard, activities, documents, certificates, reports, startups, notifications, AI assistant: read only), and upload documents like any staff member. **What it cannot do** (everything that needs `can_create_activity`): create or edit activities, change status, manage forms or attendance, send evaluation links, approve or return documents, act on certificates (generate, review, sign-off, approve, reject, hand over), generate reports. The buttons are hidden as for every read-only member, and every service refuses (403).
+     - **No role may have both flags** (`can_manage_users` and `can_create_activity`): `accounts.services.check_role_flags`, called by `update_role_permissions` and by the Django admin role form ("A role cannot both manage users and create activities (separation of duties). Turn one of the two flags off."). The last-System-Administrator guard (item 59) is unchanged. Role flags stay editable by the System Administrator in the Django admin (owner decision).
+     - **Django admin:** activities, resource persons and registrations are **view only, with no actions**, for a member without `can_create_activity` (`accounts.admin.ActivityDataAdminMixin`; the "Change status" page answers 403). Since only members who can manage users open the Django admin and no role may have both flags, activity data is in practice changed only in the app pages. The code of the admin activity screens is kept (their tests use a test-only role written straight to the database).
+     - **Sidebar:** the section label "ADMIN" is now "SYSTEM" (the item stays "Admin Console"). Tighter spacing (64 px logo row, 37 px nav rows, smaller section gaps and profile card): the whole sidebar needs about 575 px, so it fits the browser window of a 1366×768 screen (about 620–660 px tall) and a 768 px viewport without a scrollbar; only smaller heights scroll the nav (measured with Playwright at 1366×768, 1366×657 and 1366×600). The startup portal sidebar shares the nav row and is tighter too.
+     - **Demo accounts:** `seed_demo` creates one account per role, `<role-slug>@demo.example.com` (system-administrator@, director@, incubation-project-head@, community-development-head@, admin-staff@), with unusable passwords and no first-sign-in password change. With no other System Administrator, the demo one adds the invented certificate design. To log in with a demo account, set its password on that machine with Django's `python manage.py changepassword <email>` (typed twice in the terminal; never in code, `.env` or the repository).
+     - **ERD:** in the ROLE table, the `role_name` note becomes "Director / Incubation Project Head / Comm. Dev Head / Admin Staff / System Administrator (unique)" and the `can_manage_users` note "true only for System Administrator" (optionally `can_create_activity`: "false for System Administrator").
+340. **Account audit log.** Every member creation, role change, activation and deactivation, password reset by an administrator and role flag change is logged at INFO on the logger `accounts.audit`: who did it (member ID and email), to whom or which role, and the old and new values (e.g. `Member role changed: member_id=7 <ana@…> role 'Director' -> 'Admin Staff' by member_id=1 <admin@…>`; `Role flag changed: role='Admin Staff' can_create_activity False -> True by …`). Passwords are never logged (the temporary password is only in the email). Role changes made in the Django admin go through `change_member_role` too, so they are logged and guarded the same way. **Known limit:** a System Administrator could still move their own account to another role (while another System Administrator remains) or create a second account with another role; nothing in the system prevents that. This log is how such changes are made visible. *(TBI question: should account and role changes also be shown as a history in the Admin Console?)*

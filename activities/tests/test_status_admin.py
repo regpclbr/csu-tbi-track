@@ -26,8 +26,8 @@ def messages_of(response) -> list[str]:
 
 
 @pytest.mark.django_db
-def test_status_is_plain_text_with_a_change_status_button(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_status_is_plain_text_with_a_change_status_button(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     html = client.get(change_url(new_activity)).content.decode()
     # No link to the status lookup row (the side menu still links to the statuses list).
     assert f"/admin/activities/activitystatus/{new_activity.status_id}/" not in html
@@ -44,14 +44,14 @@ def offered(client, activity) -> list[str]:
 
 
 @pytest.mark.django_db
-def test_page_offers_only_allowed_next_statuses(client, admin_member, new_activity, move_to, register) -> None:
-    client.force_login(admin_member)
+def test_page_offers_only_allowed_next_statuses(client, both_flags_member, new_activity, move_to, register) -> None:
+    client.force_login(both_flags_member)
     assert offered(client, new_activity) == ["Scheduled"]
     move_to(new_activity, "Scheduled")
     assert offered(client, new_activity) == ["Draft", "Ongoing"]
     register(new_activity, 1)
     assert offered(client, new_activity) == ["Ongoing"]  # Draft blocked once someone registered
-    move_to_ongoing_and_conducted(admin_member, new_activity)
+    move_to_ongoing_and_conducted(both_flags_member, new_activity)
     response = client.get(status_url(new_activity))
     assert response.context["next_statuses"] == []
     assert "Conducted is final" in response.content.decode()
@@ -63,8 +63,8 @@ def move_to_ongoing_and_conducted(member, activity) -> None:
 
 
 @pytest.mark.django_db
-def test_change_status_success_message(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_change_status_success_message(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     response = client.post(status_url(new_activity), {"status": "Scheduled"}, follow=True)
     assert response.redirect_chain[-1][0] == change_url(new_activity)
     assert messages_of(response) == ['Status of "Pitching Workshop" changed from Draft to Scheduled.']
@@ -74,8 +74,8 @@ def test_change_status_success_message(client, admin_member, new_activity) -> No
 
 
 @pytest.mark.django_db
-def test_change_status_error_message(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_change_status_error_message(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     response = client.post(status_url(new_activity), {"status": "Conducted"}, follow=True)
     assert messages_of(response) == [
         "Status not changed: Cannot change status from Draft to Conducted. From Draft you can go to Scheduled."
@@ -86,7 +86,7 @@ def test_change_status_error_message(client, admin_member, new_activity) -> None
 
 @pytest.mark.django_db
 def test_change_status_page_needs_can_create_activity(client, admin_member, new_activity) -> None:
-    Role.objects.filter(role_name="Admin").update(can_create_activity=False)
+    Role.objects.filter(role_name="System Administrator").update(can_create_activity=False)
     client.force_login(admin_member)
     response = client.post(status_url(new_activity), {"status": "Scheduled"})
     assert response.status_code == 403
@@ -105,8 +105,8 @@ def test_non_admins_cannot_open_the_page(client, director, new_activity) -> None
 
 
 @pytest.mark.django_db
-def test_action_dropdown_is_on_the_list_page(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_action_dropdown_is_on_the_list_page(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     html = client.get(LIST_URL).content.decode()
     assert 'name="action"' in html
     for label in ["Change status to Scheduled", "Change status to Ongoing", "Change status to Conducted", "Change status back to Draft"]:
@@ -114,10 +114,10 @@ def test_action_dropdown_is_on_the_list_page(client, admin_member, new_activity)
 
 
 @pytest.mark.django_db
-def test_list_actions_report_success_and_errors(client, admin_member, new_activity, director, valid_data) -> None:
+def test_list_actions_report_success_and_errors(client, both_flags_member, new_activity, director, valid_data) -> None:
     other = services.create_activity(director, valid_data(title="Second Activity"))
     services.change_status(director, other, "Scheduled")
-    client.force_login(admin_member)
+    client.force_login(both_flags_member)
 
     response = client.post(
         LIST_URL, {"action": "move_to_scheduled", "_selected_action": [new_activity.pk, other.pk]}, follow=True

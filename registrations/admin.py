@@ -10,7 +10,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 
-from accounts.admin import ReadOnlyAdminMixin
+from accounts.admin import ActivityDataAdminMixin, ReadOnlyAdminMixin
 
 from . import services
 from .models import DefaultFormField, EvaluationSubmission, FormAnswer, FormField, FormTemplate, Registration
@@ -66,7 +66,7 @@ class FormAnswerInline(ReadOnlyAdminMixin, admin.TabularInline):
 
 
 @admin.register(Registration)
-class RegistrationAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+class RegistrationAdmin(ActivityDataAdminMixin, ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = (
         "name", "email", "activity", "participant_category", "registration_date",
         "attendance_confirmed", "confirmation_method",

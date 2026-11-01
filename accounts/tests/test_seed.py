@@ -62,7 +62,7 @@ def test_role_flags(admin_env) -> None:
         "Incubation Project Head": (True, False),
         "Community Development Head": (True, False),
         "Admin Staff": (False, False),
-        "Admin": (True, True),
+        "System Administrator": (False, True),
     }
 
 
@@ -88,7 +88,7 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
 def test_admin_account_gets_admin_role(admin_env) -> None:
     seed()
     admin = TBIMember.objects.get(email=ADMIN_EMAIL)
-    assert admin.role.role_name == "Admin"
+    assert admin.role.role_name == "System Administrator"
     assert admin.is_staff is True
     assert admin.must_change_password is False
     assert admin.check_password(ADMIN_PASSWORD)

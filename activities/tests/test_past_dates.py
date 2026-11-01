@@ -133,12 +133,12 @@ def test_existing_rules_still_apply(director, valid_data) -> None:
 
 
 @pytest.mark.django_db
-def test_admin_form_shows_past_date_errors_on_their_fields(client, admin_member, valid_data) -> None:
+def test_admin_form_shows_past_date_errors_on_their_fields(client, both_flags_member, valid_data) -> None:
     from .test_admin import form_data
 
     yesterday = timezone.localdate() - timedelta(days=1)
     values = valid_data(start_date=yesterday, end_date=yesterday, registration_deadline=at(yesterday - timedelta(days=2)))
-    client.force_login(admin_member)
+    client.force_login(both_flags_member)
     response = client.post("/admin/activities/activity/add/", form_data(values=values))
 
     assert response.status_code == 200
@@ -149,10 +149,10 @@ def test_admin_form_shows_past_date_errors_on_their_fields(client, admin_member,
 
 
 @pytest.mark.django_db
-def test_admin_edit_of_started_activity_is_allowed(client, admin_member, started_activity) -> None:
+def test_admin_edit_of_started_activity_is_allowed(client, both_flags_member, started_activity) -> None:
     from .test_admin import form_data
 
-    client.force_login(admin_member)
+    client.force_login(both_flags_member)
     data = form_data(started_activity) | {"venue": "Room 101"}
     data["registration_deadline_1"] = timezone.localtime(started_activity.registration_deadline).strftime("%H:%M:%S")
     data["evaluation_deadline_1"] = timezone.localtime(started_activity.evaluation_deadline).strftime("%H:%M:%S")

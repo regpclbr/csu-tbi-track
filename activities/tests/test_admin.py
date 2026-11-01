@@ -63,29 +63,29 @@ def form_data(activity: Activity | None = None, values: dict | None = None, link
 
 
 @pytest.mark.django_db
-def test_admin_add_goes_through_service(client, admin_member, valid_data) -> None:
-    client.force_login(admin_member)
+def test_admin_add_goes_through_service(client, both_flags_member, valid_data) -> None:
+    client.force_login(both_flags_member)
     response = client.post(f"{URL}add/", form_data(values=valid_data()))
     assert response.status_code == 302
     activity = Activity.objects.get()
-    assert activity.status.name == "Draft" and activity.created_by == admin_member
+    assert activity.status.name == "Draft" and activity.created_by == both_flags_member
     assert list(activity.audit_logs.values_list("field_changed", "new_value")) == [("Status", "Draft")]
 
 
 @pytest.mark.django_db
-def test_admin_edit_writes_audit(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_admin_edit_writes_audit(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     data = form_data(new_activity) | {"venue": "Room 101"}
     response = client.post(f"{URL}{new_activity.pk}/change/", data)
     assert response.status_code == 302
     row = new_activity.audit_logs.get(field_changed="Venue")
-    assert (row.old_value, row.new_value, row.changed_by) == ("CSU Hall", "Room 101", admin_member)
+    assert (row.old_value, row.new_value, row.changed_by) == ("CSU Hall", "Room 101", both_flags_member)
 
 
 @pytest.mark.django_db
-def test_admin_shows_validation_errors(client, admin_member, new_activity, register) -> None:
+def test_admin_shows_validation_errors(client, both_flags_member, new_activity, register) -> None:
     register(new_activity, 3)
-    client.force_login(admin_member)
+    client.force_login(both_flags_member)
     response = client.post(f"{URL}{new_activity.pk}/change/", form_data(new_activity) | {"max_slots": 2})
     assert response.status_code == 200
     assert "Max slots cannot be lower than the 3 people already registered." in response.content.decode()
@@ -103,8 +103,8 @@ def test_admin_conducted_activity_is_read_only(admin_member, new_activity, move_
 
 
 @pytest.mark.django_db
-def test_admin_status_actions_use_the_rules(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_admin_status_actions_use_the_rules(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     client.post(URL, {"action": "move_to_conducted", "_selected_action": [new_activity.pk]})  # Draft -> Conducted: refused
     new_activity.refresh_from_db()
     assert new_activity.status.name == "Draft"
@@ -116,9 +116,9 @@ def test_admin_status_actions_use_the_rules(client, admin_member, new_activity) 
 
 
 @pytest.mark.django_db
-def test_admin_resource_person_inline_is_audited(client, admin_member, new_activity) -> None:
+def test_admin_resource_person_inline_is_audited(client, both_flags_member, new_activity) -> None:
     person = ResourcePerson.objects.create(name="Dr. Reyes")
-    client.force_login(admin_member)
+    client.force_login(both_flags_member)
 
     response = client.post(
         f"{URL}{new_activity.pk}/change/",

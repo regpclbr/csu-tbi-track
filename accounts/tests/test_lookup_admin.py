@@ -79,24 +79,24 @@ def test_role_flags_can_be_edited(client, admin_member) -> None:
 
 @pytest.mark.django_db
 def test_admin_role_cannot_lose_manage_users_if_no_other_admin(client, admin_member) -> None:
-    admin_role = Role.objects.get(role_name="Admin")
+    admin_role = Role.objects.get(role_name="System Administrator")
     client.force_login(admin_member)
     response = client.post(f"/admin/accounts/role/{admin_role.pk}/change/", {"can_create_activity": "on"})
     assert response.status_code == 200
-    assert "At least one active Admin must always exist" in response.content.decode()
+    assert "At least one active System Administrator must always exist" in response.content.decode()
     admin_role.refresh_from_db()
     assert admin_role.can_manage_users is True
 
 
 @pytest.mark.django_db
 def test_update_role_permissions_service(admin_member, make_member) -> None:
-    admin_role = Role.objects.get(role_name="Admin")
+    admin_role = Role.objects.get(role_name="System Administrator")
     with pytest.raises(services.MemberManagementError):
         services.update_role_permissions(admin_member, admin_role, can_create_activity=True, can_manage_users=False)
 
-    # Allowed once a member of another role can manage users.
+    # Allowed once a member of another role can manage users (that role gives up can_create_activity: never both).
     director_role = Role.objects.get(role_name="Director")
-    services.update_role_permissions(admin_member, director_role, can_create_activity=True, can_manage_users=True)
+    services.update_role_permissions(admin_member, director_role, can_create_activity=False, can_manage_users=True)
     make_member("Director")
     services.update_role_permissions(admin_member, admin_role, can_create_activity=True, can_manage_users=False)
     admin_role.refresh_from_db()
@@ -114,7 +114,8 @@ def test_only_admins_can_change_role_flags(make_member) -> None:
 
 
 @pytest.mark.django_db
-def test_admin_keeps_can_create_activity(roles) -> None:
-    """Decision pending with the TBI (see ASSUMPTIONS.md); for now Admin can create activities."""
-    assert roles["Admin"].can_create_activity is True
+def test_system_administrator_does_not_create_activities(roles) -> None:
+    """Decided (ASSUMPTIONS 85, 339): the System Administrator manages users and does not create activities."""
+    assert roles["System Administrator"].can_create_activity is False
+    assert roles["System Administrator"].can_manage_users is True
     assert roles["Admin Staff"].can_create_activity is False

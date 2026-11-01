@@ -160,8 +160,8 @@ def test_api_rejects_empty_or_unknown_categories(client, director, new_activity)
 
 
 @pytest.mark.django_db
-def test_admin_multi_select_add_and_edit(client, admin_member, valid_data) -> None:
-    client.force_login(admin_member)
+def test_admin_multi_select_add_and_edit(client, both_flags_member, valid_data) -> None:
+    client.force_login(both_flags_member)
     values = valid_data(participant_categories=[cat("Faculty"), cat("MSMEs")])
     assert client.post("/admin/activities/activity/add/", form_data(values=values)).status_code == 302
 
@@ -176,8 +176,8 @@ def test_admin_multi_select_add_and_edit(client, admin_member, valid_data) -> No
 
 
 @pytest.mark.django_db
-def test_admin_requires_a_category(client, admin_member, new_activity) -> None:
-    client.force_login(admin_member)
+def test_admin_requires_a_category(client, both_flags_member, new_activity) -> None:
+    client.force_login(both_flags_member)
     data = form_data(new_activity)
     data.pop("participant_categories")
     response = client.post(f"/admin/activities/activity/{new_activity.pk}/change/", data)

@@ -7,7 +7,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 
-from accounts.admin import NoDeleteAdminMixin, ReadOnlyAdminMixin
+from accounts.admin import ActivityDataAdminMixin, NoDeleteAdminMixin, ReadOnlyAdminMixin
+from accounts.permissions import Permission, require_permission
 
 from . import services
 from .models import (
@@ -95,7 +96,7 @@ def _is_conducted(activity: Activity | None) -> bool:
     return activity is not None and activity.status.name == ActivityStatus.CONDUCTED
 
 
-class ActivityResourcePersonInline(admin.TabularInline):
+class ActivityResourcePersonInline(ActivityDataAdminMixin, admin.TabularInline):
     """Add or remove resource persons (through services, so each change is audited).
     Existing links are read-only; to change a topic, remove the person and add them again."""
 
@@ -146,7 +147,7 @@ class ActivityAdminForm(forms.ModelForm):
 
 
 @admin.register(Activity)
-class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+class ActivityAdmin(ActivityDataAdminMixin, NoDeleteAdminMixin, admin.ModelAdmin):
     """Every change goes through activities.services, so the audit log is never skipped.
 
     Activities are never deleted. Status is shown as text and changed with the
@@ -207,6 +208,7 @@ class ActivityAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
 
     def change_status_view(self, request: HttpRequest, object_id: str) -> HttpResponse:
         """A small form offering only the statuses this activity can move to right now."""
+        require_permission(request.user, Permission.CREATE_ACTIVITY)  # 403 for the System Administrator
         activity = get_object_or_404(Activity, pk=object_id)
         change_url = reverse("admin:activities_activity_change", args=[activity.pk])
         if request.method == "POST":
@@ -336,7 +338,7 @@ class ActivityAuditLogAdmin(admin.ModelAdmin):
 
 
 @admin.register(ResourcePerson)
-class ResourcePersonAdmin(admin.ModelAdmin):
+class ResourcePersonAdmin(ActivityDataAdminMixin, admin.ModelAdmin):
     list_display = ("name", "email", "contact_number")
     search_fields = ("name", "email")
 

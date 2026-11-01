@@ -30,16 +30,16 @@ def send_invitation_email(member: TBIMember, temporary_password: str) -> None:
 
 
 def send_password_reset_email(member: TBIMember, temporary_password: str) -> None:
-    """An Admin reset the member's password: the new temporary password (only in this email)."""
+    """A System Administrator reset the member's password: the new temporary password (only in this email)."""
     send_mail(
         subject="Your CSU-TBI Track password was reset",
         message=(
             f"Hello {member.name},\n\n"
-            "An Admin reset the password of your CSU-TBI Track account.\n\n"
+            "The System Administrator reset the password of your CSU-TBI Track account.\n\n"
             f"Email: {member.email}\n"
             f"Temporary password: {temporary_password}\n\n"
             "You will be asked to choose a new password the next time you sign in.\n"
-            "If you did not ask for this, please tell the TBI Admin.\n"
+            "If you did not ask for this, please tell the TBI System Administrator.\n"
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[member.email],

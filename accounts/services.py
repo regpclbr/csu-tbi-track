@@ -24,6 +24,13 @@ from .models import Role, TBIMember
 from .permissions import Permission, require_permission
 
 security_log = logging.getLogger("accounts.security")
+# Account and role changes (ASSUMPTIONS 340): who did it, to whom or which role, old and new values. Never passwords.
+audit_log = logging.getLogger("accounts.audit")
+
+
+def _who(member: TBIMember) -> str:
+    """How the audit log names a member: ID and email (staff accounts only; never a password)."""
+    return f"member_id={member.pk} <{member.email}>"
 
 INVALID_LOGIN_MESSAGE = "Invalid email or password."
 
@@ -159,6 +166,9 @@ class MemberManagementError(Exception):
     """A user-management action was refused (for example, a guardrail)."""
 
 
+LAST_ADMIN_REFUSED = "At least one active System Administrator must always exist."
+
+
 def _active_admins():
     """Active members whose role can manage users (the Admins)."""
     return TBIMember.objects.filter(is_active=True, role__can_manage_users=True)
@@ -177,7 +187,7 @@ def ensure_another_admin_remains(member: TBIMember) -> None:
     """
     admin_ids = list(_active_admins().select_for_update().values_list("pk", flat=True))
     if _is_active_admin(member) and admin_ids == [member.pk]:
-        raise MemberManagementError("At least one active Admin must always exist.")
+        raise MemberManagementError(LAST_ADMIN_REFUSED)
 
 
 def save_new_member_with_invitation(member: TBIMember) -> TBIMember:
@@ -209,9 +219,7 @@ def create_member(acting_member: TBIMember, *, name: str, email: str, role: Role
         raise MemberManagementError("A member with this email already exists.")
 
     member = save_new_member_with_invitation(TBIMember(name=name.strip(), email=email, role=role))
-    security_log.info(
-        "Member created: member_id=%s role=%s by member_id=%s", member.pk, role.role_name, acting_member.pk
-    )
+    audit_log.info("Member created: %s role=%r by %s", _who(member), role.role_name, _who(acting_member))
     return member
 
 
@@ -227,9 +235,8 @@ def change_member_role(acting_member: TBIMember, member: TBIMember, new_role: Ro
     old_role = member.role.role_name
     member.role = new_role
     member.save(update_fields=["role", "updated_at"])
-    security_log.info(
-        "Role changed: member_id=%s %s -> %s by member_id=%s",
-        member.pk, old_role, new_role.role_name, acting_member.pk,
+    audit_log.info(
+        "Member role changed: %s role %r -> %r by %s", _who(member), old_role, new_role.role_name, _who(acting_member)
     )
     return member
 
@@ -247,7 +254,7 @@ def deactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
     ensure_another_admin_remains(member)
     member.is_active = False
     member.save(update_fields=["is_active", "updated_at"])
-    security_log.info("Member deactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
+    audit_log.info("Member deactivated: %s is_active True -> False by %s", _who(member), _who(acting_member))
     return member
 
 
@@ -269,7 +276,10 @@ def reset_member_password(acting_member: TBIMember, member: TBIMember) -> TBIMem
     member.must_change_password = True
     member.save(update_fields=["password", "must_change_password", "updated_at"])
     send_password_reset_email(member, temporary_password)  # inside the transaction: no email, no reset
-    security_log.info("Password reset by an Admin: member_id=%s by member_id=%s", member.pk, acting_member.pk)
+    audit_log.info(
+        "Password reset by an administrator: %s must_change_password -> True (temporary password emailed) by %s",
+        _who(member), _who(acting_member),
+    )
     return member
 
 
@@ -277,9 +287,10 @@ def reset_member_password(acting_member: TBIMember, member: TBIMember) -> TBIMem
 def reactivate_member(acting_member: TBIMember, member: TBIMember) -> TBIMember:
     """Admin Console: let a deactivated member log in again."""
     require_permission(acting_member, Permission.MANAGE_USERS)
+    was_active = member.is_active
     member.is_active = True
     member.save(update_fields=["is_active", "updated_at"])
-    security_log.info("Member reactivated: member_id=%s by member_id=%s", member.pk, acting_member.pk)
+    audit_log.info("Member reactivated: %s is_active %s -> True by %s", _who(member), was_active, _who(acting_member))
     return member
 
 
@@ -309,21 +320,37 @@ def list_members(filters: dict | None = None, page: int | str | None = 1, per_pa
 def update_role_permissions(
     acting_member: TBIMember, role: Role, *, can_create_activity: bool, can_manage_users: bool
 ) -> Role:
-    """Admin Console: change a role's two permission flags (roles are never renamed or deleted).
+    """Change a role's two permission flags (roles are never renamed or deleted). Used by the Django admin.
 
-    Refused if taking can_manage_users away from this role would leave no active Admin.
+    Refused if the role would get both flags (separation of duties, check_role_flags) or if taking
+    can_manage_users away from this role would leave no active System Administrator.
     """
     require_permission(acting_member, Permission.MANAGE_USERS)
+    check_role_flags(can_create_activity=can_create_activity, can_manage_users=can_manage_users)
     if role.can_manage_users and not can_manage_users:
         ensure_admins_remain_without_role(role)
-    old = (role.can_create_activity, role.can_manage_users)
+    old = {"can_create_activity": role.can_create_activity, "can_manage_users": role.can_manage_users}
     role.can_create_activity, role.can_manage_users = can_create_activity, can_manage_users
     role.save(update_fields=["can_create_activity", "can_manage_users"])
-    security_log.info(
-        "Role permissions changed: role=%s (create_activity, manage_users) %s -> %s by member_id=%s",
-        role.role_name, old, (can_create_activity, can_manage_users), acting_member.pk,
-    )
+    for flag, before in old.items():
+        if before != getattr(role, flag):
+            audit_log.info(
+                "Role flag changed: role=%r %s %s -> %s by %s", role.role_name, flag, before, getattr(role, flag),
+                _who(acting_member),
+            )
     return role
+
+
+BOTH_FLAGS_REFUSED = (
+    "A role cannot both manage users and create activities (separation of duties). "
+    "Turn one of the two flags off."
+)
+
+
+def check_role_flags(*, can_create_activity: bool, can_manage_users: bool) -> None:
+    """Separation of duties (ASSUMPTIONS 339): no role may have both can_manage_users and can_create_activity."""
+    if can_create_activity and can_manage_users:
+        raise MemberManagementError(BOTH_FLAGS_REFUSED)
 
 
 @transaction.atomic
@@ -332,5 +359,6 @@ def ensure_admins_remain_without_role(role: Role) -> None:
     others = _active_admins().exclude(role=role).select_for_update()
     if not others.exists():
         raise MemberManagementError(
-            f'At least one active Admin must always exist: no active member outside "{role.role_name}" can manage users.'
+            "At least one active System Administrator must always exist: "
+            f'no active member outside "{role.role_name}" can manage users.'
         )

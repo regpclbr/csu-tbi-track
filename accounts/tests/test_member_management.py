@@ -46,7 +46,7 @@ def test_temporary_password_never_in_logs(admin_member, roles, caplog) -> None:
 @pytest.mark.django_db
 def test_create_member_duplicate_email(admin_member, roles) -> None:
     with pytest.raises(services.MemberManagementError, match="already exists"):
-        services.create_member(admin_member, name="Again", email="ADMIN@example.com", role=roles["Director"])
+        services.create_member(admin_member, name="Again", email="SYSTEM.Administrator@example.com", role=roles["Director"])
 
 
 @pytest.mark.django_db
@@ -76,15 +76,15 @@ def test_change_member_role(admin_member, make_member, roles) -> None:
 
 @pytest.mark.django_db
 def test_last_active_admin_cannot_lose_admin_role(admin_member, roles) -> None:
-    with pytest.raises(services.MemberManagementError, match="At least one active Admin"):
+    with pytest.raises(services.MemberManagementError, match="At least one active System Administrator"):
         services.change_member_role(admin_member, admin_member, roles["Director"])
     admin_member.refresh_from_db()
-    assert admin_member.role.role_name == "Admin"
+    assert admin_member.role.role_name == "System Administrator"
 
 
 @pytest.mark.django_db
 def test_admin_role_can_move_when_another_admin_exists(admin_member, make_member, roles) -> None:
-    other_admin = make_member("Admin", email="admin2@example.com")
+    other_admin = make_member("System Administrator", email="admin2@example.com")
     services.change_member_role(admin_member, other_admin, roles["Director"])
     assert other_admin.role.role_name == "Director"
 
@@ -94,7 +94,7 @@ def test_admin_role_can_move_when_another_admin_exists(admin_member, make_member
 
 @pytest.mark.django_db
 def test_admin_cannot_deactivate_own_account(admin_member, make_member) -> None:
-    make_member("Admin", email="admin2@example.com")  # even with another Admin around
+    make_member("System Administrator", email="admin2@example.com")  # even with another Admin around
     with pytest.raises(services.MemberManagementError, match="your own account"):
         services.deactivate_member(admin_member, admin_member)
     admin_member.refresh_from_db()
@@ -115,10 +115,10 @@ def test_deactivate_and_reactivate(admin_member, make_member) -> None:
 
 @pytest.mark.django_db
 def test_deactivated_admin_does_not_count_as_active_admin(admin_member, make_member, roles) -> None:
-    other_admin = make_member("Admin", email="admin2@example.com")
+    other_admin = make_member("System Administrator", email="admin2@example.com")
     services.deactivate_member(admin_member, other_admin)
     # Now admin_member is the only active Admin again.
-    with pytest.raises(services.MemberManagementError, match="At least one active Admin"):
+    with pytest.raises(services.MemberManagementError, match="At least one active System Administrator"):
         services.change_member_role(admin_member, admin_member, roles["Director"])
 
 
@@ -128,7 +128,7 @@ def test_last_active_admin_guard(admin_member, make_member) -> None:
     with pytest.raises(services.MemberManagementError):
         services.ensure_another_admin_remains(admin_member)
     services.ensure_another_admin_remains(make_member("Director"))  # not an Admin: fine
-    make_member("Admin", email="admin2@example.com")
+    make_member("System Administrator", email="admin2@example.com")
     services.ensure_another_admin_remains(admin_member)  # another Admin exists: fine
 
 
@@ -180,7 +180,7 @@ def test_api_guardrails_return_400(client, admin_member, roles) -> None:
 
     response = post_json(client, f"/accounts/api/members/{admin_member.pk}/role/", {"role_id": roles["Director"].pk})
     assert response.status_code == 400
-    assert "At least one active Admin" in json.loads(response.content)["error"]
+    assert "At least one active System Administrator" in json.loads(response.content)["error"]
 
 
 @pytest.mark.django_db
@@ -230,9 +230,9 @@ def test_django_admin_cannot_demote_last_admin(client, admin_member, roles) -> N
         {"email": admin_member.email, "name": admin_member.name, "role": roles["Director"].pk},
     )
     assert response.status_code == 200  # form shown again with the error
-    assert "At least one active Admin" in response.content.decode()
+    assert "At least one active System Administrator" in response.content.decode()
     admin_member.refresh_from_db()
-    assert admin_member.role.role_name == "Admin"
+    assert admin_member.role.role_name == "System Administrator"
 
 
 @pytest.mark.django_db

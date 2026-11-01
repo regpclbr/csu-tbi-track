@@ -31,7 +31,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   unique). STARTUP is a separate model with its own login and is NOT a Django staff user.
 - `AUTH_USER_MODEL` must be set before the first full `migrate`.
 - TBI_MEMBER has no PermissionsMixin. `is_staff` is a property: True only when
-  `role.can_manage_users` (Admin). Passwords use Django's `password` field (also on STARTUP).
+  `role.can_manage_users` (System Administrator). Passwords use Django's `password` field (also on STARTUP).
 - `assistant/migrations/0001_enable_pgvector.py` enables the `vector` extension. Don't move it
   to `accounts`: accounts/0001 must create TBI_MEMBER (admin/auth depend on it).
 - Embedding size lives only in `settings.EMBEDDING_DIMENSIONS` (768).
@@ -40,7 +40,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - ROLE, ACTIVITY_STATUS, DOCUMENT_STATUS have fixed names the code relies on and no `is_active`.
 - Django admin: ACTIVITY_STATUS, DOCUMENT_STATUS are view only; ACTIVITY_TYPE, DOCUMENT_TYPE
   editable but never deleted; ROLE only its two flags (through
-  `accounts.services.update_role_permissions`, which keeps at least one active Admin).
+  `accounts.services.update_role_permissions`, which keeps at least one active System Administrator and refuses a
+  role with both flags: `check_role_flags`, separation of duties).
+- The role "Admin" is "System Administrator" (`Role.SYSTEM_ADMINISTRATOR`, migration accounts/0003): manages users, never
+  creates activities (ASSUMPTIONS 85, 339). Never look a role up by name for a permission; use the flags. In the Django
+  admin, activity data is view only without can_create_activity (`accounts.admin.ActivityDataAdminMixin`). Account and
+  role changes are logged on `accounts.audit` (who, to whom / which role, old -> new; never passwords; ASSUMPTIONS 340).
 - PARTICIPANT_CATEGORY is Admin-managed master data (no `is_active`): seeded names from
   `accounts/seed.py` can't be renamed/deleted; added ones can be renamed and deleted while unused.
   Names are unique ignoring case/outer spaces. Never assume a fixed number of categories.
@@ -371,6 +376,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Frontend F6 (2026-10-28): startup portal pages and the Admin Console (members, roles, certificate design, system status) (312–323).
 - UI polish (2026-10-29): shared select style, compact KPI cards, collapsible My chats panel (324–326).
 - Documents at creation + preview (2026-10-30): optional documents on the New activity form, in-page document preview (327–330).
+- System Administrator (2026-10-31): role renamed, no can_create_activity, never both flags, audit log, SYSTEM sidebar (339–340).
 - Category + share (2026-10-31): preselected single category, Share card with QR codes, general evaluation link (331–337).
 - Excel report layout (2026-10-31): title block, real Excel tables, formats, totals, print setup, Report info (338).
 
@@ -400,7 +406,8 @@ docker compose up -d
 python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
-python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun
+python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun; one account per role
+python manage.py changepassword director@demo.example.com   # give a demo account a password (typed, never stored)
 python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
 python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
