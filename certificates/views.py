@@ -280,7 +280,7 @@ def evidence_api(request: HttpRequest, certificate_id: int) -> JsonResponse:
 @api_errors
 def evidence_action_api(request: HttpRequest, document_id: int, action: str) -> JsonResponse:
     """POST approve | return {"reason"} (JSON) | replace (multipart: file) | delete.
-    The Step 6 rules apply: reviewers need can_create_activity and are never the uploader;
+    The Step 6 rules apply: reviewers need can_approve_documents (ASSUMPTIONS 344; never return their own upload);
     only the uploader replaces or deletes, and only while For Review."""
     document = _evidence(document_id)
     if action == "approve":

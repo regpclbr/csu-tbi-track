@@ -9,6 +9,8 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.admin.options import ActionLocation
 
+from config.mail import email_sent_message
+
 from . import services
 from .models import Role, TBIMember
 from .permissions import Permission, has_permission
@@ -63,13 +65,13 @@ class ActivityDataAdminMixin:
 
 
 class RoleAdminForm(forms.ModelForm):
-    """Only the two permission flags can change. The separation-of-duties rule (never both flags) and the
+    """Only the three permission flags can change. The separation-of-duties rule (check_role_flags) and the
     last-System-Administrator rule are checked here so the errors show on the form; the save goes through
     accounts.services.update_role_permissions (which checks both again and writes the audit log)."""
 
     class Meta:
         model = Role
-        fields = ("can_create_activity", "can_manage_users")
+        fields = ("can_create_activity", "can_manage_users", "can_approve_documents")
 
     def clean(self) -> dict:
         cleaned = super().clean()
@@ -77,6 +79,7 @@ class RoleAdminForm(forms.ModelForm):
             services.check_role_flags(
                 can_create_activity=bool(cleaned.get("can_create_activity")),
                 can_manage_users=bool(cleaned.get("can_manage_users")),
+                can_approve_documents=bool(cleaned.get("can_approve_documents")),
             )
             if self.instance.can_manage_users and not cleaned.get("can_manage_users"):
                 services.ensure_admins_remain_without_role(self.instance)
@@ -87,12 +90,12 @@ class RoleAdminForm(forms.ModelForm):
 
 @admin.register(Role)
 class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
-    """Roles: only can_create_activity and can_manage_users can be edited.
+    """Roles: only can_create_activity, can_manage_users and can_approve_documents can be edited.
     No adding, renaming or deleting: the code relies on the five fixed role names."""
 
     form = RoleAdminForm
-    list_display = ("role_name", "can_create_activity", "can_manage_users", "created_at")
-    fields = ("role_name", "description", "can_create_activity", "can_manage_users", "created_at")
+    list_display = ("role_name", "can_create_activity", "can_manage_users", "can_approve_documents", "created_at")
+    fields = ("role_name", "description", "can_create_activity", "can_manage_users", "can_approve_documents", "created_at")
     readonly_fields = ("role_name", "description", "created_at")
 
     def has_add_permission(self, request) -> bool:
@@ -105,6 +108,7 @@ class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
             saved,
             can_create_activity=form.cleaned_data["can_create_activity"],
             can_manage_users=form.cleaned_data["can_manage_users"],
+            can_approve_documents=form.cleaned_data["can_approve_documents"],
         )
 
 
@@ -173,7 +177,7 @@ class TBIMemberAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
                 super().save_model(request, obj, form, change)
         else:
             services.save_new_member_with_invitation(obj)
-            self.message_user(request, f"Invitation with a temporary password sent to {obj.email}.")
+            self.message_user(request, email_sent_message(f"Invitation with a temporary password sent to {obj.email}."))
 
     @admin.action(description="Deactivate selected members")
     def deactivate_selected(self, request, queryset) -> None:
@@ -196,4 +200,4 @@ class TBIMemberAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
             except services.MemberManagementError as error:
                 self.message_user(request, f"{member.email}: {error}", level=messages.ERROR)
             else:
-                self.message_user(request, f"A new temporary password was emailed to {member.email}.")
+                self.message_user(request, email_sent_message(f"A new temporary password was emailed to {member.email}."))

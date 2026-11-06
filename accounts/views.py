@@ -21,6 +21,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
+from config.mail import email_sent_message
 
 from . import services
 from .forms import LoginForm, PasswordChangeForm
@@ -150,6 +151,7 @@ def roles_api(request: HttpRequest) -> JsonResponse:
             "role_name": r.role_name,
             "can_create_activity": r.can_create_activity,
             "can_manage_users": r.can_manage_users,
+            "can_approve_documents": r.can_approve_documents,
         }
         for r in Role.objects.all()
     ]
@@ -223,7 +225,7 @@ def member_reset_password_api(request: HttpRequest, member_id: int) -> JsonRespo
         services.reset_member_password(request.user, member)
     except services.MemberManagementError as error:
         return _error(str(error))
-    return JsonResponse({"member": _member_json(member), "message": f"A new temporary password was emailed to {member.email}."})
+    return JsonResponse({"member": _member_json(member), "message": email_sent_message(f"A new temporary password was emailed to {member.email}.")})
 
 
 # --- Forgot password (staff, self-service; Django's password reset views) ------------------------

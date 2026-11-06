@@ -21,6 +21,7 @@ urlpatterns = [
     path("console/members/<int:member_id>/reactivate/", console_views.reactivate, name="console_member_reactivate"),
     path("console/members/<int:member_id>/reset-password/", console_views.reset_password, name="console_member_reset"),
     path("console/roles/", console_views.roles, name="console_roles"),
+    path("console/roles/<int:role_id>/document-approval/", console_views.role_document_approval, name="console_role_approval"),
     path("console/certificates/", console_views.certificate_design, name="console_certificates"),
     path("console/certificates/templates/", console_views.upload_template, name="console_template_upload"),
     path("console/certificates/templates/<int:template_id>/<str:action>/", console_views.template_action, name="console_template_action"),

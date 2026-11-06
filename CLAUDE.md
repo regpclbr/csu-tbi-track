@@ -39,9 +39,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
   those rows; deactivate them (`is_active = False`) where the table has `is_active`.
 - ROLE, ACTIVITY_STATUS, DOCUMENT_STATUS have fixed names the code relies on and no `is_active`.
 - Django admin: ACTIVITY_STATUS, DOCUMENT_STATUS are view only; ACTIVITY_TYPE, DOCUMENT_TYPE
-  editable but never deleted; ROLE only its two flags (through
-  `accounts.services.update_role_permissions`, which keeps at least one active System Administrator and refuses a
-  role with both flags: `check_role_flags`, separation of duties).
+  editable but never deleted; ROLE only its three flags (through
+  `accounts.services.update_role_permissions`, which keeps at least one active System Administrator and refuses
+  can_manage_users together with can_create_activity or can_approve_documents: `check_role_flags`, separation of duties).
+- ROLE.can_approve_documents (ASSUMPTIONS 344): approve/return documents. Migration accounts/0004 gave it to "Director"
+  only; `seed_data` sets it only when creating a role (never re-applied). The System Administrator switches it in the
+  Admin Console roles screen (`set_role_document_approval`) or the Django admin; no last-approver guard, only a warning.
 - The role "Admin" is "System Administrator" (`Role.SYSTEM_ADMINISTRATOR`, migration accounts/0003): manages users, never
   creates activities (ASSUMPTIONS 85, 339). Never look a role up by name for a permission; use the flags. In the Django
   admin, activity data is view only without can_create_activity (`accounts.admin.ActivityDataAdminMixin`). Account and
@@ -66,7 +69,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
   `staff_login_required` on views, `require_permission()` in services. Never rely on hiding a button.
 - `Permission.CREATE_ACTIVITY` (create/edit activities), `Permission.MANAGE_USERS` (Admin Console:
-  users, roles, master data, certificate design and signatories).
+  users, roles, master data, certificate design and signatories), `Permission.APPROVE_DOCUMENTS` (approve/return documents).
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
@@ -95,6 +98,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Offer status choices with `allowed_next_statuses()`; change status only with `change_status()`.
 - Registration state is calculated, never stored: `registered_count()`, `slots_remaining()`,
   `is_registration_open()` in activities/services.py (Step 5 must reuse them).
+- "Open for registration" = `open_for_registration()` (Scheduled, deadline, slots AND a registration form): the one query
+  behind the Activities card/preset, the dashboard KPI, `/register/` and the portal (`open_activities()`) (ASSUMPTIONS 77).
+- Activities list cards: "Activities in total" is plain; the other three open a dialog (`components/modal.html` remote,
+  `activities:card_dialog`, `pages.card_dialog` → `services.preset_list`, max 50) and never filter the list. Card number,
+  dialog and the list's `?preset=` ("Show all in the list" only) all come from `preset_activities()` (ASSUMPTIONS 341).
 
 ## Registrations and evaluations
 - All rules live in `registrations/services.py`: forms (`create_form`, field edits, locked once
@@ -131,7 +139,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   or `FALLBACK_NAMING_PATTERN`); never use the uploaded name in a path.
 - Review state is calculated from status + `reviewed_at` (no column): For Review + empty = waiting for a
   reviewer; For Review + set = returned (waiting for the uploader); Approved = final.
-  `approve_document` / `return_document` need can_create_activity and never the uploader;
+  `approve_document` / `return_document` need can_approve_documents (403 on the page, API and review-tab URLs without
+  it); approving your own upload is allowed, returning it is not (ASSUMPTIONS 344); every approval/return is logged on
+  `documents.audit`. Upload and replace call `notify_approvers()` in the same transaction: a "document_waiting_for_review"
+  NOTIFICATION for every active approver except the uploader. Reminders stay with the activity's creator;
   `replace_document_file` / `delete_document`: uploader only, For Review only. Approved: never
   replaced, retyped or deleted. Step 8 queues embeddings at the marked place in `approve_document`.
 - Use `Document.objects.activity_documents()` (via `documents_for_listing()`) everywhere until Step 9.
@@ -201,6 +212,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Retries: 5/30/120 min one-off schedules, then the 8:30 daily retry (`retry_pending_certificates`).
 - Email: `settings.MAILERS` (console in DEBUG unless `EMAIL_REAL_SENDING`; `config.mail.GuardedSMTPBackend`
   never sends to `EMAIL_BLOCKED_DOMAINS`). Tests never open SMTP (root conftest).
+- "… was emailed" success messages go through `config.mail.email_sent_message()` (console mode: "Email printed in the
+  terminal …"; the mode check `prints_emails()` is also System status's) (ASSUMPTIONS 342).
 - Evidence = DOCUMENT with `related_certificate` (`upload_evidence`), Step 6 rules, never listed/indexed.
 - Startup "My certificates" = Issued certificates of `registrations_for(startup)`; anything else is 404.
 
@@ -251,7 +264,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (one list of nav items, each with an optional `Permission`).
 - Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
   classes `btn btn-primary|danger|warning|secondary|ghost`, empty_state, form_field, form_errors, pagination, toasts,
-  progress_bar, date_tile, spinner, icon, modal, copy_button, choice_pills, options_editor, answer_field, file_drop,
+  progress_bar, date_tile, spinner, icon, modal (+ `remote=True` for HTMX-loaded content, `modal_header`), copy_button, choice_pills, options_editor, answer_field, file_drop,
   category_choice). Hover feedback: `.hover-lift` (cards), `.hover-row` (list rows), `.btn-arrow`
   (button whose arrow slides); movement only under `motion-safe` (ASSUMPTIONS 254). Icons only through `components/icon.html` (add Lucide 1.52.0 SVGs there).
   Every `<select>` is `field-input field-select` (one chevron, same right padding, fixed height shared with date inputs;
@@ -310,6 +323,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `permission_required(MANAGE_USERS)`. Members through `accounts.services` (`list_members` for the list), designs and signatories through
   `certificates.services` (no delete URL, ever), System status through `accounts/system_status.py` (read only; never calls Gemini, never
   shows a secret; the PDF check goes through `get_renderer()`).
+- Modals: always `<dialog class="modal">` (centred by `.modal`: fixed, inset 0, `margin: auto !important`, max 85dvh,
+  scrolls inside; never give a dialog margins). Browser check, opt-in: `BROWSER_TESTS=1`, `config/tests/test_modals_browser.py`
+  (ASSUMPTIONS 343).
 - Accessibility: real `<button>`/`<a>`/`<label>`, visible focus, `aria-label` on icon-only buttons, a text table or
   list for every chart, an empty state for every list, a loading indicator (`htmx-indicator`) for HTMX swaps.
 
@@ -336,7 +352,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - The client IP comes only from `config.network.client_ip()` (`TRUSTED_PROXY_HEADER` behind a proxy).
 - Request values meaning true/false go through `config.parsing.parse_bool()` (true/false only, else 400).
 - Lookup lists for the frontend come from `/api/lookups/` (`config/lookups.py`). Master data and role
-  flags are managed only in the Django admin (no Admin Console screens for them).
+  flags are managed only in the Django admin (no Admin Console screens for them), except can_approve_documents, which
+  the Admin Console roles screen also switches (ASSUMPTIONS 344).
 - Numbers about evaluations (also one activity's, `/reports/api/activities/<id>/evaluation/`) come
   from `reports/metrics.py`.
 - Write pytest-django tests for every business rule (`<app>/tests/test_*.py`).
@@ -379,6 +396,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - System Administrator (2026-10-31): role renamed, no can_create_activity, never both flags, audit log, SYSTEM sidebar (339–340).
 - Category + share (2026-10-31): preselected single category, Share card with QR codes, general evaluation link (331–337).
 - Excel report layout (2026-10-31): title block, real Excel tables, formats, totals, print setup, Report info (338).
+- Activity cards (2026-11-01): card dialogs with the card's activities, one "open for registration" rule, dev-mode email messages (77, 341–342).
+- Document approval (2026-11-05): ROLE.can_approve_documents (Director only), self-approval, review notifications, roles screen switch (344).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -424,6 +443,7 @@ python manage.py qcluster       # background worker (separate terminal; works on
 pytest                                    # all tests, 2 workers in parallel (pytest.ini) on the kept test databases (--reuse-db)
 pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Remove-Item Env:BROWSER_TESTS   # modals in Chromium
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time
 ```

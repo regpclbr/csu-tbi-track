@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
+from django.urls import reverse
 from django.utils import timezone
 
 from registrations import services as registration_services
@@ -56,6 +57,7 @@ class ListFilters:
     date_from: date | None = None
     date_to: date | None = None
     sort: str = services.DEFAULT_SORT
+    preset: str = ""  # one of services.LIST_PRESETS (a list card), or ""
     page: str = "1"
     view: str = LIST
     month: date = field(default_factory=lambda: timezone.localdate().replace(day=1))
@@ -66,7 +68,7 @@ class ListFilters:
         return {
             "search": self.q, "activity_type": self.activity_type, "status": self.status,
             "participant_category": self.participant_category, "date_from": self.date_from,
-            "date_to": self.date_to, "sort": self.sort,
+            "date_to": self.date_to, "sort": self.sort, "preset": self.preset,
         }
 
     def query(self, **changes) -> str:
@@ -78,6 +80,7 @@ class ListFilters:
             "date_from": values.date_from.isoformat() if values.date_from else "",
             "date_to": values.date_to.isoformat() if values.date_to else "",
             "sort": "" if values.sort == services.DEFAULT_SORT else values.sort,
+            "preset": values.preset,
             "view": "" if values.view == LIST else values.view,
             "month": values.month.strftime("%Y-%m") if values.view == CALENDAR else "",
         }
@@ -85,7 +88,14 @@ class ListFilters:
 
     @property
     def any_set(self) -> bool:
-        return bool(self.q or self.activity_type or self.status or self.participant_category or self.date_from or self.date_to)
+        return bool(
+            self.q or self.activity_type or self.status or self.participant_category or self.date_from or self.date_to
+            or self.preset
+        )
+
+    @property
+    def preset_label(self) -> str:
+        return services.LIST_PRESETS.get(self.preset, "")
 
 
 def _int(params, name: str, errors: list[str], label: str) -> int | None:
@@ -109,8 +119,24 @@ def _date(params, name: str, errors: list[str], label: str) -> date | None:
         return None
 
 
+def _preset(params, filters: ListFilters, errors: list[str]) -> str:
+    preset = (params.get("preset") or "").strip()
+    if not preset:
+        return ""
+    if preset not in services.LIST_PRESETS:
+        errors.append("Ignored an unknown list shortcut.")
+        return ""
+    if filters.status or (preset == "conducted_month" and (filters.date_from or filters.date_to)):
+        return ""
+    return preset
+
+
 def parse_list_filters(params, today: date | None = None) -> ListFilters:
-    """Read ?q, activity_type, status, participant_category, date_from, date_to, sort, page, view, month."""
+    """Read ?q, activity_type, status, participant_category, date_from, date_to, sort, preset, page, view, month.
+
+    A preset (a list card) is dropped when another filter contradicts it: any status filter (each preset has its
+    own status rule), and From / To dates for "Conducted this month" (it has its own date rule). Search, type,
+    category and sort combine with every preset."""
     today = today or timezone.localdate()
     errors: list[str] = []
     filters = ListFilters(
@@ -133,12 +159,64 @@ def parse_list_filters(params, today: date | None = None) -> ListFilters:
     if filters.date_from and filters.date_to and filters.date_to < filters.date_from:
         errors.append("Ignored the dates: “To” is before “From”.")
         filters.date_from = filters.date_to = None
+    filters.preset = _preset(params, filters, errors)
     if month := (params.get("month") or "").strip():
         try:
             filters.month = datetime.strptime(month, "%Y-%m").date()
         except ValueError:
             errors.append("Ignored the month: use YYYY-MM.")
     return filters
+
+
+# The Activities list cards: (preset, stats key, label, icon, chip colour, pill). Preset "" = "Activities in total"
+# (a plain card); the others open a dialog with their activities (ASSUMPTIONS 341).
+STAT_CARDS = [
+    ("", "total", "Activities in total", "layout-grid", "blue", ""),
+    ("open", "open_for_registration", services.LIST_PRESETS["open"], "user-plus", "green", "open now"),
+    ("conducted_month", "conducted_this_month", services.LIST_PRESETS["conducted_month"], "circle-check", "teal", ""),
+    ("conducted", "conducted_total", services.LIST_PRESETS["conducted"], "award", "violet", ""),
+]
+
+# The dialog's empty state for each preset.
+PRESET_EMPTY = {
+    "open": "No activities are open for registration right now.",
+    "conducted_month": "No activities were conducted this month.",
+    "conducted": "No activities have been conducted yet.",
+}
+
+
+def preset_list_url(preset: str) -> str:
+    """The Activities list with a card's preset (the dialog's "Show all in the list", and the no-JavaScript card)."""
+    return f"{reverse('activities:list')}?{urlencode({'preset': preset})}"
+
+
+def stat_cards(stats: dict[str, int]) -> list[dict]:
+    """The four cards. A card with a preset opens its dialog (HTMX: `dialog_url`); without JavaScript it is a link to
+    the list with the preset (`list_url`). They never filter the list below."""
+    return [
+        {
+            "preset": preset, "label": label, "value": stats[key], "icon": icon, "chip": chip, "pill": pill,
+            "dialog_url": reverse("activities:card_dialog", args=[preset]) if preset else "",
+            "list_url": preset_list_url(preset) if preset else "",
+        }
+        for preset, key, label, icon, chip, pill in STAT_CARDS
+    ]
+
+
+def card_dialog(preset: str, now: datetime | None = None) -> dict:
+    """What a card's dialog shows: its title with the count, up to services.PRESET_LIST_LIMIT rows (the card's own
+    query, services.preset_list) and, when there are more, the link to the whole list with the preset."""
+    count, activities = services.preset_list(preset, limit=services.PRESET_LIST_LIMIT, now=now)
+    return {
+        "preset": preset,
+        "title": f"{services.LIST_PRESETS[preset]} ({count:,})",
+        "count": count,
+        "rows": list_rows(activities),
+        "more": count > len(activities),
+        "limit": services.PRESET_LIST_LIMIT,
+        "empty": PRESET_EMPTY[preset],
+        "list_url": preset_list_url(preset),
+    }
 
 
 # --- List rows and calendar ---------------------------------------------------------------------

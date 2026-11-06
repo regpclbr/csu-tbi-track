@@ -62,7 +62,7 @@ def test_states_and_completion(upload, director, head, activity) -> None:
     assert item.state == "For Review" and item.is_overdue is True  # not Approved -> still overdue
     assert item.documents == [for_review]
 
-    services.approve_document(head, for_review)
+    services.approve_document(director, for_review)
     upload(director, activity)  # a newer For Review one does not undo completion
     item = by_name(services.document_checklist(activity, now=due_passed))["Invitation Letter"]
     assert item.state == "Approved" and item.is_overdue is False
@@ -70,14 +70,14 @@ def test_states_and_completion(upload, director, head, activity) -> None:
 
 
 def test_returned_document_counts_as_for_review(upload, director, head, activity) -> None:
-    document = upload(director, activity)
-    services.return_document(head, document, "Fix")
+    document = upload(head, activity)
+    services.return_document(director, document, "Fix")
     assert by_name(services.document_checklist(activity, now=TEST_NOW))["Invitation Letter"].state == "For Review"
 
 
 def test_other_activities_documents_do_not_count(upload, director, head, activity, make_activity) -> None:
     other = make_activity(title="Other")
-    services.approve_document(head, upload(director, other))
+    services.approve_document(director, upload(director, other))
     assert by_name(services.document_checklist(activity, now=TEST_NOW))["Invitation Letter"].state == "Missing"
 
 
@@ -101,7 +101,7 @@ def test_inactive_types_are_left_out(activity) -> None:
 def test_certificate_files_are_excluded(upload, director, head, activity, certificate_for) -> None:
     """Item 26: documents with related_certificate set never count in the checklist."""
     document = upload(director, activity)
-    services.approve_document(head, document)
+    services.approve_document(director, document)
     Document.objects.filter(pk=document.pk).update(related_certificate=certificate_for(activity))
     assert by_name(services.document_checklist(activity, now=TEST_NOW))["Invitation Letter"].state == "Missing"
 

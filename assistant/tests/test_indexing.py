@@ -181,23 +181,23 @@ def test_task_never_raises(monkeypatch) -> None:
     assert tasks.run_index_document(7) == {"document_id": 7, "status": "failed", "chunks": 0, "reason": "ValueError"}
 
 
-def test_approval_queues_indexing_after_commit(make_document, monkeypatch, django_capture_on_commit_callbacks, head) -> None:
+def test_approval_queues_indexing_after_commit(make_document, monkeypatch, django_capture_on_commit_callbacks, director) -> None:
     queued = []
     monkeypatch.setattr(document_services, "queue_indexing", queued.append)
     document = make_document(docx_file(*DESIGN), approve=False)
     with django_capture_on_commit_callbacks(execute=True):
-        document_services.approve_document(head, document)
+        document_services.approve_document(director, document)
     assert queued == [document.pk]
 
 
-def test_queue_problem_never_breaks_the_approval(make_document, monkeypatch, django_capture_on_commit_callbacks, head) -> None:
+def test_queue_problem_never_breaks_the_approval(make_document, monkeypatch, django_capture_on_commit_callbacks, director) -> None:
     def broken(document_id):
         raise RuntimeError("queue down")
 
     monkeypatch.setattr(document_services, "queue_indexing", broken)
     document = make_document(docx_file(*DESIGN), approve=False)
     with django_capture_on_commit_callbacks(execute=True):
-        document_services.approve_document(head, document)
+        document_services.approve_document(director, document)
     document.refresh_from_db()
     assert document.status.status_name == "Approved"
 

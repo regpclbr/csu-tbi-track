@@ -3,11 +3,14 @@
 Views (and the Django admin) stay thin and call the functions in this module.
 
 Review flow (DOCUMENT_STATUS has only For Review and Approved; there is no Rejected):
-- Upload: any active staff member. The document starts For Review (reviewed_at empty).
-- Approve: a member with can_create_activity who is not the uploader. Approved is final.
-- Return: same reviewer rule. It stays For Review, but reviewed_by/reviewed_at are set, which marks
-  it "returned"; the uploader gets a notification with the reason and must replace the file.
-- Replace: uploader only, For Review only. Clears reviewed_by/reviewed_at (waiting for a reviewer again).
+- Upload: any active staff member. The document starts For Review (reviewed_at empty). Every active member who
+  can approve documents gets a "waiting for your review" notification, except the uploader.
+- Approve: a member with can_approve_documents (ASSUMPTIONS 344), also for their own upload. Approved is final.
+- Return: a member with can_approve_documents, never for their own upload (they replace or delete it instead).
+  It stays For Review, but reviewed_by/reviewed_at are set, which marks it "returned"; the uploader gets a
+  notification with the reason and must replace the file.
+- Replace: uploader only, For Review only. Clears reviewed_by/reviewed_at (waiting for a reviewer again) and
+  notifies the approvers again, except the uploader.
 - Delete: uploader only, For Review only (the file is removed too). Approved documents are never deleted.
 
 Certificate evidence (related_certificate set, Step 9) uses the same upload, review, replace and
@@ -32,6 +35,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from accounts.models import TBIMember
+from accounts.services import active_document_approvers
 from accounts.permissions import Permission, has_permission, require_permission, require_staff_member
 from activities.models import Activity, ActivityStatus
 from activities.services import PageResult, _paginate
@@ -41,6 +45,7 @@ from notifications.models import Notification
 from .models import Document, DocumentStatus, DocumentType
 
 logger = logging.getLogger("documents.reminders")
+audit_log = logging.getLogger("documents.audit")  # who approved or returned which document (never file contents)
 
 DEFAULT_PAGE_SIZE = 20
 RETURN_REASON_MAX_LENGTH = 300
@@ -240,11 +245,35 @@ def upload_document(
     )
     _save_file(document, file, extension, now)
     try:
-        document.save()
+        with transaction.atomic():  # the document and its review notifications are saved together
+            document.save()
+            notify_approvers(document, member)
     except Exception:
         _delete_stored_file(document.file_path.name)  # don't leave an orphan file behind
         raise
     return document
+
+
+def notify_approvers(document: Document, actor: TBIMember) -> int:
+    """In-app "waiting for your review" notification for every active member who can approve documents,
+    except `actor` (the member who uploaded or replaced the file). Returns how many were created.
+    Call it inside the transaction that saves the document, so a rolled-back upload notifies nobody."""
+    recipients = active_document_approvers().exclude(pk=actor.pk).order_by("pk")
+    message = (
+        f'{actor.name[:60]} uploaded the {document.document_type.name} "{document.title[:80]}" for '
+        f'"{document.activity.title[:80]}". It is waiting for your review.'
+    )[:500]
+    created = Notification.objects.bulk_create(
+        Notification(
+            member=recipient,
+            activity=document.activity,
+            document_type=document.document_type,
+            type=Notification.DOCUMENT_WAITING_FOR_REVIEW,
+            message=message,
+        )
+        for recipient in recipients
+    )
+    return len(created)
 
 
 # --- Documents uploaded with a new activity (ASSUMPTIONS 327) ---------------------------------------
@@ -317,8 +346,9 @@ def create_activity_with_documents(
     (upload_document, the same rules as the Documents tab) in one transaction: all or nothing.
 
     Errors of the activity and of every row are raised together as NewActivityError. Files already stored when
-    something fails are deleted again. upload_document creates no notification, email or task (indexing is
-    queued only on approval, on commit), so a refused create never tells anyone anything."""
+    something fails are deleted again. upload_document's review notifications are rows in this same transaction
+    and it creates no email or task (indexing is queued only on approval, on commit), so a refused create never
+    tells anyone anything."""
     from activities.services import create_activity  # documents imports activities, never the other way round
 
     require_permission(member, Permission.CREATE_ACTIVITY)
@@ -407,7 +437,9 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
         document.reviewed_by = None
         document.reviewed_at = None
         try:
-            document.save()
+            with transaction.atomic():
+                document.save()
+                notify_approvers(document, member)
         except Exception:
             _delete_stored_file(document.file_path.name)
             raise
@@ -429,11 +461,13 @@ def delete_document(member: TBIMember, document: Document) -> None:
 # --- Review: approve and return ------------------------------------------------------------
 
 
+RETURN_OWN_REFUSED = "You cannot return a document you uploaded. Replace or delete it instead."
+
+
 def _ensure_can_review(member: TBIMember, document: Document) -> None:
-    """Reviewer rule (pending TBI validation): can_create_activity, and never your own upload."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    if document.uploaded_by_id == member.pk:
-        raise PermissionDenied("You cannot review a document you uploaded. Another member must review it.")
+    """Reviewer rule (ASSUMPTIONS 344, pending TBI validation): can_approve_documents. Approving your own upload
+    is allowed (reviewed_by is then the uploader)."""
+    require_permission(member, Permission.APPROVE_DOCUMENTS)
     if document.status.status_name != DocumentStatus.FOR_REVIEW:
         raise DocumentError("This document is already approved.")
     if document.reviewed_at is not None:
@@ -449,6 +483,10 @@ def approve_document(member: TBIMember, document: Document, now: datetime | None
         document.reviewed_by = member
         document.reviewed_at = now or timezone.now()
         document.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        audit_log.info(
+            "Document approved: document_id=%s by member_id=%s%s", document.pk, member.pk,
+            " (own upload)" if document.uploaded_by_id == member.pk else "",
+        )
 
         # Step 8: index it for the assistant once the approval is saved (Django-Q2 task).
         # robust=True: a problem queueing the task never undoes or breaks the approval.
@@ -471,9 +509,12 @@ def return_document(member: TBIMember, document: Document, reason: str, now: dat
     with transaction.atomic():
         document = _locked(document)
         _ensure_can_review(member, document)
+        if document.uploaded_by_id == member.pk:
+            raise DocumentError(RETURN_OWN_REFUSED)
         document.reviewed_by = member
         document.reviewed_at = now or timezone.now()
         document.save(update_fields=["reviewed_by", "reviewed_at", "updated_at"])
+        audit_log.info("Document returned: document_id=%s by member_id=%s", document.pk, member.pk)
         Notification.objects.create(
             member=document.uploaded_by,
             activity=document.activity,
@@ -501,15 +542,10 @@ def allowed_actions(member: TBIMember, document: Document) -> dict[str, bool]:
     """What `member` may do with `document` right now (for the frontend; the services check again)."""
     for_review = document.status.status_name == DocumentStatus.FOR_REVIEW
     is_uploader = document.uploaded_by_id == member.pk
-    can_review = (
-        for_review
-        and document.reviewed_at is None
-        and not is_uploader
-        and has_permission(member, Permission.CREATE_ACTIVITY)
-    )
+    can_review = for_review and document.reviewed_at is None and has_permission(member, Permission.APPROVE_DOCUMENTS)
     return {
-        "approve": can_review,
-        "return": can_review,
+        "approve": can_review,  # also the member's own upload (ASSUMPTIONS 344)
+        "return": can_review and not is_uploader,
         "replace": for_review and is_uploader,
         "delete": for_review and is_uploader,
     }
@@ -545,11 +581,12 @@ def list_documents(filters: dict | None = None, page: int | str | None = 1, per_
 
 
 def review_queue(member: TBIMember) -> QuerySet:
-    """For Review documents waiting for a reviewer that `member` may approve (never their own uploads).
-    Returned documents are left out: they wait for the uploader. Empty without can_create_activity."""
-    if not has_permission(member, Permission.CREATE_ACTIVITY):
+    """For Review documents waiting for a reviewer, including `member`'s own uploads (they may approve them,
+    ASSUMPTIONS 344). Returned documents are left out: they wait for the uploader. Empty without
+    can_approve_documents."""
+    if not has_permission(member, Permission.APPROVE_DOCUMENTS):
         return Document.objects.none()
-    return documents_for_listing().waiting_for_reviewer().exclude(uploaded_by=member).order_by("uploaded_at")
+    return documents_for_listing().waiting_for_reviewer().order_by("uploaded_at")
 
 
 # --- Checklist (database checks; the Step 8 assistant reuses it for "what is missing") ---------

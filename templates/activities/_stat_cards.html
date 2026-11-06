@@ -1,0 +1,22 @@
+{% load ui %}
+{% comment %}
+The Activities list cards (activities.pages.stat_cards, ASSUMPTIONS 341). "Activities in total" is a plain card. The
+other three open #card-dialog (components/modal.html, remote) with their activities, loaded with HTMX; the list below
+never changes. Without JavaScript they are links to the list with the preset. Keyboard focus: .stat-card-link.
+{% endcomment %}
+<div class="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+  {% for card in cards %}
+    {% if card.preset %}
+      <a href="{{ card.list_url }}" class="stat-card-link" aria-haspopup="dialog"
+         hx-get="{{ card.dialog_url }}" hx-target="#card-dialog-body" hx-swap="innerHTML" hx-push-url="false"
+         hx-on::before-request="window.modalOpener = this"
+         hx-on::after-request="if (event.detail.successful) document.getElementById('card-dialog').showModal()">
+        <span class="sr-only">Show the activities: </span>
+        {% include "components/kpi_card.html" with label=card.label value=card.value|number icon=card.icon chip=card.chip pill=card.pill pill_tone="neutral" %}
+      </a>
+    {% else %}
+      {% include "components/kpi_card.html" with label=card.label value=card.value|number icon=card.icon chip=card.chip pill=card.pill static=True %}
+    {% endif %}
+  {% endfor %}
+</div>
+{% include "components/modal.html" with id="card-dialog" remote=True dialog_class="max-w-2xl" %}

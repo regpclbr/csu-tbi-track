@@ -31,7 +31,9 @@ all of them are to be validated with the TBI too.
 
 - **Item 9:** When is each required document due? (Current placeholders: Activity Design 10 days before the start date, Invitation Letter 7 days before, Request Letter 5 days before, Attendance Sheet on the end date, Accomplishment Report 7 days after the end date.)
 - **Item 118 (upload):** Should any TBI staff member be allowed to upload a document for any activity, or only certain roles or the activity's organizer?
-- **Item 118 (review):** Who should approve or return a document? Now it is any staff member whose role can create activities, but never the person who uploaded it.
+- **Item 344 (review):** Only the Director approves or returns documents now (the System Administrator can give this to another role in the Admin Console). Is that right?
+- **Item 344 (stand-in):** If the Director is unavailable, who should approve documents?
+- **Item 344 (own uploads):** Should the Director's own uploads need someone else's approval? (Now the Director may approve their own upload.)
 - **Item 118 (fixing a document):** If a document needs fixing, is it right that only the person who uploaded it can replace or delete it, and only before it is approved? (Approved documents are final; a wrong one is fixed by uploading a new one.)
 - **Item 120:** Should every TBI staff member be able to open and download every activity document, or should some documents be limited to certain roles?
 - **Item 123:** Does the TBI have an official file-naming or folder convention for documents (for example "Year/Activity/Type_Date")? If yes, what is it for each document type?

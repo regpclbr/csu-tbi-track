@@ -66,7 +66,7 @@ def test_no_due_soon_once_a_document_is_uploaded(activity, upload, director) -> 
 def test_overdue_when_past_due_and_not_approved(activity, upload, director, head) -> None:
     upload(director, activity)  # Invitation Letter For Review: still overdue
     approved = upload(director, activity, document_type=DocumentType.objects.get(name="Activity Design"))
-    services.approve_document(head, approved)
+    services.approve_document(director, approved)
 
     result = services.send_document_reminders(now=at(date(2026, 11, 4)))  # day after the invitation's due date
     assert types_of(Notification.DOCUMENT_OVERDUE) == {"Invitation Letter"}

@@ -1,10 +1,11 @@
-"""The Admin Console pages (phase F6, /accounts/console/...): Members, Roles (read only), Certificate design and
+"""The Admin Console pages (phase F6, /accounts/console/...): Members, Roles, Certificate design and
 System status. Every view needs can_manage_users (permission_required); the services check it again.
 
 Thin views: members through accounts.services (guardrails: never yourself, at least one active Admin, never
 deleted), templates and signatories through certificates.services (image checks, files never change, never
-deleted: there is no delete URL), checks through accounts.system_status. Master data and the role flags stay in
-the Django admin (ASSUMPTIONS 224): the Roles tab only links there.
+deleted: there is no delete URL), checks through accounts.system_status. Master data and the flags
+can_create_activity / can_manage_users stay in the Django admin (ASSUMPTIONS 224); the Roles tab switches only
+can_approve_documents on or off (ASSUMPTIONS 344) and links to the Django admin for the rest.
 """
 
 from django.conf import settings
@@ -18,6 +19,8 @@ from django.views.decorators.http import require_GET, require_POST
 
 from certificates import services as certificate_services
 from certificates.models import CertificateSignatory, CertificateTemplate
+from config.mail import email_sent_message
+from config.parsing import parse_bool
 from documents.pages import safe_next
 from registrations.public_pages import flat_errors
 
@@ -82,7 +85,9 @@ def invite(request: HttpRequest) -> HttpResponse:
             message = str(error)
             errors["name" if "name" in message else "email"] = message
         else:
-            messages.success(request, f"{member.name} was added. The invitation with a temporary password was emailed to {member.email}.")
+            messages.success(request, email_sent_message(
+                f"The invitation with a temporary password was emailed to {member.email}.", before=f"{member.name} was added. "
+            ))
             return redirect("accounts:console")
     return _page(request, "console/members.html", "accounts:console", _members_context(request, values, errors), status=400)
 
@@ -143,11 +148,11 @@ def reset_password(request: HttpRequest, member_id: int) -> HttpResponse:
     except services.MemberManagementError as error:
         messages.error(request, str(error))
     else:
-        messages.success(request, f"A new temporary password was emailed to {member.email}.")
+        messages.success(request, email_sent_message(f"A new temporary password was emailed to {member.email}."))
     return _back(request)
 
 
-# --- Roles (read only) -------------------------------------------------------------------------------
+# --- Roles ---------------------------------------------------------------------------------------------
 
 
 @manage_users
@@ -156,8 +161,31 @@ def roles(request: HttpRequest) -> HttpResponse:
     context = {
         "roles": Role.objects.annotate(member_count=Count("members", filter=Q(members__is_active=True))).order_by("role_name"),
         "admin_url": reverse("admin:accounts_role_changelist"),
+        "no_approver": not services.active_document_approvers().exists(),
     }
     return _page(request, "console/roles.html", "accounts:console_roles", context)
+
+
+@manage_users
+@require_POST
+def role_document_approval(request: HttpRequest, role_id: int) -> HttpResponse:
+    """POST enabled=true|false: turn can_approve_documents on or off for one role (accounts.services, audit log)."""
+    role = get_object_or_404(Role, pk=role_id)
+    back = redirect("accounts:console_roles")
+    try:
+        enabled = parse_bool(request.POST.get("enabled"), "enabled")
+        if enabled is None:
+            raise ValidationError({"enabled": ["enabled must be true or false."]})
+        services.set_role_document_approval(request.user, role, enabled)
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+        return back
+    except services.MemberManagementError as error:
+        messages.error(request, str(error))
+        return back
+    state = "can now approve and return documents" if enabled else "can no longer approve or return documents"
+    messages.success(request, f"{role.role_name} {state}.")
+    return back
 
 
 # --- Certificate design ------------------------------------------------------------------------------

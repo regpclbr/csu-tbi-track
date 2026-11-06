@@ -168,11 +168,14 @@ def test_member_actions_go_back_only_within_this_site(admin, make_member) -> Non
 # --- Roles ------------------------------------------------------------------------------------------------
 
 
-def test_roles_are_read_only_with_a_link_to_the_administration_site(admin, roles) -> None:
+def test_roles_link_to_the_administration_site_and_switch_only_document_approval(admin, roles) -> None:
     html = admin.get(reverse("accounts:console_roles")).content.decode()
     assert all(name in html for name in roles) and reverse("admin:accounts_role_changelist") in html
     assert "Edit in the administration site" in html
-    assert "<form" not in html.split('id="roles-title"')[1].split("</section>")[0]  # nothing to change here
+    section = html.split('id="roles-title"')[1].split("</section>")[0]
+    # The only forms are the can_approve_documents switches (ASSUMPTIONS 344); the other flags stay in the Django admin.
+    assert section.count("<form") == len(roles) == section.count('name="enabled"')
+    assert all(reverse("accounts:console_role_approval", args=[role.pk]) in section for role in roles.values())
 
 
 # --- Certificate design: never deleted ---------------------------------------------------------------------

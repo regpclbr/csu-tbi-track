@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from config.mail import email_sent_message
 from documents.pages import safe_next
 
 from . import pages, services
@@ -78,5 +79,5 @@ def send_password_link(request: HttpRequest, startup_id: int) -> HttpResponse:
     except services.StartupError as error:
         messages.error(request, str(error))
     else:
-        messages.success(request, f"A set-password link was emailed to {startup.email}.")
+        messages.success(request, email_sent_message(f"A set-password link was emailed to {startup.email}."))
     return redirect("startups:detail", startup_id=startup.pk)

@@ -21,7 +21,7 @@ from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission
 from activities.formatting import format_datetime
 from activities.models import Activity, ActivityStatus, ParticipantCategory
-from activities.services import is_registration_open, slots_remaining
+from activities.services import is_registration_open, open_for_registration, slots_remaining
 from config.parsing import parse_bool
 from config.ratelimit import count_attempt
 
@@ -448,15 +448,12 @@ def public_activity_info(activity: Activity, now: datetime | None = None) -> dic
 
 def open_activities(now: datetime | None = None) -> list[Activity]:
     """Activities open for registration right now, soonest first: Scheduled, deadline not passed,
-    slots left and a registration form (the same rule as the registration page,
-    registration_closed_reason). Used by the public list and the startup portal."""
-    now = now or timezone.now()
-    candidates = (
-        Activity.objects.filter(status__name=ActivityStatus.SCHEDULED, registration_deadline__gte=now)
-        .select_related("status", "activity_type")
-        .order_by("start_date", "activity_id")
+    slots left and a registration form (registration_closed_reason is None). The query is
+    activities.services.open_for_registration(), the one rule shared with the Activities card and
+    preset and the dashboard KPI. Used by the public list and the startup portal."""
+    return list(
+        open_for_registration(now=now).select_related("status", "activity_type").order_by("start_date", "activity_id")
     )
-    return [activity for activity in candidates if registration_closed_reason(activity, now) is None]
 
 
 def _choose_category(activity: Activity, category_id) -> ParticipantCategory:

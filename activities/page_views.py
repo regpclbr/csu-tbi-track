@@ -37,25 +37,40 @@ def _detail_url(activity: Activity, tab: str = "") -> str:
 @staff_login_required
 @require_GET
 def activity_list(request: HttpRequest) -> HttpResponse:
-    """GET q, activity_type, status, participant_category, date_from, date_to, sort, page, view=list|calendar,
-    month=YYYY-MM. An HTMX request (a filter change, a page or month link) gets only the results part."""
+    """GET q, activity_type, status, participant_category, date_from, date_to, sort, preset (from a card dialog's
+    "Show all in the list"), page, view=list|calendar, month=YYYY-MM. An HTMX request (a filter change, a page or
+    month link) gets only the results part, plus the hidden preset out of band."""
     filters = pages.parse_list_filters(request.GET)
     context = {"page_title": "Activities", "filters": filters, "q": filters.q, "can_create": _can_create(request)}
     if filters.view == pages.CALENDAR:
         context["calendar"] = pages.month_grid(filters.month)
     else:
         result = services.list_activities(filters.for_service(), page=filters.page)
-        context.update(result=result, rows=pages.list_rows(result.items), page_query=filters.query())
+        context.update(result=result, rows=pages.list_rows(result.items), page_query=filters.query(),
+                       clear_preset_query=filters.query(preset=""))
     if is_htmx(request):
+        context["oob"] = filters.view == pages.LIST
         return render(request, "activities/_results.html", context)
     context.update(
-        stats=services.activity_stats(),
+        cards=pages.stat_cards(services.activity_stats()),
         sort_choices=pages.SORT_CHOICES,
         activity_types=ActivityType.objects.order_by("name"),
         statuses=ActivityStatus.objects.order_by("pk"),
         categories=ParticipantCategory.objects.order_by("name"),
     )
     return render(request, "activities/list.html", context)
+
+
+@staff_login_required
+@require_GET
+def card_dialog(request: HttpRequest, preset: str) -> HttpResponse:
+    """A list card's dialog (ASSUMPTIONS 341): its activities from the card's own query, loaded with HTMX into
+    #card-dialog. Without JavaScript the card is a link to the list with the preset, so this URL redirects there."""
+    if preset not in services.LIST_PRESETS:
+        raise Http404("Unknown list card.")
+    if not is_htmx(request):
+        return redirect(pages.preset_list_url(preset))
+    return render(request, "activities/_card_dialog.html", {"dialog": pages.card_dialog(preset)})
 
 
 # --- Create and edit -----------------------------------------------------------------------------------

@@ -10,7 +10,7 @@ from django.core.mail import EmailMessage
 from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
 
-from config.mail import is_blocked_address
+from config.mail import email_sent_message, is_blocked_address
 
 
 class Command(BaseCommand):
@@ -53,4 +53,4 @@ class Command(BaseCommand):
             message.send(using=alias)
         except Exception as error:  # SMTP errors: show the server's own answer (never the password)
             raise CommandError(f"Sending failed: {type(error).__name__}: {error}") from None
-        self.stdout.write(self.style.SUCCESS(f"Sent to {address}."))
+        self.stdout.write(self.style.SUCCESS(email_sent_message(f"Sent to {address}.", alias=alias)))

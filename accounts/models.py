@@ -8,7 +8,7 @@ from django.db.models.functions import Lower
 
 
 class Role(models.Model):
-    """A staff role. Never deleted. Permissions come only from the two flags, never from the name.
+    """A staff role. Never deleted. Permissions come only from the three flags, never from the name.
 
     SYSTEM_ADMINISTRATOR is the role create_superuser and seed_data give the system administrator: it manages users
     and does not create activities (separation of duties, ASSUMPTIONS 85 and 339).
@@ -21,6 +21,9 @@ class Role(models.Model):
     description = models.CharField(max_length=255, blank=True)
     can_create_activity = models.BooleanField(default=False)
     can_manage_users = models.BooleanField(default=False)
+    # Approve or return documents (ASSUMPTIONS 344): True only for Director by default; the System Administrator
+    # turns it on or off in the Admin Console roles screen.
+    can_approve_documents = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

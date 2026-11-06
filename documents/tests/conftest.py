@@ -52,15 +52,27 @@ def director(make_member):
 
 
 @pytest.fixture
+def second_director(make_member):
+    """A second member who can approve documents (Director role)."""
+    return make_member("Director", email="second.director@example.com")
+
+
+@pytest.fixture
 def head(make_member):
-    """A second member who can create activities (and review documents)."""
+    """Incubation Project Head: can create activities, cannot approve or return documents (ASSUMPTIONS 344)."""
     return make_member("Incubation Project Head")
 
 
 @pytest.fixture
 def admin_staff(make_member):
-    """Admin Staff: can upload, cannot review (no can_create_activity)."""
+    """Admin Staff: can upload, cannot review (no can_approve_documents)."""
     return make_member("Admin Staff")
+
+
+@pytest.fixture
+def system_admin(make_member):
+    """System Administrator: manages users, never approves documents (separation of duties)."""
+    return make_member("System Administrator")
 
 
 # --- Activities and types -----------------------------------------------------------------------

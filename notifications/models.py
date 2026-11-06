@@ -12,6 +12,7 @@ class Notification(models.Model):
     DOCUMENT_DUE_SOON = "document_due_soon"
     DOCUMENT_OVERDUE = "document_overdue"
     DOCUMENT_RETURNED = "document_returned"
+    DOCUMENT_WAITING_FOR_REVIEW = "document_waiting_for_review"  # to members who can approve documents, not the uploader
     REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
 
     notification_id = models.BigAutoField(primary_key=True)

@@ -83,8 +83,9 @@ def test_documents_badge_counts_documents_waiting_for_my_review(director, make_m
                         file_name="a.pdf", file_extension="pdf", file_size_kb=1)
     document.file_path.save("a.pdf", ContentFile(b"%PDF-1.4"), save=False)
     document.save()
-    assert "1<span class=\"sr-only\"> documents waiting for your review</span>" in logged_in(head).get(HOME).content.decode()
-    assert "documents waiting for your review" not in logged_in(director).get(HOME).content.decode()  # own upload
+    # Only can_approve_documents (the Director) gets the badge, own uploads included (ASSUMPTIONS 344).
+    assert "1<span class=\"sr-only\"> documents waiting for your review</span>" in logged_in(director).get(HOME).content.decode()
+    assert "documents waiting for your review" not in logged_in(head).get(HOME).content.decode()
 
 
 # --- Logout is a POST form -------------------------------------------------------------------------------------

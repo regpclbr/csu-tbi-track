@@ -11,6 +11,7 @@ urlpatterns = [
     # Pages (phase F2a)
     path("", page_views.activity_list, name="list"),
     path("new/", page_views.activity_create, name="create"),
+    path("cards/<str:preset>/", page_views.card_dialog, name="card_dialog"),  # a list card's dialog (HTMX)
     path("<int:activity_id>/", page_views.activity_detail, name="detail"),
     path("<int:activity_id>/edit/", page_views.activity_edit, name="edit"),
     path("<int:activity_id>/qr/<str:kind>.png", page_views.qr_code, name="qr_code"),  # the Share card's QR codes

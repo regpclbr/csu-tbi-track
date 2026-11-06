@@ -56,13 +56,13 @@ def test_seed_twice_creates_no_duplicates(admin_env) -> None:
 @pytest.mark.django_db
 def test_role_flags(admin_env) -> None:
     seed()
-    flags = {r.role_name: (r.can_create_activity, r.can_manage_users) for r in Role.objects.all()}
+    flags = {r.role_name: (r.can_create_activity, r.can_manage_users, r.can_approve_documents) for r in Role.objects.all()}
     assert flags == {
-        "Director": (True, False),
-        "Incubation Project Head": (True, False),
-        "Community Development Head": (True, False),
-        "Admin Staff": (False, False),
-        "System Administrator": (False, True),
+        "Director": (True, False, True),  # only the Director approves documents (ASSUMPTIONS 344)
+        "Incubation Project Head": (True, False, False),
+        "Community Development Head": (True, False, False),
+        "Admin Staff": (False, False, False),
+        "System Administrator": (False, True, False),
     }
 
 

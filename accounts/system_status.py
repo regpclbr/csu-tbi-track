@@ -12,6 +12,8 @@ from datetime import datetime
 
 from django.conf import settings
 
+from config.mail import prints_emails
+
 OK, WARNING, INFO = "ok", "warning", "info"
 PDF_TEST_HTML = "<p>CSU-TBI Track status check</p>"
 
@@ -88,7 +90,7 @@ def email_status() -> StatusItem:
     """Console or real SMTP (settings.MAILERS["default"]) and the from address. Never the SMTP user or password."""
     mailer = settings.MAILERS["default"]
     sender = ("From address", settings.DEFAULT_FROM_EMAIL)
-    if mailer["BACKEND"] == settings.CONSOLE_MAILER["BACKEND"]:
+    if prints_emails():
         if settings.DEBUG:
             return StatusItem("email", "Email", INFO, "Development mode: emails are printed in the terminal.",
                               details=[("Mode", "Console (development)"), sender])

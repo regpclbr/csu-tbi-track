@@ -11,12 +11,13 @@ from decimal import Decimal
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, Exists, F, OuterRef, QuerySet
-from django.db.models.functions import Lower, Trim
+from django.db.models import Count, Exists, OuterRef, QuerySet, Subquery
+from django.db.models.functions import Coalesce, Lower, Trim
 from django.utils import timezone
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission
+from registrations.models import FormTemplate, FormType, Registration
 
 from .formatting import format_audit_value
 from .models import (
@@ -452,19 +453,25 @@ def _overlapping(queryset: QuerySet, start: date | None, end: date | None) -> Qu
     return queryset
 
 
-def list_activities(filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE) -> PageResult:
+def list_activities(
+    filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE, now: datetime | None = None
+) -> PageResult:
     """The Activities list. Each item has `.registered` (count) to show with max_slots, e.g. 18/30.
 
     filters: search (title), activity_type, status, participant_category (IDs; an activity
              matches if the category is one of its categories),
-             date_from, date_to (dates), sort (one of SORT_OPTIONS).
+             date_from, date_to (dates), sort (one of SORT_OPTIONS),
+             preset (one of LIST_PRESETS: exactly the rows a list card counts; `now` is for tests).
     """
     filters = filters or {}
     sort = filters.get("sort") or DEFAULT_SORT
     if sort not in SORT_OPTIONS:
         raise ActivityError(f"Unknown sort \"{sort}\". Use one of: {', '.join(SORT_OPTIONS)}.")
 
-    activities = _with_registered_count(Activity.objects.all())
+    activities = Activity.objects.all()
+    if filters.get("preset"):
+        activities = preset_activities(filters["preset"], now)
+    activities = _with_registered_count(activities)
     if filters.get("search"):
         activities = activities.filter(title__icontains=filters["search"].strip())
     for field in ("activity_type", "status"):
@@ -484,23 +491,68 @@ def list_activities(filters: dict | None = None, page: int | str | None = 1, per
     return _paginate(activities.order_by(*SORT_OPTIONS[sort], "activity_id"), page, per_page)
 
 
-def _open_for_registration(queryset: QuerySet, now: datetime) -> QuerySet:
-    """Same rule as is_registration_open(), as a database query."""
-    return queryset.annotate(registered=Count("registrations", distinct=True)).filter(
-        status__name=SCHEDULED, registration_deadline__gte=now, registered__lt=F("max_slots")
+def open_for_registration(queryset: QuerySet | None = None, now: datetime | None = None) -> QuerySet:
+    """Activities open for registration now, as a database query: the ONE rule behind the Activities card and
+    preset, the dashboard KPI, /register/ and the startup portal (registrations.services.open_activities).
+
+    Scheduled, deadline not passed, slots left (= is_registration_open()) AND a registration form exists
+    (= registrations.services.registration_closed_reason() is None). A parity test keeps the two in step.
+    """
+    now = now or timezone.now()
+    queryset = Activity.objects.all() if queryset is None else queryset
+    has_form = FormTemplate.objects.filter(activity=OuterRef("pk"), form_type=FormType.REGISTRATION)
+    registered = Registration.objects.filter(activity=OuterRef("pk")).values("activity").annotate(n=Count("pk")).values("n")
+    return queryset.filter(
+        Exists(has_form),
+        status__name=SCHEDULED,
+        registration_deadline__gte=now,
+        max_slots__gt=Coalesce(Subquery(registered), 0),
     )
 
 
-def activity_stats(now: datetime | None = None) -> dict[str, int]:
-    """Numbers for the Activities list cards."""
+# The Activities list cards that are also list filters (?preset=...): key -> label. Each card's number and its
+# list come from preset_activities(), so they always agree. "Activities in total" is the list without filters.
+LIST_PRESETS = {
+    "open": "Open for registration",
+    "conducted_month": "Conducted this month",
+    "conducted": "Conducted in total",
+}
+
+
+def preset_activities(preset: str, now: datetime | None = None) -> QuerySet:
+    """The activities behind one list card (LIST_PRESETS)."""
     now = now or timezone.now()
-    today = timezone.localdate(now)
+    if preset == "open":
+        return open_for_registration(now=now)
     conducted = Activity.objects.filter(status__name=CONDUCTED)
+    if preset == "conducted":
+        return conducted
+    if preset == "conducted_month":
+        # End date in the current Manila month (ASSUMPTIONS 77), not the date-range overlap filter.
+        today = timezone.localdate(now)
+        return conducted.filter(end_date__year=today.year, end_date__month=today.month)
+    raise ActivityError(f"Unknown list preset \"{preset}\". Use one of: {', '.join(LIST_PRESETS)}.")
+
+
+PRESET_LIST_LIMIT = 50
+
+
+def preset_list(preset: str, limit: int = PRESET_LIST_LIMIT, now: datetime | None = None) -> tuple[int, list[Activity]]:
+    """A list card's activities for its dialog: (count, at most `limit` rows with `.registered`), from
+    preset_activities(), so the count is the card's number. Open: soonest start first; conducted: newest first."""
+    activities = preset_activities(preset, now)
+    order = ("start_date", "activity_id") if preset == "open" else ("-start_date", "-activity_id")
+    return activities.count(), list(_with_registered_count(activities).order_by(*order)[:limit])
+
+
+def activity_stats(now: datetime | None = None) -> dict[str, int]:
+    """Numbers for the Activities list cards (the same queries as the list presets)."""
+    now = now or timezone.now()
     return {
         "total": Activity.objects.count(),
-        "conducted_this_month": conducted.filter(end_date__year=today.year, end_date__month=today.month).count(),
-        "open_for_registration": _open_for_registration(Activity.objects.all(), now).count(),
-        "conducted_total": conducted.count(),
+        "conducted_this_month": preset_activities("conducted_month", now).count(),
+        "open_for_registration": preset_activities("open", now).count(),
+        "conducted_total": preset_activities("conducted", now).count(),
     }
 
 

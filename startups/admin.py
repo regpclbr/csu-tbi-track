@@ -2,6 +2,7 @@ from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied
 
 from accounts.admin import ReadOnlyAdminMixin
+from config.mail import email_sent_message
 
 from . import services
 from .models import Startup
@@ -27,4 +28,4 @@ class StartupAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
             except (services.StartupError, PermissionDenied) as error:
                 self.message_user(request, f"{startup.name}: {error}", messages.ERROR)
         if sent:
-            self.message_user(request, f"Set-password link emailed to {sent} startup(s).", messages.SUCCESS)
+            self.message_user(request, email_sent_message(f"Set-password link emailed to {sent} startup(s)."), messages.SUCCESS)

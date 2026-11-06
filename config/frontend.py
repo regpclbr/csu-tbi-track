@@ -89,7 +89,8 @@ class StaffLayout:
 
     @cached_property
     def review_count(self) -> int:
-        """Documents waiting for MY review (documents.services.review_queue; 0 without can_create_activity)."""
+        """Documents waiting for MY review (documents.services.review_queue; 0, so no badge, without
+        can_approve_documents)."""
         return review_queue(self.member).count()
 
     @cached_property

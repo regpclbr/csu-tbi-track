@@ -211,7 +211,7 @@ def repository(member: TBIMember, filters: RepositoryFilters) -> dict:
 
 
 def review_page(member: TBIMember, page: str) -> dict:
-    """services.review_queue (oldest first; empty without can_create_activity), 20 a page."""
+    """services.review_queue (oldest first; empty without can_approve_documents), 20 a page."""
     result: PageResult = _paginate(services.review_queue(member), page, services.DEFAULT_PAGE_SIZE)
     return {"result": result, "rows": [document_row(member, d) for d in result.items]}
 

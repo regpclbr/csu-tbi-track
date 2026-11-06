@@ -1,4 +1,7 @@
-"""Review: approve, return (with a reason), replace, delete, and the "waiting for my review" queue."""
+"""Review: approve, return (with a reason), replace, delete, and the "waiting for my review" queue.
+
+Only a role with can_approve_documents (the seeded Director) approves or returns (ASSUMPTIONS 344); the Incubation
+Project Head can create activities but not review documents."""
 
 from pathlib import Path
 
@@ -36,18 +39,43 @@ def test_approve_sets_status_reviewer_and_time(document, director) -> None:
     assert document.review_state == Document.APPROVED
 
 
-def test_self_approval_is_refused(upload, director, scheduled) -> None:
+def test_an_approver_may_approve_their_own_upload(upload, director, scheduled, caplog) -> None:
     own = upload(director, scheduled)
-    with pytest.raises(PermissionDenied, match="you uploaded"):
-        services.approve_document(director, own)
+    with caplog.at_level("INFO", logger="documents.audit"):
+        services.approve_document(director, own, now=TEST_NOW)
     own.refresh_from_db()
-    assert own.status.status_name == DocumentStatus.FOR_REVIEW and own.reviewed_by is None
+    assert own.status.status_name == DocumentStatus.APPROVED
+    assert own.reviewed_by == director == own.uploaded_by and own.reviewed_at == TEST_NOW
+    assert f"Document approved: document_id={own.pk} by member_id={director.pk} (own upload)" in caplog.text
 
 
-def test_member_without_can_create_activity_cannot_approve(upload, director, admin_staff, scheduled) -> None:
+def test_approve_is_logged_on_the_audit_logger(document, director, caplog) -> None:
+    with caplog.at_level("INFO", logger="documents.audit"):
+        services.approve_document(director, document)
+    assert f"Document approved: document_id={document.pk} by member_id={director.pk}" in caplog.text
+    assert "own upload" not in caplog.text
+
+
+@pytest.mark.parametrize("role", ["admin_staff", "head", "system_admin"])
+def test_member_without_can_approve_documents_cannot_approve(request, upload, director, scheduled, role) -> None:
     other = upload(director, scheduled)
+    with pytest.raises(PermissionDenied, match="approve or return documents"):
+        services.approve_document(request.getfixturevalue(role), other)
+    other.refresh_from_db()
+    assert other.status.status_name == DocumentStatus.FOR_REVIEW and other.reviewed_by is None
+
+
+def test_project_head_cannot_approve_their_own_upload_either(upload, head, scheduled) -> None:
     with pytest.raises(PermissionDenied):
-        services.approve_document(admin_staff, other)
+        services.approve_document(head, upload(head, scheduled))
+
+
+def test_the_flag_decides_not_the_role_name(document, head) -> None:
+    head.role.can_approve_documents = True
+    head.role.save()
+    services.approve_document(head, document)
+    document.refresh_from_db()
+    assert document.reviewed_by == head
 
 
 def test_deactivated_reviewer_cannot_approve(document, director) -> None:
@@ -56,10 +84,10 @@ def test_deactivated_reviewer_cannot_approve(document, director) -> None:
         services.approve_document(director, document)
 
 
-def test_approving_twice_is_refused(document, director, head) -> None:
+def test_approving_twice_is_refused(document, director, second_director) -> None:
     services.approve_document(director, document)
     with pytest.raises(services.DocumentError, match="already approved"):
-        services.approve_document(head, document)
+        services.approve_document(second_director, document)
 
 
 # --- Return --------------------------------------------------------------------------------------
@@ -72,7 +100,7 @@ def test_return_sends_the_reason_to_the_uploader(document, director, admin_staff
     assert document.reviewed_by == director and document.reviewed_at == TEST_NOW
     assert document.review_state == Document.RETURNED
 
-    notification = Notification.objects.get()
+    notification = Notification.objects.get(type=Notification.DOCUMENT_RETURNED)
     assert notification.member == admin_staff
     assert notification.type == Notification.DOCUMENT_RETURNED
     assert notification.activity == scheduled and notification.document_type == document.document_type
@@ -85,31 +113,36 @@ def test_return_needs_a_reason(document, director) -> None:
         services.return_document(director, document, "   ")
     with pytest.raises(ValidationError, match="at most 300"):
         services.return_document(director, document, "x" * 301)
-    assert not Notification.objects.exists()
+    assert not Notification.objects.filter(type=Notification.DOCUMENT_RETURNED).exists()
 
 
 def test_returning_your_own_upload_is_refused(upload, director, scheduled) -> None:
-    with pytest.raises(PermissionDenied):
-        services.return_document(director, upload(director, scheduled), "Wrong file")
+    own = upload(director, scheduled)
+    with pytest.raises(services.DocumentError, match="Replace or delete it instead"):
+        services.return_document(director, own, "Wrong file")
+    own.refresh_from_db()
+    assert own.reviewed_at is None
+    assert not Notification.objects.filter(type=Notification.DOCUMENT_RETURNED).exists()
 
 
-def test_member_without_can_create_activity_cannot_return(upload, director, admin_staff, scheduled) -> None:
-    with pytest.raises(PermissionDenied):
-        services.return_document(admin_staff, upload(director, scheduled), "Wrong file")
+@pytest.mark.parametrize("role", ["admin_staff", "head", "system_admin"])
+def test_member_without_can_approve_documents_cannot_return(request, upload, director, scheduled, role) -> None:
+    with pytest.raises(PermissionDenied, match="approve or return documents"):
+        services.return_document(request.getfixturevalue(role), upload(director, scheduled), "Wrong file")
 
 
-def test_approve_is_refused_on_a_returned_document(document, director, head) -> None:
+def test_approve_is_refused_on_a_returned_document(document, director, second_director) -> None:
     services.return_document(director, document, "Missing signature")
     with pytest.raises(services.DocumentError, match="returned"):
-        services.approve_document(head, document)
+        services.approve_document(second_director, document)
     with pytest.raises(services.DocumentError, match="returned"):
-        services.return_document(head, document, "Again")
+        services.return_document(second_director, document, "Again")
 
 
-def test_an_approved_document_cannot_be_returned(document, director, head) -> None:
+def test_an_approved_document_cannot_be_returned(document, director, second_director) -> None:
     services.approve_document(director, document)
     with pytest.raises(services.DocumentError, match="already approved"):
-        services.return_document(head, document, "Too late")
+        services.return_document(second_director, document, "Too late")
 
 
 def test_a_document_can_be_returned_again_after_replacing(document, director, admin_staff) -> None:
@@ -193,27 +226,29 @@ def test_a_returned_document_can_be_deleted_by_its_uploader(document, director, 
 # --- Review queue and allowed actions -------------------------------------------------------------------
 
 
-def test_review_queue_shows_only_documents_waiting_for_me(upload, director, head, admin_staff, scheduled) -> None:
+def test_review_queue_lists_waiting_documents_including_my_own(upload, director, head, admin_staff, scheduled) -> None:
     mine = upload(director, scheduled, title="Mine")
     waiting = upload(admin_staff, scheduled, title="Waiting")
     returned = upload(head, scheduled, title="Returned")
     approved = upload(admin_staff, scheduled, title="Approved")
     services.return_document(director, returned, "Fix it")
-    services.approve_document(head, approved)
+    services.approve_document(director, approved)
 
     queue = list(services.review_queue(director))
-    assert queue == [waiting]
-    assert mine not in queue and returned not in queue and approved not in queue
+    assert queue == [mine, waiting]  # oldest first; my own upload is there: I may approve it
+    assert returned not in queue and approved not in queue
 
 
-def test_review_queue_is_empty_without_can_create_activity(upload, director, admin_staff, scheduled) -> None:
+@pytest.mark.parametrize("role", ["admin_staff", "head", "system_admin"])
+def test_review_queue_is_empty_without_can_approve_documents(request, upload, director, scheduled, role) -> None:
     upload(director, scheduled)
-    assert list(services.review_queue(admin_staff)) == []
+    assert list(services.review_queue(request.getfixturevalue(role))) == []
 
 
-def test_allowed_actions(document, director, admin_staff) -> None:
+def test_allowed_actions(document, director, admin_staff, head) -> None:
     assert services.allowed_actions(director, document) == {"approve": True, "return": True, "replace": False, "delete": False}
     assert services.allowed_actions(admin_staff, document) == {"approve": False, "return": False, "replace": True, "delete": True}
+    assert services.allowed_actions(head, document) == {"approve": False, "return": False, "replace": False, "delete": False}
     # The services return the reloaded (locked) row; use what they return.
     document = services.return_document(director, document, "Fix")
     assert services.allowed_actions(director, document)["approve"] is False
@@ -222,6 +257,11 @@ def test_allowed_actions(document, director, admin_staff) -> None:
     nothing = {"approve": False, "return": False, "replace": False, "delete": False}
     assert services.allowed_actions(admin_staff, document) == nothing
     assert services.allowed_actions(director, document) == nothing
+
+
+def test_allowed_actions_on_an_approvers_own_upload(upload, director, scheduled) -> None:
+    own = upload(director, scheduled)
+    assert services.allowed_actions(director, own) == {"approve": True, "return": False, "replace": True, "delete": True}
 
 
 def test_approve_queues_indexing_after_commit_step_8() -> None:

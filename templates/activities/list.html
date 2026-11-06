@@ -1,19 +1,15 @@
 {% extends "layouts/app.html" %}
 {% load ui %}
 {% comment %}
-Activities list (activities.page_views.activity_list). KPI cards (services.activity_stats), the List / Calendar
+Activities list (activities.page_views.activity_list). KPI cards (services.activity_stats; three open a dialog with
+their activities, activities/_stat_cards.html), the List / Calendar
 toggle, the filters (list view only) and #activity-results, which HTMX replaces on every filter change, page or
 month link; the URL keeps the filters (hx-push-url), so a reload or a shared link shows the same view.
 Without JavaScript the Apply button submits the filters.
 {% endcomment %}
 {% block content %}
 <div class="space-y-5">
-  <div class="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
-    {% include "components/kpi_card.html" with label="Activities in total" value=stats.total|number icon="layout-grid" chip="blue" %}
-    {% include "components/kpi_card.html" with label="Open for registration" value=stats.open_for_registration|number icon="user-plus" chip="green" pill="open now" pill_tone="neutral" %}
-    {% include "components/kpi_card.html" with label="Conducted this month" value=stats.conducted_this_month|number icon="circle-check" chip="teal" %}
-    {% include "components/kpi_card.html" with label="Conducted in total" value=stats.conducted_total|number icon="award" chip="violet" %}
-  </div>
+  {% include "activities/_stat_cards.html" %}
 
   <section class="card p-6" aria-labelledby="activities-title">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -36,6 +32,7 @@ Without JavaScript the Apply button submits the filters.
             hx-get="{% url 'activities:list' %}" hx-target="#activity-results" hx-push-url="true"
             hx-trigger="change, keyup changed delay:400ms from:#filter-q, search from:#filter-q" hx-indicator="#activity-results, #filters-loading"
             class="mb-5 flex flex-wrap items-center gap-2.5">
+        {% include "activities/_preset_input.html" %}
         <div class="relative w-full xl:w-64">
           <label for="filter-q" class="sr-only">Search by title</label>
           <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4" %}</span>

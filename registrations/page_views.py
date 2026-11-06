@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
 from activities.models import Activity
+from config.mail import email_sent_message
 
 from . import pages, services
 from .models import FormField, FormTemplate, FormType, Registration
@@ -215,8 +216,9 @@ def send_links(request: HttpRequest, activity_id: int) -> HttpResponse:
         messages.error(request, str(error))
     else:
         if queued:
-            messages.success(request, f"Queued {queued} evaluation link email{'' if queued == 1 else 's'}. "
-                                      "They go out while qcluster is running.")
+            messages.success(request, email_sent_message(
+                "They go out while qcluster is running.", before=f"Queued {queued} evaluation link email{'' if queued == 1 else 's'}. "
+            ))
         else:
             messages.info(request, "Nobody to send to: no attendee is waiting for an evaluation link.")
     return redirect(_tab_url(activity, "registrations"))

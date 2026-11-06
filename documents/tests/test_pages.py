@@ -48,10 +48,10 @@ def action(name: str, document: Document) -> str:
 
 def test_tab_shows_the_checklist_with_states_and_due_dates(director, head, login, scheduled, upload) -> None:
     waiting = upload(director, scheduled)  # Invitation Letter
-    returned = upload(director, scheduled, document_type=DocumentType.objects.get(name="Activity Design"))
-    services.return_document(head, returned, "Wrong date.")
+    returned = upload(head, scheduled, document_type=DocumentType.objects.get(name="Activity Design"))
+    services.return_document(director, returned, "Wrong date.")
     approved = upload(director, scheduled, document_type=DocumentType.objects.get(name="Request Letter"))
-    services.approve_document(head, approved)
+    services.approve_document(director, approved)
     html = login(head).get(tab(scheduled)).content.decode()
     assert 'id="documents-tab"' in html and "coming in phase" not in html
     for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Accomplishment Report"):
@@ -104,44 +104,49 @@ def test_upload_errors_are_shown_under_their_fields(director, login, scheduled, 
 
 
 def test_buttons_follow_allowed_actions(director, head, admin_staff, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    as_uploader = login(director).get(tab(scheduled)).content.decode()
-    assert action("approve", document) not in as_uploader and "/return/form/" not in as_uploader  # never self-review
+    document = upload(head, scheduled)
+    as_uploader = login(head).get(tab(scheduled)).content.decode()  # no can_approve_documents: no review buttons
+    assert action("approve", document) not in as_uploader and "/return/form/" not in as_uploader
     assert "/replace/form/" in as_uploader and "/delete/form/" in as_uploader
-    as_reviewer = login(head).get(tab(scheduled)).content.decode()
+    as_reviewer = login(director).get(tab(scheduled)).content.decode()
     assert action("approve", document) in as_reviewer and "/return/form/" in as_reviewer and "/delete/form/" not in as_reviewer
+    own = upload(director, scheduled, document_type=DocumentType.objects.get(name="Activity Design"))
+    as_approver_uploader = login(director).get(tab(scheduled)).content.decode()
+    assert action("approve", own) in as_approver_uploader  # self-approval is allowed (ASSUMPTIONS 344)
+    assert reverse("documents:action_form", args=[own.pk, "return"]) not in as_approver_uploader  # never return your own
     read_only = login(admin_staff).get(tab(scheduled)).content.decode()
     assert action("approve", document) not in read_only and "/return/form/" not in read_only
     assert "/replace/form/" not in read_only and 'action="' + reverse("activities:document_upload", args=[scheduled.pk]) in read_only
 
 
 def test_reviewer_approves(head, director, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    response = login(head).post(action("approve", document), {"next": tab(scheduled)}, follow=True)
+    document = upload(head, scheduled)
+    response = login(director).post(action("approve", document), {"next": tab(scheduled)}, follow=True)
     document.refresh_from_db()
-    assert document.review_state == Document.APPROVED and document.reviewed_by == head
+    assert document.review_state == Document.APPROVED and document.reviewed_by == director
     assert response.redirect_chain[-1][0] == tab(scheduled)
     assert f'"{document.title}" was approved.' in messages_of(response)
 
 
-def test_self_approval_is_refused_with_the_service_message(director, login, scheduled, upload) -> None:
+def test_returning_your_own_upload_is_refused_with_the_service_message(director, login, scheduled, upload) -> None:
     document = upload(director, scheduled)
-    response = login(director).post(action("approve", document), follow=True)
+    response = login(director).post(action("return", document), {"reason": "Oops"}, follow=True)
     document.refresh_from_db()
     assert document.review_state == Document.WAITING_FOR_REVIEW
-    assert "You cannot review a document you uploaded. Another member must review it." in messages_of(response)
+    assert "You cannot return a document you uploaded. Replace or delete it instead." in messages_of(response)
 
 
 def test_member_without_permission_cannot_approve(admin_staff, director, login, scheduled, upload) -> None:
     document = upload(director, scheduled)
-    response = login(admin_staff).post(action("approve", document), follow=True)
+    response = login(admin_staff).post(action("approve", document))
+    assert response.status_code == 403
     document.refresh_from_db()
-    assert document.review_state == Document.WAITING_FOR_REVIEW and messages_of(response)
+    assert document.review_state == Document.WAITING_FOR_REVIEW
 
 
 def test_return_needs_a_reason_shown_in_the_modal(head, director, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    client = login(head)
+    document = upload(head, scheduled)
+    client = login(director)
     form = client.get(reverse("documents:action_form", args=[document.pk, "return"]) + "?next=/documents/", **HTMX)
     html = form.content.decode()
     assert "documents/_action_form.html" in [t.name for t in form.templates] and "layouts/app.html" not in [t.name for t in form.templates]
@@ -157,19 +162,19 @@ def test_return_needs_a_reason_shown_in_the_modal(head, director, login, schedul
 
 
 def test_return_then_approving_is_refused_until_replaced(head, director, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    reviewer = login(head)
+    document = upload(head, scheduled)
+    reviewer = login(director)
     response = reviewer.post(action("return", document), {"reason": "Please sign it.", "next": "/documents/"}, **HTMX)
     assert response["HX-Redirect"] == "/documents/"
     document.refresh_from_db()
     assert document.review_state == Document.RETURNED
-    assert Notification.objects.get(member=director).message.endswith("Please sign it.")
+    assert Notification.objects.get(member=head, type=Notification.DOCUMENT_RETURNED).message.endswith("Please sign it.")
     assert action("approve", document) not in reviewer.get(tab(scheduled)).content.decode()  # no button any more
 
     response = reviewer.post(action("approve", document), follow=True)
     assert "It can be reviewed after the file is replaced." in " ".join(messages_of(response))
 
-    uploader = login(director)
+    uploader = login(head)
     response = uploader.post(action("replace", document), {"file": make_file("signed.pdf")}, follow=True)
     document.refresh_from_db()
     assert document.review_state == Document.WAITING_FOR_REVIEW and document.file_name == "signed.pdf"
@@ -197,21 +202,21 @@ def test_delete_by_the_uploader_only_and_never_approved(head, director, login, s
     assert response.redirect_chain[-1][0] == tab(scheduled)  # not the deleted document's page
 
     approved = upload(director, scheduled)
-    services.approve_document(head, approved)
+    services.approve_document(director, approved)
     response = login(director).post(action("delete", approved), follow=True)
     assert Document.objects.filter(pk=approved.pk).exists()
     assert "An approved document cannot be deleted. Upload a new document instead." in messages_of(response)
 
 
 def test_next_must_be_a_page_of_this_site(head, director, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    response = login(head).post(action("approve", document), {"next": "https://evil.example/"})
+    document = upload(head, scheduled)
+    response = login(director).post(action("approve", document), {"next": "https://evil.example/"})
     assert response["Location"] == action("detail", document)
 
 
 def test_action_form_without_javascript_is_a_page(head, director, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    response = login(head).get(reverse("documents:action_form", args=[document.pk, "return"]))
+    document = upload(head, scheduled)
+    response = login(director).get(reverse("documents:action_form", args=[document.pk, "return"]))
     assert "layouts/app.html" in [t.name for t in response.templates] and 'name="reason"' in response.content.decode()
 
 
@@ -246,10 +251,9 @@ def test_review_queue_shows_mine_to_review_with_the_count(director, head, admin_
     returned = upload(head, scheduled, title="Returned one")
     services.return_document(director, returned, "Fix it.")
     html = login(director).get(reverse("documents:review")).content.decode()
-    assert theirs.title in html and mine.title not in html and returned.title not in html
-    assert re.search(r'Waiting for my review\s*<span[^>]*>1<span class="sr-only"> documents', html)
-    html = login(admin_staff).get(reverse("documents:review")).content.decode()
-    assert "Only members whose role can create activities review documents." in html
+    assert theirs.title in html and mine.title in html and returned.title not in html  # own uploads too (344)
+    assert re.search(r'Waiting for my review\s*<span[^>]*>2<span class="sr-only"> documents', html)
+    assert login(admin_staff).get(reverse("documents:review")).status_code == 403
 
 
 def test_sidebar_always_links_to_the_repository(director, head, login, scheduled, upload) -> None:
@@ -259,11 +263,11 @@ def test_sidebar_always_links_to_the_repository(director, head, login, scheduled
 
 
 def test_document_page_shows_who_and_when(director, head, login, scheduled, upload) -> None:
-    document = upload(director, scheduled)
-    services.return_document(head, document, "Wrong logo.")
-    html = login(director).get(action("detail", document)).content.decode()
+    document = upload(head, scheduled)
+    services.return_document(director, document, "Wrong logo.")
+    html = login(head).get(action("detail", document)).content.decode()
     assert document.title in html and document.file_name in html and "Returned" in html
-    assert f"Returned by {head.name}" in html and f"by {director.name}" in html
+    assert f"Returned by {director.name}" in html and f"by {head.name}" in html
     assert reverse("documents:download", args=[document.pk]) in html and "/replace/form/" in html
 
 
@@ -277,10 +281,10 @@ def test_downloads_need_a_staff_login(director, login, scheduled, upload, client
 
 
 def test_display_state_of_a_checklist_item(director, head, scheduled, upload) -> None:
-    document = upload(director, scheduled)
+    document = upload(head, scheduled)
     item = services.document_checklist(scheduled)["required"]
     invitation = next(i for i in item if i.document_type.name == "Invitation Letter")
     assert pages.checklist_state(invitation) == ("Waiting for review", "info")
-    services.return_document(head, document, "No.")
+    services.return_document(director, document, "No.")
     invitation = next(i for i in services.document_checklist(scheduled)["required"] if i.document_type.name == "Invitation Letter")
     assert pages.checklist_state(invitation) == ("Returned", "warning")

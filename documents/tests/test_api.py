@@ -79,11 +79,14 @@ def test_approve_return_replace_delete_through_the_api(client, upload, director,
     assert client.post(api("api_replace", document.pk), {"file": make_file()}).status_code == 400
 
 
-def test_self_approval_through_the_api_is_403(client, upload, director, scheduled) -> None:
+def test_self_approval_through_the_api_is_allowed(client, upload, director, scheduled) -> None:
+    """ASSUMPTIONS 344: an approver may approve their own upload; returning it is refused (400)."""
     document = upload(director, scheduled)
     client.force_login(director)
+    response = client.post(api("api_return", document.pk), {"reason": "x"}, content_type="application/json")
+    assert response.status_code == 400 and "Replace or delete it instead" in response.json()["error"]
     response = client.post(api("api_approve", document.pk))
-    assert response.status_code == 403 and "you uploaded" in response.json()["error"]
+    assert response.status_code == 200 and response.json()["document"]["reviewed_by"]["member_id"] == director.pk
 
 
 def test_return_without_reason_is_400(client, upload, director, admin_staff, scheduled) -> None:
@@ -106,12 +109,12 @@ def test_delete_through_the_api(client, upload, admin_staff, scheduled) -> None:
 def test_review_queue_api(client, upload, director, head, admin_staff, scheduled) -> None:
     waiting = upload(admin_staff, scheduled)
     returned = upload(admin_staff, scheduled)
-    upload(director, scheduled)  # mine
-    services.return_document(head, returned, "Fix")
+    mine = upload(director, scheduled)  # an approver's own upload is in their queue (ASSUMPTIONS 344)
+    services.return_document(director, returned, "Fix")
 
     client.force_login(director)
     ids = [row["document_id"] for row in client.get(QUEUE).json()["documents"]]
-    assert ids == [waiting.pk]
+    assert ids == [waiting.pk, mine.pk]
 
     client.force_login(admin_staff)
     assert client.get(QUEUE).status_code == 403
@@ -130,7 +133,7 @@ def library(upload, director, head, admin_staff, make_activity):
         "design": upload(admin_staff, first, make_file("Budget Plan.pdf"), document_type=design),
         "other": upload(head, second, title="Invite for second"),
     }
-    services.approve_document(head, docs["invite"])
+    services.approve_document(director, docs["invite"])
     services.return_document(director, docs["other"], "Fix")
     return first, second, design, docs
 

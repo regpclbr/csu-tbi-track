@@ -2,9 +2,10 @@
 page, uploads from the activity's Documents tab and the review actions. Thin views: every rule is in
 documents.services (which checks the permissions again); documents/pages.py prepares what the templates show.
 
-Viewing and uploading: any active staff member. Approve and return: can_create_activity, never the uploader, never a
-returned document. Replace and delete: the uploader only, while For Review. Refusals come back as toasts with the
-service's message. The actions work for certificate evidence too (the same Step 6 rules).
+Viewing and uploading: any active staff member. Approve and return: can_approve_documents (ASSUMPTIONS 344; a member
+without it gets 403 from these URLs and from the review tab), approve also for an own upload, return never for an own
+upload, never a returned document. Replace and delete: the uploader only, while For Review. Other refusals come back
+as toasts with the service's message. The actions work for certificate evidence too (the same Step 6 rules).
 """
 
 from django.contrib import messages
@@ -14,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
-from accounts.permissions import Permission, has_permission, is_htmx, staff_login_required
+from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
 from activities.models import Activity
 from activities.page_views import render_activity_page
 from assistant.indexing import with_searchable
@@ -41,7 +42,7 @@ def _list_context(request: HttpRequest, tab: str) -> dict:
         "page_title": "Documents",
         "list_tab": tab,
         "review_count": services.review_queue(request.user).count(),  # the same number as the sidebar badge
-        "can_review": has_permission(request.user, Permission.CREATE_ACTIVITY),
+        "can_review": has_permission(request.user, Permission.APPROVE_DOCUMENTS),  # shows the review tab
         "list_url": reverse("documents:list"),
     }
 
@@ -59,10 +60,10 @@ def document_list(request: HttpRequest) -> HttpResponse:
     return render(request, "documents/list.html", context)
 
 
-@staff_login_required
+@permission_required(Permission.APPROVE_DOCUMENTS)
 @require_GET
 def review_list(request: HttpRequest) -> HttpResponse:
-    """"Waiting for my review": services.review_queue (never my own uploads, never returned ones)."""
+    """"Waiting for my review": services.review_queue (my own uploads too, never returned ones)."""
     context = {**_list_context(request, "review"), **pages.review_page(request.user, request.GET.get("page", "1"))}
     if is_htmx(request):
         return render(request, "documents/_results.html", context)
@@ -128,7 +129,7 @@ def upload(request: HttpRequest, activity_id: int) -> HttpResponse:
 
 
 def _refused(request: HttpRequest, error: Exception) -> None:
-    """The service's refusal as an error toast (PermissionDenied carries the reason, e.g. self-review)."""
+    """The service's refusal as an error toast (e.g. "already approved", or returning your own upload)."""
     messages.error(request, str(error) or "You do not have permission to do this.")
 
 
@@ -165,7 +166,7 @@ def _form_again(request: HttpRequest, document: Document, action: str, errors: d
     return render(request, "documents/action_page.html", context, status=400)
 
 
-@staff_login_required
+@permission_required(Permission.APPROVE_DOCUMENTS)
 @require_POST
 def approve(request: HttpRequest, document_id: int) -> HttpResponse:
     document = _document(document_id)
@@ -179,7 +180,7 @@ def approve(request: HttpRequest, document_id: int) -> HttpResponse:
     return _done(request, back)
 
 
-@staff_login_required
+@permission_required(Permission.APPROVE_DOCUMENTS)
 @require_POST
 def return_document(request: HttpRequest, document_id: int) -> HttpResponse:
     """POST reason (required, at most services.RETURN_REASON_MAX_LENGTH characters)."""

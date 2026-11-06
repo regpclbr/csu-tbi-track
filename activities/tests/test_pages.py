@@ -88,7 +88,9 @@ def test_list_shows_the_stats_and_the_rows(director, login, new_activity) -> Non
     html = response.content.decode()
     assert response.status_code == 200 and "activities/list.html" in [t.name for t in response.templates]
     stats = services.activity_stats()
-    assert response.context["stats"] == stats
+    assert [card["value"] for card in response.context["cards"]] == [
+        stats["total"], stats["open_for_registration"], stats["conducted_this_month"], stats["conducted_total"]
+    ]
     assert new_activity.title in html and detail_url(new_activity) in html
     assert "0/30" in html  # registered / max slots
 

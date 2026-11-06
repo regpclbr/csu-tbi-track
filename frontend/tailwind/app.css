@@ -127,6 +127,16 @@
   .kpi-card {
     @apply rounded-[20px] border border-line/70 bg-white shadow-card;
   }
+  /* A KPI card that is a link (Activities list cards, ASSUMPTIONS 341): no outline or border change on click or tap;
+     keyboard focus only (:focus-visible) as a soft accent ring rounded like the card. */
+  .stat-card-link {
+    @apply block rounded-[20px] outline-none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stat-card-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(29 78 216 / 0.35);
+  }
   /* Icon chip: a Lucide icon on a light tint (KPI cards, Needs attention). Text colours >= 4.5:1 on their tint. */
   .chip {
     @apply inline-flex shrink-0 items-center justify-center;
@@ -239,9 +249,15 @@
   }
 
   /* Modal: a native <dialog> opened with showModal() (components/modal.html). The browser keeps focus inside,
-     Escape closes it, and the page behind is inert. */
+     Escape closes it, and the page behind is inert. Always centred in the viewport (ASSUMPTIONS 343): fixed, inset 0 and
+     margin auto. The margin is !important because a dialog sits in the page's markup, and a parent's spacing utility
+     (space-y-5 sets margin-top: 0 / margin-bottom on every child) would otherwise push it to the top of the screen.
+     At least 16 px from the edges (width 100% - 2rem; height at most 85% of the screen); taller content scrolls inside. */
   .modal {
-    @apply m-auto w-[calc(100%-2rem)] max-w-lg rounded-[24px] border-0 bg-white p-0 text-ink shadow-2xl;
+    @apply fixed inset-0 w-[calc(100%-2rem)] max-w-lg overflow-y-auto overscroll-contain rounded-[24px] border-0 bg-white p-0 text-ink shadow-2xl;
+    margin: auto !important;
+    max-height: 85vh;
+    max-height: 85dvh;
   }
   .modal::backdrop {
     background: rgb(15 23 42 / 0.5);

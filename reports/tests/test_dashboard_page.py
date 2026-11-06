@@ -191,15 +191,17 @@ def test_new_activity_button_only_with_can_create_activity(director, admin_staff
 
 
 def test_documents_card_for_a_reviewer_counts_my_review_queue(director, make_member, login, data, add_document) -> None:
-    other_head = make_member("Incubation Project Head")
-    add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)  # uploaded by director: not theirs to review
-    response = login(other_head).get(URL)
+    approver = make_member("Director", email="second.director@example.com")  # can_approve_documents (ASSUMPTIONS 344)
+    add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)  # uploaded by director
+    response = login(approver).get(URL)
     page = response.context["page"]
     assert page.review["mine"] is True
-    assert page.review["count"] == review_queue(other_head).count() == 1
+    assert page.review["count"] == review_queue(approver).count() == 1
     assert kpis(response.content.decode())["Documents to review"] == "1"
     director_page = login(director).get(URL).context["page"]
-    assert director_page.review["count"] == 0  # their own upload
+    assert director_page.review["count"] == 1  # their own upload: they may approve it
+    head_page = login(make_member("Incubation Project Head")).get(URL).context["page"]
+    assert head_page.review["mine"] is False  # no can_approve_documents: the read-only S4 card
 
 
 def test_documents_card_without_can_create_activity_shows_the_s4_total(admin_staff, login, data, add_document) -> None:
@@ -218,7 +220,7 @@ def test_documents_card_without_can_create_activity_shows_the_s4_total(admin_sta
 
 
 def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, login, data, add_document, make_activity) -> None:
-    head = make_member("Incubation Project Head")
+    head = make_member("Director", email="second.director@example.com")  # reviews documents and certificates
     add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
     page = login(head).get(URL).context["page"]
     tones = [item.tone for item in page.attention]
@@ -238,7 +240,7 @@ def test_needs_attention_links_go_to_the_right_place(make_member, login, data, a
     certificates of one activity -> its Certificates tab."""
     from documents.models import DocumentType
 
-    head = make_member("Incubation Project Head")
+    head = make_member("Director", email="second.director@example.com")  # reviews documents and certificates
     add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
     page = login(head).get(URL).context["page"]
     by_title = {item.title: item.action_url for item in page.attention}

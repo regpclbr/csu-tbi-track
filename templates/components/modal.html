@@ -5,20 +5,28 @@ behind is inert; focus goes back to the button when it closes).
 trigger_sr (optional): extra words for screen readers only ("for Ana Cruz") when the same button repeats per row.
 body: the template shown inside. Inside it, a button with @click="close()" closes the dialog; put `autofocus` on the
 element that should get the focus first (otherwise the close button gets it).
+
+Loaded with HTMX (remote=True): no button; only the dialog with an empty #<id>-body. Any trigger loads a partial into
+it and opens it (see activities/_stat_cards.html); the partial starts with components/modal_header.html. On close the
+body is emptied and the focus goes back to the trigger (window.modalOpener). dialog_class: extra classes (max-w-2xl).
+{% include "components/modal.html" with id="card-dialog" remote=True dialog_class="max-w-2xl" %}
 {% endcomment %}
+{% if remote %}
+<dialog id="{{ id }}" class="modal {{ dialog_class }}" aria-labelledby="{{ id }}-title"
+        onclose="document.getElementById('{{ id }}-body').replaceChildren(); if (window.modalOpener) window.modalOpener.focus()"
+        onclick="if (event.target === this) this.close()">
+  <div id="{{ id }}-body"></div>
+</dialog>
+{% else %}
 <div x-data="{ open() { $refs.dialog.showModal() }, close() { $refs.dialog.close() } }">
   <button type="button" class="{{ trigger_class|default:'btn btn-secondary' }}" x-ref="trigger" @click="open()" aria-haspopup="dialog">
     {% if trigger_icon %}{% include "components/icon.html" with name=trigger_icon class="size-4" %}{% endif %}{{ trigger_label }}{% if trigger_sr %}<span class="sr-only"> {{ trigger_sr }}</span>{% endif %}
   </button>
   <dialog id="{{ id }}" x-ref="dialog" class="modal" aria-labelledby="{{ id }}-title" @close="$refs.trigger.focus()" @click.self="close()">
     <div class="p-6">
-      <div class="mb-4 flex items-start justify-between gap-4">
-        <h2 id="{{ id }}-title" class="card-title">{{ title }}</h2>
-        <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" @click="close()" aria-label="Close">
-          {% include "components/icon.html" with name="x" class="size-5" %}
-        </button>
-      </div>
+      {% include "components/modal_header.html" %}
       {% include body %}
     </div>
   </dialog>
 </div>
+{% endif %}

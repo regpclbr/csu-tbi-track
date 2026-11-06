@@ -28,6 +28,22 @@ LONG_LINE_POLICY = email.policy.default.clone(max_line_length=998)
 logger = logging.getLogger("config.mail")
 
 
+# Shown instead of "… was emailed" while emails are only printed (ASSUMPTIONS 342).
+CONSOLE_MODE_NOTICE = "Email printed in the terminal (development mode). Set EMAIL_REAL_SENDING=True to send real emails."
+
+
+def prints_emails(alias: str = "default") -> bool:
+    """True when the mailer only prints emails in the terminal (the console backend). The one email-mode check,
+    also used by the Admin Console's System status."""
+    return settings.MAILERS[alias]["BACKEND"] == settings.CONSOLE_MAILER["BACKEND"]
+
+
+def email_sent_message(sent: str, before: str = "", alias: str = "default") -> str:
+    """A success message about an email: `before` + `sent` when emails are really sent; `before` +
+    CONSOLE_MODE_NOTICE when they are only printed (e.g. before="Ana was added. ")."""
+    return before + (CONSOLE_MODE_NOTICE if prints_emails(alias) else sent)
+
+
 class ConsoleEmailBackend(DjangoConsoleBackend):
     def write_message(self, message) -> None:
         msg = message.message(policy=LONG_LINE_POLICY)

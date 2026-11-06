@@ -53,10 +53,8 @@ sideways inside the card on narrow screens. Every row has the member's own actio
     {% else %}
       {% include "components/pagination.html" with result=result hx_target="#document-results" %}
     {% endif %}
-  {% elif list_tab == "review" and not can_review %}
-    {% include "components/empty_state.html" with icon="file-check" title="Nothing to review" text="Only members whose role can create activities review documents." %}
   {% elif list_tab == "review" %}
-    {% include "components/empty_state.html" with icon="circle-check" title="Nothing is waiting for your review" text="New uploads by other members will appear here." %}
+    {% include "components/empty_state.html" with icon="circle-check" title="Nothing is waiting for your review" text="New uploads will appear here." %}
   {% elif filters.any_set %}
     {% include "components/empty_state.html" with icon="search" title="No documents match the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
   {% else %}

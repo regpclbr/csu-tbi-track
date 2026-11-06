@@ -1,7 +1,9 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/accounts/console/roles/: the roles and their two flags, read only. Roles and master data are changed only in the
-Django admin (ASSUMPTIONS 224), where the flags go through accounts.services.update_role_permissions.
+/accounts/console/roles/: the roles and their three flags. "Approve and return documents" (can_approve_documents) is
+switched here with a small POST form per row (accounts.services.set_role_document_approval, ASSUMPTIONS 344). The other
+two flags are changed only in the Django admin (ASSUMPTIONS 224), where they go through
+accounts.services.update_role_permissions.
 {% endcomment %}
 {% block content %}
 {% include "console/_tabs.html" %}
@@ -13,6 +15,10 @@ Django admin (ASSUMPTIONS 224), where the flags go through accounts.services.upd
     </div>
     <a href="{{ admin_url }}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="external-link" class="size-4" %}Edit in the administration site</a>
   </div>
+  {% if no_approver %}
+    <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}No active member can approve documents. Uploaded documents will wait for review until a role with active members can approve them.</p>
+  {% endif %}
   {% if roles %}
     <div class="relative overflow-x-auto rounded-2xl border border-line">
       <table class="w-full text-left text-sm">
@@ -22,6 +28,7 @@ Django admin (ASSUMPTIONS 224), where the flags go through accounts.services.upd
             <th scope="col" class="px-4 py-2.5">Role</th>
             <th scope="col" class="px-4 py-2.5">Create and edit activities</th>
             <th scope="col" class="px-4 py-2.5">Manage users (Admin Console)</th>
+            <th scope="col" class="px-4 py-2.5">Approve and return documents</th>
             <th scope="col" class="px-4 py-2.5">Active members</th>
           </tr>
         </thead>
@@ -31,6 +38,21 @@ Django admin (ASSUMPTIONS 224), where the flags go through accounts.services.upd
               <th scope="row" class="px-4 py-3 font-semibold text-ink">{{ role.role_name }}</th>
               <td class="px-4 py-3">{% if role.can_create_activity %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}</td>
               <td class="px-4 py-3">{% if role.can_manage_users %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}</td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  {% if role.can_approve_documents %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}
+                  <form method="post" action="{% url 'accounts:console_role_approval' role.pk %}">
+                    {% csrf_token %}
+                    {% if role.can_approve_documents %}
+                      <input type="hidden" name="enabled" value="false">
+                      <button type="submit" class="btn btn-ghost btn-sm" aria-label="Turn off document approval for {{ role.role_name }}">Turn off</button>
+                    {% else %}
+                      <input type="hidden" name="enabled" value="true">
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on document approval for {{ role.role_name }}">Turn on</button>
+                    {% endif %}
+                  </form>
+                </div>
+              </td>
               <td class="px-4 py-3 text-slate-700">{{ role.member_count }}</td>
             </tr>
           {% endfor %}
@@ -40,6 +62,6 @@ Django admin (ASSUMPTIONS 224), where the flags go through accounts.services.upd
   {% else %}
     {% include "components/empty_state.html" with icon="shield" title="No roles yet" text="Run python manage.py seed_data to create them." %}
   {% endif %}
-  <p class="mt-4 text-xs text-muted">Roles are never renamed or deleted. At least one active member must always be able to manage users.</p>
+  <p class="mt-4 text-xs text-muted">Roles are never renamed or deleted. At least one active member must always be able to manage users. A role that manages users cannot also create activities or approve documents.</p>
 </section>
 {% endblock %}

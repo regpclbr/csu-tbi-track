@@ -2,11 +2,12 @@
 KPI card. {% include "components/kpi_card.html" with label="Upcoming activities" value=8 icon="calendar" chip="blue" pill="next 30 days" pill_tone="success" note="" %}
 value: a number or text (already formatted). icon: a components/icon.html name, shown on a light tint
 (chip: blue | amber | teal | violet | green). pill_tone: success | warning | neutral | danger | info.
-note: small text under the value (optional).
+note: small text under the value (optional). static: no hover effect (a card that is not clickable next to cards
+that are, as in activities/_stat_cards.html).
 Compact (ASSUMPTIONS 325): icon and label on one row, the number below. In a narrow card (portal on a phone: three
 cards side by side) the label wraps under the icon instead of overflowing.
 {% endcomment %}
-<div class="kpi-card hover-lift flex flex-col gap-2 p-3.5">
+<div class="kpi-card {% if not static %}hover-lift {% endif %}flex h-full flex-col gap-2 p-3.5">
   <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
     {% if icon %}<span class="chip chip-{{ chip|default:'blue' }} size-8 rounded-lg">{% include "components/icon.html" with name=icon class="size-4" %}</span>{% endif %}
     <p class="min-w-0 flex-1 basis-16 text-[13px] leading-snug font-medium break-words text-muted">{{ label }}</p>

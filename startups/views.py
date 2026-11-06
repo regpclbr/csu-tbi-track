@@ -23,6 +23,7 @@ from config.json import JsonResponse  # date-times in Manila time
 from accounts.permissions import Permission, permission_required, staff_login_required
 from accounts.services import LoginError
 from certificates import services as certificate_services
+from config.mail import email_sent_message
 from config.parsing import parse_bool
 from notifications import services as notification_services
 from notifications.views import notification_json
@@ -150,7 +151,7 @@ def sync_api(request: HttpRequest) -> JsonResponse:
 def send_password_link_api(request: HttpRequest, startup_id: int) -> JsonResponse:
     startup = get_object_or_404(Startup, pk=startup_id)
     services.send_password_link(request.user, startup)
-    return JsonResponse({"message": f"A set-password link was emailed to {startup.email}."})
+    return JsonResponse({"message": email_sent_message(f"A set-password link was emailed to {startup.email}.")})
 
 
 # --- Public: set-password link -----------------------------------------------------------------------

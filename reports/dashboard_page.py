@@ -18,10 +18,9 @@ from accounts.models import TBIMember
 from accounts.permissions import Permission, has_permission
 from activities.formatting import audit_sentence
 from activities.models import Activity, ActivityType
-from activities.services import recent_audit_entries, registered_count
+from activities.services import open_for_registration, recent_audit_entries, registered_count
 from config.frontend import initials
 from documents.services import review_queue, today_in_manila
-from registrations.services import open_activities
 
 from . import metrics, services
 from .content import range_in_words
@@ -148,7 +147,7 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
     filters = metrics.ReportFilters(data["filters"]["start"], data["filters"]["end"], data["filters"]["activity_type"])
     cards = {card["key"]: card for card in data["cards"]}
     can_create = has_permission(member, Permission.CREATE_ACTIVITY)
-    review = _review(member, cards, can_create, now)
+    review = _review(member, cards, has_permission(member, Permission.APPROVE_DOCUMENTS), now)
 
     return DashboardPage(
         filters=filters,
@@ -192,10 +191,10 @@ def _range_options(today: date) -> list[tuple[str, str]]:
     return options
 
 
-def _review(member: TBIMember, cards: dict, can_create: bool, now: datetime | None = None) -> dict:
-    """Members who may review: the documents waiting for THEIR review (review_queue, never their own
-    uploads; all activity types, like the sidebar badge). Others: S4, waiting for any reviewer."""
-    if can_create:
+def _review(member: TBIMember, cards: dict, can_approve: bool, now: datetime | None = None) -> dict:
+    """Members who can approve documents: the documents waiting for THEIR review (review_queue, their own uploads
+    too; all activity types, like the sidebar badge). Others: S4, waiting for any reviewer (read only)."""
+    if can_approve:
         queue = review_queue(member).aggregate(count=Count("pk"), oldest=Min("uploaded_at"))
         oldest = today_in_manila(queue["oldest"]) if queue["oldest"] else None
         days = (today_in_manila(now) - oldest).days if oldest else None
@@ -205,12 +204,12 @@ def _review(member: TBIMember, cards: dict, can_create: bool, now: datetime | No
 
 
 def _open_count(filters: metrics.ReportFilters, now: datetime | None) -> int:
-    """Activities open for registration now (registrations.services.open_activities, the one rule),
-    narrowed to the activity type filter like the other "now" cards."""
-    activities = open_activities(now)
+    """Activities open for registration now (activities.services.open_for_registration, the one rule shared with
+    the Activities card and /register/), narrowed to the activity type filter like the other "now" cards."""
+    activities = open_for_registration(now=now)
     if filters.activity_type_id:
-        activities = [a for a in activities if a.activity_type_id == filters.activity_type_id]
-    return len(activities)
+        activities = activities.filter(activity_type_id=filters.activity_type_id)
+    return activities.count()
 
 
 def _group_by_type(rows: list[dict]) -> dict[str, list[dict]]:

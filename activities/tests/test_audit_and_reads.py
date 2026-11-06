@@ -12,6 +12,7 @@ from django.utils import timezone
 from activities import services
 from activities.formatting import format_audit_value
 from activities.models import ActivityAuditLog, ActivityStatus, AuditLogIsAppendOnly, ParticipantCategory, ResourcePerson
+from registrations.models import FormTemplate, FormType
 
 from .conftest import TEST_NOW, at
 
@@ -186,6 +187,8 @@ def test_list_rejects_unknown_sort() -> None:
 def test_activity_stats(three_activities, director, move_to) -> None:
     seminar, workshop, _ = three_activities
     move_to(seminar, "Conducted")
+    # Open = also has a registration form (the /register/ rule, ASSUMPTIONS 77).
+    FormTemplate.objects.create(activity=workshop, form_type=FormType.REGISTRATION, title="R", created_by=director)
     november = timezone.make_aware(datetime(2026, 11, 20, 12, 0))
     stats = services.activity_stats(now=november)
     assert stats == {

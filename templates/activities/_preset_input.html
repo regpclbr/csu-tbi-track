@@ -1,0 +1,2 @@
+{% comment %}The list card filter (?preset=) kept in the filter form; refreshed out of band (oob=True) when a filter drops it.{% endcomment %}
+<input type="hidden" id="filter-preset" name="preset" value="{{ filters.preset }}"{% if oob %} hx-swap-oob="true"{% endif %}>

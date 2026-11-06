@@ -1,7 +1,8 @@
 {% extends "layouts/app.html" %}
 {% comment %}
 /documents/ (repository: documents.services.list_documents) and /documents/review/ (documents.services.review_queue),
-two tabs of one page. The review tab shows the same count as the sidebar badge. On the repository tab the filters swap
+two tabs of one page. The review tab is shown only with can_approve_documents (can_review) and shows the same count
+as the sidebar badge. On the repository tab the filters swap
 only #document-results (HTMX) and stay in the URL; without JavaScript the Apply button submits them.
 {% endcomment %}
 {% block content %}
@@ -12,10 +13,12 @@ only #document-results (HTMX) and stay in the URL; without JavaScript the Apply 
       <a href="{% url 'documents:list' %}"{% if list_tab == "all" %} aria-current="page"{% endif %}
          class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if list_tab == 'all' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
         {% include "components/icon.html" with name="folder" class="size-4" %}All documents</a>
+      {% if can_review %}
       <a href="{% url 'documents:review' %}"{% if list_tab == "review" %} aria-current="page"{% endif %}
          class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if list_tab == 'review' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
         {% include "components/icon.html" with name="file-check" class="size-4" %}Waiting for my review
         <span class="rounded-full px-1.5 text-xs font-bold {% if review_count %}bg-primary text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ review_count }}<span class="sr-only"> documents</span></span></a>
+      {% endif %}
     </nav>
   </div>
 

@@ -2,7 +2,7 @@
 
 Views are thin: parse input, call documents.services (which checks the permissions again).
 - Any active staff member: read, upload, download.
-- can_create_activity (and not the uploader): approve, return.
+- can_approve_documents (ASSUMPTIONS 344): approve (also an own upload), return (never an own upload).
 - The uploader only, while For Review: replace, delete.
 
 Files are never served from /media/: only download_document sends them (as attachments) and view_document shows a
@@ -132,10 +132,10 @@ def detail_api(request: HttpRequest, document_id: int) -> JsonResponse:
     return JsonResponse({"document": document_json(_document(document_id), request.user)})
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@permission_required(Permission.APPROVE_DOCUMENTS)
 @require_GET
 def review_queue_api(request: HttpRequest) -> JsonResponse:
-    """Documents waiting for a reviewer that I may approve (not my own, not returned ones)."""
+    """Documents waiting for a reviewer (my own uploads too, not returned ones)."""
     documents = services.review_queue(request.user)
     return JsonResponse({"documents": [document_json(d) for d in documents]})
 

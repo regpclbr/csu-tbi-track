@@ -129,7 +129,7 @@ def activity(make_activity) -> Activity:
 @pytest.fixture
 def make_document(director, head, activity):
     """Factory: make_document(content, name="design.docx", type_name="Activity Design", approve=True,
-    on=activity, approved_at=None). Uploaded by the Director, approved by the Project Head."""
+    on=activity, approved_at=None). Uploaded and approved by the Director (self-approval, ASSUMPTIONS 344)."""
 
     def make(content: bytes, name: str = "design.docx", type_name: str = "Activity Design", approve: bool = True,
              on: Activity | None = None, title: str = "", approved_at: datetime | None = None) -> Document:
@@ -137,7 +137,7 @@ def make_document(director, head, activity):
             director, on or activity, DocumentType.objects.get(name=type_name), SimpleUploadedFile(name, content), title
         )
         if approve:
-            document = document_services.approve_document(head, document, now=approved_at)
+            document = document_services.approve_document(director, document, now=approved_at)
         return Document.objects.get(pk=document.pk)
 
     return make
