@@ -12,7 +12,9 @@ from django.conf import settings
 from django.http import HttpRequest, QueryDict
 from django.utils import timezone
 
+from activities.formatting import format_time_range
 from activities.models import Activity
+from activities.services import activity_start_end
 
 from . import services
 from .models import FieldType, FormField, FormTemplate
@@ -158,14 +160,24 @@ def _fold(line: str) -> str:
     return "\r\n ".join(parts)
 
 
+def _ics_when(activity: Activity) -> list[str]:
+    """DTSTART and DTEND: timed (UTC) when the activity has times, otherwise all-day."""
+    if activity.start_time is None or activity.end_time is None:
+        # The end of an all-day event is exclusive: the day after the end date.
+        return [f"DTSTART;VALUE=DATE:{activity.start_date:%Y%m%d}",
+                f"DTEND;VALUE=DATE:{activity.end_date + timedelta(days=1):%Y%m%d}"]
+    start, end = activity_start_end(activity)
+    return [f"DTSTART:{start.astimezone(UTC):%Y%m%dT%H%M%SZ}", f"DTEND:{end.astimezone(UTC):%Y%m%dT%H%M%SZ}"]
+
+
 def activity_ics(activity: Activity, now: datetime | None = None) -> str:
-    """A calendar file for one activity: one all-day event from the start date to the end date (the time
-    schedule is free text, so it goes in the description). Only public facts: never who registered and
-    nothing about the person who downloads it."""
+    """A calendar file for one activity: one event from the start (start date + start time) to the end (end date
+    + end time), in UTC; an all-day event from the start date to the end date when the times are not set. Only
+    public facts: never who registered and nothing about the person who downloads it."""
     page_url = services.registration_page_url(activity)
     host = settings.SITE_URL.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0] or "localhost"
     stamp = (now or timezone.now()).astimezone(UTC)
-    description = f"Time: {activity.time_schedule}\nTechnology Business Incubator, Caraga State University\n{page_url}"
+    description = f"Time: {format_time_range(activity.start_time, activity.end_time)}\nTechnology Business Incubator, Caraga State University\n{page_url}"
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -175,8 +187,7 @@ def activity_ics(activity: Activity, now: datetime | None = None) -> str:
         "BEGIN:VEVENT",
         f"UID:activity-{activity.pk}@{host}",
         f"DTSTAMP:{stamp:%Y%m%dT%H%M%SZ}",
-        f"DTSTART;VALUE=DATE:{activity.start_date:%Y%m%d}",
-        f"DTEND;VALUE=DATE:{activity.end_date + timedelta(days=1):%Y%m%d}",  # the end of an all-day event is exclusive
+        *_ics_when(activity),
         f"SUMMARY:{_ics_text(activity.title)}",
         f"LOCATION:{_ics_text(activity.venue)}",
         f"DESCRIPTION:{_ics_text(description)}",

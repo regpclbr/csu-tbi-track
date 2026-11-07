@@ -105,6 +105,8 @@ def _activity_json(activity: Activity) -> dict:
         "status": activity.status.name,
         "start_date": _iso(activity.start_date),
         "end_date": _iso(activity.end_date),
+        "start_time": activity.start_time.strftime("%H:%M") if activity.start_time else None,  # Manila time
+        "end_time": activity.end_time.strftime("%H:%M") if activity.end_time else None,
     }
 
 

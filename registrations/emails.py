@@ -4,7 +4,7 @@ Step 9 can replace the sending here; callers don't change."""
 from django.conf import settings
 from django.core.mail import send_mail
 
-from activities.formatting import format_date
+from activities.formatting import format_date, format_time_range
 
 from .models import Registration
 
@@ -14,7 +14,8 @@ def _activity_lines(registration: Registration) -> str:
     dates = format_date(activity.start_date)
     if activity.end_date != activity.start_date:
         dates += f" to {format_date(activity.end_date)}"
-    return f"Activity: {activity.title}\nDate: {dates}, {activity.time_schedule}\nVenue: {activity.venue}\n"
+    times = format_time_range(activity.start_time, activity.end_time)
+    return f"Activity: {activity.title}\nDate: {dates}\nTime: {times}\nVenue: {activity.venue}\n"
 
 
 def send_registration_confirmation(registration: Registration) -> None:

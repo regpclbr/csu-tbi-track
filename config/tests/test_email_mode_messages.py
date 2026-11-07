@@ -90,12 +90,12 @@ def test_evaluation_links(mode, make_member, monkeypatch) -> None:
     activity = activity_services.create_activity(director, {
         "title": "Pitching Workshop", "description": "Learn to pitch.", "activity_type": ActivityType.objects.get(name="Workshop"),
         "participant_categories": [ParticipantCategory.objects.get(name="Incubatees")], "start_date": start, "end_date": start,
-        "time_schedule": "8:00 AM", "venue": "CSU Hall", "max_slots": 30,
+        "start_time": time(8, 0), "end_time": time(17, 0), "venue": "CSU Hall", "max_slots": 30,
         "registration_deadline": timezone.make_aware(datetime.combine(start - timedelta(days=2), time(17))),
         "evaluation_deadline": timezone.make_aware(datetime.combine(start + timedelta(days=7), time(17))),
         "budget_amount": Decimal("0"),
     })
-    monkeypatch.setattr(registration_services, "send_evaluation_links", lambda member, activity: 2)
+    monkeypatch.setattr(registration_services, "send_evaluation_links", lambda member, activity, **kwargs: 2)
     response = logged_in(director).post(reverse("registrations:send_links", args=[activity.pk]), follow=True)
     assert messages_of(response) == [expected(
         mode, "They go out while qcluster is running.", before="Queued 2 evaluation link emails. "

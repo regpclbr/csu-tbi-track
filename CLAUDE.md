@@ -60,6 +60,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (excludes certificate files, i.e. `related_certificate` set).
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
 - Activities are never deleted (audit log FK is PROTECT); use status changes instead.
+- ACTIVITY has `start_time` / `end_time` (Manila, nullable only for old rows the migration could not read; both or
+  neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
+  `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
+- ACTIVITY_AUDIT_LOG.changed_by empty = System (automatic status change); show it with `formatting.changed_by_name()`.
 - Certificate status: Generated → Pending Sign-off → Approved → Issued, one step at a time;
   Pending Sign-off → Generated on rejection; Issued is final. Change it only through
   `certificates.services.set_certificate_status()`, which enforces the rules.
@@ -89,13 +93,19 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Every activity change goes through `activities/services.py` (create, update, change_status,
   add/remove resource person), also from the Django admin and the demo seed. Never call
   `Activity.objects.create()` / `.save()` directly for user edits: the audit log would be skipped.
-- Status is manual only (no automatic job). Moves: Draft→Scheduled→Ongoing→Conducted, plus
-  Scheduled→Draft when nobody has registered. Conducted is final and read-only.
+- Moves: Draft→Scheduled→Ongoing→Conducted, plus Scheduled→Draft when nobody has registered. Conducted is final and
+  read-only. Staff move by hand (`change_status`); the system also moves Scheduled→Ongoing at the start and
+  Ongoing→Conducted after the end once attendance exists (`automatic_next_status`, `apply_automatic_statuses`,
+  `refresh_status`; same `_move_status` code, SKIP LOCKED, audit row by System; ASSUMPTIONS 66, 346). They run every
+  `ACTIVITY_STATUS_INTERVAL_MINUTES` (`activities.tasks.run_activity_automation`) and on activity page / list loads.
+  Page loads only change statuses, never send emails. Draft is never touched. `activity_start_end()` = the moments.
 - The audit log is append-only (enforced in the model). Format values only with
   `activities.formatting.format_audit_value()`.
 - Creating: start_date not before today and registration_deadline not in the past (Manila time).
   Editing: those checks apply only to fields being changed. Only tests/demo pass `now=`.
-- Offer status choices with `allowed_next_statuses()`; change status only with `change_status()`.
+- Offer status choices with `allowed_next_statuses()`; change status only with `change_status()` (or the automatic moves).
+- "Needs attention" = `activities/attention.py` only (`activity_attention` for the page, `attention_counts` for the list,
+  one shared item function, fixed queries, parity test; existing rules only, ASSUMPTIONS 347).
 - Registration state is calculated, never stored: `registered_count()`, `slots_remaining()`,
   `is_registration_open()` in activities/services.py (Step 5 must reuse them).
 - "Open for registration" = `open_for_registration()` (Scheduled, deadline, slots AND a registration form): the one query
@@ -107,7 +117,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Registrations and evaluations
 - All rules live in `registrations/services.py`: forms (`create_form`, field edits, locked once
   submitted), `validate_answers` (the only answer check), `register` (locks the activity row;
-  reuses `is_registration_open`), `set_attendance`, evaluation links and `submit_evaluation`.
+  reuses `is_registration_open`), `set_attendance` (records `attendance_marked_by/_at`, cleared on undo, logged on
+  `registrations.audit` with IDs only; `attendance_closed_reason` = "Attendance opens when …"), evaluation links and
+  `submit_evaluation`.
+- Evaluation links: sent only through `deliver_evaluation_link` (row lock, sets `evaluation_link_sent_at` or `_failed_at`,
+  one clears the other). First send is automatic, once per attendee, inside the 5-minute job
+  (`send_automatic_evaluation_links`: Conducted + evaluation form + open window); failures are never retried
+  automatically; staff resend with `send_evaluation_links(..., registration_ids=None)` (ASSUMPTIONS 348).
 - REGISTRATION.participant_category must be one of the activity's categories (auto when only one); the forms use
   `components/category_choice.html` (one category: a preselected radio; several: required, no default).
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
@@ -117,7 +133,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `/api/startups/set-password/<token>/`). The page URLs `/register/<id>/`, `/evaluate/<token>/`,
   `/startups/set-password/<token>/` are the HTML pages (phase F3); emails always link to the page URLs.
 - Registration emails (confirmation, evaluation links) are Django-Q2 tasks (`registrations/tasks.py`,
-  queued via `queue_confirmation` / `queue_evaluation_link`); never send them inside the request.
+  queued via `queue_confirmation` / `queue_evaluation_link`) or run inside the 5-minute job; never send them inside the request.
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
   honeypot field `website`) before `register()`; the service itself is never rate limited.
 - An evaluation link that is submitted or past its window shows only the closed reason.
@@ -278,7 +294,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   per-request token, ASSUMPTIONS 247). HTMX without login: 401 + `HX-Redirect` (`staff_login_required`).
 - HTML error pages: `templates/errors/403|404|500.html` (500 is rendered without the request). `/api/` stays JSON.
 - Dashboard (`/`, `reports.views.dashboard_page` + `reports/dashboard_page.py`): numbers only from
-  `reports.services.dashboard()` (= the API) and existing services (ASSUMPTIONS 237–244).
+  `reports.services.dashboard()` (= the API) and existing services (ASSUMPTIONS 237–244). The spotlight card is chosen
+  only by `reports.services.dashboard_spotlight()` ("Happening now" = `activities.services.happening_now()`, else S2's
+  next; the load runs `apply_automatic_statuses()` first; ASSUMPTIONS 351).
 - Activities pages (F2a, ASSUMPTIONS 261–269): `activities/page_views.py` (thin) + `activities/pages.py` (display only:
   filters, month grid, tabs, registration summary). The registration link and the amber notice come only from
   `pages.registration_summary()` (= `registration_closed_reason()`). Modals are a native `<dialog>` (`components/modal.html`);
@@ -288,6 +306,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `evaluation_links_closed_reason()` (the same functions the services use). A locked form shows no edit controls,
   not even move up/down (271). The attendance sheet never shows emails or contact numbers. Participant-facing fields:
   `components/answer_field.html` (F3 reuses it). A scroll box with sr-only text inside must be `relative`.
+- Attendance and evaluation links UI (2026-11-06, ASSUMPTIONS 275–276, 347–349): Registrations tab = one "Confirmed by"
+  choice (wet signature default) + row "Mark attended"/"Undo" (`row_action=mark:<id>`) + bulk buttons; before Ongoing only
+  the `attendance_closed_reason()` text. Evaluation tab = `registrations/_evaluation_links.html` (explanation from the rules,
+  counts, attendees who have not answered, resend). Activity page: `activities/_attention.html` below the title.
 - Public pages (F3, ASSUMPTIONS 278–288, no login, phones first): `registrations/public_views.py` + `public_pages.py`
   (display/parsing only), `startups/page_views.py`, templates in `templates/public/` on `layouts/public.html` (`.public-card`
   glass without hover lift, `.public-shell`: pill buttons, 44 px targets). Plain forms with CSRF + `novalidate`, no JS needed.
@@ -303,6 +325,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   call, all or nothing, refusals listed from `CertificateError.problems`; Generate shows `generation_closed_reason()`. An
   error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The certificate preview and
   `documents:view` (the document preview) are the only inline files. New components: `file_drop`.
+- Documents page (ASSUMPTIONS 352): default "By activity" (`documents.services.overview_activities` +
+  `activity_document_overview` = `document_checklist()`'s rule for many activities, parity test; `document_state_counts`
+  for the summary cards), "All documents" = the flat list. Filters in the URL; no rules in `documents/_activity_card.html`.
 - Document preview (ASSUMPTIONS 329–330): Preview in `documents/_actions.html` opens the shared `#document-preview` dialog (HTMX,
   `documents.page_views.preview`): PDF iframe / image / "not available" + Download, kind from `preview_kind()` (confirmed stored type,
   never the name). The file comes only from `documents:view` (Download's login rule, inline, nosniff, stored bytes checked again), the
@@ -398,6 +423,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Excel report layout (2026-10-31): title block, real Excel tables, formats, totals, print setup, Report info (338).
 - Activity cards (2026-11-01): card dialogs with the card's activities, one "open for registration" rule, dev-mode email messages (77, 341–342).
 - Document approval (2026-11-05): ROLE.can_approve_documents (Director only), self-approval, review notifications, roles screen switch (344).
+- Times and automation (2026-11-06): start/end time, automatic status, needs attention, automatic evaluation links, attendance marker (345–350).
+- Happening now + documents by activity (2026-11-06): dashboard spotlight, Documents page cards by activity (351–352).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -427,7 +454,7 @@ python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun; one account per role
 python manage.py changepassword director@demo.example.com   # give a demo account a password (typed, never stored)
-python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry
+python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
 python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
 python manage.py index_documents          # index approved documents not indexed yet (--document <id>: redo one)

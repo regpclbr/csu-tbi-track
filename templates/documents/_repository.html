@@ -1,0 +1,103 @@
+{% load ui %}
+{% comment %}
+The Documents page below the title (documents.pages.repository_page), swapped as a whole by HTMX (#document-repository):
+summary cards (links that filter by state), the "By activity / All documents" switch, the filters on one row, then the
+activity cards or the flat table. Every value is in the URL. No rules here: counts, states and actions come from
+documents.services (document_state_counts, document_checklist's rule, allowed_actions) through documents.pages.
+{% endcomment %}
+{% if filters.ignored %}
+  <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+    {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+{% endif %}
+
+{% comment %}
+Summary cards: click = filter by that state (again = clear). Rendered from the URL on every swap, so the selected card
+(aria-pressed) is always the current ?state=. Links with role="button" (they work without JavaScript; Space works too).
+.stat-card-link: no outline on click, rounded ring on keyboard focus.
+{% endcomment %}
+<ul class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4{% if filters.state %} stat-cards-selected{% endif %}" aria-label="Filter by state">
+  {% for card in summary_cards %}
+    <li>
+      <a href="{{ card.url }}" hx-get="{{ card.url }}" hx-target="#document-repository" hx-push-url="true"
+         role="button" aria-pressed="{% if card.selected %}true{% else %}false{% endif %}" class="stat-card-link"
+         hx-on:keydown="if (event.key === ' ') { event.preventDefault(); this.click(); }">
+        {% if card.selected %}{% include "components/kpi_card.html" with label=card.label value=card.count|number icon=card.icon chip=card.chip pill="Filtered" pill_tone="info" %}
+        {% else %}{% include "components/kpi_card.html" with label=card.label value=card.count|number icon=card.icon chip=card.chip %}{% endif %}
+        <span class="sr-only">{% if card.selected %}(filter on: select again to show every state){% else %}(show only these){% endif %}</span>
+      </a>
+    </li>
+  {% endfor %}
+</ul>
+
+{# --- Filters on one row; the view switch sits above the results ---------------------------------------- #}
+<div class="mb-4">
+  <form id="document-filters" method="get" action="{% url 'documents:list' %}" role="search" aria-label="Filter documents"
+        hx-get="{% url 'documents:list' %}" hx-target="#document-repository" hx-push-url="true"
+        hx-trigger="change, keyup changed delay:400ms from:#doc-q, search from:#doc-q" hx-indicator="#document-repository, #doc-loading"
+        class="flex flex-wrap items-center gap-2">
+    {% if filters.view != "activity" %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
+    {% if filters.uploaded_by %}<input type="hidden" name="uploaded_by" value="{{ filters.uploaded_by }}">{% endif %}
+    <div class="relative min-w-44 flex-1">
+      <label for="doc-q" class="sr-only">Search by activity, title, file name or type</label>
+      <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4" %}</span>
+      <input id="doc-q" type="search" name="q" value="{{ filters.q }}" placeholder="Search…" class="field-input pill-select py-2 pl-10">
+    </div>
+    <div>
+      <label for="doc-activity" class="sr-only">Activity</label>
+      <select id="doc-activity" name="activity" class="field-input field-select pill-select w-auto max-w-48 pl-4">
+        <option value="">All activities</option>
+        {% for activity in activity_choices %}<option value="{{ activity.pk }}"{% if activity.pk == filters.activity %} selected{% endif %}>{{ activity.title|truncatechars:40 }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="doc-type" class="sr-only">Document type</label>
+      <select id="doc-type" name="document_type" class="field-input field-select pill-select w-auto max-w-44 pl-4">
+        <option value="">All types</option>
+        {% for document_type in document_types %}<option value="{{ document_type.pk }}"{% if document_type.pk == filters.document_type %} selected{% endif %}>{{ document_type.name }}{% if not document_type.is_active %} (inactive){% endif %}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="doc-state" class="sr-only">State</label>
+      <select id="doc-state" name="state" class="field-input field-select pill-select w-auto pl-4">
+        <option value="">Any state</option>
+        {% for value, label in states %}<option value="{{ value }}"{% if value == filters.state %} selected{% endif %}>{{ label }}{% if value == "missing" %} (by activity){% endif %}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="doc-searchable" class="sr-only">AI search: included or not</label>
+      <select id="doc-searchable" name="searchable" class="field-input field-select pill-select w-auto pl-4">
+        <option value="">AI search: any</option>
+        <option value="true"{% if filters.searchable is True %} selected{% endif %}>AI search: included</option>
+        <option value="false"{% if filters.searchable is False %} selected{% endif %}>AI search: not included</option>
+      </select>
+    </div>
+    <span id="doc-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
+    {% if filters.any_set %}<a href="?{% if filters.view != 'activity' %}view={{ filters.view }}{% endif %}" hx-get="?{% if filters.view != 'activity' %}view={{ filters.view }}{% endif %}" hx-target="#document-repository" hx-push-url="true" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+    <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
+  </form>
+</div>
+
+<div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+  <nav class="inline-flex shrink-0 rounded-full border border-line bg-slate-50 p-1" aria-label="How to show the documents">
+    {% for link in view_links %}
+      <a href="{{ link.url }}" hx-get="{{ link.url }}" hx-target="#document-repository" hx-push-url="true"{% if link.selected %} aria-current="true"{% endif %}
+         class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold whitespace-nowrap {% if link.selected %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
+        {% include "components/icon.html" with name=link.icon class="size-4" %}{{ link.label }}</a>
+    {% endfor %}
+  </nav>
+  {% if filters.view != "all" %}<p class="text-sm text-muted" role="status">{{ result.total }} activit{{ result.total|pluralize:"y,ies" }}{% if filters.any_set %} matching the filters{% endif %} · ongoing first, then the newest</p>{% endif %}
+</div>
+{% if filters.view == "all" %}
+  {% include "documents/_results.html" %}
+{% else %}
+  {% if cards %}
+    <ul class="space-y-3">
+      {% for card in cards %}{% include "documents/_activity_card.html" with card=card %}{% endfor %}
+    </ul>
+    {% include "components/pagination.html" with result=result query=filters.query hx_target="#document-repository" %}
+  {% elif filters.any_set %}
+    {% include "components/empty_state.html" with icon="search" title="Nothing matches the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="folder" title="No activities yet" text="Scheduled, ongoing and conducted activities appear here with their required documents." %}
+  {% endif %}
+{% endif %}

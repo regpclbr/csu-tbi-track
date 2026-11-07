@@ -1,26 +1,41 @@
+{% load ui %}
 {% comment %}
-The registrations table (swapped by the filters). With can_create_activity: row checkboxes, "select all on this page",
-Mark attended (choose the method) and Unmark, sent to registrations.services.set_attendance (all or nothing).
+The registrations table (swapped by the filters). With can_create_activity and while attendance can be recorded
+(registrations.services.attendance_closed_reason is None): one "Confirmed by" choice above the table (wet signature by
+default) used by every mark button, a "Mark attended" / "Undo" button on each row (Undo is hidden, with the reason, once
+the person has evaluated: services.undo_refused_reason), and checkboxes with "Mark selected as attended" / "Undo
+selected". Everything goes to services.set_attendance (all or nothing). Before the activity starts: the reason instead.
 The table scrolls sideways inside the card on narrow screens.
 {% endcomment %}
 <div id="registrations-results" class="htmx-dim">
+  {% if attendance_reason %}
+    <p class="mb-3 flex items-start gap-2 rounded-2xl border border-line bg-slate-50 px-4 py-3 text-sm text-slate-700" role="note">
+      {% include "components/icon.html" with name="clock" class="mt-0.5 size-4 text-muted" %}{{ attendance_reason }}</p>
+  {% endif %}
   <p class="mb-3 text-sm text-muted" role="status">
     {{ result.total }} registration{{ result.total|pluralize }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
   </p>
-  {% if page.object_list %}
+  {% if rows %}
     <form method="post" action="{% url 'registrations:attendance' activity.pk %}"
-          x-data="{ selected: [], all: [{% for registration in page.object_list %}'{{ registration.pk }}'{% if not forloop.last %}, {% endif %}{% endfor %}] }">
+          x-data="{ selected: [], all: [{% for row in rows %}'{{ row.registration.pk }}'{% if not forloop.last %}, {% endif %}{% endfor %}] }">
       {% csrf_token %}
       <input type="hidden" name="filters" value="{{ filters.query }}">
-      {% if can_create %}
-        <div class="mb-3 flex flex-wrap items-center gap-2">
-          <span class="text-sm text-slate-700" x-text="selected.length ? selected.length + ' selected' : 'Select registrations to record attendance.'">Select registrations to record attendance.</span>
-          {% if attendance_reason %}
-            <span class="text-sm text-muted">· {{ attendance_reason }}</span>
-          {% else %}
-            {% include "components/modal.html" with id="attendance-modal" title="Mark attended" body="registrations/_attendance_form.html" trigger_label="Mark attended…" trigger_icon="check" trigger_class="btn btn-primary btn-sm" %}
-            <button type="submit" name="action" value="unmark" class="btn btn-secondary btn-sm" :disabled="!selected.length">Unmark</button>
-          {% endif %}
+      {% if can_create and not attendance_reason %}
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3">
+          <fieldset class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <legend class="float-left mr-1 text-sm font-semibold text-ink">Confirmed by:</legend>
+            {% for value, label in methods %}
+              <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+                <input type="radio" name="method" value="{{ value }}" class="size-4 accent-primary"{% if value == default_method %} checked{% endif %}>{{ label }}
+              </label>
+            {% endfor %}
+          </fieldset>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-sm text-slate-700" x-text="selected.length ? selected.length + ' selected' : ''"></span>
+            <button type="submit" name="action" value="mark" class="btn btn-primary btn-sm" :disabled="!selected.length">
+              {% include "components/icon.html" with name="check" class="size-4" %}Mark selected as attended</button>
+            <button type="submit" name="action" value="undo" class="btn btn-secondary btn-sm" :disabled="!selected.length">Undo selected</button>
+          </div>
         </div>
       {% endif %}
       <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts of the right-hand cells inside the scroll box #}
@@ -42,11 +57,12 @@ The table scrolls sideways inside the card on narrow screens.
               <th scope="col" class="px-3 py-2.5">Attendance</th>
               <th scope="col" class="px-3 py-2.5">Evaluation</th>
               <th scope="col" class="px-3 py-2.5">Startup</th>
-              <th scope="col" class="px-3 py-2.5"><span class="sr-only">Details</span></th>
+              <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-line">
-            {% for registration in page.object_list %}
+            {% for row in rows %}
+              {% with registration=row.registration %}
               <tr class="hover:bg-slate-50">
                 {% if can_create and not attendance_reason %}
                   <td class="px-3 py-2.5"><input type="checkbox" name="registration_ids" value="{{ registration.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ registration.name }}"></td>
@@ -57,19 +73,34 @@ The table scrolls sideways inside the card on narrow screens.
                 <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.participant_category.name }}</td>
                 <td class="px-3 py-2.5 whitespace-nowrap text-slate-700"><time datetime="{{ registration.registration_date|date:'c' }}">{{ registration.registration_date|date:"M j, Y g:i A" }}</time></td>
                 <td class="px-3 py-2.5 whitespace-nowrap">
-                  {% if registration.attendance_confirmed %}<span class="badge badge-success">Attended · {{ registration.get_confirmation_method_display|lower }}</span>{% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
+                  {% if registration.attendance_confirmed %}
+                    <span class="badge badge-success">Attended · {{ registration.get_confirmation_method_display|lower }}</span>
+                    {% if registration.attendance_marked_at %}
+                      <p class="mt-1 text-xs text-muted">Marked by {{ registration.attendance_marked_by.name|default:"–" }} · <time datetime="{{ registration.attendance_marked_at|date:'c' }}">{{ registration.attendance_marked_at|date:"M j, g:i A" }}</time></p>
+                    {% endif %}
+                  {% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
                 </td>
                 <td class="px-3 py-2.5">
                   {% if registration.evaluation_submission %}<span class="badge badge-info">Submitted</span>{% else %}<span class="text-muted">–</span>{% endif %}
                 </td>
                 <td class="min-w-36 px-3 py-2.5 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
-                <td class="px-3 py-2.5 text-right">
+                <td class="px-3 py-2.5 text-right whitespace-nowrap">
+                  {% if can_create and not attendance_reason %}
+                    {% if not registration.attendance_confirmed %}
+                      <button type="submit" name="row_action" value="mark:{{ registration.pk }}" class="btn btn-primary btn-sm">Mark attended<span class="sr-only"> {{ registration.name }}</span></button>
+                    {% elif row.undo_reason %}
+                      <span class="text-xs text-muted">{{ row.undo_reason }}</span>
+                    {% else %}
+                      <button type="submit" name="row_action" value="undo:{{ registration.pk }}" class="btn btn-secondary btn-sm">Undo<span class="sr-only"> attendance of {{ registration.name }}</span></button>
+                    {% endif %}
+                  {% endif %}
                   <button type="button" class="btn btn-ghost btn-sm" aria-haspopup="dialog" @click="opener = $el"
                           hx-get="{% url 'registrations:registration_detail' activity.pk registration.pk %}" hx-target="#registration-dialog-body"
                           hx-on::after-request="if (event.detail.successful) document.getElementById('registration-dialog').showModal()">
                     View<span class="sr-only"> {{ registration.name }}</span></button>
                 </td>
               </tr>
+              {% endwith %}
             {% endfor %}
           </tbody>
         </table>

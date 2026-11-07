@@ -15,9 +15,14 @@
               <a href="{% url 'activities:detail' activity.pk %}" class="hover:text-primary hover:underline">{{ activity.title }}</a>
             </h3>
             {% include "components/status_badge.html" with status=activity.status.name %}
+            {% if row.attention %}
+              <span class="badge badge-warning inline-flex items-center gap-1" title="Needs attention" role="img" aria-label="{{ row.attention }} item{{ row.attention|pluralize }} need{{ row.attention|pluralize:"s," }} attention">
+                {% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}<span aria-hidden="true">{{ row.attention }}</span></span>
+            {% endif %}
           </div>
           <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted">
             <span class="whitespace-nowrap">{{ activity|date_span }}</span>
+            <span class="flex items-center gap-1 whitespace-nowrap">{% include "components/icon.html" with name="clock" class="size-3.5" %}{{ activity|time_range }}</span>
             <span class="flex min-w-0 items-center gap-1">{% include "components/icon.html" with name="map-pin" class="size-3.5" %}<span class="truncate">{{ activity.venue }}</span></span>
           </p>
           <ul class="mt-1.5 flex flex-wrap gap-1" aria-label="Type and participant categories">

@@ -108,7 +108,7 @@ def make_activity(roles, director):
             title=title,
             start_date=start,
             end_date=start + timedelta(days=1),
-            time_schedule="8:00 AM - 5:00 PM",
+            start_time=time(8, 0), end_time=time(17, 0),
             venue="CSU Hall",
             max_slots=30,
             registration_deadline=timezone.make_aware(datetime.combine(start - timedelta(days=2), time(17))),

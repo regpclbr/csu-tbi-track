@@ -16,9 +16,9 @@ from django.utils import timezone
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, has_permission
-from activities.formatting import audit_sentence
+from activities.formatting import audit_sentence, changed_by_name
 from activities.models import Activity, ActivityType
-from activities.services import open_for_registration, recent_audit_entries, registered_count
+from activities.services import attended_count, open_for_registration, recent_audit_entries, registered_count
 from config.frontend import initials
 from documents.services import review_queue, today_in_manila
 
@@ -26,6 +26,7 @@ from . import metrics, services
 from .content import range_in_words
 
 UPCOMING_SHOWN = 4  # the first is the "Next activity" spotlight, the rest the list under it
+UPCOMING_LIST_SHOWN = UPCOMING_SHOWN - 1  # rows in the "Upcoming activities" list under the spotlight
 ATTENTION_SHOWN = 5  # "Needs attention" items shown before "Show N more"
 ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs attention" item
 
@@ -112,6 +113,7 @@ class DashboardPage:
     first_name: str = ""
     activity_types: list = field(default_factory=list)
     range_options: list = field(default_factory=list)  # (key, label) for the date range select
+    spotlight: dict | None = None  # the card beside the banner (services.dashboard_spotlight, ASSUMPTIONS 351)
 
     attention_shown: int = ATTENTION_SHOWN
 
@@ -121,12 +123,15 @@ class DashboardPage:
 
     @property
     def next_activity(self) -> dict | None:
-        """The spotlight card: the first upcoming activity."""
-        return self.upcoming[0] if self.upcoming else None
+        """The spotlight card: an activity happening now, else the next upcoming one (services.dashboard_spotlight)."""
+        return self.spotlight
 
     @property
     def upcoming_after_next(self) -> list[dict]:
-        return self.upcoming[1:]
+        """The "Upcoming activities" list: the upcoming ones the spotlight does not already show."""
+        if self.spotlight and not self.spotlight["ongoing"]:
+            return self.upcoming[1:UPCOMING_SHOWN]
+        return self.upcoming[:UPCOMING_LIST_SHOWN]
 
     @property
     def attention_count_text(self) -> str:
@@ -148,6 +153,7 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
     cards = {card["key"]: card for card in data["cards"]}
     can_create = has_permission(member, Permission.CREATE_ACTIVITY)
     review = _review(member, cards, has_permission(member, Permission.APPROVE_DOCUMENTS), now)
+    upcoming = _upcoming(cards["upcoming_activities"]["next"][:UPCOMING_SHOWN])
 
     return DashboardPage(
         filters=filters,
@@ -160,13 +166,14 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         review=review,
         open_count=_open_count(filters, now),
         attention=_attention(filters, cards, review, can_create, now),
-        upcoming=_upcoming(cards["upcoming_activities"]["next"][:UPCOMING_SHOWN]),
+        upcoming=upcoming,
+        spotlight=_spotlight(services.dashboard_spotlight(filters, now, cards["upcoming_activities"]["next"]), upcoming),
         categories=_categories(data["charts"]["by_category"]),
         statuses=_statuses(cards["activities_by_status"]["by_status"]),
         conducted_by_type=_bars(data["charts"]["by_type"]),
         recent_changes=[
-            {"sentence": audit_sentence(entry), "changed_at": entry.changed_at, "member": entry.changed_by.name,
-             "initials": initials(entry.changed_by.name)}
+            {"sentence": audit_sentence(entry), "changed_at": entry.changed_at, "member": changed_by_name(entry),
+             "initials": initials(changed_by_name(entry))}
             for entry in recent_audit_entries()
         ],
         greeting=greeting(now),
@@ -323,6 +330,27 @@ def _upcoming(next_rows: list[dict]) -> list[dict]:
             "percent": min(100, round(100 * registered / activity.max_slots)) if activity.max_slots else 0,
         })
     return upcoming
+
+
+def _spotlight(chosen: services.Spotlight | None, upcoming: list[dict]) -> dict | None:
+    """What the spotlight card shows. Upcoming: the first upcoming row (registered / max slots). Happening now:
+    attended / registered (activities.services counts), "Mark attendance", and the other ongoing activities."""
+    if chosen is None:
+        return None
+    if chosen.kind == services.NEXT_UP:
+        return {**upcoming[0], "ongoing": False, "more_ongoing": 0}
+    activity = chosen.activity
+    registered, attended = registered_count(activity), attended_count(activity)
+    return {
+        "activity": activity,
+        "categories": sorted(c.name for c in activity.participant_categories.all()),
+        "registered": registered,
+        "attended": attended,
+        "percent": min(100, round(100 * attended / registered)) if registered else 0,
+        "ongoing": True,
+        "more_ongoing": chosen.more_ongoing,
+        "more_url": f"{reverse('activities:list')}?{urlencode({'status': activity.status_id})}",
+    }
 
 
 def _percent(part: int, whole: int) -> float:

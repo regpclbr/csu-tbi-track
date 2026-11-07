@@ -193,13 +193,13 @@ def test_registrations_tab_shows_counts_and_rows(director, login, scheduled, sig
     html = login(director).get(tab_url(scheduled, "registrations")).content.decode()
     assert "1/30" in html and "ana@example.com" in html and "09171234567" in html and "Incubatees" in html
     assert 'name="registration_ids"' not in html  # Scheduled: attendance cannot be recorded yet
-    assert services.ATTENDANCE_CLOSED in html
+    assert services.attendance_closed_reason(scheduled) in html
 
 
 def test_registrations_tab_is_read_only_without_can_create_activity(admin_staff, login, attended) -> None:
     [person] = attended(1)
     html = login(admin_staff).get(tab_url(person.activity, "registrations")).content.decode()
-    assert person.email in html and 'name="registration_ids"' not in html and "Send evaluation links" not in html
+    assert person.email in html and 'name="registration_ids"' not in html and 'name="row_action"' not in html
     response = login(admin_staff).post(reverse("registrations:attendance", args=[person.activity_id]),
                                        {"registration_ids": [person.pk], "action": "unmark"})
     assert response.status_code == 403
@@ -235,7 +235,7 @@ def test_mark_attended_is_refused_until_ongoing_then_works(director, login, sche
     url = reverse("registrations:attendance", args=[scheduled.pk])
     client = login(director)
     data = {"registration_ids": [person.pk], "action": "mark", "method": "email"}
-    assert services.ATTENDANCE_CLOSED in messages_of(client.post(url, data, follow=True))
+    assert services.attendance_closed_reason(scheduled) in messages_of(client.post(url, data, follow=True))
     activity_services.change_status(director, scheduled, "Ongoing")
     response = client.post(url, data, follow=True)
     assert "Marked 1 registration as attended (email)." in messages_of(response)
@@ -252,8 +252,8 @@ def test_unmark_and_its_refusal_after_the_evaluation(director, login, attended) 
     client = login(director)
     response = client.post(url, {"registration_ids": [ana.pk, ben.pk], "action": "unmark"}, follow=True)
     [message] = messages_of(response)
-    assert message.startswith("Cannot unmark") and "already submitted the evaluation" in message
-    assert "Unmarked 1 registration." in messages_of(client.post(url, {"registration_ids": [ben.pk], "action": "unmark"}, follow=True))
+    assert message.startswith("Cannot undo attendance for") and "already submitted the evaluation" in message
+    assert "Attendance undone for 1 registration." in messages_of(client.post(url, {"registration_ids": [ben.pk], "action": "unmark"}, follow=True))
     assert "Select at least one registration first." in messages_of(client.post(url, {"action": "unmark"}, follow=True))
 
 
@@ -265,15 +265,16 @@ def test_attendance_keeps_the_filters_when_coming_back(director, login, attended
 
 
 def test_send_links_is_disabled_with_the_reason(director, login, scheduled, new_activity) -> None:
-    html = login(director).get(tab_url(scheduled, "registrations")).content.decode()
-    assert "Links cannot be sent now. The evaluation opens on" in html
+    html = login(director).get(tab_url(scheduled, "evaluation")).content.decode()
+    assert "Resend: Links cannot be sent now. The evaluation opens on" in html
     assert re.search(r'<button type="submit" class="btn btn-primary btn-sm" disabled', html)
 
 
 def test_send_links_without_an_evaluation_form(director, login, valid_data) -> None:
     activity = activity_services.create_activity(director, valid_data(title="No forms"))
-    html = login(director).get(tab_url(activity, "registrations")).content.decode()
+    html = login(director).get(tab_url(activity, "evaluation")).content.decode()
     assert "This activity has no evaluation form yet." in html
+    assert "There is no evaluation form yet: create it on the Forms tab." in html
 
 
 def test_send_links_while_the_window_is_open(director, login, scheduled, signup) -> None:
@@ -283,13 +284,14 @@ def test_send_links_while_the_window_is_open(director, login, scheduled, signup)
     activity_services.change_status(director, scheduled, "Ongoing")
     services.set_attendance(director, scheduled, [person.pk], True, "email")
     client = login(director)
-    assert "Evaluation links go to 1 attendee who has not evaluated yet." in client.get(tab_url(scheduled, "registrations")).content.decode()
+    html = client.get(tab_url(scheduled, "evaluation")).content.decode()
+    assert "Attendees who have not answered (1)" in html and person.name in html and "Not sent yet" in html
     response = client.post(reverse("registrations:send_links", args=[scheduled.pk]), follow=True)
     assert "Queued 1 evaluation link email. They go out while qcluster is running." in messages_of(response)
 
 
 def test_read_functions_for_attendance_and_links(director, scheduled, signup) -> None:
-    assert services.attendance_closed_reason(scheduled) == services.ATTENDANCE_CLOSED
+    assert services.attendance_closed_reason(scheduled).startswith("Attendance opens when the activity starts on")
     assert services.evaluation_links_closed_reason(scheduled, now=opens_at(scheduled)) is None
     assert services.evaluation_links_closed_reason(scheduled, now=opens_at(scheduled) - timedelta(minutes=1)).startswith("Links cannot be sent now.")
     person = signup(scheduled, "ana@example.com")

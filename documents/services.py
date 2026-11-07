@@ -30,7 +30,7 @@ from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.db import IntegrityError, transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Case, Exists, OuterRef, Q, QuerySet, Value, When
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -647,6 +647,111 @@ def document_checklist(activity: Activity, now: datetime | None = None) -> dict:
             optional.append({"document_type": document_type, "documents": documents})
     required.sort(key=lambda item: (item.due_date, item.document_type.name))
     return {"today": today, "required": required, "optional": optional}
+
+
+def documents_by_activity(activity_ids: list[int]) -> dict[int, list[Document]]:
+    """The activity documents (documents_for_listing) of many activities in one query, newest first."""
+    grouped: dict[int, list[Document]] = {}
+    documents = documents_for_listing().filter(activity_id__in=activity_ids).order_by("-uploaded_at", "-document_id")
+    for document in documents:
+        grouped.setdefault(document.activity_id, []).append(document)
+    return grouped
+
+
+def required_items(activity: Activity, documents: list[Document], types: list[DocumentType], today: date) -> list[ChecklistItem]:
+    """document_checklist()'s required items, from documents already loaded (documents_by_activity) and the active
+    required types: the same rule (_required_item), without a query per activity (the Activities list's
+    "needs attention" counts, activities.attention)."""
+    by_type: dict[int, list[Document]] = {}
+    for document in documents:
+        by_type.setdefault(document.document_type_id, []).append(document)
+    items = [_required_item(document_type, activity, by_type.get(document_type.pk, []), today) for document_type in types]
+    return sorted(items, key=lambda item: (item.due_date, item.document_type.name))
+
+
+def reminder_kind(item: ChecklistItem, today: date) -> str | None:
+    """What the daily reminder says about this checklist item: Notification.DOCUMENT_OVERDUE, DOCUMENT_DUE_SOON
+    (not uploaded, due within DOCUMENT_REMINDER_DAYS_BEFORE days) or None. The reminders' own rule."""
+    return _reminder_kind(item, today, settings.DOCUMENT_REMINDER_DAYS_BEFORE)
+
+
+# --- Documents page "By activity" (ASSUMPTIONS 352): the checklist of many activities at once -------------------
+
+
+@dataclass
+class ActivityDocuments:
+    """One activity on the Documents page: document_checklist()'s required items (due-date order) and every other
+    activity document (types that are not required, or no longer active), newest first."""
+
+    activity: Activity
+    required: list[ChecklistItem]
+    other: list[Document]
+
+    @property
+    def documents(self) -> list[Document]:
+        return [document for item in self.required for document in item.documents] + self.other
+
+    @property
+    def approved_count(self) -> int:
+        """Required types complete (at least one Approved document)."""
+        return sum(item.state == APPROVED for item in self.required)
+
+    @property
+    def missing_count(self) -> int:
+        """Required types with nothing uploaded."""
+        return sum(item.state == MISSING for item in self.required)
+
+    @property
+    def counts_missing(self) -> bool:
+        """Missing required documents are counted (summary card, "Missing" filter) only outside Draft: the scope of
+        the reminders and of the dashboard's overdue number (S3)."""
+        return self.activity.status.name != ActivityStatus.DRAFT
+
+
+def overview_activities() -> QuerySet:
+    """The activities on the Documents page: every non-Draft activity, and Draft activities that already have
+    documents. Ongoing first, then the newest start date."""
+    has_documents = Document.objects.activity_documents().filter(activity=OuterRef("pk"))
+    return (
+        Activity.objects.filter(~Q(status__name=ActivityStatus.DRAFT) | Exists(has_documents))
+        .select_related("status", "activity_type")
+        .annotate(ongoing_first=Case(When(status__name=ActivityStatus.ONGOING, then=Value(0)), default=Value(1)))
+        .order_by("ongoing_first", "-start_date", "title", "pk")
+    )
+
+
+def activity_document_overview(activities: list[Activity], now: datetime | None = None) -> list[ActivityDocuments]:
+    """document_checklist() for many activities in two queries (the active required types and the documents), with
+    the same rule (required_items / _required_item). Order of `activities` is kept."""
+    today = today_in_manila(now)
+    types = list(DocumentType.objects.filter(is_active=True, is_required=True).order_by("name"))
+    required_ids = {document_type.pk for document_type in types}
+    by_activity = documents_by_activity([activity.pk for activity in activities])
+    overview = []
+    for activity in activities:
+        documents = by_activity.get(activity.pk, [])
+        overview.append(ActivityDocuments(
+            activity=activity,
+            required=required_items(activity, documents, types, today),
+            other=[document for document in documents if document.document_type_id not in required_ids],
+        ))
+    return overview
+
+
+def document_state_counts(overview: list[ActivityDocuments]) -> dict[str, int]:
+    """The Documents page's summary cards, from the overview of overview_activities() (every activity document is in
+    it): documents waiting for a reviewer, returned to the uploader and approved (the S4 / review_state rules), and
+    required types missing in non-Draft activities."""
+    counts = {Document.WAITING_FOR_REVIEW: 0, Document.RETURNED: 0, Document.APPROVED: 0, MISSING_STATE: 0}
+    for entry in overview:
+        for document in entry.documents:
+            counts[document.review_state] += 1
+        if entry.counts_missing:
+            counts[MISSING_STATE] += entry.missing_count
+    return counts
+
+
+MISSING_STATE = "missing"  # the fourth state on the Documents page (a required type with nothing uploaded)
 
 
 # --- Reminders (run daily by Django-Q2; see documents/tasks.py) ----------------------------------

@@ -31,6 +31,8 @@ def create_payload(valid_data) -> dict:
         "end_date": data["end_date"].isoformat(),
         "registration_deadline": data["registration_deadline"].isoformat(),
         "evaluation_deadline": data["evaluation_deadline"].isoformat(),
+        "start_time": data["start_time"].strftime("%H:%M"),
+        "end_time": data["end_time"].strftime("%H:%M"),
         "budget_amount": str(data["budget_amount"]),
     }
 

@@ -22,7 +22,8 @@ class ActivityDataForm(forms.Form):
     )
     start_date = forms.DateField()
     end_date = forms.DateField()
-    time_schedule = forms.CharField(max_length=100)
+    start_time = forms.TimeField()  # "08:00" (Manila time)
+    end_time = forms.TimeField()
     venue = forms.CharField(max_length=255)
     max_slots = forms.IntegerField()
     registration_deadline = forms.DateTimeField()  # e.g. "2026-11-01T17:00" (Manila time)
@@ -54,6 +55,13 @@ class DateInput(forms.DateInput):
         super().__init__(attrs, format="%Y-%m-%d")
 
 
+class TimeInput(forms.TimeInput):
+    input_type = "time"
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs, format="%H:%M")
+
+
 class DateTimeLocalInput(forms.DateTimeInput):
     input_type = "datetime-local"
 
@@ -77,22 +85,23 @@ class ActivityPageForm(ActivityDataForm):
 
     start_date = forms.DateField(widget=DateInput)
     end_date = forms.DateField(widget=DateInput)
+    start_time = forms.TimeField(widget=TimeInput, help_text="Manila time.")
+    end_time = forms.TimeField(widget=TimeInput, help_text="On a one-day activity, after the start time.")
     registration_deadline = LocalDateTimeField(help_text="Manila time. Registration closes at this time.")
     evaluation_deadline = LocalDateTimeField(help_text="Manila time. Evaluation forms close at this time.")
     description = forms.CharField(required=False, widget=forms.Textarea)
 
     field_order = [
-        "title", "description", "activity_type", "participant_categories", "start_date", "end_date", "time_schedule",
+        "title", "description", "activity_type", "participant_categories", "start_date", "end_date", "start_time", "end_time",
         "venue", "max_slots", "registration_deadline", "evaluation_deadline", "budget_amount",
     ]
 
     def __init__(self, *args, activity: Activity | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         labels = {"activity_type": "Activity type", "participant_categories": "Participant categories",
-                  "time_schedule": "Time schedule", "max_slots": "Max slots", "budget_amount": "Budget"}
+                  "start_time": "Start time", "end_time": "End time", "max_slots": "Max slots", "budget_amount": "Budget"}
         for name, label in labels.items():
             self.fields[name].label = label
-        self.fields["time_schedule"].help_text = "For example 8:00 AM – 5:00 PM."
         self.fields["budget_amount"].help_text = "In pesos (₱), two decimals."
         types = ActivityType.objects.filter(is_active=True)
         if activity is not None:

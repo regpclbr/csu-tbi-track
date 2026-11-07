@@ -1,7 +1,7 @@
 {% load ui %}
 {% comment %}
-Registrations tab (registrations.pages.registrations_tab). Counts (reports metrics), the actions (send evaluation
-links, print the attendance sheet), filters and the table. The filters swap only #registrations-results (hx-select
+Registrations tab (registrations.pages.registrations_tab). Counts (reports metrics), the actions (print the
+attendance sheet; evaluation links live on the Evaluation tab), filters and the table. The filters swap only #registrations-results (hx-select
 picks it from the tab); attendance changes are normal POSTs that come back here with a toast.
 {% endcomment %}
 <div class="space-y-5" x-data="{ opener: null }">
@@ -21,21 +21,10 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
       <div class="flex flex-wrap items-center gap-2">
         <a href="{% url 'registrations:attendance_sheet' activity.pk %}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
           {% include "components/icon.html" with name="file-text" class="size-4" %}Print attendance sheet<span class="sr-only"> (opens in a new tab)</span></a>
-        {% if can_create %}
-          <form method="post" action="{% url 'registrations:send_links' activity.pk %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-primary btn-sm"{% if links_reason %} disabled aria-describedby="links-reason"{% endif %}>
-              {% include "components/icon.html" with name="mail" class="size-4" %}Send evaluation links</button>
-          </form>
-        {% endif %}
+        <a href="?tab=evaluation" hx-get="?tab=evaluation" hx-target="#tab-area" hx-push-url="true" class="btn btn-secondary btn-sm">
+          {% include "components/icon.html" with name="mail" class="size-4" %}Evaluation links</a>
       </div>
     </div>
-    {% if can_create %}
-      <p id="links-reason" class="mb-4 flex items-start gap-2 text-sm {% if links_reason %}text-slate-700{% else %}text-muted{% endif %}">
-        {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}
-        {% if links_reason %}Evaluation links: {{ links_reason }}{% else %}Evaluation links go to {{ link_recipients }} attendee{{ link_recipients|pluralize }} who ha{{ link_recipients|pluralize:"s,ve" }} not evaluated yet.{% endif %}
-      </p>
-    {% endif %}
 
     <form id="registration-filters" method="get" action="{% url 'activities:detail' activity.pk %}" role="search" aria-label="Filter registrations"
           hx-get="{% url 'activities:detail' activity.pk %}" hx-target="#registrations-results" hx-select="#registrations-results" hx-swap="outerHTML"

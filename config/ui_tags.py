@@ -5,7 +5,7 @@ from datetime import date, datetime
 from django import template
 from django.utils import timezone
 
-from activities.formatting import format_datetime
+from activities.formatting import format_datetime, format_time_range
 
 register = template.Library()
 
@@ -95,6 +95,12 @@ def date_span(activity) -> str:
     if start.month != end.month:
         return f"{start:%b} {start.day} – {end:%b} {end.day}, {end.year}"
     return f"{start:%b} {start.day}–{end.day}, {end.year}"
+
+
+@register.filter
+def time_range(activity) -> str:
+    """An activity's times: "8:00 AM – 5:00 PM" or "Time not set" (activities.formatting.format_time_range)."""
+    return format_time_range(activity.start_time, activity.end_time)
 
 
 @register.filter

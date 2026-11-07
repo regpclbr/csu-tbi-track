@@ -1,6 +1,7 @@
 """Every Django-Q2 schedule of the project, created by `python manage.py setup_schedules`.
 
-Each runs daily at a fixed hour in Manila time (no daylight saving time, so it stays put).
+Two kinds: daily at a fixed hour in Manila time (no daylight saving time, so it stays put), and every few
+minutes (the automatic activity statuses and evaluation links).
 """
 
 from dataclasses import dataclass
@@ -25,14 +26,38 @@ class DailySchedule:
     def minute(self) -> int:
         return getattr(settings, self.minute_setting) if self.minute_setting else 0
 
+    @property
+    def when(self) -> str:
+        """For the Admin Console's System status: "8:30"."""
+        return f"{self.hour}:{self.minute:02d}"
 
-SCHEDULES = [
+
+@dataclass(frozen=True)
+class MinutesSchedule:
+    """A task that runs every N minutes (Django-Q2 schedule type MINUTES)."""
+
+    name: str
+    func: str
+    minutes_setting: str  # name of the setting holding N
+
+    @property
+    def minutes(self) -> int:
+        return getattr(settings, self.minutes_setting)
+
+    @property
+    def when(self) -> str:
+        return f"Every {self.minutes} min"
+
+
+SCHEDULES: list[DailySchedule | MinutesSchedule] = [
     DailySchedule("Daily document reminders", "documents.tasks.run_document_reminders", "DOCUMENT_REMINDER_HOUR"),
     DailySchedule("Daily Navigatu startup sync", "startups.tasks.run_startup_sync", "STARTUP_SYNC_HOUR"),
     # Retries approved documents that are not indexed yet (e.g. after a Gemini rate limit).
     DailySchedule("Index pending documents", "assistant.tasks.run_index_pending", "ASSISTANT_INDEX_HOUR", "ASSISTANT_INDEX_MINUTE"),
     # Renders/issues Approved + evaluated certificates and sends Issued + unsent ones (Step 9).
     DailySchedule("Retry certificate PDFs and emails", "certificates.tasks.run_certificate_retries", "CERTIFICATE_RETRY_HOUR", "CERTIFICATE_RETRY_MINUTE"),
+    # Scheduled -> Ongoing -> Conducted on time, then the first evaluation link to each attendee (ASSUMPTIONS 346, 348).
+    MinutesSchedule("Activity statuses and evaluation links", "activities.tasks.run_activity_automation", "ACTIVITY_STATUS_INTERVAL_MINUTES"),
 ]
 
 

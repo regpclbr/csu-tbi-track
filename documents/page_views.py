@@ -50,13 +50,16 @@ def _list_context(request: HttpRequest, tab: str) -> dict:
 @staff_login_required
 @require_GET
 def document_list(request: HttpRequest) -> HttpResponse:
-    """GET q, activity, document_type, review_state, uploaded_by, searchable=true|false, page. An HTMX request (a filter
-    or a page) gets only the results."""
+    """GET view=activity|all, q, activity, document_type, state (waiting_for_review|returned|approved|missing),
+    searchable=true|false, page (and uploaded_by from older links). Default: "By activity" (ASSUMPTIONS 352). An HTMX
+    request (a filter, a card, the view switch or a page) gets the part below the title (documents/_repository.html)."""
     filters = pages.parse_repository_filters(request.GET)
-    context = {**_list_context(request, "all"), "filters": filters, **pages.repository(request.user, filters)}
+    context = {
+        **_list_context(request, "all"), "filters": filters,
+        **pages.repository_page(request.user, filters), **pages.filter_choices(),
+    }
     if is_htmx(request):
-        return render(request, "documents/_results.html", context)
-    context.update(pages.filter_choices())
+        return render(request, "documents/_repository.html", context)
     return render(request, "documents/list.html", context)
 
 

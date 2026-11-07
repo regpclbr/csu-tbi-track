@@ -226,6 +226,13 @@ DOCUMENT_REMINDER_HOUR = 8  # the daily reminder task runs at 8:00 AM Manila tim
 DOCUMENT_TYPES_AFTER_ACTIVITY = ["Certificate", "Evaluation Form"]
 
 
+# --- Activities: automatic statuses and evaluation links (ASSUMPTIONS 346, 348) -------------
+# How often the Django-Q2 task moves Scheduled -> Ongoing -> Conducted and sends the first evaluation links.
+ACTIVITY_STATUS_INTERVAL_MINUTES = 5
+# "Needs attention": a Draft whose start date is this many days away (or past) is flagged.
+ATTENTION_DRAFT_DAYS_BEFORE = 7
+
+
 # --- Startups and Navigatu (Step 7) -------------------------------------------------
 # Navigatu is reached ONLY through this provider class (dotted path). The mock reads
 # invented data from startups/mock_data/; NavigatuStartupProvider is a stub for later.

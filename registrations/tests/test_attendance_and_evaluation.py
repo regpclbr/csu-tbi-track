@@ -19,7 +19,7 @@ from .conftest import CERT, cat, evaluation_answers, form_of, opens_at
 @pytest.mark.django_db
 def test_attendance_only_when_ongoing_or_conducted(director, scheduled, signup, move_to) -> None:
     person = signup(scheduled, "ana@example.com")
-    with pytest.raises(services.RegistrationError, match="only when the activity is Ongoing or Conducted"):
+    with pytest.raises(services.RegistrationError, match="Attendance opens when the activity starts on"):
         services.set_attendance(director, scheduled, [person.pk], True, "email")
 
     activity_services.change_status(director, scheduled, "Ongoing")

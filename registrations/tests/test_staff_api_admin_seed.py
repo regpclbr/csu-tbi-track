@@ -2,7 +2,7 @@
 seed, and the registrations migration."""
 
 import json
-from datetime import timedelta
+from datetime import time, timedelta
 from io import StringIO
 
 import pytest
@@ -147,7 +147,7 @@ def test_admin_attendance_actions(client, both_flags_member, director, scheduled
     client.force_login(both_flags_member)
     url = "/admin/registrations/registration/"
     response = client.post(url, {"action": "mark_attended_email", "_selected_action": [person.pk]}, follow=True)
-    assert "only when the activity is Ongoing or Conducted" in response.content.decode()
+    assert "Attendance opens when the activity starts on" in response.content.decode()
 
     activity_services.change_status(director, scheduled, "Ongoing")
     client.post(url, {"action": "mark_attended_wet_signature", "_selected_action": [person.pk]})
@@ -226,7 +226,7 @@ def test_seed_keeps_admin_edits_to_defaults(roles) -> None:
 
 BEFORE = ("registrations", "0001_initial")
 AFTER = ("registrations", "0002_step5_categories_forms_json_options")
-ACTIVITIES = ("activities", "0004_activity_participant_categories")  # stays applied
+ACTIVITIES = ("activities", "0006_auditlog_changed_by_nullable")  # stays applied (the latest activities migration)
 REQUIRED = ("registrations", "0003_registration_category_required")
 
 
@@ -247,7 +247,7 @@ def test_migrations_fill_category_then_make_it_required(capsys) -> None:
         now = timezone.now()
         common = dict(
             created_by=member, status=status, activity_type=kind, start_date=now.date(), end_date=now.date(),
-            time_schedule="8-5", venue="Hall", max_slots=10, registration_deadline=now, evaluation_deadline=now, budget_amount=0,
+            start_time=time(8, 0), end_time=time(17, 0), venue="Hall", max_slots=10, registration_deadline=now, evaluation_deadline=now, budget_amount=0,
         )
         one = Activity.objects.create(title="One category", **common)
         two = Activity.objects.create(title="Two categories", **common)

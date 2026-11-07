@@ -64,7 +64,7 @@ def make_activity(roles, director):
             title=title or f"Activity {counter['n']}",
             start_date=start,
             end_date=end,
-            time_schedule="8:00 AM - 5:00 PM",
+            start_time=time(8, 0), end_time=time(17, 0),
             venue="CSU Hall",
             max_slots=max_slots,
             registration_deadline=manila(start - timedelta(days=2), 17),

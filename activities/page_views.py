@@ -17,7 +17,7 @@ from documents import services as document_services
 from registrations import pages as registration_pages
 from registrations import services as registration_services
 
-from . import pages, services, share
+from . import attention, pages, services, share
 from .forms import ActivityPageForm
 from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory, ResourcePerson
 
@@ -39,7 +39,9 @@ def _detail_url(activity: Activity, tab: str = "") -> str:
 def activity_list(request: HttpRequest) -> HttpResponse:
     """GET q, activity_type, status, participant_category, date_from, date_to, sort, preset (from a card dialog's
     "Show all in the list"), page, view=list|calendar, month=YYYY-MM. An HTMX request (a filter change, a page or
-    month link) gets only the results part, plus the hidden preset out of band."""
+    month link) gets only the results part, plus the hidden preset out of band. The automatic status moves run
+    first (statuses only, never emails), so the list never shows a status that is already out of date."""
+    services.apply_automatic_statuses()
     filters = pages.parse_list_filters(request.GET)
     context = {"page_title": "Activities", "filters": filters, "q": filters.q, "can_create": _can_create(request)}
     if filters.view == pages.CALENDAR:
@@ -153,8 +155,10 @@ def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
 def activity_detail(request: HttpRequest, activity_id: int) -> HttpResponse:
     """GET ?tab=overview|history|forms|registrations|evaluation|documents|certificates (&page= for History;
     &q, attended, category, page for Registrations; &type= for Documents). An HTMX request (a tab, a page, a filter)
-    gets only the tab; the Registrations filters pick their table out of it (hx-select)."""
+    gets only the tab; the Registrations filters pick their table out of it (hx-select). The automatic status
+    moves run first for this activity (statuses only, never emails)."""
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type", "created_by"), pk=activity_id)
+    services.refresh_status(activity)
     return render_activity_page(request, activity, pages.tab_key(request.GET.get("tab")))
 
 
@@ -169,6 +173,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
         "registration": pages.registration_summary(activity),
+        "attention": attention.activity_attention(activity),
         # The public address (SITE_URL), never the Host header of this request.
         "register_url": registration_services.registration_page_url(activity),
     }
@@ -183,7 +188,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     elif tab == "registrations":
         context.update(registration_pages.registrations_tab(request.user, activity, request.GET))
     elif tab == "evaluation":
-        context.update(registration_pages.evaluation_tab(request.user, activity))
+        context.update(registration_pages.evaluation_tab(request.user, activity, request.GET))
     elif tab == "documents":
         context.update(document_pages.documents_tab(request, activity, (extra or {}).get("upload")))
     elif tab == "certificates":

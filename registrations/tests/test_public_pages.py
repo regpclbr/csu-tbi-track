@@ -53,7 +53,7 @@ def test_open_list_shows_open_activities_as_cards(client, scheduled, new_activit
     text = html(response)
     assert response.status_code == 200
     assert scheduled.title in text and "Workshop" in text and "Incubatees" in text
-    assert scheduled.venue in text and scheduled.time_schedule in text
+    assert scheduled.venue in text and "8:00 AM – 5:00 PM" in text
     assert "29 slots left" in text and "Register by" in text
     assert page(scheduled) in text
     assert "Bea Santos" not in text and "bea.santos@example.com" not in text  # never who registered
@@ -279,10 +279,11 @@ def test_calendar_file_has_the_activity_and_no_personal_data(client, scheduled, 
     body = response.content.decode()
     assert body.startswith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n") and body.endswith("END:VCALENDAR\r\n")
     unfolded = body.replace("\r\n ", "")
-    assert f"DTSTART;VALUE=DATE:{scheduled.start_date:%Y%m%d}" in unfolded
-    assert f"DTEND;VALUE=DATE:{scheduled.end_date + timedelta(days=1):%Y%m%d}" in unfolded  # exclusive end
+    # 8:00 AM to 5:00 PM Manila = 00:00 to 09:00 UTC (a timed event; all-day only without times)
+    assert f"DTSTART:{scheduled.start_date:%Y%m%d}T000000Z" in unfolded
+    assert f"DTEND:{scheduled.end_date:%Y%m%d}T090000Z" in unfolded
     assert "SUMMARY:Pitching\\, Funding\\; and You" in unfolded and "LOCATION:CSU Hall\\, Room 2" in unfolded
-    assert f"UID:activity-{scheduled.pk}@127.0.0.1" in unfolded and "Time: 8:00 AM - 5:00 PM" in unfolded
+    assert f"UID:activity-{scheduled.pk}@127.0.0.1" in unfolded and "Time: 8:00 AM – 5:00 PM" in unfolded
     assert all(len(line.encode()) <= 75 for line in body.split("\r\n"))
     assert "Bea Santos" not in unfolded and "bea.santos" not in unfolded
 

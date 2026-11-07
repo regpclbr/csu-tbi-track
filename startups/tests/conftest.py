@@ -1,6 +1,6 @@
 """Fixtures for startup tests: a fake provider, startups with passwords, staff, and an open activity."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -104,7 +104,7 @@ def open_activity(roles, director):
             title=title,
             start_date=start,
             end_date=start + timedelta(days=1),
-            time_schedule="8:00 AM - 5:00 PM",
+            start_time=time(8, 0), end_time=time(17, 0),
             venue="CSU Hall",
             max_slots=max_slots,
             registration_deadline=timezone.now() + timedelta(days=days - 2),

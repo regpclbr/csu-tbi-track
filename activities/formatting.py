@@ -1,6 +1,6 @@
 """Readable text for audit log values. One function, used for every audit row."""
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from django.db import models
@@ -17,6 +17,22 @@ def format_datetime(value: datetime) -> str:
     local = timezone.localtime(value) if timezone.is_aware(value) else value
     hour = local.hour % 12 or 12
     return f"{format_date(local)} {hour}:{local:%M} {'AM' if local.hour < 12 else 'PM'}"
+
+
+def format_time(value: time) -> str:
+    """8:00 AM"""
+    return f"{value.hour % 12 or 12}:{value:%M} {'AM' if value.hour < 12 else 'PM'}"
+
+
+TIME_NOT_SET = "Time not set"
+
+
+def format_time_range(start: time | None, end: time | None) -> str:
+    """The one display of an activity's times: "8:00 AM – 5:00 PM", or "Time not set" (old activities whose
+    free-text time could not be read, migration activities/0005). Used on every page, email and sheet."""
+    if start is None or end is None:
+        return TIME_NOT_SET
+    return f"{format_time(start)} – {format_time(end)}"
 
 
 def format_money(value: Decimal) -> str:
@@ -41,6 +57,8 @@ def format_audit_value(value: object) -> str:
         return format_datetime(value)
     if isinstance(value, date):
         return format_date(value)
+    if isinstance(value, time):
+        return format_time(value)
     if isinstance(value, Decimal):
         return format_money(value)
     if isinstance(value, bool):
@@ -55,13 +73,21 @@ def _short(value: str) -> str:
     return value if len(value) <= SENTENCE_VALUE_LIMIT else value[: SENTENCE_VALUE_LIMIT - 1].rstrip() + "…"
 
 
+SYSTEM_NAME = "System"
+
+
+def changed_by_name(entry) -> str:
+    """Who made an audit row's change: the member's name, or "System" (an automatic status change)."""
+    return entry.changed_by.name if entry.changed_by_id else SYSTEM_NAME
+
+
 def audit_sentence(entry) -> str:
     """One ACTIVITY_AUDIT_LOG row as a sentence, for example
     "Juan Dela Cruz changed the status of Business Model Training from Draft to Scheduled".
     Uses the stored (already readable) values; the labels are the ones activities.services writes."""
     from .services import RESOURCE_PERSON_ADDED, RESOURCE_PERSON_REMOVED, STATUS_LABEL
 
-    who, title = entry.changed_by.name, entry.activity.title
+    who, title = changed_by_name(entry), entry.activity.title
     label, old, new = entry.field_changed, _short(entry.old_value), _short(entry.new_value)
     field = label.lower()
     if label == STATUS_LABEL and not old:

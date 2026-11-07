@@ -1,0 +1,92 @@
+{% load ui %}
+{% comment %}
+One activity on the Documents page, "By activity" view (card: documents.pages._activity_card). A native <details>, so
+it opens and closes without JavaScript: open when something is missing, waiting or returned (or a filter is in use),
+closed when complete. Lines: the required types in the checklist's order (each upload, or "Missing" with Upload), then
+the other documents. No table: below 1280 px the actions move under the text, so they are never cut off.
+{% endcomment %}
+{% with activity=card.activity %}
+<li>
+  <details class="group card overflow-hidden" {% if card.open %}open{% endif %}>
+    <summary class="flex cursor-pointer list-none flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4 hover:bg-slate-50/70 [&::-webkit-details-marker]:hidden">
+      <div class="min-w-0 flex-1 basis-72">
+        <h3 class="text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink">{{ activity.title }}</h3>
+        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+          <span class="inline-flex items-center gap-1 whitespace-nowrap">{% include "components/icon.html" with name="calendar" class="size-3.5" %}{{ activity|date_span }}</span>
+          {% include "components/status_badge.html" with status=activity.status.name %}
+          <span>{{ activity.activity_type.name }}</span>
+        </p>
+      </div>
+      <div class="flex w-full items-center gap-3 sm:w-72">
+        {% if card.required %}
+          <div class="min-w-0 flex-1">
+            <p class="mb-1.5 text-xs whitespace-nowrap text-slate-700">
+              <span class="font-semibold text-ink tabular-nums">{{ card.approved }} of {{ card.required }}</span> approved{% if card.missing %} · <span class="font-semibold text-red-700 tabular-nums">{{ card.missing }}</span> missing{% endif %}{% if card.complete %} · <span class="font-semibold text-green-800">Complete</span>{% endif %}
+            </p>
+            {% include "components/progress_bar.html" with percent=card.percent label=card.progress_label %}
+          </div>
+        {% else %}
+          <p class="flex-1 text-xs text-muted">No required documents</p>
+        {% endif %}
+        <span class="shrink-0 text-slate-500 transition-transform group-open:rotate-180" aria-hidden="true">{% include "components/icon.html" with name="chevron-down" class="size-5" %}</span>
+      </div>
+    </summary>
+
+    <div class="border-t border-line">
+      {% if card.lines %}
+        <div class="hidden gap-4 bg-slate-50 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase xl:grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_11rem_10rem]" aria-hidden="true">
+          <span>Type</span><span>Title</span><span>Uploaded</span><span>State</span><span class="text-right">Actions</span>
+        </div>
+        <ul class="divide-y divide-line" aria-label="Documents of {{ activity.title }}">
+          {% for line in card.lines %}
+            <li class="grid gap-3 px-5 py-3 hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_11rem_10rem] xl:gap-4{% if not line.first_of_type %} bg-slate-50/50{% endif %}">
+              <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 xl:contents">
+                {# Type #}
+                <p class="w-full text-xs font-semibold text-slate-700 xl:w-auto xl:text-sm{% if not line.first_of_type %} pl-4 font-normal text-muted{% endif %}">
+                  {% if line.first_of_type %}{{ line.type_name }}{% else %}↳ earlier upload<span class="sr-only"> of {{ line.type_name }}</span>{% endif %}
+                </p>
+                {# Title #}
+                <div class="w-full min-w-0 xl:w-auto">
+                  {% if line.kind == "missing" %}
+                    <p class="text-sm text-slate-700">Not uploaded yet</p>
+                  {% else %}
+                    <a href="{% url 'documents:detail' line.document.pk %}" class="text-sm font-semibold break-words text-ink hover:text-primary hover:underline">{{ line.document.title }}</a>
+                    <p class="text-xs break-all text-muted">{{ line.document.file_extension|upper }} · {{ line.document.file_size_kb }} KB</p>
+                  {% endif %}
+                </div>
+                {# Uploaded by + date (missing: the due date) #}
+                <p class="text-xs text-slate-700">
+                  {% if line.kind == "missing" %}
+                    Due <time datetime="{{ line.due_date|date:'Y-m-d' }}">{{ line.due_date|date:"M j, Y" }}</time>
+                  {% else %}
+                    {{ line.document.uploaded_by.name }}<br class="hidden xl:inline"><span class="xl:hidden"> · </span><time class="whitespace-nowrap text-muted" datetime="{{ line.document.uploaded_at|date:'c' }}">{{ line.document.uploaded_at|date:"M j, Y" }}</time>
+                  {% endif %}
+                </p>
+                {# State #}
+                <div class="flex flex-wrap items-center gap-1">
+                  {% include "components/badge.html" with text=line.state.label tone=line.state.tone %}
+                  {% if line.is_overdue %}<span class="badge badge-danger">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}Overdue</span>{% endif %}
+                  {% if line.searchable %}<span class="badge badge-neutral" title="The AI assistant can use this document">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}AI search</span>{% endif %}
+                </div>
+              </div>
+              {# Actions: documents.services.allowed_actions (Approve / Return only with can_approve_documents) #}
+              <div class="sm:justify-self-end">
+                {% if line.kind == "missing" %}
+                  <a href="{{ line.upload_url }}#upload" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="upload" class="size-4" %}Upload<span class="sr-only"> {{ line.type_name }} for {{ activity.title }}</span></a>
+                {% else %}
+                  {% include "documents/_actions.html" with row=line next=request.get_full_path compact=True %}
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="px-5 py-4 text-sm text-muted">No documents uploaded yet.</p>
+      {% endif %}
+      <div class="flex justify-end border-t border-line px-5 py-2.5">
+        <a href="{{ card.documents_url }}" class="link text-sm">Open the activity's Documents tab</a>
+      </div>
+    </div>
+  </details>
+</li>
+{% endwith %}

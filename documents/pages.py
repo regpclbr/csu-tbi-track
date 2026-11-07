@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from accounts.models import TBIMember
+from accounts.permissions import Permission, has_permission
 from activities.models import Activity
 from activities.services import PageResult, _paginate
 from config.parsing import parse_bool
@@ -140,39 +141,64 @@ def _certificate_type_name() -> str:
     return CERTIFICATE_DOCUMENT_TYPE
 
 
-# --- Repository and review queue ------------------------------------------------------------------------------
+# --- Repository ("By activity" and "All documents") and review queue -------------------------------------------
+
+VIEW_BY_ACTIVITY, VIEW_ALL = "activity", "all"
+VIEWS = [(VIEW_BY_ACTIVITY, "By activity", "layout-grid"), (VIEW_ALL, "All documents", "list")]
+MISSING = services.MISSING_STATE
+STATE_CHOICES = REVIEW_STATE_CHOICES + [(MISSING, MISSING_LABEL[0])]  # Missing: the "By activity" view only
+CARDS_PER_PAGE = 10  # activity cards per page
 
 
 @dataclass
 class RepositoryFilters:
-    """The repository's filters from the query string. A value that cannot be read is ignored with a note (as the
-    Activities list, item 262), never a 400 page."""
+    """The Documents page's view and filters from the query string (all kept in the URL). A value that cannot be read
+    is ignored with a note (as the Activities list, item 262), never a 400 page. `review_state=` (older links) is read
+    as `state=`. "Missing" exists only in the "By activity" view, so it switches to it."""
 
+    view: str = VIEW_BY_ACTIVITY
     q: str = ""
     activity: int | None = None
     document_type: int | None = None
-    review_state: str = ""
-    uploaded_by: int | None = None
+    state: str = ""
+    uploaded_by: int | None = None  # no field in the form any more (ASSUMPTIONS 352); still read from links
     searchable: bool | None = None
     page: str = "1"
     ignored: list[str] = field(default_factory=list)
 
     def for_service(self) -> dict:
+        """services.list_documents's filters (the "All documents" view; never "missing")."""
         return {
             "q": self.q, "activity": self.activity, "document_type": self.document_type,
-            "review_state": self.review_state, "uploaded_by": self.uploaded_by, "searchable": self.searchable,
+            "review_state": self.state if self.state != MISSING else "", "uploaded_by": self.uploaded_by,
+            "searchable": self.searchable,
         }
 
-    def query(self) -> str:
-        """The filters as a query string, without the page (for the pager and the URL)."""
-        values = {key: value for key, value in self.for_service().items() if value not in (None, "")}
-        if self.searchable is not None:
-            values["searchable"] = "true" if self.searchable else "false"
-        return urlencode(values)
+    def values(self, **changes) -> dict:
+        """The URL's values (without the page), with `changes` applied; empty values and the default view left out."""
+        values = {
+            "view": self.view, "q": self.q, "activity": self.activity, "document_type": self.document_type,
+            "state": self.state, "uploaded_by": self.uploaded_by,
+            "searchable": None if self.searchable is None else ("true" if self.searchable else "false"),
+        }
+        values.update(changes)
+        if values["view"] == VIEW_BY_ACTIVITY:
+            values["view"] = None
+        return {key: value for key, value in values.items() if value not in (None, "")}
+
+    def query(self, **changes) -> str:
+        """The filters as a query string, without the page (for the pager, the cards, the view switch and the URL)."""
+        return urlencode(self.values(**changes))
+
+    def url(self, **changes) -> str:
+        """/documents/ with these filters (and `changes`)."""
+        query = self.query(**changes)
+        return f"{reverse('documents:list')}?{query}" if query else reverse("documents:list")
 
     @property
     def any_set(self) -> bool:
-        return any(value not in (None, "") for value in self.for_service().values())
+        return any(value not in (None, "") for value in (self.q, self.activity, self.document_type, self.state,
+                                                          self.uploaded_by, self.searchable))
 
 
 def _number(raw: str, label: str, ignored: list[str]) -> int | None:
@@ -187,22 +213,167 @@ def _number(raw: str, label: str, ignored: list[str]) -> int | None:
 def parse_repository_filters(query: QueryDict) -> RepositoryFilters:
     """Read in the order of the form's fields, so the "ignored" note names them in that order."""
     ignored: list[str] = []
+    view = query.get("view", "") or VIEW_BY_ACTIVITY
+    if view not in (VIEW_BY_ACTIVITY, VIEW_ALL):
+        ignored.append("view")
+        view = VIEW_BY_ACTIVITY
     activity = _number(query.get("activity", ""), "activity", ignored)
     document_type = _number(query.get("document_type", ""), "type", ignored)
-    review_state = query.get("review_state", "")
-    if review_state and review_state not in STATE_LABELS:
+    state = query.get("state", "") or query.get("review_state", "")
+    if state and state not in dict(STATE_CHOICES):
         ignored.append("state")
-        review_state = ""
+        state = ""
+    if state == MISSING:
+        view = VIEW_BY_ACTIVITY  # a missing document has no row in the flat list
     uploaded_by = _number(query.get("uploaded_by", ""), "uploader", ignored)
     try:
         searchable = parse_bool(query.get("searchable"), "searchable")
     except ValidationError:  # anything but true/false
-        ignored.append("searchable")
+        ignored.append("AI search")
         searchable = None
     return RepositoryFilters(
-        q=query.get("q", "").strip(), activity=activity, document_type=document_type, review_state=review_state,
+        view=view, q=query.get("q", "").strip(), activity=activity, document_type=document_type, state=state,
         uploaded_by=uploaded_by, searchable=searchable, page=query.get("page", "1"), ignored=ignored,
     )
+
+
+def summary_cards(counts: dict[str, int], filters: RepositoryFilters, can_approve: bool) -> list[dict]:
+    """The four cards at the top (services.document_state_counts). A card is a link that filters the page by its
+    state; the selected one links back to no state. "Missing" opens the "By activity" view."""
+    waiting = "Waiting for approval" if can_approve else "Waiting for the Director"
+    cards = [
+        (Document.WAITING_FOR_REVIEW, waiting, "file-check", "blue"),
+        (Document.RETURNED, "Returned", "refresh-cw", "amber"),
+        (MISSING, "Missing", "circle-alert", "violet"),
+        (Document.APPROVED, "Approved", "circle-check", "green"),
+    ]
+    result = []
+    for key, label, icon, chip in cards:
+        selected = filters.state == key
+        view = VIEW_BY_ACTIVITY if key == MISSING else filters.view
+        result.append({
+            "key": key, "label": label, "icon": icon, "chip": chip, "count": counts[key], "selected": selected,
+            "url": filters.url(state="" if selected else key, view=view),
+        })
+    return result
+
+
+def view_links(filters: RepositoryFilters) -> list[dict]:
+    """The "By activity / All documents" switch (the filters stay; "Missing" only exists in "By activity")."""
+    links = []
+    for key, label, icon in VIEWS:
+        state = "" if key == VIEW_ALL and filters.state == MISSING else filters.state
+        links.append({"key": key, "label": label, "icon": icon, "selected": filters.view == key,
+                      "url": filters.url(view=key, state=state)})
+    return links
+
+
+# One line of an activity card: a document, or a required type with nothing uploaded ("missing").
+
+
+def _document_line(member: TBIMember, document: Document, type_name: str, first_of_type: bool,
+                   item: services.ChecklistItem | None) -> dict:
+    return {
+        **document_row(member, document),
+        "kind": "document",
+        "type_id": document.document_type_id,
+        "type_name": type_name,
+        "first_of_type": first_of_type,  # later uploads of the same type are indented under the first
+        "is_overdue": bool(item and first_of_type and item.is_overdue),
+        "due_date": item.due_date if item and first_of_type else None,
+    }
+
+
+def _missing_line(item: services.ChecklistItem, activity: Activity, counted: bool) -> dict:
+    label, tone = MISSING_LABEL
+    query = urlencode({"tab": "documents", "type": item.document_type.pk})
+    return {
+        "kind": MISSING, "type_id": item.document_type.pk, "type_name": item.document_type.name,
+        "state": {"label": label, "tone": tone}, "due_date": item.due_date, "is_overdue": item.is_overdue,
+        "counted": counted, "first_of_type": True,
+        "upload_url": f"{reverse('activities:detail', args=[activity.pk])}?{query}",
+    }
+
+
+def _lines(member: TBIMember, entry: services.ActivityDocuments) -> list[dict]:
+    """Required types in the checklist's order (each upload, newest first, or one "missing" line), then the other
+    documents (newest first)."""
+    lines = []
+    for item in entry.required:
+        if not item.documents:
+            lines.append(_missing_line(item, entry.activity, entry.counts_missing))
+        for position, document in enumerate(item.documents):
+            lines.append(_document_line(member, document, item.document_type.name, position == 0, item))
+    for document in entry.other:
+        lines.append(_document_line(member, document, document.document_type.name, True, None))
+    return lines
+
+
+def _line_matches(line: dict, filters: RepositoryFilters, activity_matches: bool) -> bool:
+    """The filters on one line (display only: the states come from the services' review_state / checklist)."""
+    if filters.document_type and line["type_id"] != filters.document_type:
+        return False
+    if line["kind"] == MISSING:
+        if filters.searchable is not None or filters.uploaded_by:
+            return False  # nothing uploaded: no uploader, nothing for the AI search
+        if filters.state and (filters.state != MISSING or not line["counted"]):
+            return False  # "Missing" counts non-Draft activities only, like the card
+        return activity_matches or not filters.q or filters.q.lower() in line["type_name"].lower()
+    document = line["document"]
+    if filters.state and document.review_state != filters.state:
+        return False
+    if filters.searchable is not None and line["searchable"] != filters.searchable:
+        return False
+    if filters.uploaded_by and document.uploaded_by_id != filters.uploaded_by:
+        return False
+    if activity_matches or not filters.q:
+        return True
+    text = filters.q.lower()
+    return any(text in value.lower() for value in (document.title, document.file_name, line["type_name"]))
+
+
+def _activity_card(member: TBIMember, entry: services.ActivityDocuments, filters: RepositoryFilters) -> dict | None:
+    """One activity card, or None when the filters leave nothing in it. Progress = required types approved."""
+    activity = entry.activity
+    activity_matches = bool(filters.q) and filters.q.lower() in activity.title.lower()
+    lines = [line for line in _lines(member, entry) if _line_matches(line, filters, activity_matches)]
+    if filters.any_set and not lines:
+        return None
+    required, approved, missing = len(entry.required), entry.approved_count, entry.missing_count
+    pending = any(document.review_state != Document.APPROVED for document in entry.documents)
+    return {
+        "activity": activity,
+        "lines": lines,
+        "required": required,
+        "approved": approved,
+        "missing": missing,
+        "complete": required > 0 and approved == required,
+        "percent": round(100 * approved / required) if required else 0,
+        "progress_label": f"{approved} of {required} required documents approved",
+        # Something to do (missing, waiting or returned) or a filter in use: open; complete ones start closed.
+        "open": filters.any_set or missing > 0 or pending,
+        "documents_url": f"{reverse('activities:detail', args=[activity.pk])}?tab=documents",
+    }
+
+
+def repository_page(member: TBIMember, filters: RepositoryFilters, now=None) -> dict:
+    """The Documents page: the summary cards and either the activity cards ("By activity") or the flat table ("All
+    documents", services.list_documents). Every activity of services.overview_activities() is loaded (three
+    queries), so the cards' numbers cover every activity document whatever the filters."""
+    activities = list(services.overview_activities())
+    overview = services.activity_document_overview(activities, now)
+    context = {
+        "summary_cards": summary_cards(services.document_state_counts(overview), filters,
+                                       has_permission(member, Permission.APPROVE_DOCUMENTS)),
+        "view_links": view_links(filters),
+        "activity_choices": activities,
+    }
+    if filters.view == VIEW_ALL:
+        return {**context, **repository(member, filters)}
+    shown = [entry for entry in overview if not filters.activity or entry.activity.pk == filters.activity]
+    cards = [card for card in (_activity_card(member, entry, filters) for entry in shown) if card]
+    result = _paginate(cards, filters.page, CARDS_PER_PAGE)
+    return {**context, "result": result, "cards": result.items}
 
 
 def repository(member: TBIMember, filters: RepositoryFilters) -> dict:
@@ -217,15 +388,9 @@ def review_page(member: TBIMember, page: str) -> dict:
 
 
 def filter_choices() -> dict:
-    """Lists for the repository's filter selects (inactive types too, so old documents can still be found)."""
-    listing = services.documents_for_listing()
-    return {
-        "activities": Activity.objects.filter(documents__isnull=False, documents__related_certificate__isnull=True)
-        .distinct().order_by("-start_date", "title").only("pk", "title"),
-        "document_types": DocumentType.objects.order_by("name"),
-        "uploaders": TBIMember.objects.filter(pk__in=listing.values("uploaded_by")).order_by("name").only("pk", "name"),
-        "review_states": REVIEW_STATE_CHOICES,
-    }
+    """Lists for the filter selects (inactive types too, so old documents can still be found). The activities come
+    with repository_page (`activity_choices`, the activities the page lists)."""
+    return {"document_types": DocumentType.objects.order_by("name"), "states": STATE_CHOICES}
 
 
 # --- After an action --------------------------------------------------------------------------------------------

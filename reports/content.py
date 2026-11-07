@@ -6,6 +6,7 @@ content, so both always show the same numbers as the dashboard.
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from activities.formatting import format_time_range
 from activities.models import ActivityType
 
 from . import metrics
@@ -175,12 +176,14 @@ def _summary(filters: ReportFilters, summary: dict) -> Section:
 
 def _activities(filters: ReportFilters) -> Section:
     rows = [
-        [r["title"], r["activity_type__name"], r["categories"], r["start_date"], r["end_date"], r["venue"],
+        [r["title"], r["activity_type__name"], r["categories"], r["start_date"], r["end_date"],
+         format_time_range(r["start_time"], r["end_time"]), r["venue"],
          r["registered"], r["attended"], r["attendance_rate"], r["evaluations"], r["average_rating"]]
         for r in metrics.activity_rows(filters)
     ]
     columns = [
-        Column("Title"), Column("Type"), Column("Categories"), Column("Start", DATE), Column("End", DATE), Column("Venue"),
+        Column("Title"), Column("Type"), Column("Categories"), Column("Start", DATE), Column("End", DATE), Column("Time"),
+        Column("Venue"),
         Column("Registered", INT), Column("Attended", INT), Column("Attendance rate", PERCENT),
         Column("Evaluations", INT), Column("Average rating", DECIMAL),
     ]

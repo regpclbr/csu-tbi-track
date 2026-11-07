@@ -11,6 +11,7 @@ from accounts.admin import ActivityDataAdminMixin, NoDeleteAdminMixin, ReadOnlyA
 from accounts.permissions import Permission, require_permission
 
 from . import services
+from .formatting import changed_by_name
 from .models import (
     Activity,
     ActivityAuditLog,
@@ -324,8 +325,12 @@ class ActivityAdmin(ActivityDataAdminMixin, NoDeleteAdminMixin, admin.ModelAdmin
 class ActivityAuditLogAdmin(admin.ModelAdmin):
     """Read-only: audit rows are written by services, never edited by hand."""
 
-    list_display = ("activity", "field_changed", "old_value", "new_value", "changed_by", "changed_at")
+    list_display = ("activity", "field_changed", "old_value", "new_value", "who", "changed_at")
     list_filter = ("field_changed",)
+
+    @admin.display(description="Changed by")
+    def who(self, obj: ActivityAuditLog) -> str:
+        return changed_by_name(obj)  # "System" for an automatic status change
 
     def has_add_permission(self, request) -> bool:
         return False

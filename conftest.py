@@ -1,7 +1,7 @@
 """Shared pytest fixtures for all apps. App-specific fixtures live in each app's tests/."""
 
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -172,7 +172,7 @@ def activity(member: TBIMember) -> Activity:
         title="Pitching Workshop",
         start_date=date(2026, 11, 5),
         end_date=date(2026, 11, 6),
-        time_schedule="8:00 AM - 5:00 PM",
+        start_time=time(8, 0), end_time=time(17, 0),
         venue="CSU Hall",
         max_slots=30,
         registration_deadline=deadline,

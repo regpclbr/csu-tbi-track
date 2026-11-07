@@ -124,7 +124,7 @@ class Command(BaseCommand):
             "activity_type": ActivityType.objects.filter(is_active=True).order_by("pk").first(),
             "participant_categories": [ParticipantCategory.objects.order_by("pk").first()],
             "start_date": today, "end_date": today,
-            "time_schedule": "9:00 AM - 4:00 PM", "venue": "CSU TBI Hall", "max_slots": 10,
+            "start_time": time(9, 0), "end_time": time(16, 0), "venue": "CSU TBI Hall", "max_slots": 10,
             "registration_deadline": timezone.make_aware(datetime.combine(today, time.max)),  # 23:59:59.999999 today
             "evaluation_deadline": timezone.make_aware(datetime.combine(today + timedelta(days=7), time(17, 0))),
             "budget_amount": Decimal("0.00"),

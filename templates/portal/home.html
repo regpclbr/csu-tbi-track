@@ -20,7 +20,7 @@ three counts and up to three open activities I haven't registered for.
         {% include "components/date_tile.html" with activity=activity gradient=True %}
         <div class="min-w-0">
           <p class="font-semibold break-words text-ink">{{ activity.title }}</p>
-          <p class="mt-1 text-sm text-slate-700">{{ activity|date_span }} · {{ activity.time_schedule }}</p>
+          <p class="mt-1 text-sm text-slate-700">{{ activity|date_span }} · {{ activity|time_range }}</p>
           <p class="mt-0.5 text-sm break-words text-slate-700">{{ activity.venue }}</p>
           <div class="mt-2">{% include "components/status_badge.html" with status=activity.status.name %}</div>
         </div>

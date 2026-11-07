@@ -1,13 +1,10 @@
 {% comment %}
-The documents table of /documents/ and /documents/review/ (swapped by the filters and the pager). The table scrolls
-sideways inside the card on narrow screens. Every row has the member's own actions (documents.services.allowed_actions).
+The documents table of /documents/ ("All documents" view, inside documents/_repository.html, which the filters and
+the pager swap) and /documents/review/ (the pager swaps #document-results). The table scrolls sideways inside the card
+on narrow screens. Every row has the member's own actions (documents.services.allowed_actions).
 {% endcomment %}
 <div id="document-results" class="htmx-dim">
   {% if list_tab == "all" %}
-    {% if filters.ignored %}
-      <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-        {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
-    {% endif %}
     <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} document{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
   {% else %}
     <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} document{{ result.total|pluralize }} waiting for your review, oldest first</p>
@@ -39,7 +36,7 @@ sideways inside the card on narrow screens. Every row has the member's own actio
               <td class="px-3 py-3">
                 <div class="flex flex-col items-start gap-1">
                   {% include "components/badge.html" with text=row.state.label tone=row.state.tone %}
-                  {% if row.searchable %}<span class="badge badge-neutral whitespace-nowrap">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}Searchable</span>{% endif %}
+                  {% if row.searchable %}<span class="badge badge-neutral whitespace-nowrap">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}AI search</span>{% endif %}
                 </div>
               </td>
               <td class="px-3 py-3">{% include "documents/_actions.html" with row=row next=request.get_full_path compact=True %}</td>
@@ -49,7 +46,7 @@ sideways inside the card on narrow screens. Every row has the member's own actio
       </table>
     </div>
     {% if list_tab == "all" %}
-      {% include "components/pagination.html" with result=result query=filters.query hx_target="#document-results" %}
+      {% include "components/pagination.html" with result=result query=filters.query hx_target="#document-repository" %}
     {% else %}
       {% include "components/pagination.html" with result=result hx_target="#document-results" %}
     {% endif %}

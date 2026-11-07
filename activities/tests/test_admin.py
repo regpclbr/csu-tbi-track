@@ -32,7 +32,7 @@ def form_data(activity: Activity | None = None, values: dict | None = None, link
         "participant_categories": sorted(category.pk for category in values["participant_categories"]),
         "start_date": values["start_date"].isoformat(),
         "end_date": values["end_date"].isoformat(),
-        "time_schedule": values["time_schedule"],
+        "start_time": values["start_time"].strftime("%H:%M"), "end_time": values["end_time"].strftime("%H:%M"),
         "venue": values["venue"],
         "max_slots": values["max_slots"],
         "registration_deadline_0": values["registration_deadline"].strftime("%Y-%m-%d"),

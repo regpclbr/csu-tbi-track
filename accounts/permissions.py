@@ -65,8 +65,10 @@ LOGIN_REQUIRED_MESSAGE = "Login required."
 
 
 def is_htmx(request: HttpRequest) -> bool:
-    """True for a request sent by HTMX (a partial update of a page)."""
-    return request.headers.get("HX-Request") == "true"
+    """True for a request sent by HTMX (a partial update of a page). Not for HTMX's history restore (back/forward when
+    the page is not in its cache): that request needs the whole page, or a partial would replace the page."""
+    return (request.headers.get("HX-Request") == "true"
+            and request.headers.get("HX-History-Restore-Request") != "true")
 
 
 def htmx_redirect(request: HttpRequest, url: str, status: int = 200) -> HttpResponse:

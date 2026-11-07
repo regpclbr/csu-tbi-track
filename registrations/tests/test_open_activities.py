@@ -15,7 +15,7 @@ from startups.tests.conftest import STARTUP_PASSWORD, make_startup  # noqa: F401
 pytestmark = pytest.mark.django_db
 
 PUBLIC_FIELDS = {
-    "activity_id", "title", "description", "activity_type", "start_date", "end_date", "time_schedule", "venue",
+    "activity_id", "title", "description", "activity_type", "start_date", "end_date", "start_time", "end_time", "time_text", "venue",
     "registration_deadline", "slots_remaining", "participant_categories",
 }
 

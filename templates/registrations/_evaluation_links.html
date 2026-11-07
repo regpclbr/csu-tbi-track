@@ -1,0 +1,78 @@
+{% load ui %}
+{% comment %}
+Evaluation links (registrations.pages.evaluation_links). The explanation comes from the rules; the counts are the attendees
+who have not answered, by link state, plus the evaluations answered. Resend needs can_create_activity and an open window
+(services.evaluation_links_closed_reason, the same check as services.send_evaluation_links). Only names of people who
+have NOT answered are listed; nobody who answered is named here.
+{% endcomment %}
+<section class="card p-6" aria-labelledby="links-title">
+  <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h2 id="links-title" class="card-title">Evaluation links</h2>
+      <p class="card-subtitle">Each attendee gets a personal link by email.</p>
+    </div>
+    {% if can_resend %}
+      <form method="post" action="{% url 'registrations:send_links' activity.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary btn-sm"{% if resend_reason or not link_counts.sent and not link_counts.failed and not link_counts.not_sent %} disabled{% endif %}{% if resend_reason %} aria-describedby="resend-reason"{% endif %}>
+          {% include "components/icon.html" with name="mail" class="size-4" %}Resend to all who haven't answered</button>
+      </form>
+    {% endif %}
+  </div>
+
+  <ul class="mb-4 space-y-1.5 text-sm text-slate-700">
+    {% for line in explanation %}
+      <li class="flex items-start gap-2">{% include "components/icon.html" with name="info" class="mt-0.5 size-4 shrink-0 text-muted" %}<span>{{ line }}</span></li>
+    {% endfor %}
+  </ul>
+  {% if console_mode %}
+    <p class="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="note">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-amber-700" %}
+      <span>Development mode: emails are printed in the terminal, not sent. Set EMAIL_REAL_SENDING=True to send real emails.</span></p>
+  {% endif %}
+  {% if can_resend and resend_reason %}
+    <p id="resend-reason" class="mb-4 text-sm text-slate-700">Resend: {{ resend_reason }}</p>
+  {% endif %}
+
+  <dl class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Sent</dt><dd class="text-xl font-bold text-ink tabular-nums">{{ link_counts.sent|number }}</dd></div>
+    <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Failed</dt><dd class="text-xl font-bold tabular-nums {% if link_counts.failed %}text-red-700{% else %}text-ink{% endif %}">{{ link_counts.failed|number }}</dd></div>
+    <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Not sent yet</dt><dd class="text-xl font-bold text-ink tabular-nums">{{ link_counts.not_sent|number }}</dd></div>
+    <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Answered</dt><dd class="text-xl font-bold text-ink tabular-nums">{{ results.evaluations|number }}</dd></div>
+  </dl>
+
+  {% if link_rows %}
+    <h3 class="mb-2 text-sm font-semibold text-ink">Attendees who have not answered ({{ link_result.total|number }})</h3>
+    <div class="relative overflow-x-auto rounded-2xl border border-line">
+      <table class="w-full text-left text-sm">
+        <caption class="sr-only">Attendees who have not answered the evaluation, with the state of their link</caption>
+        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+          <tr><th scope="col" class="px-3 py-2.5">Name</th><th scope="col" class="px-3 py-2.5">Link</th><th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {% for row in link_rows %}
+            <tr class="hover:bg-slate-50">
+              <th scope="row" class="px-3 py-2.5 font-semibold text-ink">{{ row.registration.name }}</th>
+              <td class="px-3 py-2.5 whitespace-nowrap">
+                <span class="badge badge-{{ row.state.tone }}">{{ row.state.label }}</span>
+                {% if row.state.at %}<time class="ml-1 text-xs text-muted" datetime="{{ row.state.at|date:'c' }}">{{ row.state.at|date:"M j, g:i A" }}</time>{% endif %}
+              </td>
+              <td class="px-3 py-2.5 text-right">
+                {% if can_resend and not resend_reason %}
+                  <form method="post" action="{% url 'registrations:send_links' activity.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="registration_id" value="{{ row.registration.pk }}">
+                    <button type="submit" class="btn btn-secondary btn-sm">{% if row.state.label == "Not sent yet" %}Send link{% else %}Resend link{% endif %}<span class="sr-only"> to {{ row.registration.name }}</span></button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% include "components/pagination.html" with result=link_result query="tab=evaluation" hx_target="#tab-area" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="mail" title="Nobody is waiting for a link" text="Attendees who have not answered the evaluation appear here." %}
+  {% endif %}
+</section>

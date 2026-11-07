@@ -52,7 +52,7 @@ def post_data(valid_data):
             "participant_categories": [category.pk for category in values["participant_categories"]],
             "start_date": values["start_date"].isoformat(),
             "end_date": values["end_date"].isoformat(),
-            "time_schedule": values["time_schedule"],
+            "start_time": values["start_time"].strftime("%H:%M"), "end_time": values["end_time"].strftime("%H:%M"),
             "venue": values["venue"],
             "max_slots": values["max_slots"],
             "registration_deadline": timezone.localtime(values["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
@@ -208,6 +208,23 @@ def test_end_before_start_and_deadline_rules_are_shown_on_their_fields(director,
     html = login(director).post(CREATE, data).content.decode()
     assert field_error(html, "end_date") == "End date must be on or after the start date."
     assert field_error(html, "registration_deadline") == "Registration deadline must be on or before the start date."
+
+
+def test_one_day_end_time_before_start_time_is_shown_on_end_time(director, login, post_data) -> None:
+    start = timezone.localdate() + timedelta(days=30)
+    data = post_data(end_date=start)
+    data.update(start_time="17:00", end_time="08:00")
+    html = login(director).post(CREATE, data).content.decode()
+    assert field_error(html, "end_time") == "End time must be after the start time."
+    assert not Activity.objects.exists()
+
+
+def test_times_are_required_on_the_form(director, login, post_data) -> None:
+    data = post_data()
+    data.update(start_time="", end_time="")
+    html = login(director).post(CREATE, data).content.decode()
+    assert field_error(html, "start_time") == "This field is required."
+    assert not Activity.objects.exists()
 
 
 def test_an_inactive_type_gets_the_services_message(director, login, post_data) -> None:

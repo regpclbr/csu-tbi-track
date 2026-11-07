@@ -28,7 +28,7 @@ and an empty signature column, by name. Never emails or contact numbers (it is p
     <p class="text-xs font-semibold tracking-wider text-slate-600 uppercase">Caraga State University · Technology Business Incubator</p>
     <h1 class="mt-1 text-xl font-bold">Attendance sheet</h1>
     <p class="mt-1 text-base font-semibold">{{ activity.title }}</p>
-    <p class="mt-0.5 text-sm text-slate-700">{{ activity|date_span }} · {{ activity.time_schedule }} · {{ activity.venue }}</p>
+    <p class="mt-0.5 text-sm text-slate-700">{{ activity|date_span }} · {{ activity|time_range }} · {{ activity.venue }}</p>
   </header>
   {% if rows %}
     <table class="mt-4 w-full border-collapse text-sm">

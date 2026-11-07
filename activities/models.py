@@ -92,7 +92,10 @@ class Activity(models.Model):
     description = models.TextField(null=True, blank=True)
     start_date = models.DateField()
     end_date = models.DateField()
-    time_schedule = models.CharField(max_length=100, help_text="For example: 8:00 AM - 5:00 PM")
+    # Manila time of day. Nullable only for activities whose old free-text time could not be read
+    # (migration 0005); the form and services.validate_activity_values() require both.
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
     venue = models.CharField(max_length=255)
     max_slots = models.PositiveIntegerField()
     registration_deadline = models.DateTimeField()
@@ -110,6 +113,17 @@ class Activity(models.Model):
                 condition=Q(end_date__gte=F("start_date")), name="activity_end_date_after_start_date"
             ),
             models.CheckConstraint(condition=Q(budget_amount__gte=0), name="activity_budget_not_negative"),
+            # Both times are set, or neither is.
+            models.CheckConstraint(
+                condition=Q(start_time__isnull=True, end_time__isnull=True)
+                | Q(start_time__isnull=False, end_time__isnull=False),
+                name="activity_times_both_or_neither",
+            ),
+            # A one-day activity ends after it starts (several days: 8:00 AM to 5:00 PM each day, any order is fine).
+            models.CheckConstraint(
+                condition=Q(end_date__gt=F("start_date")) | Q(start_time__isnull=True) | Q(end_time__gt=F("start_time")),
+                name="activity_one_day_end_time_after_start_time",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -161,8 +175,9 @@ class ActivityAuditLog(models.Model):
     log_id = models.BigAutoField(primary_key=True)
     # PROTECT: activities are never deleted, and their history must survive.
     activity = models.ForeignKey(Activity, on_delete=models.PROTECT, related_name="audit_logs")
+    # Empty = System: an automatic status change (activities.services.apply_automatic_statuses).
     changed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_changes"
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_changes", null=True, blank=True
     )
     field_changed = models.CharField(max_length=100)
     old_value = models.TextField(blank=True)

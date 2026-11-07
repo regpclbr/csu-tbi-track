@@ -17,7 +17,8 @@ all of them are to be validated with the TBI too.
 
 ## Activities
 
-- **Item 66:** Is it fine that staff change an activity's status by hand (Draft → Scheduled → Ongoing → Conducted), instead of the system changing it automatically by date?
+- **Items 66, 346:** The system now moves an activity from Scheduled to Ongoing when it starts, and from Ongoing to Conducted after it ends once at least one attendance is recorded (staff can still change the status by hand). Is that right? Is it fine that registration closes when the activity starts?
+- **Item 345:** Activities now have a start time and an end time (for example 8:00 AM – 5:00 PM). For activities over several days, are the hours the same every day, or does each day need its own time?
 
 ## Registration, attendance and evaluation
 
@@ -26,6 +27,9 @@ all of them are to be validated with the TBI too.
 - **Items 334–335:** Each activity now also has one general evaluation link (and QR code) for posters: a participant types the email they registered with and, if they attended, gets their personal evaluation link by email. One person can ask at most 3 times per hour, and 300 requests per hour are allowed from one network address. Is that acceptable?
 - **Item 280:** Which email address should participants and startups write to with questions? It is shown at the bottom of every public page (registration, evaluation, set password). Placeholder for now: tbi.contact@example.com (setting `TBI_CONTACT_EMAIL`).
 - **Item 111:** When attendance is "confirmed by email", what exactly happens: does the participant reply to an email and a staff member then marks them present? (There is no self check-in now.)
+- **Item 111 (check-in):** Should participants check themselves in through a link (for example a QR code at the venue)? (Now only staff mark attendance.)
+- **Item 3 (walk-ins):** Should walk-in participants be able to register on the day of the activity? (Now registration closes when the activity starts, and walk-ins are not recorded.)
+- **Item 348:** The evaluation link is now emailed automatically once the activity is Conducted. A failed email is not retried automatically; staff can resend it. Is that acceptable?
 
 ## Documents
 

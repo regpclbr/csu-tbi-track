@@ -3,13 +3,13 @@
 Sending in the background means a mail-server problem never turns a saved registration (or the
 "send evaluation links" action) into an error page. The tasks never raise: a failure is logged
 (registration ID and error type only, never the address or the link) and returned as the result.
-A failed email is not retried automatically; staff can send the evaluation links again.
+A failed email is not retried automatically; staff can resend the evaluation links on the Evaluation tab.
 """
 
 import logging
 
 from . import emails, services
-from .models import EvaluationSubmission, Registration
+from .models import Registration
 
 logger = logging.getLogger("registrations")
 
@@ -32,16 +32,13 @@ def run_send_registration_confirmation(registration_id: int) -> dict:
 
 
 def run_send_evaluation_link(registration_id: int) -> dict:
-    """Queued by send_evaluation_links: one attendee's personal evaluation link.
-    Skipped if they submitted the evaluation in the meantime."""
+    """Queued by send_evaluation_links (a resend) and request_evaluation_link: one attendee's personal evaluation
+    link, recorded as sent or failed on the registration (services.deliver_evaluation_link). Skipped if they
+    submitted the evaluation in the meantime."""
     try:
-        registration = _registration(registration_id)
-        if registration is None:
+        if not Registration.objects.filter(pk=registration_id).exists():
             return {"registration_id": registration_id, "result": "not found"}
-        if EvaluationSubmission.objects.filter(registration=registration).exists():
-            return {"registration_id": registration_id, "result": "already submitted"}
-        emails.send_evaluation_link(registration, services.evaluation_link(registration))
-        return {"registration_id": registration_id, "result": "sent"}
-    except Exception as error:
+        return {"registration_id": registration_id, "result": services.deliver_evaluation_link(registration_id)}
+    except Exception as error:  # e.g. the database is unreachable
         logger.error("Evaluation link for registration %s was not sent: %s.", registration_id, type(error).__name__)
         return {"registration_id": registration_id, "result": "failed", "reason": type(error).__name__}

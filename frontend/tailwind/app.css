@@ -127,15 +127,36 @@
   .kpi-card {
     @apply rounded-[20px] border border-line/70 bg-white shadow-card;
   }
-  /* A KPI card that is a link (Activities list cards, ASSUMPTIONS 341): no outline or border change on click or tap;
-     keyboard focus only (:focus-visible) as a soft accent ring rounded like the card. */
+  /* A KPI card that is a link (Activities list cards, ASSUMPTIONS 341; Documents summary cards, 352): never an outline
+     (no square browser outline on click or tap); keyboard focus only (:focus-visible) as a soft 2px blue ring rounded
+     like the card. A selected card (aria-pressed="true", the Documents state filter): a solid 2px primary border
+     (drawn as a ring, so it follows the corners and nothing moves), a light blue tint and a filled icon circle; while
+     one is selected (.stat-cards-selected on the list) the other cards fade to 80%. */
   .stat-card-link {
-    @apply block rounded-[20px] outline-none;
+    @apply block h-full rounded-[20px] outline-none transition-opacity;
     -webkit-tap-highlight-color: transparent;
   }
+  .stat-card-link:focus,
   .stat-card-link:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgb(29 78 216 / 0.35);
+  }
+  .stat-card-link:focus-visible {
+    box-shadow: 0 0 0 2px rgb(37 99 235 / 0.4);
+  }
+  .stat-card-link[aria-pressed="true"] {
+    box-shadow: 0 0 0 2px var(--color-primary);
+  }
+  .stat-card-link[aria-pressed="true"]:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-primary), 0 0 0 5px rgb(37 99 235 / 0.25);
+  }
+  .stat-card-link[aria-pressed="true"] .kpi-card {
+    @apply border-transparent bg-blue-50;
+  }
+  .stat-card-link[aria-pressed="true"] .chip {
+    @apply bg-primary text-white;
+  }
+  .stat-cards-selected .stat-card-link[aria-pressed="false"] {
+    @apply opacity-80 hover:opacity-100 focus-visible:opacity-100;
   }
   /* Icon chip: a Lucide icon on a light tint (KPI cards, Needs attention). Text colours >= 4.5:1 on their tint. */
   .chip {
@@ -206,14 +227,15 @@
   .field-select:disabled {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CBD5E1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
-  /* Selects and date inputs share one height, so they line up in a row of filters (42 px, pills 40 px). */
-  select.field-input, input[type="date"].field-input {
+  /* Selects, date and time inputs share one height, so they line up in a row (42 px, pills 40 px). */
+  select.field-input, input[type="date"].field-input, input[type="time"].field-input {
     @apply h-[2.625rem] py-0;
   }
-  input[type="date"].field-input::-webkit-datetime-edit {
+  input[type="date"].field-input::-webkit-datetime-edit, input[type="time"].field-input::-webkit-datetime-edit {
     padding: 0;
   }
-  input[type="date"].field-input::-webkit-calendar-picker-indicator {
+  input[type="date"].field-input::-webkit-calendar-picker-indicator,
+  input[type="time"].field-input::-webkit-calendar-picker-indicator {
     margin: 0;
     cursor: pointer;
   }

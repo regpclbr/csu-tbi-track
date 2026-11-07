@@ -11,6 +11,7 @@
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 
 from django.core.exceptions import ValidationError
@@ -20,7 +21,8 @@ from django.utils import timezone
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission, require_staff_member
-from activities.services import PageResult, _paginate
+from activities.models import Activity
+from activities.services import PageResult, _paginate, happening_now
 from config.files import write_file_atomically
 
 from . import excel, metrics, narrative, pdf
@@ -46,6 +48,35 @@ def dashboard(member: TBIMember, params: dict, now: datetime | None = None) -> d
     require_staff_member(member)
     filters = metrics.parse_filters(params, now)
     return {"filters": filters_json(filters), **metrics.dashboard(filters, now)}
+
+
+@dataclass
+class Spotlight:
+    """The dashboard's spotlight card: an activity happening now ("ongoing"), else the next one ("upcoming")."""
+
+    kind: str  # ONGOING_NOW or NEXT_UP
+    activity: Activity
+    more_ongoing: int = 0  # other activities happening now (the "+N more ongoing" link)
+
+
+ONGOING_NOW, NEXT_UP = "ongoing", "upcoming"
+
+
+def dashboard_spotlight(filters: metrics.ReportFilters, now: datetime | None = None,
+                        upcoming_next: list[dict] | None = None) -> Spotlight | None:
+    """The one choice of the spotlight (ASSUMPTIONS 351). An Ongoing activity running today
+    (activities.services.happening_now: the one that started first, the others counted) wins over the next Scheduled
+    one (S2, metrics.upcoming_activities; pass its "next" rows when already loaded). Both respect the activity type
+    filter; Draft never appears. Callers run activities.services.apply_automatic_statuses() first."""
+    ongoing = list(happening_now(filters.activity_type_id, now).select_related("status", "activity_type")[:1])
+    if ongoing:
+        more = happening_now(filters.activity_type_id, now).count() - 1
+        return Spotlight(ONGOING_NOW, ongoing[0], more)
+    rows = metrics.upcoming_activities(filters, now)["next"] if upcoming_next is None else upcoming_next
+    if not rows:
+        return None
+    activity = Activity.objects.select_related("status", "activity_type").get(pk=rows[0]["activity_id"])
+    return Spotlight(NEXT_UP, activity)
 
 
 def activity_evaluation(member: TBIMember, activity) -> dict:

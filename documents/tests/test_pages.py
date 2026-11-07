@@ -228,14 +228,16 @@ def test_repository_lists_and_filters(director, head, login, scheduled, upload) 
     second = upload(head, scheduled, document_type=DocumentType.objects.get(name="Activity Design"), title="Design v2")
     services.approve_document(director, second)
     client = login(director)
-    html = client.get(reverse("documents:list")).content.decode()
+    html = client.get(reverse("documents:list")).content.decode()  # "By activity" (ASSUMPTIONS 352)
+    assert first.title in html and second.title in html and "1 activity" in html
+    html = client.get(reverse("documents:list"), {"view": "all"}).content.decode()
     assert first.title in html and second.title in html and "2 documents" in html
-    html = client.get(reverse("documents:list"), {"review_state": "approved"}, **HTMX).content.decode()
-    assert second.title in html and first.title not in html and "layouts/app.html" not in html
-    html = client.get(reverse("documents:list"), {"uploaded_by": director.pk, "q": "signed"}).content.decode()
+    html = client.get(reverse("documents:list"), {"view": "all", "state": "approved"}, **HTMX).content.decode()
+    assert second.title in html and first.title not in html and "<!doctype" not in html
+    html = client.get(reverse("documents:list"), {"view": "all", "uploaded_by": director.pk, "q": "signed"}).content.decode()
     assert first.title in html and second.title not in html
     html = client.get(reverse("documents:list"), {"searchable": "maybe", "activity": "x"}).content.decode()
-    assert "Some filters could not be read and were ignored: activity, searchable." in html
+    assert "Some filters could not be read and were ignored: activity, AI search." in html
 
 
 def test_repository_never_lists_certificate_evidence(director, login, scheduled, upload, certificate_for) -> None:

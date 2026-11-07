@@ -46,8 +46,9 @@ New only: optional documents (activities/_new_documents.html), saved with the ac
     <div class="grid gap-4 md:grid-cols-2">
       {% include "components/form_field.html" with field=form.start_date %}
       {% include "components/form_field.html" with field=form.end_date %}
-      {% include "components/form_field.html" with field=form.time_schedule placeholder="8:00 AM – 5:00 PM" %}
-      {% include "components/form_field.html" with field=form.venue %}
+      {% include "components/form_field.html" with field=form.start_time %}
+      {% include "components/form_field.html" with field=form.end_time %}
+      <div class="md:col-span-2">{% include "components/form_field.html" with field=form.venue %}</div>
     </div>
   </section>
 

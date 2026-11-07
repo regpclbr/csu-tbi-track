@@ -124,6 +124,14 @@ class Registration(models.Model):
     confirmation_method = models.CharField(
         max_length=20, choices=ConfirmationMethod.choices, null=True, blank=True
     )
+    # Who marked the attendance and when (set by services.set_attendance; cleared together with the method on undo).
+    attendance_marked_at = models.DateTimeField(null=True, blank=True)
+    attendance_marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="attendance_marked"
+    )
+    # The last evaluation link email: sent, or failed (setting one clears the other). Both empty = never sent.
+    evaluation_link_sent_at = models.DateTimeField(null=True, blank=True)
+    evaluation_link_failed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

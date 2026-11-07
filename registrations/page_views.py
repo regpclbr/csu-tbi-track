@@ -179,19 +179,30 @@ def registration_detail(request: HttpRequest, activity_id: int, registration_id:
                   {"registration": registration, "answers": pages.answer_rows(registration)})
 
 
+def _attendance_request(post) -> tuple[list[str], bool]:
+    """(registration IDs, mark?) from the posted attendance form. A row button sends row_action=mark:<id> or
+    undo:<id> (only that row); the bulk buttons send action=mark|undo with the checked registration_ids."""
+    row_action = post.get("row_action", "")
+    if ":" in row_action:
+        action, registration_id = row_action.split(":", 1)
+        return ([registration_id] if registration_id.isdigit() else []), action == "mark"
+    ids = [value for value in post.getlist("registration_ids") if value.isdigit()]
+    return ids, post.get("action") == "mark"
+
+
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_POST
 def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """POST registration_ids (one or more), action=mark|unmark, method=email|wet_signature (for mark).
-    `filters` (the table's query string) brings the member back to the same view."""
+    """POST method=wet_signature|email (the "Confirmed by" choice above the table, used by every mark button), then
+    either row_action=mark:<id>|undo:<id> or action=mark|undo with registration_ids. `filters` (the table's
+    query string) brings the member back to the same view."""
     activity = _activity(activity_id)
     back = _tab_url(activity, "registrations", pages.filters_query(request.POST.get("filters", "")))
-    ids = [value for value in request.POST.getlist("registration_ids") if value.isdigit()]
+    ids, mark = _attendance_request(request.POST)
     if not ids:
         messages.error(request, "Select at least one registration first.")
         return redirect(back)
-    mark = request.POST.get("action") == "mark"
-    method = request.POST.get("method") or None
+    method = (request.POST.get("method") or None) if mark else None
     try:
         changed = services.set_attendance(request.user, activity, ids, mark, method)
     except services.RegistrationError as error:
@@ -202,26 +213,31 @@ def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
             method_label = dict(Registration.ConfirmationMethod.choices)[method].lower()
             messages.success(request, f"Marked {people} as attended ({method_label}).")
         else:
-            messages.success(request, f"Unmarked {people}.")
+            messages.success(request, f"Attendance undone for {people}.")
     return redirect(back)
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_POST
 def send_links(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """Resend evaluation links (Evaluation tab): POST registration_id=<id> for one attendee, or nothing for everyone
+    who has not answered. Same rules as services.send_evaluation_links."""
     activity = _activity(activity_id)
+    raw = request.POST.get("registration_id", "")
+    ids = [int(raw)] if raw.isdigit() else None
     try:
-        queued = services.send_evaluation_links(request.user, activity)
+        queued = services.send_evaluation_links(request.user, activity, registration_ids=ids)
     except services.RegistrationError as error:
         messages.error(request, str(error))
     else:
         if queued:
             messages.success(request, email_sent_message(
-                "They go out while qcluster is running.", before=f"Queued {queued} evaluation link email{'' if queued == 1 else 's'}. "
+                "They go out while qcluster is running.",
+                before=f"Queued {queued} evaluation link email{'' if queued == 1 else 's'}. ",
             ))
         else:
-            messages.info(request, "Nobody to send to: no attendee is waiting for an evaluation link.")
-    return redirect(_tab_url(activity, "registrations"))
+            messages.info(request, "Nobody to send to: every attendee has answered the evaluation.")
+    return redirect(_tab_url(activity, "evaluation"))
 
 
 @staff_login_required

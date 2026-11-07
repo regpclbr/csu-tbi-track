@@ -4,17 +4,23 @@ only: every rule and number comes from registrations.services and reports (never
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.http import QueryDict
 
-from activities.models import Activity
+from accounts.permissions import Permission, has_permission
+from activities.formatting import format_datetime
+from activities.models import Activity, ActivityStatus
 from activities.services import registered_count
+from config.mail import prints_emails
 from reports import services as report_services
 
 from . import services
 from .models import DefaultFormField, FieldType, FormField, FormTemplate, FormType, Registration
 
 REGISTRATIONS_PER_PAGE = 20
+LINK_ROWS_PER_PAGE = 20
+DEFAULT_METHOD = Registration.ConfirmationMethod.WET_SIGNATURE  # the "Confirmed by" choice starts here
 
 # Type badges on the Forms tab (FieldType values -> label shown to staff).
 FIELD_TYPE_LABELS = {
@@ -159,7 +165,9 @@ def registrations_tab(member, activity: Activity, params) -> dict:
         activity, attended=filters.attended, participant_category_id=filters.category, search=filters.q
     )
     page = Paginator(registrations, REGISTRATIONS_PER_PAGE).get_page(filters.page)
+    rows = [{"registration": r, "undo_reason": services.undo_refused_reason(r)} for r in page.object_list]
     return {
+        "rows": rows,
         "filters": filters,
         "page": page,
         "page_query": "tab=registrations" + (f"&{filters.query()}" if filters.query() else ""),
@@ -167,10 +175,15 @@ def registrations_tab(member, activity: Activity, params) -> dict:
         "counts": counts(member, activity),
         "categories": list(activity.participant_categories.order_by("name")),
         "attendance_reason": services.attendance_closed_reason(activity),
-        "links_reason": services.evaluation_links_closed_reason(activity),
-        "link_recipients": services.evaluation_link_recipients(activity).count(),
-        "methods": Registration.ConfirmationMethod.choices,
+        "methods": _methods(),
+        "default_method": DEFAULT_METHOD,
     }
+
+
+def _methods() -> list[tuple[str, str]]:
+    """The "Confirmed by" choices, wet signature first (the default)."""
+    choices = dict(Registration.ConfirmationMethod.choices)
+    return [(DEFAULT_METHOD, choices.pop(DEFAULT_METHOD)), *choices.items()]
 
 
 def answer_rows(registration: Registration) -> list[tuple[str, str]]:
@@ -196,9 +209,52 @@ def attendance_sheet_rows(activity: Activity) -> list[dict]:
 # --- Evaluation tab -----------------------------------------------------------------------------------------
 
 
-def evaluation_tab(member, activity: Activity) -> dict:
-    """reports.services.activity_evaluation (counts and rating averages only: no comments, text or names),
-    with each question's bar width (average out of 5)."""
+def link_explanation(activity: Activity) -> list[str]:
+    """How evaluation links work for this activity, from the rules themselves (registrations.services)."""
+    opens, closes = services.evaluation_window(activity)
+    lines = [
+        "Who gets the link: everyone marked as attended who has not answered the evaluation yet.",
+        f"It is emailed automatically, once per person, after the activity becomes Conducted (checked every "
+        f"{settings.ACTIVITY_STATUS_INTERVAL_MINUTES} minutes while qcluster is running). A failed email is not "
+        "retried automatically: resend it below.",
+        f"The evaluation opens on {format_datetime(opens)} and closes on {format_datetime(closes)}.",
+    ]
+    if services.get_form(activity, FormType.EVALUATION) is None:
+        lines.append("There is no evaluation form yet: create it on the Forms tab. No link is sent without it.")
+    return lines
+
+
+def link_state(registration: Registration) -> dict:
+    """One attendee's link: sent (when), failed (when) or not sent yet."""
+    if registration.evaluation_link_failed_at:
+        return {"label": "Failed", "tone": "danger", "at": registration.evaluation_link_failed_at}
+    if registration.evaluation_link_sent_at:
+        return {"label": "Sent", "tone": "success", "at": registration.evaluation_link_sent_at}
+    return {"label": "Not sent yet", "tone": "neutral", "at": None}
+
+
+def evaluation_links(member, activity: Activity, params) -> dict:
+    """The "Evaluation links" card: the explanation, the counts, and the attendees who have not answered
+    (20 a page) with their link state. Resend needs can_create_activity and an open window
+    (services.evaluation_links_closed_reason, the rule send_evaluation_links checks)."""
+    recipients = services.evaluation_link_recipients(activity).order_by("name", "registration_id")
+    page = Paginator(recipients, LINK_ROWS_PER_PAGE).get_page((params.get("page") or "1").strip())
+    return {
+        "explanation": link_explanation(activity),
+        "console_mode": prints_emails(),
+        "link_counts": services.evaluation_link_counts(activity),
+        "link_rows": [{"registration": r, "state": link_state(r)} for r in page.object_list],
+        "link_page": page,
+        "link_result": {"page": page.number, "num_pages": page.paginator.num_pages, "total": page.paginator.count},
+        "can_resend": has_permission(member, Permission.CREATE_ACTIVITY),
+        "resend_reason": services.evaluation_links_closed_reason(activity),
+        "is_conducted": activity.status.name == ActivityStatus.CONDUCTED,
+    }
+
+
+def evaluation_tab(member, activity: Activity, params=None) -> dict:
+    """reports.services.activity_evaluation (counts and rating averages only: no comments, text or names of
+    people who answered), with each question's bar width (average out of 5), plus the evaluation links card."""
     results = report_services.activity_evaluation(member, activity)
     questions = [{**question, "percent": round(100 * question["average"] / 5) if question["average"] else 0}
                  for question in results["questions"]]
@@ -208,4 +264,5 @@ def evaluation_tab(member, activity: Activity) -> dict:
         "results": results, "questions": questions,
         "average_text": f"{average:.1f} / 5" if average is not None else "–",
         "answers_text": f"{answers} rating answer{'' if answers == 1 else 's'}",
+        **evaluation_links(member, activity, params or {}),
     }

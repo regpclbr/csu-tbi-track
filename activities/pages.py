@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from registrations import services as registration_services
 
-from . import services
+from . import attention, services
 from .formatting import audit_sentence, format_date, format_datetime, format_money
 from .models import Activity, ActivityStatus
 
@@ -227,11 +227,13 @@ def _percent(registered: int, max_slots: int) -> int:
 
 
 def list_rows(activities: list[Activity]) -> list[dict]:
-    """Rows of the list: the activity, its categories and registered/max (`registered` comes from
-    services.list_activities)."""
+    """Rows of the list: the activity, its categories, registered/max (`registered` comes from
+    services.list_activities) and how many things need attention (activities.attention, fixed number of queries)."""
+    counts = attention.attention_counts(activities)
     return [
         {
             "activity": activity,
+            "attention": counts.get(activity.pk, 0),
             "categories": sorted(category.name for category in activity.participant_categories.all()),
             "registered": activity.registered,
             "percent": _percent(activity.registered, activity.max_slots),
@@ -302,7 +304,7 @@ def detail_rows(detail: dict) -> list[tuple[str, str]]:
         ("Participant categories", ", ".join(detail["participant_categories"])),
         ("Start date", format_date(detail["start_date"])),
         ("End date", format_date(detail["end_date"])),
-        ("Time schedule", detail["time_schedule"]),
+        ("Time", detail["time_text"]),
         ("Venue", detail["venue"]),
         ("Max slots", f"{detail['max_slots']:,}"),
         ("Registration deadline", format_datetime(detail["registration_deadline"])),

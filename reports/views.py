@@ -15,6 +15,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.permissions import is_htmx, staff_login_required
+from activities import services as activity_services
 from activities.models import Activity
 from config.json import JsonResponse  # date-times in Manila time
 
@@ -55,7 +56,10 @@ def report_json(report: GeneratedReport, state: str, detail: bool = False) -> di
 def dashboard_page(request: HttpRequest) -> HttpResponse:
     """The staff dashboard (/). GET range=this_month|this_quarter|this_year|last_year|custom,
     start, end (YYYY-MM-DD, for custom) and activity_type. The filter form sends HTMX requests: they
-    get only the part below the filters (dashboard/_body.html); the URL keeps the filters."""
+    get only the part below the filters (dashboard/_body.html); the URL keeps the filters.
+    Like the Activities list, a load first applies the automatic status moves (statuses only, never emails), so the
+    "Happening now" card agrees with the 5-minute job (ASSUMPTIONS 346, 351)."""
+    activity_services.apply_automatic_statuses()
     page = build_dashboard(request.user, request.GET)
     template = "dashboard/_body.html" if is_htmx(request) else "dashboard/index.html"
     return render(request, template, {"page_title": "Dashboard", "page": page, "partial": is_htmx(request)})

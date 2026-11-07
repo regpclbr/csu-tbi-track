@@ -24,7 +24,7 @@ date tile, title, type, categories, dates, time, venue, slots left, deadline. Ne
         </div>
         <dl class="mt-4 space-y-2 text-sm text-slate-700">
           <div class="flex gap-2.5"><dt class="sr-only">Date</dt><span class="text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><dd>{{ activity|date_span }}</dd></div>
-          <div class="flex gap-2.5"><dt class="sr-only">Time</dt><span class="text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><dd>{{ summary.time_schedule }}</dd></div>
+          <div class="flex gap-2.5"><dt class="sr-only">Time</dt><span class="text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><dd>{{ summary.time_text }}</dd></div>
           <div class="flex gap-2.5"><dt class="sr-only">Venue</dt><span class="text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><dd class="min-w-0 break-words">{{ summary.venue }}</dd></div>
         </dl>
         {% if summary.participant_categories %}

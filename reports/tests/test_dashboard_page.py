@@ -2,7 +2,7 @@
 (HTMX partial, URL keeps them), role-dependent parts, Needs attention, empty states."""
 
 import re
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 
 import pytest
 from django.test import Client
@@ -296,7 +296,7 @@ def test_recent_changes_come_from_the_audit_log(director, login, roles) -> None:
     activity = activity_services.create_activity(director, {
         "title": "Audit Seminar", "description": "", "activity_type": ActivityType.objects.get(name="Seminar"),
         "participant_categories": [ParticipantCategory.objects.get(name="Faculty")], "start_date": start, "end_date": start,
-        "time_schedule": "9-5", "venue": "Hall A", "max_slots": 10,
+        "start_time": time(8, 0), "end_time": time(17, 0), "venue": "Hall A", "max_slots": 10,
         "registration_deadline": timezone.now() + timedelta(days=10), "evaluation_deadline": timezone.now() + timedelta(days=30),
         "budget_amount": Decimal("100.00"),
     })
@@ -343,7 +343,9 @@ def test_a_filter_change_refreshes_the_banner_summary_out_of_band(director, logi
 def test_next_activity_spotlight_and_the_rest_of_the_upcoming_list(director, login, data) -> None:
     response = login(director).get(URL)
     page, html = response.context["page"], response.content.decode()
-    assert page.next_activity == page.upcoming[0] and page.upcoming_after_next == page.upcoming[1:]
+    # Nothing is happening now in `data`: the spotlight is the first upcoming activity (ASSUMPTIONS 351)
+    assert page.next_activity["activity"] == page.upcoming[0]["activity"] and not page.next_activity["ongoing"]
+    assert page.upcoming_after_next == page.upcoming[1:]
     first = page.next_activity
     assert f'aria-label="{first["registered"]} of {first["activity"].max_slots} slots registered"' in html
     assert first["activity"].venue in html and "Open activity" in html

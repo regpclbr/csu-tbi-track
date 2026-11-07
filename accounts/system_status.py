@@ -48,7 +48,8 @@ def qcluster_status() -> StatusItem:
 
 
 def schedule_status() -> StatusItem:
-    """The daily tasks of config.schedules.SCHEDULES: next run and the last run's result."""
+    """The scheduled tasks of config.schedules.SCHEDULES (daily and every few minutes): next run and the last
+    run's result."""
     from django_q.models import Schedule, Task
 
     from config.schedules import SCHEDULES
@@ -71,19 +72,19 @@ def schedule_status() -> StatusItem:
             last = "Failed"
         rows.append({
             "name": daily.name,
-            "time": f"{daily.hour}:{daily.minute:02d}",
+            "time": daily.when,
             "next_run": schedule.next_run if schedule else None,
             "last_result": last,
             "last_run": task.stopped if task else None,
         })
     label = "Scheduled tasks"
     if missing:
-        return StatusItem("schedules", label, WARNING, f"{missing} of {len(SCHEDULES)} daily tasks are not set up.",
+        return StatusItem("schedules", label, WARNING, f"{missing} of {len(SCHEDULES)} scheduled tasks are not set up.",
                           fix="Run once: python manage.py setup_schedules", rows=rows)
     if failed:
         return StatusItem("schedules", label, WARNING, f"The last run of {failed} task{'s' if failed != 1 else ''} failed.",
                           fix="Open the failed task in the administration site (Django Q → Failed tasks) to see why.", rows=rows)
-    return StatusItem("schedules", label, OK, f"All {len(SCHEDULES)} daily tasks are set up.", rows=rows)
+    return StatusItem("schedules", label, OK, f"All {len(SCHEDULES)} scheduled tasks are set up.", rows=rows)
 
 
 def email_status() -> StatusItem:

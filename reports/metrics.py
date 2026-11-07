@@ -269,8 +269,8 @@ def activity_rows(filters: ReportFilters) -> list[dict]:
         )
         .order_by("end_date", "start_date", "title", "pk")
         .values(
-            "activity_id", "title", "activity_type__name", "categories", "start_date", "end_date", "venue",
-            "registered", "attended", "evaluations", "average_rating",
+            "activity_id", "title", "activity_type__name", "categories", "start_date", "end_date", "start_time",
+            "end_time", "venue", "registered", "attended", "evaluations", "average_rating",
         )
     )
     return [

@@ -19,9 +19,9 @@ from django.utils import timezone
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission
-from activities.formatting import format_datetime
+from activities.formatting import format_date, format_datetime, format_time, format_time_range
 from activities.models import Activity, ActivityStatus, ParticipantCategory
-from activities.services import is_registration_open, open_for_registration, slots_remaining
+from activities.services import activity_start_end, is_registration_open, open_for_registration, slots_remaining
 from config.parsing import parse_bool
 from config.ratelimit import count_attempt
 
@@ -37,6 +37,9 @@ from .models import (
 )
 
 security_log = logging.getLogger("accounts.security")  # the same logger as the login lockout
+logger = logging.getLogger("registrations")
+# Every attendance mark and undo: activity, registration and member IDs only (never names or emails).
+audit_log = logging.getLogger("registrations.audit")
 
 CHOICE_TYPES = (FieldType.MULTIPLE_CHOICE, FieldType.CHECKBOX)
 SHORT_TEXT_MAX = 255
@@ -422,7 +425,9 @@ def public_activity_summary(activity: Activity) -> dict:
         "activity_type": activity.activity_type.name,
         "start_date": activity.start_date,
         "end_date": activity.end_date,
-        "time_schedule": activity.time_schedule,
+        "start_time": activity.start_time,
+        "end_time": activity.end_time,
+        "time_text": format_time_range(activity.start_time, activity.end_time),
         "venue": activity.venue,
         "registration_deadline": activity.registration_deadline,
         "slots_remaining": slots_remaining(activity),
@@ -535,52 +540,89 @@ def register(
 
 # --- Attendance (staff, needs can_create_activity) -----------------------------------------
 
-ATTENDANCE_CLOSED = "Attendance can be recorded only when the activity is Ongoing or Conducted."
+def attendance_opens_text(activity: Activity) -> str:
+    """"Nov 6, 2026, 8:00 AM" (or only the date when the activity has no times)."""
+    if activity.start_time is None:
+        return format_date(activity.start_date)
+    return f"{format_date(activity.start_date)}, {format_time(activity.start_time)}"
 
 
 def attendance_closed_reason(activity: Activity) -> str | None:
-    """None when attendance can be recorded now (Ongoing or Conducted); otherwise why not."""
-    return None if activity.status.name in ATTENDANCE_STATUSES else ATTENDANCE_CLOSED
+    """None when attendance can be recorded now (Ongoing or Conducted); otherwise why not. The Registrations tab
+    shows this same text instead of the buttons, so the page and the service always agree."""
+    if activity.status.name in ATTENDANCE_STATUSES:
+        return None
+    return f"Attendance opens when the activity starts on {attendance_opens_text(activity)}."
 
 
 @transaction.atomic
 def set_attendance(
-    member: TBIMember, activity: Activity, registration_ids: list[int], attended: bool, method: str | None = None
+    member: TBIMember,
+    activity: Activity,
+    registration_ids: list[int],
+    attended: bool,
+    method: str | None = None,
+    now: datetime | None = None,
 ) -> int:
-    """Mark (or unmark) attendance for one or many registrations. Returns how many changed.
+    """Mark (or undo) attendance for one or many registrations. Returns how many were changed.
 
-    Allowed only while the activity is Ongoing or Conducted (Conducted locks the activity's
-    own fields, not its registrations). Unmarking clears the method, and is refused for
-    anyone who has already submitted the evaluation or has a certificate. All or nothing.
+    Allowed only while the activity is Ongoing or Conducted (Conducted locks the activity's own fields, not its
+    registrations). Marking records the method, who marked it and when (attendance_marked_by / _at); undo clears
+    all three. Undo is refused for anyone who has already submitted the evaluation or has a certificate.
+    All or nothing. Every mark and undo is logged on registrations.audit (IDs only).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
-    locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
+    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     if reason := attendance_closed_reason(locked):
         raise RegistrationError(reason)
     if attended and method not in Registration.ConfirmationMethod.values:
         raise RegistrationError("Choose how attendance was confirmed: email or wet_signature.")
 
     ids = {int(registration_id) for registration_id in registration_ids}
-    registrations = list(locked.registrations.select_for_update().filter(pk__in=ids))
+    registrations = list(locked.registrations.select_for_update(of=("self",)).filter(pk__in=ids))
     if not ids or len(registrations) != len(ids):
         raise RegistrationError("Some registrations were not found for this activity.")
     if not attended:
         evaluated = [r.name for r in registrations if EvaluationSubmission.objects.filter(registration=r).exists()]
         if evaluated:
             raise RegistrationError(
-                f"Cannot unmark {', '.join(sorted(evaluated))}: already submitted the evaluation."
+                f"Cannot undo attendance for {', '.join(sorted(evaluated))}: already submitted the evaluation."
             )
         with_certificate = [r.name for r in registrations if r.certificates.exists()]
         if with_certificate:  # Step 9: a certificate was generated for their attendance
             raise RegistrationError(
-                f"Cannot unmark {', '.join(sorted(with_certificate))}: a certificate was already generated."
+                f"Cannot undo attendance for {', '.join(sorted(with_certificate))}: a certificate was already generated."
             )
 
+    now = now or timezone.now()
     for registration in registrations:
         registration.attendance_confirmed = attended
         registration.confirmation_method = method if attended else None
-        registration.save(update_fields=["attendance_confirmed", "confirmation_method", "updated_at"])
+        registration.attendance_marked_by = member if attended else None
+        registration.attendance_marked_at = now if attended else None
+        registration.save(update_fields=[
+            "attendance_confirmed", "confirmation_method", "attendance_marked_by", "attendance_marked_at", "updated_at",
+        ])
+    audit_log.info(
+        "Attendance %s: activity %s, registrations %s, by member %s.",
+        f"marked ({method})" if attended else "undone", locked.pk, sorted(ids), member.pk,
+    )
     return len(registrations)
+
+
+UNDO_REFUSED_EVALUATED = "Already evaluated: attendance can no longer be undone."
+
+
+def undo_refused_reason(registration: Registration) -> str | None:
+    """Why this person's attendance cannot be undone (the row's Undo button is hidden with this text), or None.
+    The same rule set_attendance checks: a submitted evaluation (a certificate is checked there too)."""
+    if not registration.attendance_confirmed:
+        return None
+    try:
+        registration.evaluation_submission  # no query when list_registrations loaded it (select_related)
+    except EvaluationSubmission.DoesNotExist:
+        return None
+    return UNDO_REFUSED_EVALUATED
 
 
 def list_registrations(
@@ -589,7 +631,9 @@ def list_registrations(
     """Staff list of an activity's registrations by name, with category, startup, evaluation and answers.
     `search` matches the name or the email (ignoring case)."""
     registrations = (
-        activity.registrations.select_related("participant_category", "startup", "evaluation_submission")
+        activity.registrations.select_related(
+            "participant_category", "startup", "evaluation_submission", "attendance_marked_by"
+        )
         .prefetch_related("answers__field")
         .order_by("name", "registration_id")
     )
@@ -820,20 +864,102 @@ def evaluation_link_recipients(activity: Activity) -> QuerySet:
     return activity.registrations.filter(attendance_confirmed=True, evaluation_submission__isnull=True)
 
 
-def send_evaluation_links(member: TBIMember, activity: Activity, now: datetime | None = None) -> int:
-    """Queue one email task per attendee who has not evaluated yet (their personal link).
-    Returns how many were queued; the emails are sent in the background, so a mail-server
-    problem never fails this action.
+def send_evaluation_links(
+    member: TBIMember, activity: Activity, registration_ids: list[int] | None = None, now: datetime | None = None
+) -> int:
+    """Resend: queue one email task per attendee who has not evaluated yet (their personal link), or only for
+    `registration_ids` (the Evaluation tab's per-person "Resend link"). Returns how many were queued; the
+    emails go out in the background (deliver_evaluation_link marks each one sent or failed).
 
-    Refused if the activity has no evaluation form or the evaluation window is not open.
+    Refused if the activity has no evaluation form or the evaluation window is not open, and (with
+    registration_ids) if one of them is not an attendee who still has to evaluate.
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     if reason := evaluation_links_closed_reason(activity, now):
         raise RegistrationError(reason)
-    registration_ids = list(evaluation_link_recipients(activity).order_by("pk").values_list("pk", flat=True))
-    for registration_id in registration_ids:
+    recipients = evaluation_link_recipients(activity)
+    if registration_ids is not None:
+        wanted = {int(registration_id) for registration_id in registration_ids}
+        recipients = recipients.filter(pk__in=wanted)
+        if not wanted or recipients.count() != len(wanted):
+            raise RegistrationError("A link can be resent only to attendees who have not evaluated yet.")
+    ids = list(recipients.order_by("pk").values_list("pk", flat=True))
+    for registration_id in ids:
         queue_evaluation_link(registration_id)
-    return len(registration_ids)
+    return len(ids)
+
+
+def deliver_evaluation_link(registration_id: int, first_time_only: bool = False, now: datetime | None = None) -> str:
+    """Email one attendee their personal evaluation link and record it: evaluation_link_sent_at, or
+    evaluation_link_failed_at when sending fails (setting one clears the other). Runs inside qcluster (the
+    queued task and the automatic job). Never raises: a failure is logged with the registration ID and the
+    error type only (never the address or the link).
+
+    The row is locked while sending, so two runs never email the same person at the same time.
+    first_time_only (the automatic job): skip anyone already sent a link or whose link failed, and skip a row
+    another run is busy with (SKIP LOCKED). Returns "sent", "failed", "already submitted", "already sent" or
+    "skipped" (not found, or locked by another run)."""
+    from . import emails
+
+    with transaction.atomic():
+        rows = Registration.objects.select_for_update(of=("self",), skip_locked=first_time_only)
+        registration = rows.select_related("activity").filter(pk=registration_id).first()
+        if registration is None:
+            return "skipped"
+        if EvaluationSubmission.objects.filter(registration=registration).exists():
+            return "already submitted"
+        if first_time_only and (registration.evaluation_link_sent_at or registration.evaluation_link_failed_at):
+            return "already sent"
+        try:
+            emails.send_evaluation_link(registration, evaluation_link(registration))
+        except Exception as error:  # the mail server said no: record it, staff can resend
+            logger.error("Evaluation link for registration %s was not sent: %s.", registration_id, type(error).__name__)
+            registration.evaluation_link_sent_at, registration.evaluation_link_failed_at = None, now or timezone.now()
+            result = "failed"
+        else:
+            registration.evaluation_link_sent_at, registration.evaluation_link_failed_at = now or timezone.now(), None
+            result = "sent"
+        registration.save(update_fields=["evaluation_link_sent_at", "evaluation_link_failed_at", "updated_at"])
+    return result
+
+
+def automatic_link_activities(now: datetime | None = None) -> list[Activity]:
+    """Activities whose attendees get their first evaluation link automatically now: Conducted, an evaluation
+    form exists and the evaluation window is open (evaluation_links_closed_reason is None)."""
+    now = now or timezone.now()
+    candidates = (
+        Activity.objects.filter(status__name=ActivityStatus.CONDUCTED, evaluation_deadline__gte=now)
+        .filter(form_templates__form_type=FormType.EVALUATION)
+        .select_related("status")
+        .order_by("pk")
+    )
+    return [activity for activity in candidates if evaluation_links_closed_reason(activity, now) is None]
+
+
+def send_automatic_evaluation_links(now: datetime | None = None) -> dict[str, int]:
+    """The 5-minute job (activities.tasks): send the link ONCE to each attendee of automatic_link_activities() who
+    has not evaluated, has not been sent a link and whose link has not failed. A failed send is not retried
+    automatically (staff resend it on the Evaluation tab). Returns the counts by result."""
+    now = now or timezone.now()
+    counts = {"sent": 0, "failed": 0, "skipped": 0}
+    for activity in automatic_link_activities(now):
+        never_sent = evaluation_link_recipients(activity).filter(
+            evaluation_link_sent_at__isnull=True, evaluation_link_failed_at__isnull=True
+        )
+        for registration_id in list(never_sent.order_by("pk").values_list("pk", flat=True)):
+            result = deliver_evaluation_link(registration_id, first_time_only=True, now=now)
+            counts[result if result in counts else "skipped"] += 1
+    return counts
+
+
+def evaluation_link_counts(activity: Activity) -> dict[str, int]:
+    """Attendees who have not evaluated yet, by the state of their link: sent, failed, not sent yet."""
+    recipients = evaluation_link_recipients(activity)
+    return {
+        "sent": recipients.filter(evaluation_link_sent_at__isnull=False).count(),
+        "failed": recipients.filter(evaluation_link_failed_at__isnull=False).count(),
+        "not_sent": recipients.filter(evaluation_link_sent_at__isnull=True, evaluation_link_failed_at__isnull=True).count(),
+    }
 
 
 # --- Shareable links and the general evaluation link (one per activity) --------------------------

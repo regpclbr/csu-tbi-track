@@ -20,6 +20,7 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, require_permission, staff_login_required
 
+from .formatting import changed_by_name
 from . import services
 from .forms import parse_activity_data
 from .models import Activity, ResourcePerson
@@ -202,7 +203,7 @@ def audit_log_api(request: HttpRequest, activity_id: int) -> JsonResponse:
             "field_changed": row.field_changed,
             "old_value": row.old_value,
             "new_value": row.new_value,
-            "changed_by": row.changed_by.name,
+            "changed_by": changed_by_name(row),  # "System" for an automatic status change
             "changed_at": row.changed_at,
         }
         for row in result.items

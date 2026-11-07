@@ -1,6 +1,7 @@
 """Phase F1 layout: sidebar (ADMIN only with can_manage_users), top bar, logout form, coming-soon pages,
 restyled login pages, HTML error pages, HTMX + CSRF, and the self-hosted static files."""
 
+from datetime import time
 import re
 from pathlib import Path
 
@@ -74,7 +75,7 @@ def test_documents_badge_counts_documents_waiting_for_my_review(director, make_m
     head = make_member("Incubation Project Head")
     activity = Activity.objects.create(
         created_by=director, status=ActivityStatus.objects.get(name="Scheduled"), activity_type=ActivityType.objects.get(name="Workshop"),
-        title="A", start_date=date(2026, 12, 1), end_date=date(2026, 12, 1), time_schedule="9-5", venue="Hall", max_slots=5,
+        title="A", start_date=date(2026, 12, 1), end_date=date(2026, 12, 1), start_time=time(8, 0), end_time=time(17, 0), venue="Hall", max_slots=5,
         registration_deadline=timezone.now() + timedelta(days=5), evaluation_deadline=timezone.now() + timedelta(days=50),
         budget_amount=Decimal("1.00"),
     )
@@ -362,7 +363,8 @@ def test_select_and_date_input_styles_in_the_built_css() -> None:
     rule = ";".join(re.findall(r"\.field-select\{([^}]*)\}", css))  # the minifier may split it in two
     assert "appearance:none" in rule and "stroke='%2364748B'" in rule
     assert "background-position:right.875remcenter" in rule  # the same place on every select
-    assert re.search(r"select\.field-input,input\[type=\"?date\"?\]\.field-input\{[^}]*height:2\.625rem", css)
+    # selects, date and time inputs share one height (time inputs since ASSUMPTIONS 345)
+    assert re.search(r"select\.field-input,input\[type=\"?date\"?\]\.field-input,input\[type=\"?time\"?\]\.field-input\{[^}]*height:2\.625rem", css)
     # The glass inputs set only the colour, so the chevron of a select on a glass card stays.
     glass = re.search(r"\.auth-card\.field-input,\.public-card\.field-input\{([^}]*)\}", css).group(1)
     assert "background-color:#ffffffd9" in glass.lower() and "background:" not in glass

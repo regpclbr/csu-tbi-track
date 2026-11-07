@@ -5,13 +5,13 @@ change to an activity is validated the same way and always writes the audit log.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, Exists, OuterRef, QuerySet, Subquery
+from django.db.models import Count, Exists, F, OuterRef, Q, QuerySet, Subquery
 from django.db.models.functions import Coalesce, Lower, Trim
 from django.utils import timezone
 
@@ -19,7 +19,7 @@ from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission
 from registrations.models import FormTemplate, FormType, Registration
 
-from .formatting import format_audit_value
+from .formatting import format_audit_value, format_time_range
 from .models import (
     Activity,
     ActivityAuditLog,
@@ -37,7 +37,8 @@ DRAFT, SCHEDULED, ONGOING, CONDUCTED = (
     ActivityStatus.CONDUCTED,
 )
 
-# Status changes are always manual. These are the only moves allowed; Conducted is final.
+# The only status moves; Conducted is final. Staff make them by hand (change_status); the system makes two of them
+# by itself on time (apply_automatic_statuses / refresh_status): Scheduled -> Ongoing and Ongoing -> Conducted.
 ALLOWED_STATUS_MOVES: dict[str, set[str]] = {
     DRAFT: {SCHEDULED},
     SCHEDULED: {ONGOING, DRAFT},
@@ -53,7 +54,8 @@ FIELD_LABELS: dict[str, str] = {
     "participant_categories": "Participant Categories",
     "start_date": "Start Date",
     "end_date": "End Date",
-    "time_schedule": "Time Schedule",
+    "start_time": "Start Time",
+    "end_time": "End Time",
     "venue": "Venue",
     "max_slots": "Max Slots",
     "registration_deadline": "Registration Deadline",
@@ -64,7 +66,7 @@ EDITABLE_FIELDS = tuple(FIELD_LABELS)
 CATEGORIES = "participant_categories"  # many-to-many (ACTIVITY_PARTICIPANT_CATEGORY), not a column
 SCALAR_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != CATEGORIES)  # columns on ACTIVITY
 REQUIRED_FIELDS = tuple(field for field in SCALAR_FIELDS if field != "description")
-TEXT_FIELDS = ("title", "description", "time_schedule", "venue")
+TEXT_FIELDS = ("title", "description", "venue")
 
 STATUS_LABEL = "Status"
 RESOURCE_PERSON_ADDED = "Resource Person Added"
@@ -97,6 +99,42 @@ def is_registration_open(activity: Activity, now: datetime | None = None) -> boo
         and now <= activity.registration_deadline
         and slots_remaining(activity) > 0
     )
+
+
+def activity_start_end(activity: Activity) -> tuple[datetime, datetime]:
+    """When the activity starts and ends, in Manila time (TIME_ZONE): the start date at start_time and the end
+    date at end_time. Without times (an old activity, migration 0005): 00:00 on the start date, and the end of
+    the end date (00:00 of the next day). The automatic status moves use these."""
+    if activity.start_time is None or activity.end_time is None:
+        start = datetime.combine(activity.start_date, time(0, 0))
+        end = datetime.combine(activity.end_date + timedelta(days=1), time(0, 0))
+    else:
+        start = datetime.combine(activity.start_date, activity.start_time)
+        end = datetime.combine(activity.end_date, activity.end_time)
+    return timezone.make_aware(start), timezone.make_aware(end)
+
+
+def has_attendance(activity: Activity) -> bool:
+    """At least one registration is marked as attended."""
+    return activity.registrations.filter(attendance_confirmed=True).exists()
+
+
+def attended_count(activity: Activity) -> int:
+    """How many registrations are marked as attended (the has_attendance() rule, counted)."""
+    return activity.registrations.filter(attendance_confirmed=True).count()
+
+
+def happening_now(activity_type: int | None = None, now: datetime | None = None) -> QuerySet:
+    """Ongoing activities running today (Manila): start_date <= today <= end_date, the one that started first first
+    (activity_start_end()'s order: start date, then start time; no time = 00:00). The automatic moves put an activity
+    in Ongoing when its start arrives, so callers run apply_automatic_statuses() first. An Ongoing activity past its
+    end date (attendance not marked yet) is not "happening now": the Needs attention box covers it (ASSUMPTIONS 351).
+    Draft and Scheduled are never included."""
+    today = _local_date(now or timezone.now())
+    activities = Activity.objects.filter(status__name=ONGOING, start_date__lte=today, end_date__gte=today)
+    if activity_type:
+        activities = activities.filter(activity_type_id=activity_type)
+    return activities.order_by("start_date", F("start_time").asc(nulls_first=True), "title", "pk")
 
 
 # --- Validation ---------------------------------------------------------------------------
@@ -186,6 +224,8 @@ def validate_activity_values(
         errors.setdefault("registration_deadline", "Registration deadline must be on or before the start date.")
     if _local_date(values["evaluation_deadline"]) < end:
         errors["evaluation_deadline"] = "Evaluation deadline must be on or after the end date."
+    if start == end and values["end_time"] <= values["start_time"]:
+        errors["end_time"] = "End time must be after the start time."
 
     max_slots = values["max_slots"]
     if max_slots < 1:
@@ -213,8 +253,9 @@ def _ensure_not_conducted(activity: Activity, action: str) -> None:
 # --- Audit log (append-only: insert only, never update or delete) ------------------------
 
 
-def _write_audit(activity: Activity, member: TBIMember, changes: list[tuple[str, object, object]]) -> None:
-    """Insert one ACTIVITY_AUDIT_LOG row per (label, old value, new value)."""
+def _write_audit(activity: Activity, member: TBIMember | None, changes: list[tuple[str, object, object]]) -> None:
+    """Insert one ACTIVITY_AUDIT_LOG row per (label, old value, new value). member None = System
+    (an automatic status change)."""
     for label, old, new in changes:
         ActivityAuditLog.objects.create(
             activity=activity,
@@ -335,7 +376,7 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
     return activity
 
 
-# --- Status changes (always manual) -------------------------------------------------------
+# --- Status changes ------------------------------------------------------------------------
 
 
 def allowed_next_statuses(activity: Activity) -> list[str]:
@@ -351,15 +392,12 @@ def allowed_next_statuses(activity: Activity) -> list[str]:
     return [name for name in order if name in allowed]
 
 
-@transaction.atomic
-def change_status(member: TBIMember, activity: Activity, new_status: str) -> Activity:
-    """Move an activity to `new_status` (a status name). Only ALLOWED_STATUS_MOVES are possible."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    current = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
+def _move_status(current: Activity, new_status: str, member: TBIMember | None) -> None:
+    """The one status transition, for staff (change_status) and the system (member None). `current` must be
+    locked (select_for_update). Checks ALLOWED_STATUS_MOVES, saves, and writes the audit row."""
     target = ActivityStatus.objects.filter(name=new_status).first()
     if target is None:
         raise ActivityError(f'Unknown status "{new_status}".')
-
     old_name = current.status.name
     if old_name == CONDUCTED:
         raise ActivityError("A Conducted activity is final: its status cannot change.")
@@ -370,13 +408,79 @@ def change_status(member: TBIMember, activity: Activity, new_status: str) -> Act
         raise ActivityError(
             f"Cannot move back to Draft: {count} {'person has' if count == 1 else 'people have'} already registered."
         )
-
     old_status = current.status
     current.status = target
     current.save(update_fields=["status", "updated_at"])
     _write_audit(current, member, [(STATUS_LABEL, old_status, target)])
+
+
+@transaction.atomic
+def change_status(member: TBIMember, activity: Activity, new_status: str) -> Activity:
+    """Move an activity to `new_status` (a status name) by hand. Only ALLOWED_STATUS_MOVES are possible;
+    staff may also move Ongoing -> Conducted when no attendance was recorded."""
+    require_permission(member, Permission.CREATE_ACTIVITY)
+    current = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    _move_status(current, new_status, member)
     activity.refresh_from_db()
     return activity
+
+
+def automatic_next_status(activity: Activity, now: datetime | None = None) -> str | None:
+    """The status the system moves this activity to now, or None (ASSUMPTIONS 66):
+    - Scheduled -> Ongoing once the start (activity_start_end) has arrived;
+    - Ongoing -> Conducted once the end has passed AND at least one attendance is recorded. Without attendance it
+      stays Ongoing (staff mark attendance, or change the status by hand).
+    Draft and Conducted are never touched."""
+    now = now or timezone.now()
+    status = activity.status.name
+    start, end = activity_start_end(activity)
+    if status == SCHEDULED and now >= start:
+        return ONGOING
+    if status == ONGOING and now >= end and has_attendance(activity):
+        return CONDUCTED
+    return None
+
+
+def _apply_automatic(activity_id: int, now: datetime) -> list[str]:
+    """Make every automatic move one activity is due for (Scheduled -> Ongoing -> Conducted can happen in one run),
+    each with its own audit row by "System". The row is locked with SKIP LOCKED: if staff (or another run) are
+    changing it right now, it is left for the next run. Returns the statuses it moved to."""
+    moved: list[str] = []
+    with transaction.atomic():
+        current = (
+            Activity.objects.select_for_update(skip_locked=True, of=("self",)).select_related("status")
+            .filter(pk=activity_id).first()
+        )
+        while current is not None and (target := automatic_next_status(current, now)):
+            _move_status(current, target, None)
+            moved.append(target)
+    return moved
+
+
+def apply_automatic_statuses(now: datetime | None = None) -> int:
+    """Run the automatic status moves for every activity that may be due (the 5-minute Django-Q2 schedule and the
+    Activities list). Only changes statuses: it never sends emails. Returns how many moves were made."""
+    now = now or timezone.now()
+    today = timezone.localdate(now)
+    candidates = (
+        Activity.objects.filter(start_date__lte=today)
+        .filter(Q(status__name=SCHEDULED) | Q(status__name=ONGOING, end_date__lte=today))
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
+    return sum(len(_apply_automatic(activity_id, now)) for activity_id in list(candidates))
+
+
+def refresh_status(activity: Activity, now: datetime | None = None) -> bool:
+    """The automatic status moves for one activity (the activity page, on every load). Reloads `activity` when
+    its status changed. Never sends emails. Returns True if the status changed."""
+    now = now or timezone.now()
+    if activity.status.name not in (SCHEDULED, ONGOING) or automatic_next_status(activity, now) is None:
+        return False
+    if not _apply_automatic(activity.pk, now):
+        return False
+    activity.refresh_from_db()
+    return True
 
 
 # --- Resource persons --------------------------------------------------------------------
@@ -594,7 +698,9 @@ def get_activity_detail(activity: Activity) -> dict:
         "participant_categories": [category.name for category in categories],
         "start_date": activity.start_date,
         "end_date": activity.end_date,
-        "time_schedule": activity.time_schedule,
+        "start_time": activity.start_time,
+        "end_time": activity.end_time,
+        "time_text": format_time_range(activity.start_time, activity.end_time),
         "venue": activity.venue,
         "max_slots": activity.max_slots,
         "registered_count": count,

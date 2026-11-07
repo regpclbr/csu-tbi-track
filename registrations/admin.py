@@ -69,7 +69,7 @@ class FormAnswerInline(ReadOnlyAdminMixin, admin.TabularInline):
 class RegistrationAdmin(ActivityDataAdminMixin, ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = (
         "name", "email", "activity", "participant_category", "registration_date",
-        "attendance_confirmed", "confirmation_method",
+        "attendance_confirmed", "confirmation_method", "attendance_marked_by", "attendance_marked_at",
     )
     list_filter = ("attendance_confirmed", "participant_category", "activity")
     search_fields = ("name", "email")
