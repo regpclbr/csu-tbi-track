@@ -12,7 +12,7 @@ from django.utils import timezone
 from activities import attention, services
 from activities.models import Activity
 from registrations import services as registration_services
-from registrations.models import FormType, Registration
+from registrations.models import EvaluationSubmission, FormType, Registration
 
 pytestmark = pytest.mark.django_db
 
@@ -55,11 +55,42 @@ def test_documents_overdue_and_due_soon_use_the_reminder_rule(new_activity) -> N
     assert "Required documents due soon and not uploaded: Request Letter." in items
 
 
-def test_ongoing_without_attendance_then_ended(new_activity, move_to) -> None:
+def test_ongoing_without_attendance_then_ended(new_activity, move_to, register) -> None:
     move_to(new_activity, "Ongoing")
+    register(new_activity)
     assert attention.ONGOING_NO_ATTENDANCE in texts(new_activity, manila(new_activity.start_date, 10))
     after = texts(new_activity, manila(new_activity.end_date, 18))
     assert attention.ENDED_NO_ATTENDANCE in after and attention.ONGOING_NO_ATTENDANCE not in after
+
+
+def test_ended_with_nobody_registered_says_so(new_activity, move_to) -> None:
+    """ASSUMPTIONS 353: there is no attendance to mark, so staff conduct it (or change the status) by hand."""
+    move_to(new_activity, "Ongoing")
+    during = texts(new_activity, manila(new_activity.start_date, 10))
+    assert attention.ONGOING_NO_ATTENDANCE in during and attention.NO_REGISTRATIONS not in during
+    items = attention.activity_attention(new_activity, manila(new_activity.end_date, 18))
+    assert attention.AttentionItem(attention.NO_REGISTRATIONS, "overview", "attendance") in items
+    assert attention.ENDED_NO_ATTENDANCE not in [item.text for item in items]
+    assert attention.NO_REGISTRATIONS == "No one registered. Mark as Conducted or change the status."
+
+
+def test_attendance_marked_after_the_evaluation_closed(new_activity, move_to, register, director) -> None:
+    """The Ideation Bootcamp case: attendance marked after evaluation_deadline, so these attendees' links never work."""
+    form = registration_services.create_form(director, new_activity, FormType.EVALUATION)
+    move_to(new_activity, "Ongoing")
+    late, on_time, evaluated = register(new_activity, 3)
+    registration_services.set_attendance(director, new_activity, [late.pk, on_time.pk, evaluated.pk], True, "email")
+    after_deadline = new_activity.evaluation_deadline + timedelta(hours=5)
+    Registration.objects.filter(pk__in=[late.pk, evaluated.pk]).update(attendance_marked_at=after_deadline)
+    Registration.objects.filter(pk=on_time.pk).update(attendance_marked_at=new_activity.evaluation_deadline - timedelta(days=1))
+    services.change_status(director, new_activity, "Conducted")
+    now = after_deadline + timedelta(hours=1)
+    assert attention.ATTENDANCE_AFTER_EVALUATION in texts(new_activity, now)
+    assert attention.ATTENDANCE_AFTER_EVALUATION == "Attendance was marked after the evaluation closed. These attendees can't evaluate."
+    # Only attendees who still have to evaluate count: when the late one is the only one and has evaluated, no item
+    Registration.objects.filter(pk=late.pk).update(attendance_marked_at=on_time.attendance_marked_at)
+    EvaluationSubmission.objects.create(template=form, registration=evaluated, certificate_name="X", certificate_email="x@example.com")
+    assert attention.ATTENDANCE_AFTER_EVALUATION not in texts(new_activity, now)
 
 
 def test_conducted_with_attendees_but_no_certificates(new_activity, move_to, register, director) -> None:

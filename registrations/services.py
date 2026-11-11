@@ -22,6 +22,7 @@ from accounts.permissions import Permission, require_permission
 from activities.formatting import format_date, format_datetime, format_time, format_time_range
 from activities.models import Activity, ActivityStatus, ParticipantCategory
 from activities.services import activity_start_end, is_registration_open, open_for_registration, slots_remaining
+from config.mail import is_blocked_address, prints_emails
 from config.parsing import parse_bool
 from config.ratelimit import count_attempt
 
@@ -898,7 +899,11 @@ def deliver_evaluation_link(registration_id: int, first_time_only: bool = False,
     The row is locked while sending, so two runs never email the same person at the same time.
     first_time_only (the automatic job): skip anyone already sent a link or whose link failed, and skip a row
     another run is busy with (SKIP LOCKED). Returns "sent", "failed", "already submitted", "already sent" or
-    "skipped" (not found, or locked by another run)."""
+    "skipped" (not found, or locked by another run).
+
+    evaluation_link_delivery records whether a "sent" email really left (SENT) or was only printed in the terminal:
+    PRINTED_DEV while the mailer is the console one (config.mail.prints_emails), PRINTED_DEMO for a blocked demo
+    address (config.mail.is_blocked_address, which GuardedSMTPBackend prints instead of sending)."""
     from . import emails
 
     with transaction.atomic():
@@ -915,12 +920,24 @@ def deliver_evaluation_link(registration_id: int, first_time_only: bool = False,
         except Exception as error:  # the mail server said no: record it, staff can resend
             logger.error("Evaluation link for registration %s was not sent: %s.", registration_id, type(error).__name__)
             registration.evaluation_link_sent_at, registration.evaluation_link_failed_at = None, now or timezone.now()
+            registration.evaluation_link_delivery = None
             result = "failed"
         else:
             registration.evaluation_link_sent_at, registration.evaluation_link_failed_at = now or timezone.now(), None
+            registration.evaluation_link_delivery = _delivery(registration.email)
             result = "sent"
-        registration.save(update_fields=["evaluation_link_sent_at", "evaluation_link_failed_at", "updated_at"])
+        registration.save(update_fields=[
+            "evaluation_link_sent_at", "evaluation_link_failed_at", "evaluation_link_delivery", "updated_at",
+        ])
     return result
+
+
+def _delivery(address: str) -> str:
+    """How an email that the mailer accepted went out (Registration.LinkDelivery)."""
+    Delivery = Registration.LinkDelivery
+    if prints_emails():
+        return Delivery.PRINTED_DEV
+    return Delivery.PRINTED_DEMO if is_blocked_address(address) else Delivery.SENT
 
 
 def automatic_link_activities(now: datetime | None = None) -> list[Activity]:
@@ -1027,24 +1044,71 @@ def guard_evaluation_request(ip: str, email, honeypot) -> bool:
     return True
 
 
+def _is_valid_email(email: str) -> bool:
+    try:
+        validate_email(email)
+    except ValidationError:
+        return False
+    return True
+
+
+def _request_result(registration: Registration, page_open: bool) -> str:
+    """Registration.LinkRequestResult of one request, in this order: the page took no requests, not attended,
+    already evaluated, otherwise queued (= evaluation_link_recipients())."""
+    Result = Registration.LinkRequestResult
+    if not page_open:
+        return Result.WINDOW_CLOSED
+    if not registration.attendance_confirmed:
+        return Result.NOT_ATTENDED
+    if EvaluationSubmission.objects.filter(registration=registration).exists():
+        return Result.ALREADY_EVALUATED
+    return Result.QUEUED
+
+
+def registrations_with_email(activity: Activity, email: str) -> list[Registration]:
+    """This activity's registrations with that email, ignoring case (the database allows only one,
+    unique_registration_per_activity_email, but callers handle every match)."""
+    return list(activity.registrations.filter(email__iexact=email).order_by("pk"))
+
+
+def _record_request(activity: Activity, email: str, page_open: bool, now: datetime) -> list[int]:
+    """Store the request on every registration of this activity with that email (evaluation_link_requested_at and
+    _request_result: the latest request only) and return the IDs to queue. An email that matches no registration
+    is stored nowhere."""
+    to_queue = []
+    for registration in registrations_with_email(activity, email):
+        result = _request_result(registration, page_open)
+        Registration.objects.filter(pk=registration.pk).update(
+            evaluation_link_requested_at=now, evaluation_link_request_result=result,
+        )
+        if result == Registration.LinkRequestResult.QUEUED:
+            to_queue.append(registration.pk)
+    return to_queue
+
+
 def request_evaluation_link(activity: Activity, email, now: datetime | None = None) -> None:
     """Someone typed an email on the general evaluation page: email the personal evaluation link (the same
     Django-Q2 task as send_evaluation_links) to every registration of this activity with that email that
     attended and has not evaluated yet. The database allows one registration per email per activity
     (unique_registration_per_activity_email), but every match is handled anyway.
 
+    Every registration with that email also gets the request recorded (evaluation_link_requested_at and
+    evaluation_link_request_result: queued / not_attended / already_evaluated / window_closed), so staff see on the
+    Evaluation tab why no link went out (ASSUMPTIONS 354). The delivery itself is recorded by deliver_evaluation_link.
+
     Returns nothing on purpose: the caller always shows EVALUATION_REQUEST_SENT. The link goes only to the
     registered address, so typing someone's email never shows their link. Raises RegistrationError when the
-    page takes no requests now (evaluation_request_state) and ValidationError for an invalid email address.
+    page takes no requests now (evaluation_request_state; a valid email is still recorded as window_closed) and
+    ValidationError for an invalid email address.
     """
+    now = now or timezone.now()
     state = evaluation_request_state(activity, now)
-    if state.reason:
-        raise RegistrationError(state.reason)
     email = str(email or "").strip().lower()
-    try:
-        validate_email(email)
-    except ValidationError as error:
-        raise ValidationError({"email": "Enter a valid email address."}) from error
-    recipients = evaluation_link_recipients(activity).filter(email__iexact=email)
-    for registration_id in recipients.order_by("pk").values_list("pk", flat=True):
+    if state.reason:
+        if _is_valid_email(email):
+            _record_request(activity, email, page_open=False, now=now)
+        raise RegistrationError(state.reason)
+    if not _is_valid_email(email):
+        raise ValidationError({"email": "Enter a valid email address."})
+    for registration_id in _record_request(activity, email, page_open=True, now=now):
         transaction.on_commit(lambda registration_id=registration_id: queue_evaluation_link(registration_id), robust=True)

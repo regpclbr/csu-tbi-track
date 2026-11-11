@@ -140,7 +140,7 @@ def test_evaluation_tab_explains_counts_and_lists_who_has_not_answered(client, d
     html = client.get(reverse("activities:detail", args=[activity.pk]) + "?tab=evaluation").content.decode()
     assert "Who gets the link: everyone marked as attended who has not answered the evaluation yet." in html
     assert "after the activity becomes Conducted" in html and "The evaluation opens on" in html
-    assert "Development mode: emails are printed in the terminal" in html
+    assert "Emails are only printed in the qcluster terminal, not sent." in html
     assert people[0].name in html and "Failed" in html and "Not sent yet" in html
     assert "Resend to all who haven&#x27;t answered" in html or "Resend to all who haven't answered" in html
 

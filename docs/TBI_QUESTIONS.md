@@ -19,6 +19,7 @@ all of them are to be validated with the TBI too.
 
 - **Items 66, 346:** The system now moves an activity from Scheduled to Ongoing when it starts, and from Ongoing to Conducted after it ends once at least one attendance is recorded (staff can still change the status by hand). Is that right? Is it fine that registration closes when the activity starts?
 - **Item 345:** Activities now have a start time and an end time (for example 8:00 AM – 5:00 PM). For activities over several days, are the hours the same every day, or does each day need its own time?
+- **Items 353, 356:** An activity that has ended but is still Ongoing (no attendance recorded, or nobody registered) is listed under "Needs follow-up" until staff mark attendance or mark it as Conducted. Is that the right way to handle it, or should the system conduct it by itself after some days?
 
 ## Registration, attendance and evaluation
 
@@ -30,6 +31,7 @@ all of them are to be validated with the TBI too.
 - **Item 111 (check-in):** Should participants check themselves in through a link (for example a QR code at the venue)? (Now only staff mark attendance.)
 - **Item 3 (walk-ins):** Should walk-in participants be able to register on the day of the activity? (Now registration closes when the activity starts, and walk-ins are not recorded.)
 - **Item 348:** The evaluation link is now emailed automatically once the activity is Conducted. A failed email is not retried automatically; staff can resend it. Is that acceptable?
+- **Item 354:** When someone types their email on the general evaluation link, staff now see on the Evaluation tab that this registered person asked for their link and whether it was sent (or why not). Emails of people who did not register are never stored. Is that acceptable for data privacy?
 
 ## Documents
 

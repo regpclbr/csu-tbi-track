@@ -124,17 +124,34 @@ def attended_count(activity: Activity) -> int:
     return activity.registrations.filter(attendance_confirmed=True).count()
 
 
+def _not_ended(now: datetime) -> Q:
+    """activity_start_end()'s end is still ahead, as a query: the end date is later than today, or it is today and
+    the end time is later than now (no end time = the end of the end date, so still ahead all day)."""
+    local = timezone.localtime(now) if timezone.is_aware(now) else now
+    today, clock = local.date(), local.time().replace(tzinfo=None)
+    return Q(end_date__gt=today) | Q(end_date=today, end_time__isnull=True) | Q(end_date=today, end_time__gt=clock)
+
+
 def happening_now(activity_type: int | None = None, now: datetime | None = None) -> QuerySet:
-    """Ongoing activities running today (Manila): start_date <= today <= end_date, the one that started first first
-    (activity_start_end()'s order: start date, then start time; no time = 00:00). The automatic moves put an activity
-    in Ongoing when its start arrives, so callers run apply_automatic_statuses() first. An Ongoing activity past its
-    end date (attendance not marked yet) is not "happening now": the Needs attention box covers it (ASSUMPTIONS 351).
+    """Ongoing activities running today (Manila): start_date <= today <= end_date and the end
+    (activity_start_end) not passed yet, the one that started first first (start date, then start time; no time =
+    00:00). The automatic moves put an activity in Ongoing when its start arrives, so callers run
+    apply_automatic_statuses() first. An Ongoing activity whose end has passed (attendance not marked yet) is not
+    "happening now": it is in the Activities list's "Needs follow-up" group and the Needs attention box
+    (ASSUMPTIONS 351, 353). The list's group uses is_happening_now(), the same rule (parity test).
     Draft and Scheduled are never included."""
-    today = _local_date(now or timezone.now())
-    activities = Activity.objects.filter(status__name=ONGOING, start_date__lte=today, end_date__gte=today)
+    now = now or timezone.now()
+    today = _local_date(now)
+    activities = Activity.objects.filter(status__name=ONGOING, start_date__lte=today, end_date__gte=today).filter(_not_ended(now))
     if activity_type:
         activities = activities.filter(activity_type_id=activity_type)
     return activities.order_by("start_date", F("start_time").asc(nulls_first=True), "title", "pk")
+
+
+def is_happening_now(activity: Activity, now: datetime) -> bool:
+    """happening_now()'s rule for one loaded activity (the Activities list's "Happening now" group)."""
+    _start, end = activity_start_end(activity)
+    return activity.status.name == ONGOING and activity.start_date <= _local_date(now) <= activity.end_date and now < end
 
 
 # --- Validation ---------------------------------------------------------------------------
@@ -527,17 +544,22 @@ def remove_resource_person(member: TBIMember, activity: Activity, resource_perso
 
 # --- Read services (any signed-in member) -------------------------------------------------
 
+# Plain-list sorts. Every option ends with tie-breakers in the SAME direction (start time, then ID), so activities on
+# the same date keep a stable order that matches the option (before, ties were always by ID ascending).
+_START_ASC = ("start_date", F("start_time").asc(nulls_first=True))
+_START_DESC = ("-start_date", F("start_time").desc(nulls_last=True))
 SORT_OPTIONS = {
-    "title": ("title",),
-    "-title": ("-title",),
-    "start_date": ("start_date",),
-    "-start_date": ("-start_date",),
-    "registered": ("registered",),
-    "-registered": ("-registered",),
-    "created_at": ("created_at",),
-    "-created_at": ("-created_at",),
+    "title": ("title", *_START_ASC, "activity_id"),
+    "-title": ("-title", *_START_DESC, "-activity_id"),
+    "start_date": (*_START_ASC, "activity_id"),
+    "-start_date": (*_START_DESC, "-activity_id"),
+    "registered": ("registered", *_START_ASC, "activity_id"),
+    "-registered": ("-registered", *_START_DESC, "-activity_id"),
+    "created_at": ("created_at", "activity_id"),
+    "-created_at": ("-created_at", "-activity_id"),
 }
-DEFAULT_SORT = "-start_date"
+DEFAULT_SORT = "-start_date"  # the JSON API's default; the Activities page defaults to GROUPED_SORT
+GROUPED_SORT = "grouped"  # the Activities page only: grouped_activities() (sections), not a plain order
 
 
 def _with_registered_count(queryset: QuerySet) -> QuerySet:
@@ -571,7 +593,11 @@ def list_activities(
     sort = filters.get("sort") or DEFAULT_SORT
     if sort not in SORT_OPTIONS:
         raise ActivityError(f"Unknown sort \"{sort}\". Use one of: {', '.join(SORT_OPTIONS)}.")
+    return _paginate(_filtered_activities(filters, now).order_by(*SORT_OPTIONS[sort]), page, per_page)
 
+
+def _filtered_activities(filters: dict, now: datetime | None = None) -> QuerySet:
+    """The list filters (list_activities and grouped_activities share them), with `.registered`, unordered."""
     activities = Activity.objects.all()
     if filters.get("preset"):
         activities = preset_activities(filters["preset"], now)
@@ -591,8 +617,78 @@ def list_activities(
                 )
             )
         )
-    activities = _overlapping(activities, filters.get("date_from"), filters.get("date_to"))
-    return _paginate(activities.order_by(*SORT_OPTIONS[sort], "activity_id"), page, per_page)
+    return _overlapping(activities, filters.get("date_from"), filters.get("date_to"))
+
+
+# --- The grouped Activities list (the page's default sort, ASSUMPTIONS 353) -----------------------------------
+
+NOW, FOLLOW_UP, UPCOMING, DRAFTS, PAST = "now", "follow_up", "upcoming", "drafts", "past"
+ACTIVITY_GROUPS = [
+    (NOW, "Happening now"),
+    (FOLLOW_UP, "Needs follow-up"),
+    (UPCOMING, "Upcoming"),
+    (DRAFTS, "Drafts"),
+    (PAST, "Past"),
+]
+
+
+def activity_group(activity: Activity, now: datetime) -> str:
+    """Which section of the grouped list an activity is in (activity_start_end and the automatic job's rules):
+    - Conducted -> Past.
+    - Ongoing: Happening now while is_happening_now() (= happening_now()); Needs follow-up once its end has passed
+      (exactly the activities automatic_next_status() cannot conduct: no attendance yet); otherwise it starts on a
+      later day (moved to Ongoing early by hand) -> Upcoming.
+    - Draft: Needs follow-up once its start has arrived (it should be Scheduled or Ongoing by now); otherwise Drafts.
+    - Scheduled -> Upcoming (the automatic move makes it Ongoing when the start arrives)."""
+    status = activity.status.name
+    start, end = activity_start_end(activity)
+    if status == CONDUCTED:
+        return PAST
+    if status == ONGOING:
+        if now >= end:
+            return FOLLOW_UP
+        return NOW if is_happening_now(activity, now) else UPCOMING
+    if status == DRAFT:
+        return FOLLOW_UP if now >= start else DRAFTS
+    return UPCOMING
+
+
+@dataclass
+class ActivityGroup:
+    """One section of the grouped list. `items` = the activities shown (with `.registered`); `total` = how many
+    are in the section; `page` = the pager (Past only: the other sections show every activity)."""
+
+    key: str
+    label: str
+    items: list
+    total: int
+    page: PageResult | None = None
+
+
+def grouped_activities(
+    filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE, now: datetime | None = None
+) -> list[ActivityGroup]:
+    """The Activities page's default view: the list filters (search, type, status, category, dates, preset) applied,
+    then the activities split into ACTIVITY_GROUPS by activity_group(). Order inside a section: soonest start first
+    (Happening now, Needs follow-up, Upcoming, Drafts); Past (Conducted) newest first, `per_page` a page. Empty
+    sections are left out. Callers run apply_automatic_statuses() first (the list page does)."""
+    now = now or timezone.now()
+    filters = filters or {}
+    activities = _filtered_activities(filters, now)
+    sections: dict[str, list[Activity]] = {key: [] for key, _ in ACTIVITY_GROUPS if key != PAST}
+    for activity in activities.exclude(status__name=CONDUCTED):
+        sections[activity_group(activity, now)].append(activity)
+    groups = []
+    for key, label in ACTIVITY_GROUPS:
+        if key == PAST:
+            past = _paginate(activities.filter(status__name=CONDUCTED).order_by(*SORT_OPTIONS["-start_date"]), page, per_page)
+            if past.total:
+                groups.append(ActivityGroup(key, label, past.items, past.total, past))
+            continue
+        items = sorted(sections[key], key=lambda a: (activity_start_end(a)[0], a.title, a.pk))
+        if items:
+            groups.append(ActivityGroup(key, label, items, len(items)))
+    return groups
 
 
 def open_for_registration(queryset: QuerySet | None = None, now: datetime | None = None) -> QuerySet:

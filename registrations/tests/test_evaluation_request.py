@@ -97,25 +97,20 @@ def test_one_registration_per_email_per_activity_is_enforced_by_the_database(ong
                                     email=" " + attendee.email.upper() + " ")
 
 
-class _TwoMatches:
-    """Recipients whose email filter matches two registrations: what a duplicate email would look like."""
-
-    def __init__(self, ids: list[int]):
-        self.ids = ids
-
-    def filter(self, **kwargs):
-        return Registration.objects.filter(pk__in=self.ids)
-
-
 def test_every_eligible_registration_with_that_email_is_queued(ongoing, monkeypatch, django_capture_on_commit_callbacks) -> None:
     """If more than one registration ever matched (the database prevents it, see above), each gets its own link."""
     queued = []
     monkeypatch.setattr(services, "queue_evaluation_link", queued.append)
-    ids = [ongoing["attendee"].pk, ongoing["absent"].pk]
-    monkeypatch.setattr(services, "evaluation_link_recipients", lambda activity: _TwoMatches(ids))
+    absent, done = ongoing["absent"], ongoing["done"]
+    Registration.objects.filter(pk=absent.pk).update(attendance_confirmed=True)  # a second attendee
+    absent.refresh_from_db()
+    matches = [ongoing["attendee"], absent, done]
+    monkeypatch.setattr(services, "registrations_with_email", lambda activity, email: matches)
     with django_capture_on_commit_callbacks(execute=True):
         services.request_evaluation_link(ongoing["activity"], "person0@example.com")
-    assert queued == sorted(ids)
+    assert queued == [ongoing["attendee"].pk, absent.pk]  # each attendee gets their own link
+    done.refresh_from_db()  # each match gets its own result
+    assert done.evaluation_link_request_result == Registration.LinkRequestResult.ALREADY_EVALUATED
 
 
 def test_invalid_email_is_a_field_error(ongoing) -> None:

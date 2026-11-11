@@ -257,13 +257,21 @@ def evaluation_request_page(request: HttpRequest, activity_id: int) -> HttpRespo
     email they registered with; services.request_evaluation_link emails that registration's personal link when
     they attended and have not evaluated yet. Every accepted request (and a rate-limited or honeypot one) ends on
     the same neutral page, so it never reveals who attended. Before the window opens (or after it closes, or
-    without an evaluation form) only the reason is shown.
+    without an evaluation form) only the reason is shown. A POST then (a page left open past the deadline) still goes
+    through the guard and the service, which records "window_closed" for a registered email so staff can see why
+    nothing was sent (ASSUMPTIONS 354); the answer is the same reason card as a GET.
     """
     activity, refusal = _evaluation_request_activity(request, activity_id)
     if refusal:
         return refusal
     state = services.evaluation_request_state(activity)
     if state.kind != "open":
+        email = request.POST.get("email", "")
+        if request.method == "POST" and guard_evaluation_request(request, email, request.POST.get(services.HONEYPOT_FIELD)):
+            try:
+                services.request_evaluation_link(activity, email)
+            except (ValidationError, services.RegistrationError):
+                pass  # always refused while not open; only the record is wanted
         title, icon, tone = EVALUATION_NOTICES["closed" if state.kind == "closed" else "not_yet_open"]
         return notice(request, title=title, text=state.reason, icon=icon, tone=tone, ended=activity)
 

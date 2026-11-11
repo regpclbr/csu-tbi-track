@@ -18,8 +18,10 @@ from .models import Activity, ActivityStatus
 
 LIST, CALENDAR = "list", "calendar"
 
-# The sort options of services.list_activities (SORT_OPTIONS), with readable labels (a test checks they match).
+# The page's sort options: "Grouped" (the default, services.grouped_activities) and the plain orders of
+# services.list_activities (SORT_OPTIONS), with readable labels (a test checks they match).
 SORT_CHOICES = [
+    (services.GROUPED_SORT, "Grouped (recommended)"),
     ("-start_date", "Start date: newest first"),
     ("start_date", "Start date: oldest first"),
     ("title", "Title: A to Z"),
@@ -56,7 +58,7 @@ class ListFilters:
     participant_category: int | None = None
     date_from: date | None = None
     date_to: date | None = None
-    sort: str = services.DEFAULT_SORT
+    sort: str = services.GROUPED_SORT
     preset: str = ""  # one of services.LIST_PRESETS (a list card), or ""
     page: str = "1"
     view: str = LIST
@@ -79,12 +81,16 @@ class ListFilters:
             "participant_category": values.participant_category or "",
             "date_from": values.date_from.isoformat() if values.date_from else "",
             "date_to": values.date_to.isoformat() if values.date_to else "",
-            "sort": "" if values.sort == services.DEFAULT_SORT else values.sort,
+            "sort": "" if values.sort == services.GROUPED_SORT else values.sort,
             "preset": values.preset,
             "view": "" if values.view == LIST else values.view,
             "month": values.month.strftime("%Y-%m") if values.view == CALENDAR else "",
         }
         return urlencode({key: value for key, value in params.items() if value not in ("", None)})
+
+    @property
+    def grouped(self) -> bool:
+        return self.sort == services.GROUPED_SORT
 
     @property
     def any_set(self) -> bool:
@@ -151,8 +157,8 @@ def parse_list_filters(params, today: date | None = None) -> ListFilters:
         month=today.replace(day=1),
         errors=errors,
     )
-    sort = params.get("sort") or services.DEFAULT_SORT
-    if sort in services.SORT_OPTIONS:
+    sort = params.get("sort") or services.GROUPED_SORT
+    if sort == services.GROUPED_SORT or sort in services.SORT_OPTIONS:
         filters.sort = sort
     else:
         errors.append("Ignored an unknown sort order.")
@@ -226,20 +232,56 @@ def _percent(registered: int, max_slots: int) -> int:
     return min(100, round(100 * registered / max_slots)) if max_slots else 0
 
 
-def list_rows(activities: list[Activity]) -> list[dict]:
+def list_rows(activities: list[Activity], now: datetime | None = None) -> list[dict]:
     """Rows of the list: the activity, its categories, registered/max (`registered` comes from
-    services.list_activities) and how many things need attention (activities.attention, fixed number of queries)."""
-    counts = attention.attention_counts(activities)
-    return [
-        {
+    services.list_activities) and how many things need attention (activities.attention, fixed number of queries).
+    `note`: the attention item about attendance or a late Draft (the "Needs follow-up" cards show it)."""
+    items = attention.attention_items(activities, now)
+    rows = []
+    for activity in activities:
+        own = items.get(activity.pk, [])
+        rows.append({
             "activity": activity,
-            "attention": counts.get(activity.pk, 0),
+            "attention": len(own),
+            "note": next((item.text for item in own if item.kind in ("draft", "attendance")), ""),
             "categories": sorted(category.name for category in activity.participant_categories.all()),
             "registered": activity.registered,
             "percent": _percent(activity.registered, activity.max_slots),
-        }
-        for activity in activities
-    ]
+        })
+    return rows
+
+
+def _follow_up_actions(activity: Activity, can_create: bool) -> dict:
+    """The quick actions of a "Needs follow-up" card. Ongoing (its end has passed): "Mark attendance" (the
+    Registrations tab) and "Mark as Conducted" when services.allowed_next_statuses() offers it; both need
+    can_create_activity (the service and the views check it again). Draft: only "Open activity"."""
+    ongoing = activity.status.name == ActivityStatus.ONGOING
+    return {
+        "mark_attendance": ongoing and can_create,
+        "mark_conducted": ongoing and can_create and ActivityStatus.CONDUCTED in services.allowed_next_statuses(activity),
+    }
+
+
+def grouped_sections(groups: list[services.ActivityGroup], can_create: bool, now: datetime | None = None) -> list[dict]:
+    """The grouped list (services.grouped_activities) ready to show: one attention load for every section, the
+    follow-up cards' actions, and Past split under month headings ("October 2026", by start date)."""
+    rows = iter(list_rows([activity for group in groups for activity in group.items], now))
+    sections = []
+    for group in groups:
+        section_rows = [next(rows) for _ in group.items]
+        if group.key == services.FOLLOW_UP:
+            for row in section_rows:
+                row["actions"] = _follow_up_actions(row["activity"], can_create)
+        months = []
+        if group.key == services.PAST:
+            for row in section_rows:
+                label = row["activity"].start_date.strftime("%B %Y")
+                if not months or months[-1]["label"] != label:
+                    months.append({"label": label, "rows": []})
+                months[-1]["rows"].append(row)
+        sections.append({"key": group.key, "label": group.label, "total": group.total, "rows": section_rows,
+                         "months": months, "page": group.page})
+    return sections
 
 
 CALENDAR_CHIPS_PER_DAY = 3

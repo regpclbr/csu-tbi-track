@@ -225,12 +225,57 @@ def link_explanation(activity: Activity) -> list[str]:
 
 
 def link_state(registration: Registration) -> dict:
-    """One attendee's link: sent (when), failed (when) or not sent yet."""
+    """One attendee's link: sent (when; "Printed only" when the email was only printed in the terminal), failed
+    (when) or not sent yet."""
     if registration.evaluation_link_failed_at:
         return {"label": "Failed", "tone": "danger", "at": registration.evaluation_link_failed_at}
     if registration.evaluation_link_sent_at:
-        return {"label": "Sent", "tone": "success", "at": registration.evaluation_link_sent_at}
+        printed = registration.evaluation_link_delivery in PRINTED
+        return {"label": "Printed only" if printed else "Sent", "tone": "warning" if printed else "success",
+                "at": registration.evaluation_link_sent_at}
     return {"label": "Not sent yet", "tone": "neutral", "at": None}
+
+
+Delivery, RequestResult = Registration.LinkDelivery, Registration.LinkRequestResult
+PRINTED = (Delivery.PRINTED_DEV, Delivery.PRINTED_DEMO)
+LINK_REQUEST_ROWS = 20
+# Why a request sent nothing (Registration.evaluation_link_request_result).
+REQUEST_NOT_SENT = {
+    RequestResult.NOT_ATTENDED: "not marked as attended",
+    RequestResult.ALREADY_EVALUATED: "already evaluated",
+    RequestResult.WINDOW_CLOSED: "the evaluation was not open",
+}
+DELIVERY_NOT_SENT = {
+    Delivery.PRINTED_DEV: "only printed in the qcluster terminal (development mode)",
+    Delivery.PRINTED_DEMO: "demo address, only printed in the terminal",
+}
+
+
+def link_request_outcome(registration: Registration) -> dict:
+    """The latest general-link request of one registration and what came of it (ASSUMPTIONS 354), from
+    evaluation_link_request_result and, for a queued request, the delivery recorded after it
+    (evaluation_link_sent_at / _failed_at / _delivery, set by services.deliver_evaluation_link):
+    {"sent": bool, "text": "Sent" | "Not sent: <reason>" | "Queued: waiting for qcluster"}."""
+    result, requested = registration.evaluation_link_request_result, registration.evaluation_link_requested_at
+    if result in REQUEST_NOT_SENT:
+        return {"sent": False, "pending": False, "text": f"Not sent: {REQUEST_NOT_SENT[result]}"}
+    failed, sent = registration.evaluation_link_failed_at, registration.evaluation_link_sent_at
+    if failed and failed >= requested:
+        return {"sent": False, "pending": False, "text": "Not sent: the email failed (resend it below)"}
+    if sent and sent >= requested:
+        if registration.evaluation_link_delivery in DELIVERY_NOT_SENT:
+            return {"sent": False, "pending": False, "text": f"Not sent: {DELIVERY_NOT_SENT[registration.evaluation_link_delivery]}"}
+        return {"sent": True, "pending": False, "text": "Sent"}
+    return {"sent": False, "pending": True, "text": "Queued: waiting for qcluster to send it"}
+
+
+def link_requests(activity: Activity) -> list[dict]:
+    """The Evaluation tab's "Link requests" list: the registrations of this activity whose email was typed on the
+    general evaluation page, the latest request first (LINK_REQUEST_ROWS). Only registrations: an email that matches
+    nobody is never stored. Staff already see who registered, attended and evaluated (Registrations tab)."""
+    rows = activity.registrations.filter(evaluation_link_requested_at__isnull=False).order_by(
+        "-evaluation_link_requested_at", "-registration_id")[:LINK_REQUEST_ROWS]
+    return [{"registration": r, "requested_at": r.evaluation_link_requested_at, **link_request_outcome(r)} for r in rows]
 
 
 def evaluation_links(member, activity: Activity, params) -> dict:
@@ -243,6 +288,7 @@ def evaluation_links(member, activity: Activity, params) -> dict:
         "explanation": link_explanation(activity),
         "console_mode": prints_emails(),
         "link_counts": services.evaluation_link_counts(activity),
+        "link_requests": link_requests(activity),
         "link_rows": [{"registration": r, "state": link_state(r)} for r in page.object_list],
         "link_page": page,
         "link_result": {"page": page.number, "num_pages": page.paginator.num_pages, "total": page.paginator.count},

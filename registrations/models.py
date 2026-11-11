@@ -129,9 +129,34 @@ class Registration(models.Model):
     attendance_marked_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="attendance_marked"
     )
+    class LinkRequestResult(models.TextChoices):
+        """What happened to the latest request on the general evaluation page (/evaluation/<id>/) for this
+        registration's email (services.request_evaluation_link)."""
+
+        QUEUED = "queued", "Queued"
+        NOT_ATTENDED = "not_attended", "Not marked as attended"
+        ALREADY_EVALUATED = "already_evaluated", "Already evaluated"
+        WINDOW_CLOSED = "window_closed", "Evaluation not open"
+
+    class LinkDelivery(models.TextChoices):
+        """How the last evaluation link email went out (services.deliver_evaluation_link): really sent, or only
+        printed in the terminal (development mode: the console mailer; or a demo address, config.mail)."""
+
+        SENT = "sent", "Sent"
+        PRINTED_DEV = "printed_dev", "Printed in the terminal (development mode)"
+        PRINTED_DEMO = "printed_demo", "Printed in the terminal (demo address)"
+
     # The last evaluation link email: sent, or failed (setting one clears the other). Both empty = never sent.
     evaluation_link_sent_at = models.DateTimeField(null=True, blank=True)
     evaluation_link_failed_at = models.DateTimeField(null=True, blank=True)
+    # With evaluation_link_sent_at: really sent or only printed. Empty when nothing was sent (or before 2026-11-08).
+    evaluation_link_delivery = models.CharField(max_length=20, choices=LinkDelivery.choices, null=True, blank=True)
+    # The latest request on the general evaluation page for this email (ASSUMPTIONS 354). An email that matches no
+    # registration is never stored anywhere.
+    evaluation_link_requested_at = models.DateTimeField(null=True, blank=True)
+    evaluation_link_request_result = models.CharField(
+        max_length=20, choices=LinkRequestResult.choices, null=True, blank=True
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

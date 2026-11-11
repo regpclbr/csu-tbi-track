@@ -46,6 +46,11 @@ def activity_list(request: HttpRequest) -> HttpResponse:
     context = {"page_title": "Activities", "filters": filters, "q": filters.q, "can_create": _can_create(request)}
     if filters.view == pages.CALENDAR:
         context["calendar"] = pages.month_grid(filters.month)
+    elif filters.grouped:  # the default: sections (services.grouped_activities); only Past is paginated
+        groups = services.grouped_activities(filters.for_service(), page=filters.page)
+        context.update(sections=pages.grouped_sections(groups, context["can_create"]),
+                       grouped_total=sum(group.total for group in groups), page_query=filters.query(),
+                       clear_preset_query=filters.query(preset=""))
     else:
         result = services.list_activities(filters.for_service(), page=filters.page)
         context.update(result=result, rows=pages.list_rows(result.items), page_query=filters.query(),
@@ -218,7 +223,8 @@ def qr_code(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_POST
 def activity_change_status(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """POST status=<name>. Same messages as the Django admin's "Change status"."""
+    """POST status=<name> (&next=list: back to the Activities list, from a "Needs follow-up" card's "Mark as
+    Conducted"; any other value goes to the activity page). Same messages as the Django admin's "Change status"."""
     activity = get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)
     old_status, new_status = activity.status.name, request.POST.get("status", "")
     try:
@@ -227,6 +233,8 @@ def activity_change_status(request: HttpRequest, activity_id: int) -> HttpRespon
         messages.error(request, f"Status not changed: {error}")
     else:
         messages.success(request, f'Status of "{activity.title}" changed from {old_status} to {new_status}.')
+    if request.POST.get("next") == "list":  # a fixed name, never a URL from the request (no open redirect)
+        return redirect("activities:list")
     return redirect(_detail_url(activity))
 
 

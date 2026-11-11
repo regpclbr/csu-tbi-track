@@ -60,8 +60,21 @@ def world(clock, director, valid_data, move_to, register) -> dict[str, Activity]
     return activities
 
 
+def page_rows(response) -> list[dict]:
+    """The list's rows: the grouped default (every section) or a plain sort."""
+    context = response.context
+    if "sections" in context:
+        return [row for section in context["sections"] for row in section["rows"]]
+    return context["rows"]
+
+
 def rows(response) -> set[str]:
-    return {row["activity"].title for row in response.context["rows"]}
+    return {row["activity"].title for row in page_rows(response)}
+
+
+def total(response) -> int:
+    context = response.context
+    return context["grouped_total"] if "sections" in context else context["result"].total
 
 
 PRESET_CARDS = {"open": "open_for_registration", "conducted_month": "conducted_this_month", "conducted": "conducted_total"}
@@ -71,7 +84,7 @@ PRESET_CARDS = {"open": "open_for_registration", "conducted_month": "conducted_t
 def test_each_preset_lists_exactly_the_cards_number(world, client, preset) -> None:
     stats = services.activity_stats()
     response = client.get(LIST, {"preset": preset})
-    assert response.context["result"].total == stats[PRESET_CARDS[preset]] == len(rows(response))
+    assert total(response) == stats[PRESET_CARDS[preset]] == len(rows(response))
     assert response.context["filters"].preset == preset
 
 

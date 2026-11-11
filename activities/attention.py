@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.utils import timezone
 
 from certificates.models import Certificate
@@ -31,15 +31,19 @@ DRAFT, SCHEDULED, ONGOING, CONDUCTED = (
 
 ONGOING_NO_ATTENDANCE = "Activity is ongoing: mark attendance on the Registrations tab."
 ENDED_NO_ATTENDANCE = "Activity ended but no attendance recorded. Mark attendance or change the status."
+NO_REGISTRATIONS = "No one registered. Mark as Conducted or change the status."
+ATTENDANCE_AFTER_EVALUATION = "Attendance was marked after the evaluation closed. These attendees can't evaluate."
 SET_TIMES = "Set the start and end time."
 
 
 @dataclass(frozen=True)
 class AttentionItem:
-    """One thing to do. `tab`: the activity page tab it links to ("edit" = the edit page)."""
+    """One thing to do. `tab`: the activity page tab it links to ("edit" = the edit page). `kind`: what it is
+    about, for the Activities list's "Needs follow-up" cards ("draft", "attendance"; "" for the others)."""
 
     text: str
     tab: str
+    kind: str = ""
 
 
 @dataclass
@@ -49,7 +53,9 @@ class _Facts:
     waiting_review: int = 0
     returned: int = 0
     forms: set[str] = field(default_factory=set)
+    registered: int = 0
     attended: int = 0
+    attended_after_evaluation: int = 0
     links_failed: int = 0
     links_not_sent: int = 0
     certificates: dict[str, int] = field(default_factory=dict)
@@ -85,16 +91,23 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
     registrations = (
         Activity.objects.filter(pk__in=ids)
         .annotate(
+            registered=Count("registrations"),
             attended=Count("registrations", filter=Q(registrations__attendance_confirmed=True)),
+            # Marked attended after the evaluation deadline and not evaluated: their link can never work.
+            attended_after_evaluation=Count("registrations", filter=_WAITING_TO_EVALUATE & Q(
+                registrations__attendance_marked_at__gt=F("evaluation_deadline"),
+            )),
             links_failed=Count("registrations", filter=_WAITING_TO_EVALUATE & Q(registrations__evaluation_link_failed_at__isnull=False)),
             links_not_sent=Count("registrations", filter=_WAITING_TO_EVALUATE & Q(
                 registrations__evaluation_link_sent_at__isnull=True, registrations__evaluation_link_failed_at__isnull=True,
             )),
         )
-        .values_list("pk", "attended", "links_failed", "links_not_sent")
+        .values_list("pk", "registered", "attended", "attended_after_evaluation", "links_failed", "links_not_sent")
     )
-    for activity_id, attended, failed, not_sent in registrations:
-        facts[activity_id].attended, facts[activity_id].links_failed, facts[activity_id].links_not_sent = attended, failed, not_sent
+    for activity_id, registered, attended, late, failed, not_sent in registrations:
+        fact = facts[activity_id]
+        fact.registered, fact.attended, fact.attended_after_evaluation = registered, attended, late
+        fact.links_failed, fact.links_not_sent = failed, not_sent
 
     Status = Certificate.Status
     signed = Q(director_signed_at__isnull=False, vp_signed_at__isnull=False)
@@ -126,11 +139,17 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
         items.append(AttentionItem(SET_TIMES, "edit"))
     if status == DRAFT and activity.start_date - today <= timedelta(days=settings.ATTENTION_DRAFT_DAYS_BEFORE):
         verb = "started" if activity.start_date < today else "starts"
-        items.append(AttentionItem(f"Still a Draft but it {verb} on {format_date(activity.start_date)}. Change the status.", "overview"))
+        items.append(AttentionItem(f"Still a Draft but it {verb} on {format_date(activity.start_date)}. Change the status.", "overview", "draft"))
 
-    # Attendance (the automatic status rules: Ongoing -> Conducted needs attendance after the end).
+    # Attendance (the automatic status rules: Ongoing -> Conducted needs attendance after the end). Nobody registered
+    # and ended: there is no attendance to mark, so staff conduct it (or change the status) by hand.
     if status == ONGOING and not fact.attended:
-        items.append(AttentionItem(ENDED_NO_ATTENDANCE if now >= end else ONGOING_NO_ATTENDANCE, "registrations"))
+        if now >= end and not fact.registered:
+            items.append(AttentionItem(NO_REGISTRATIONS, "overview", "attendance"))
+        else:
+            items.append(AttentionItem(ENDED_NO_ATTENDANCE if now >= end else ONGOING_NO_ATTENDANCE, "registrations", "attendance"))
+    if fact.attended_after_evaluation:
+        items.append(AttentionItem(ATTENDANCE_AFTER_EVALUATION, "registrations"))
 
     # Forms
     opens, closes = registration_services.evaluation_window(activity)
@@ -181,7 +200,13 @@ def activity_attention(activity: Activity, now: datetime | None = None) -> list[
     return _items(_load_facts([activity], now)[activity.pk], now)
 
 
+def attention_items(activities: list[Activity], now: datetime | None = None) -> dict[int, list[AttentionItem]]:
+    """Every activity's items (the Activities list: the count, and the follow-up cards' note), in a fixed number
+    of queries."""
+    now = now or timezone.now()
+    return {activity_id: _items(fact, now) for activity_id, fact in _load_facts(list(activities), now).items()}
+
+
 def attention_counts(activities: list[Activity], now: datetime | None = None) -> dict[int, int]:
     """How many items each activity has (the Activities list), in a fixed number of queries."""
-    now = now or timezone.now()
-    return {activity_id: len(_items(fact, now)) for activity_id, fact in _load_facts(list(activities), now).items()}
+    return {activity_id: len(items) for activity_id, items in attention_items(activities, now).items()}

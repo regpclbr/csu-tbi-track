@@ -24,6 +24,21 @@
       var text = status === 403 ? "You do not have permission to do this." : "Something went wrong. Please try again.";
       window.dispatchEvent(new CustomEvent("toast", { detail: { level: "error", text: text } }));
     });
+    // Back / Forward: HTMX puts back a saved copy of the page's HTML, and a control's current value is not in the HTML
+    // (only its attributes are). Without this, a restored list could show "oldest first" under a dropdown saying
+    // something else (ASSUMPTIONS 353). After every swap the filter forms' current values (the ones that built the list
+    // now shown) are written into their attributes; HTMX saves the copy just before the NEXT swap, when the control
+    // that triggered it already holds the next value, so writing them at that moment would be too late.
+    // Only filter forms (form[hx-push-url]), so nothing else typed is saved.
+    document.addEventListener("htmx:afterSettle", function () {
+      document.querySelectorAll("form[hx-push-url] select option").forEach(function (option) {
+        option.toggleAttribute("selected", option.selected);
+      });
+      document.querySelectorAll("form[hx-push-url] input").forEach(function (input) {
+        if (input.type === "checkbox" || input.type === "radio") input.toggleAttribute("checked", input.checked);
+        else if (input.type !== "password" && input.type !== "file") input.setAttribute("value", input.value);
+      });
+    });
     document.addEventListener("htmx:sendError", function () {
       window.dispatchEvent(new CustomEvent("toast", { detail: { level: "error", text: "No connection to the server. Please try again." } }));
     });

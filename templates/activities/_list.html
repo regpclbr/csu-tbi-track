@@ -1,43 +1,50 @@
 {% load ui %}
-{% comment %}List rows: services.list_activities (filters, sort, 20 a page) prepared by activities.pages.list_rows.{% endcomment %}
+{% comment %}
+The Activities list. "Grouped (recommended)", the default (filters.grouped): the sections of services.grouped_activities
+(activities.pages.grouped_sections), each with its header and count; empty sections are not shown; only Past is
+paginated and has month headings. Any other sort: the plain list of services.list_activities (20 a page). Both use
+activities/_list_row.html.
+{% endcomment %}
+{% if filters.grouped %}
+  <p class="mb-3 text-sm text-muted" role="status">
+    {{ grouped_total|number }} activit{{ grouped_total|pluralize:"y,ies" }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
+  </p>
+  {% if sections %}
+    <div class="space-y-6">
+      {% for section in sections %}
+        <section aria-labelledby="group-{{ section.key }}">
+          <h3 id="group-{{ section.key }}" class="mb-2.5 flex items-center gap-2 text-sm font-semibold tracking-wide text-ink uppercase">
+            {% if section.key == "now" %}<span class="size-2 rounded-full bg-green-600" aria-hidden="true"></span>{% elif section.key == "follow_up" %}{% include "components/icon.html" with name="triangle-alert" class="size-4 text-amber-700" %}{% endif %}
+            {{ section.label }} <span class="badge badge-neutral tabular-nums normal-case">{{ section.total|number }}</span>
+          </h3>
+          {% if section.key == "follow_up" %}
+            <p class="mb-2.5 text-sm text-muted">Their end has passed but they are still Ongoing (no attendance recorded yet), or they are still a Draft after their start.</p>
+          {% endif %}
+          {% if section.months %}
+            {% for month in section.months %}
+              <h4 class="mt-4 mb-2 text-xs font-semibold text-muted first:mt-0">{{ month.label }}</h4>
+              <ul class="space-y-2.5">{% for row in month.rows %}{% include "activities/_list_row.html" %}{% endfor %}</ul>
+            {% endfor %}
+            {% include "components/pagination.html" with result=section.page query=page_query hx_target="#activity-results" %}
+          {% else %}
+            <ul class="space-y-2.5">{% for row in section.rows %}{% include "activities/_list_row.html" %}{% endfor %}</ul>
+          {% endif %}
+        </section>
+      {% endfor %}
+    </div>
+  {% elif filters.any_set %}
+    {% url 'activities:list' as list_url %}
+    {% include "components/empty_state.html" with icon="search" title="No activities match these filters" text="Try another search word, a wider date range or fewer filters." action_url=list_url action_label="Clear filters" %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="calendar" title="No activities yet" text="Activities appear here as soon as they are created." %}
+  {% endif %}
+{% else %}
 <p class="mb-3 text-sm text-muted" role="status">
   {{ result.total|number }} activit{{ result.total|pluralize:"y,ies" }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
 </p>
 {% if rows %}
   <ul class="space-y-2.5">
-    {% for row in rows %}
-      {% with activity=row.activity %}
-      <li class="hover-row flex items-center gap-4 rounded-2xl border border-line bg-white p-3.5 hover:border-slate-300">
-        {% include "components/date_tile.html" with activity=activity gradient=True %}
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h3 class="min-w-0 text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink">
-              <a href="{% url 'activities:detail' activity.pk %}" class="hover:text-primary hover:underline">{{ activity.title }}</a>
-            </h3>
-            {% include "components/status_badge.html" with status=activity.status.name %}
-            {% if row.attention %}
-              <span class="badge badge-warning inline-flex items-center gap-1" title="Needs attention" role="img" aria-label="{{ row.attention }} item{{ row.attention|pluralize }} need{{ row.attention|pluralize:"s," }} attention">
-                {% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}<span aria-hidden="true">{{ row.attention }}</span></span>
-            {% endif %}
-          </div>
-          <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted">
-            <span class="whitespace-nowrap">{{ activity|date_span }}</span>
-            <span class="flex items-center gap-1 whitespace-nowrap">{% include "components/icon.html" with name="clock" class="size-3.5" %}{{ activity|time_range }}</span>
-            <span class="flex min-w-0 items-center gap-1">{% include "components/icon.html" with name="map-pin" class="size-3.5" %}<span class="truncate">{{ activity.venue }}</span></span>
-          </p>
-          <ul class="mt-1.5 flex flex-wrap gap-1" aria-label="Type and participant categories">
-            <li class="tag tag-type">{{ activity.activity_type.name }}</li>
-            {% for category in row.categories %}<li class="tag">{{ category }}</li>{% endfor %}
-          </ul>
-        </div>
-        <div class="hidden w-44 shrink-0 md:block">
-          <p class="mb-1.5 text-xs text-muted"><span class="font-semibold text-ink tabular-nums">{{ row.registered }}/{{ activity.max_slots }}</span> registered</p>
-          {% include "components/progress_bar.html" with percent=row.percent label="Slots registered" %}
-        </div>
-        <a href="{% url 'activities:detail' activity.pk %}" class="btn btn-secondary btn-sm btn-arrow shrink-0" aria-label="Open {{ activity.title }}">Open {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
-      </li>
-      {% endwith %}
-    {% endfor %}
+    {% for row in rows %}{% include "activities/_list_row.html" %}{% endfor %}
   </ul>
   {% include "components/pagination.html" with result=result query=page_query hx_target="#activity-results" %}
 {% elif filters.any_set %}
@@ -45,4 +52,5 @@
   {% include "components/empty_state.html" with icon="search" title="No activities match these filters" text="Try another search word, a wider date range or fewer filters." action_url=list_url action_label="Clear filters" %}
 {% else %}
   {% include "components/empty_state.html" with icon="calendar" title="No activities yet" text="Activities appear here as soon as they are created." %}
+{% endif %}
 {% endif %}

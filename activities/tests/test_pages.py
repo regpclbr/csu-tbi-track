@@ -137,7 +137,8 @@ def test_bad_filter_values_are_ignored_with_a_message(director, login, new_activ
 
 
 def test_sort_choices_are_exactly_the_services_sort_options() -> None:
-    assert {value for value, _ in pages.SORT_CHOICES} == set(services.SORT_OPTIONS)
+    assert {value for value, _ in pages.SORT_CHOICES} == {services.GROUPED_SORT, *services.SORT_OPTIONS}
+    assert pages.SORT_CHOICES[0] == (services.GROUPED_SORT, "Grouped (recommended)")
 
 
 def test_to_before_from_is_ignored() -> None:

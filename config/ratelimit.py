@@ -5,11 +5,19 @@ shares them. Used by the public registration API and the staff "forgot password"
 always comes from config.network.client_ip().
 """
 
+import hashlib
+import hmac
+
+from django.conf import settings
 from django.core.cache import cache
 
 
 def _key(scope: str, kind: str, value: str) -> str:
-    return f"rate-limit:{scope}:{kind}:{value}"
+    """The cache key. The value (an email or an IP address) is stored only as an HMAC-SHA256 keyed with SECRET_KEY,
+    so the cache table never holds a typed email in plain text, and a list of guessed emails cannot be matched
+    against it without the key (ASSUMPTIONS 355)."""
+    digest = hmac.new(settings.SECRET_KEY.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"rate-limit:{scope}:{kind}:{digest}"
 
 
 def count_attempt(scope: str, kind: str, value: str, limit: int, window_minutes: int) -> bool:

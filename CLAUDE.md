@@ -104,8 +104,16 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Creating: start_date not before today and registration_deadline not in the past (Manila time).
   Editing: those checks apply only to fields being changed. Only tests/demo pass `now=`.
 - Offer status choices with `allowed_next_statuses()`; change status only with `change_status()` (or the automatic moves).
-- "Needs attention" = `activities/attention.py` only (`activity_attention` for the page, `attention_counts` for the list,
-  one shared item function, fixed queries, parity test; existing rules only, ASSUMPTIONS 347).
+- "Needs attention" = `activities/attention.py` only (`activity_attention` for the page, `attention_counts` /
+  `attention_items` for the list, one shared item function, fixed queries, parity test; existing rules only, ASSUMPTIONS
+  347, 356: ended with nobody registered, attendance marked after the evaluation closed).
+- Activities list default sort "Grouped (recommended)" (`GROUPED_SORT`, page only; the API keeps `DEFAULT_SORT`):
+  `services.grouped_activities()` + `activity_group()` (Happening now = `is_happening_now()` = `happening_now()`, Needs
+  follow-up, Upcoming, Drafts, Past; only Past paginated, month headings in `pages.grouped_sections`). Follow-up quick
+  actions: "Mark attendance" / "Mark as Conducted" (`change_status` with `next=list`), only with can_create_activity
+  (ASSUMPTIONS 353). Plain sorts break ties in their own direction (start time, then ID).
+- HTMX filter forms (`form[hx-push-url]`) keep Back / Forward right through the `htmx:afterSettle` handler in
+  `templates/base.html` (writes current values into attributes; browser test `config/tests/test_history_browser.py`).
 - Registration state is calculated, never stored: `registered_count()`, `slots_remaining()`,
   `is_registration_open()` in activities/services.py (Step 5 must reuse them).
 - "Open for registration" = `open_for_registration()` (Scheduled, deadline, slots AND a registration form): the one query
@@ -119,7 +127,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   submitted), `validate_answers` (the only answer check), `register` (locks the activity row;
   reuses `is_registration_open`), `set_attendance` (records `attendance_marked_by/_at`, cleared on undo, logged on
   `registrations.audit` with IDs only; `attendance_closed_reason` = "Attendance opens when …"), evaluation links and
-  `submit_evaluation`.
+  `submit_evaluation`. General-link requests are recorded on the matching registrations only
+  (`evaluation_link_requested_at`, `evaluation_link_request_result`), the last email's `evaluation_link_delivery`
+  (sent / printed_dev / printed_demo) by `deliver_evaluation_link`; the Evaluation tab shows them
+  (`pages.link_requests`). An email that matches nobody is never stored (ASSUMPTIONS 354).
 - Evaluation links: sent only through `deliver_evaluation_link` (row lock, sets `evaluation_link_sent_at` or `_failed_at`,
   one clears the other). First send is automatic, once per attendee, inside the 5-minute job
   (`send_automatic_evaluation_links`: Conducted + evaluation form + open window); failures are never retried
@@ -146,7 +157,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - General evaluation link `/evaluation/<id>/` (one per activity): the email used to register → `request_evaluation_link()`
   queues the existing personal link for attendees who have not evaluated; `evaluation_request_state()` is its window (the
   personal links' window + a form). Always the same neutral page (`EVALUATION_REQUEST_SENT`), also when
-  `guard_evaluation_request()` refuses (rate limit per email/IP, honeypot). Security logs never contain an email (IP only).
+  `guard_evaluation_request()` refuses (rate limit per email/IP, honeypot). Security logs never contain an email (IP only);
+  rate-limit cache keys hold an HMAC of the value, never the email (`config.ratelimit._key`, ASSUMPTIONS 355).
 
 ## Documents, checklist and reminders
 - All rules live in `documents/services.py`. Upload: any active staff member, any activity status
@@ -425,6 +437,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Document approval (2026-11-05): ROLE.can_approve_documents (Director only), self-approval, review notifications, roles screen switch (344).
 - Times and automation (2026-11-06): start/end time, automatic status, needs attention, automatic evaluation links, attendance marker (345–350).
 - Happening now + documents by activity (2026-11-06): dashboard spotlight, Documents page cards by activity (351–352).
+- Grouped list + link requests (2026-11-08): grouped Activities list with follow-up actions, Back/Forward filter fix,
+  evaluation link request log, HMAC rate-limit keys, two Needs attention items (353–356).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
