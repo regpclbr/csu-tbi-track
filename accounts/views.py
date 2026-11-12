@@ -152,6 +152,7 @@ def roles_api(request: HttpRequest) -> JsonResponse:
             "can_create_activity": r.can_create_activity,
             "can_manage_users": r.can_manage_users,
             "can_approve_documents": r.can_approve_documents,
+            "can_approve_certificates": r.can_approve_certificates,
         }
         for r in Role.objects.all()
     ]

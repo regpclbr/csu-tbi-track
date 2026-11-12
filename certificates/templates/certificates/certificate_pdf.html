@@ -22,7 +22,6 @@
   .name-short { font-size: 30pt; }
   .name-medium { font-size: 24pt; }
   .name-long { font-size: 18pt; }
-  .name-note { font-size: 10pt; font-style: italic; color: #b42318; margin: 0 0 2mm; }
   .body { font-size: 12.5pt; line-height: 1.45; margin: 4mm 0 0; }
   .given { font-size: 11pt; margin: 4mm 0 0; }
   .signatures { position: absolute; bottom: 22mm; left: 25%; width: 50%; display: flex; justify-content: space-between; }
@@ -32,9 +31,8 @@
   .line { border-top: 0.4mm solid #1f2933; margin: 1mm 0 1.5mm; }
   .signatory-name { font-weight: bold; text-transform: uppercase; }
   .number { position: absolute; bottom: 13mm; left: 0; width: 297mm; text-align: center; font-size: 8.5pt; color: #52606d; }
-  .watermark { position: absolute; top: 42%; left: 0; width: 297mm; text-align: center;
-               font-size: 54pt; font-weight: bold; color: rgba(180, 35, 24, 0.18);
-               transform: rotate(-18deg); }
+  .preview-mark { position: absolute; top: 7mm; right: 9mm; padding: 1mm 3mm; border: 0.4mm solid rgba(180, 35, 24, 0.55);
+                  border-radius: 1.5mm; font-size: 9pt; font-weight: bold; letter-spacing: 0.08em; color: rgba(180, 35, 24, 0.75); }
 </style>
 </head>
 <body>
@@ -45,7 +43,6 @@
     <p class="title">{{ title }}</p>
     <p class="presented">is presented to</p>
     <p class="name {{ name_size }}">{{ name }}</p>
-    {% if name_note %}<p class="name-note">{{ name_note }}</p>{% endif %}
     {% if is_participant %}
       <p class="body">for participating in &ldquo;{{ activity_title }}&rdquo; held on {{ dates }}{% if venue %} at {{ venue }}{% endif %}.</p>
     {% else %}
@@ -66,7 +63,7 @@
   </div>
 
   <div class="number">Certificate No. {{ number }}</div>
-  {% if preview %}<div class="watermark">PREVIEW &ndash; NOT VALID</div>{% endif %}
+  {% if mark %}<div class="preview-mark">PREVIEW</div>{% endif %}
 </div>
 </body>
 </html>

@@ -180,17 +180,17 @@ CONDUCTED_DOCUMENTS = {
     },
 }
 
-# Certificates per Conducted demo activity: how far along the sign-off flow they go.
+# Certificates per Conducted demo activity: "generated" ones wait for the Director's approval (ASSUMPTIONS 357).
 # "approved" ones are rendered, issued and emailed by `python manage.py retry_certificates` (or qcluster).
 DEMO_CERTIFICATES = {
     "Startup Pitch Competition": "approved",
-    "Business Model Training": "pending_signoff",
+    "Business Model Training": "generated",
     "Intellectual Property Seminar": "generated",
     "Design Thinking Workshop": "approved",
     "Startup Finance Seminar": "approved",
     "Women in Tech Forum": "approved",
     "Digital Marketing Training": "approved",
-    "Founder Mentoring Clinic": "pending_signoff",
+    "Founder Mentoring Clinic": "generated",
     "Industry-Academe Networking Night": "generated",
 }
 UPCOMING_DOCUMENTS = {
@@ -481,7 +481,7 @@ class Command(BaseCommand):
         return True
 
     def create_certificates(self) -> int:
-        """Generate demo certificates and move them through the real sign-off services. Only for demo
+        """Generate demo certificates and approve some as the demo Director, through the real services. Only for demo
         activities that have no certificate yet, so running twice adds nothing."""
         todo = [
             (activity, target)
@@ -495,11 +495,7 @@ class Command(BaseCommand):
         for activity, target in todo:
             member = activity.created_by
             created += certificate_services.generate_certificates(member, activity)["total"]
-            if target in ("pending_signoff", "approved"):
-                certificate_services.review_certificates(member, activity=activity)
             if target == "approved":
-                certificate_services.record_signoff(member, "director", activity=activity)
-                certificate_services.record_signoff(member, "vp", activity=activity)
-                certificate_services.approve_certificates(member, activity=activity)
+                certificate_services.approve_certificates(self.staff["Director"], activity=activity)
             self.stdout.write(f"  certificates ({target}): {activity.title}")
         return created

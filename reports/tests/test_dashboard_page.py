@@ -43,7 +43,7 @@ def data(make_activity, register, evaluate, add_document, make_certificate_row):
         registration = register(conducted, f"P{i}", attended=i < 3, category="Faculty" if i % 2 else "MSMEs")
         if i == 0:
             evaluate(registration, {"Overall rating": 5})
-            make_certificate_row(activity=conducted, registration=registration, status=Certificate.Status.PENDING_SIGNOFF)
+            make_certificate_row(activity=conducted, registration=registration, status=Certificate.Status.GENERATED)
     make_activity("Soon Seminar", ActivityStatus.SCHEDULED, start=now + timedelta(days=8), type_name="Seminar", max_slots=20)
     make_activity("Far Training", ActivityStatus.SCHEDULED, start=now + timedelta(days=45), type_name="Training")
     make_activity("A draft", ActivityStatus.DRAFT, start=now + timedelta(days=12))
@@ -95,7 +95,8 @@ def test_kpi_cards_show_the_metric_numbers(director, login, data) -> None:
     shown = kpis(response.content.decode())
     cards = page.cards
     assert shown["Upcoming activities"] == str(cards["upcoming_activities"]["within_30_days"]) == "1"
-    assert shown["Certificates waiting for sign\u2011off"] == str(cards["certificates_waiting_for_signoff"]["value"]) == "1"
+    assert shown["Certificates waiting for approval"] == str(cards["certificates_waiting_for_approval"]["value"]) == "1"
+    assert "1 certificate" in response.content.decode() and "activity · waiting for your approval" in response.content.decode()
     assert shown["Registrations"] == str(cards["registrations"]["value"]) == "4"
     assert "75% attended" in response.content.decode()
     assert shown["Open for registration"] == "0"  # no registration forms in this data set
@@ -229,7 +230,7 @@ def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, 
     titles = " | ".join(item.title for item in page.attention)
     assert "Soon Seminar needs the Invitation Letter" in titles
     assert "1 document is waiting for your review" in titles
-    assert "1 certificate is waiting for sign-off" in titles
+    assert "Certificates waiting for approval: 1 activity (1 certificate)" in titles
     assert tones.index("danger") < tones.index("warning") < tones.index("primary")
     html = login(head).get(URL).content.decode()
     assert "btn-danger" in html and "btn-warning" in html
@@ -251,16 +252,28 @@ def test_needs_attention_links_go_to_the_right_place(make_member, login, data, a
     overdue = [item.action_url for item in page.attention if item.tone == "danger"]
     assert overdue and all(f"/activities/{data['conducted'].pk}/?tab=documents&type=" in url for url in overdue)
     assert by_title["1 document is waiting for your review"] == reverse("documents:review")
-    assert by_title["1 certificate is waiting for sign-off"] == f"{reverse('activities:detail', args=[data['conducted'].pk])}?tab=certificates"
+    assert (by_title["Certificates waiting for approval: 1 activity (1 certificate)"]
+            == f"{reverse('activities:detail', args=[data['conducted'].pk])}?tab=certificates")
 
 
 def test_certificates_of_several_activities_link_to_the_certificates_page(director, login, data, make_activity, register,
                                                                        make_certificate_row) -> None:
     other = make_activity("Second Conducted", start=today() - timedelta(days=30))
-    make_certificate_row(activity=other, registration=register(other, "Q1", attended=True), status=Certificate.Status.PENDING_SIGNOFF)
+    for name in ("Q1", "Q2"):
+        make_certificate_row(activity=other, registration=register(other, name, attended=True), status=Certificate.Status.GENERATED)
     page = login(director).get(URL).context["page"]
-    item = next(item for item in page.attention if "waiting for sign-off" in item.title)
-    assert item.action_url == f"{reverse('certificates:list')}?status=pending_signoff"
+    item = next(item for item in page.attention if item.title.startswith("Certificates waiting for approval"))
+    assert item.title == "Certificates waiting for approval: 2 activities (3 certificates)"  # activities, not certificates
+    assert item.detail.startswith("Waiting for your approval · ") and item.action_label == "Approve"
+    assert item.action_url == f"{reverse('certificates:list')}?status=generated"
+
+
+@pytest.mark.parametrize("role_name", ["Incubation Project Head", "Admin Staff"])
+def test_others_see_waiting_for_the_director(make_member, login, data, role_name) -> None:
+    response = login(make_member(role_name)).get(URL)
+    item = next(item for item in response.context["page"].attention if item.title.startswith("Certificates waiting"))
+    assert item.detail.startswith("Waiting for the Director · ") and item.action_label == "Open"
+    assert "activity · waiting for the Director" in response.content.decode()
 
 
 def test_needs_attention_empty_state(director, login) -> None:

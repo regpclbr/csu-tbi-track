@@ -3,6 +3,7 @@ The documents table of /documents/ ("All documents" view, inside documents/_repo
 the pager swap) and /documents/review/ (the pager swaps #document-results). The table scrolls sideways inside the card
 on narrow screens. Every row has the member's own actions (documents.services.allowed_actions).
 {% endcomment %}
+{% load ui %}
 <div id="document-results" class="htmx-dim">
   {% if list_tab == "all" %}
     <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} document{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
@@ -27,7 +28,7 @@ on narrow screens. Every row has the member's own actions (documents.services.al
           {% for row in rows %}{% with document=row.document %}
             <tr class="align-top hover:bg-slate-50">
               <th scope="row" class="min-w-56 px-3 py-3 font-normal">
-                <a href="{% url 'documents:detail' document.pk %}" class="font-semibold break-words text-ink hover:text-primary hover:underline">{{ document.title }}</a>
+                <a href="{% url 'documents:detail' document.pk %}?next={{ request|here|urlencode:"" }}" class="font-semibold break-words text-ink hover:text-primary hover:underline">{{ document.title }}</a>
                 <p class="mt-0.5 text-xs text-slate-700">{{ document.document_type.name }}</p>
                 <p class="text-xs break-all text-muted">{{ document.file_name }} · {{ document.file_size_kb }} KB</p>
               </th>

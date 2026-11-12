@@ -18,6 +18,7 @@ from accounts.models import TBIMember
 from accounts.permissions import Permission, has_permission
 from activities.formatting import audit_sentence, changed_by_name
 from activities.models import Activity, ActivityType
+from certificates.models import Certificate
 from activities.services import attended_count, open_for_registration, recent_audit_entries, registered_count
 from config.frontend import initials
 from documents.services import review_queue, today_in_manila
@@ -114,8 +115,22 @@ class DashboardPage:
     activity_types: list = field(default_factory=list)
     range_options: list = field(default_factory=list)  # (key, label) for the date range select
     spotlight: dict | None = None  # the card beside the banner (services.dashboard_spotlight, ASSUMPTIONS 351)
+    can_approve_certificates: bool = False  # only the wording of the certificate card (ASSUMPTIONS 357)
 
     attention_shown: int = ATTENTION_SHOWN
+
+    @property
+    def certificates_pill(self) -> str:
+        """S5's certificate count for the KPI card: "100 certificates"."""
+        count = self.cards["certificates_waiting_for_approval"]["certificates"]
+        return f"{count:,} {'certificate' if count == 1 else 'certificates'}"
+
+    @property
+    def certificates_note(self) -> str:
+        """Under S5's number (which counts activities): who it waits for."""
+        who = "waiting for your approval" if self.can_approve_certificates else "waiting for the Director"
+        count = self.cards["certificates_waiting_for_approval"]["value"]
+        return f"{'activity' if count == 1 else 'activities'} · {who}"
 
     @property
     def attention_hidden(self) -> int:
@@ -152,6 +167,7 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
     filters = metrics.ReportFilters(data["filters"]["start"], data["filters"]["end"], data["filters"]["activity_type"])
     cards = {card["key"]: card for card in data["cards"]}
     can_create = has_permission(member, Permission.CREATE_ACTIVITY)
+    can_approve_certificates = has_permission(member, Permission.APPROVE_CERTIFICATES)
     review = _review(member, cards, has_permission(member, Permission.APPROVE_DOCUMENTS), now)
     upcoming = _upcoming(cards["upcoming_activities"]["next"][:UPCOMING_SHOWN])
 
@@ -165,7 +181,8 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         can_create_activity=can_create,
         review=review,
         open_count=_open_count(filters, now),
-        attention=_attention(filters, cards, review, can_create, now),
+        attention=_attention(filters, cards, review, can_approve_certificates, now),
+        can_approve_certificates=can_approve_certificates,
         upcoming=upcoming,
         spotlight=_spotlight(services.dashboard_spotlight(filters, now, cards["upcoming_activities"]["next"]), upcoming),
         categories=_categories(data["charts"]["by_category"]),
@@ -244,22 +261,24 @@ def documents_tab_url(row: dict) -> str:
     return f"{url}?{urlencode({'tab': 'documents', 'type': row['document_type_id']})}"
 
 
-def certificates_url(by_activity: list[dict], signoff: dict) -> str:
-    """One activity: its Certificates tab. Several: the Certificates page, narrowed to the one waiting status
-    when only one of the two (Generated, Pending Sign-off) has certificates."""
+def certificates_url(by_activity: list[dict]) -> str:
+    """One activity: its Certificates tab (the approval screen). Several: the Certificates page, narrowed to the
+    certificates waiting for approval."""
     if len(by_activity) == 1:
         return reverse("activities:detail", args=[by_activity[0]["activity_id"]]) + "?tab=certificates"
-    url = reverse("certificates:list")
-    if signoff["generated"] and not signoff["pending_signoff"]:
-        return f"{url}?status=generated"
-    if signoff["pending_signoff"] and not signoff["generated"]:
-        return f"{url}?status=pending_signoff"
-    return url
+    return f"{reverse('certificates:list')}?status={Certificate.Status.GENERATED}"
 
 
-def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_create: bool,
+def certificates_waiting_text(card: dict) -> str:
+    """"3 activities (100 certificates)" from S5 (ASSUMPTIONS 357)."""
+    activities = f"{card['value']} {'activity' if card['value'] == 1 else 'activities'}"
+    return f"{activities} ({card['certificates']} {'certificate' if card['certificates'] == 1 else 'certificates'})"
+
+
+def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_approve_certificates: bool,
                now: datetime | None) -> list[AttentionItem]:
-    """Overdue required documents (red), documents due soon (amber), my review queue, certificate sign-off."""
+    """Overdue required documents (red), documents due soon (amber), my review queue, certificates waiting for the
+    Director's approval (counted as activities)."""
     items: list[AttentionItem] = []
     rows = metrics.document_attention(filters, now)
     for type_name, group in _group_by_type(rows["overdue"]).items():
@@ -290,22 +309,16 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_cr
             f"Oldest uploaded {_day(review['oldest'])}" if review["oldest"] else "", "Review", reverse("documents:review"),
         ))
 
-    signoff = cards["certificates_waiting_for_signoff"]
-    if signoff["value"]:
-        noun = "certificate is" if signoff["value"] == 1 else "certificates are"
+    waiting = cards["certificates_waiting_for_approval"]
+    if waiting["value"]:
         by_activity = metrics.certificates_waiting_by_activity(filters)
         detail = ", ".join(row["title"] for row in by_activity[:ATTENTION_TITLES_SHOWN])
-        if len(by_activity) > ATTENTION_TITLES_SHOWN:
+        if waiting["value"] > ATTENTION_TITLES_SHOWN:
             detail += " and more"
-        steps = []
-        if signoff["generated"]:
-            steps.append(f"{signoff['generated']} to review")
-        if signoff["pending_signoff"]:
-            steps.append(f"{signoff['pending_signoff']} waiting for signatures")
-        detail = " · ".join(filter(None, [detail, ", ".join(steps)]))
+        who = "Waiting for your approval" if can_approve_certificates else "Waiting for the Director"
         items.append(AttentionItem(
-            "primary", f"{signoff['value']} {noun} waiting for sign-off", detail,
-            "Review" if can_create else "", certificates_url(by_activity, signoff) if can_create else "",
+            "primary", f"Certificates waiting for approval: {certificates_waiting_text(waiting)}", f"{who} · {detail}",
+            "Approve" if can_approve_certificates else "Open", certificates_url(by_activity),
         ))
     return items
 

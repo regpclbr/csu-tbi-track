@@ -102,10 +102,25 @@ def test_conducted_with_attendees_but_no_certificates(new_activity, move_to, reg
     assert attention.AttentionItem("Conducted with 1 attendee but no certificates generated yet.", "certificates") in items
 
 
-def test_certificates_waiting_for_review(activity, registration, make_certificate) -> None:
+def test_certificates_waiting_for_approval(activity, registration, make_certificate) -> None:
+    """One item per activity; the wording depends on who looks (ASSUMPTIONS 357), never the count."""
     make_certificate(registration)
+    now = manila(activity.start_date - timedelta(days=20), 9)
+    assert "1 certificate waiting for the Director's approval." in texts(activity, now)
+    items = [item.text for item in attention.activity_attention(activity, now, can_approve_certificates=True)]
+    assert "1 certificate waiting for your approval." in items
+    assert len(items) == len(texts(activity, now))
+
+
+def test_failed_certificate_emails(activity, registration, make_certificate) -> None:
+    from django.utils import timezone
+    from certificates.models import Certificate
+
+    certificate = make_certificate(registration)
+    Certificate.objects.filter(pk=certificate.pk).update(status=Certificate.Status.ISSUED, send_failed_at=timezone.now())
     items = texts(activity, manila(activity.start_date - timedelta(days=20), 9))
-    assert "1 certificate waiting for review." in items
+    assert "1 certificate could not be emailed. Resend on the Certificates tab." in items
+    assert not any("email not sent yet" in item for item in items)
 
 
 def test_failed_and_unsent_evaluation_links(new_activity, move_to, register, director) -> None:
@@ -165,5 +180,5 @@ def test_activity_page_shows_the_box_or_all_set(client, director, new_activity, 
     url = reverse("activities:detail", args=[new_activity.pk])
     html = client.get(url).content.decode()
     assert "Needs attention (2)" in html and "Registration form not built yet." in html and "?tab=forms" in html
-    monkeypatch.setattr(attention, "activity_attention", lambda activity, now=None: [])
+    monkeypatch.setattr(attention, "activity_attention", lambda activity, now=None, can_approve_certificates=False: [])
     assert "All set" in client.get(url).content.decode()

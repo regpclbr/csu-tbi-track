@@ -50,7 +50,7 @@ the other documents. No table: below 1280 px the actions move under the text, so
                   {% if line.kind == "missing" %}
                     <p class="text-sm text-slate-700">Not uploaded yet</p>
                   {% else %}
-                    <a href="{% url 'documents:detail' line.document.pk %}" class="text-sm font-semibold break-words text-ink hover:text-primary hover:underline">{{ line.document.title }}</a>
+                    <a href="{% url 'documents:detail' line.document.pk %}?next={{ request|here|urlencode:"" }}" class="text-sm font-semibold break-words text-ink hover:text-primary hover:underline">{{ line.document.title }}</a>
                     <p class="text-xs break-all text-muted">{{ line.document.file_extension|upper }} · {{ line.document.file_size_kb }} KB</p>
                   {% endif %}
                 </div>

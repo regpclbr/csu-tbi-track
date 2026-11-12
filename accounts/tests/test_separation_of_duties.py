@@ -152,7 +152,7 @@ def test_django_admin_role_change_of_a_member_is_logged(sysadmin, make_member, r
     assert f"Member role changed: member_id={other.pk} <{other.email}> role 'Director' -> 'Admin Staff'" in caplog.text
 
 
-# --- Refused: every create / approve / sign-off / generate action -------------------------------------------
+# --- Refused: every create / approve / generate action -------------------------------------------
 
 
 def test_refused_activity_actions(sysadmin, valid_data, new_activity, with_forms) -> None:
@@ -188,11 +188,10 @@ def test_upload_allowed_but_review_refused(sysadmin, director, new_activity) -> 
 def test_refused_certificate_actions(sysadmin, new_activity) -> None:
     for action in (
         lambda: certificate_services.generate_certificates(sysadmin, new_activity),
-        lambda: certificate_services.review_certificates(sysadmin, activity=new_activity),
-        lambda: certificate_services.record_signoff(sysadmin, "director", activity=new_activity),
         lambda: certificate_services.approve_certificates(sysadmin, activity=new_activity),
-        lambda: certificate_services.reject_certificates(sysadmin, activity=new_activity),
+        lambda: certificate_services.regenerate_certificates(sysadmin, activity=new_activity),
         lambda: certificate_services.mark_handed_over(sysadmin, activity=new_activity),
+        lambda: certificate_services.resend_certificates(sysadmin, activity=new_activity),
     ):
         with pytest.raises(PermissionDenied):
             action()

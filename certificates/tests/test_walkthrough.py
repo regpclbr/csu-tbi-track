@@ -37,9 +37,6 @@ def test_whole_flow(admin_member, director, defaults, settings, tmp_path, run_ta
         run("generate", str(activity_id))
         run("evaluate", str(ben.pk), name="Benedict Walkthrough", email="ben.personal@example.com")  # BEFORE approval
         run("preview", str(Certificate.objects.get(registration=ana).pk), str(tmp_path / "preview.pdf"))
-        run("review", str(activity_id))
-        run("sign", str(activity_id), "director")
-        run("sign", str(activity_id), "vp")
     assert not [m for m in mail.outbox if m.subject.startswith("Your Certificate")]  # not approved yet
 
     with django_capture_on_commit_callbacks(execute=True):
@@ -60,7 +57,8 @@ def test_whole_flow(admin_member, director, defaults, settings, tmp_path, run_ta
     out = capsys.readouterr().out
     assert out.count("Issued") >= 3 and "sent=yes" in out
     with pytest.raises(CommandError, match="Wrong arguments"):
-        run("sign", str(activity_id))
+        run("approve")
+    assert set(Certificate.objects.filter(approved_by__isnull=False).values_list("approved_by", flat=True)) == {director.pk}
 
 
 @pytest.mark.parametrize("moment", [time(23, 30), time(23, 59, 59), time(0, 0, 30)], ids=["23:30", "23:59:59", "00:00:30"])

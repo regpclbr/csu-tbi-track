@@ -126,7 +126,7 @@ def test_inactive_required_types_are_left_out(document_cases) -> None:
     assert "Activity Design" not in {row["document_type"] for row in rows["overdue"] + rows["due_soon"]}
 
 
-# --- Certificates waiting for sign-off, by activity ---------------------------------------------------
+# --- Certificates waiting for the Director's approval, by activity (ASSUMPTIONS 357) ----------------------
 
 
 def test_certificates_waiting_by_activity(make_activity, register, make_certificate_row) -> None:
@@ -134,10 +134,10 @@ def test_certificates_waiting_by_activity(make_activity, register, make_certific
     small = make_activity("Small")
     for i in range(3):
         make_certificate_row(activity=big, registration=register(big, f"B{i}"), status=Certificate.Status.GENERATED)
-    make_certificate_row(activity=small, registration=register(small, "S"), status=Certificate.Status.PENDING_SIGNOFF)
+    make_certificate_row(activity=small, registration=register(small, "S"), status=Certificate.Status.GENERATED)
     make_certificate_row(activity=small, registration=register(small, "T"), status=Certificate.Status.APPROVED)  # not S5
     rows = metrics.certificates_waiting_by_activity(YEAR_2026)
     assert [(row["title"], row["count"]) for row in rows] == [("Big", 3), ("Small", 1)]
-    assert sum(row["count"] for row in rows) == sum(
-        metrics.certificates_now(YEAR_2026)[key] for key in ("generated", "pending_signoff")
-    )
+    now = metrics.certificates_now(YEAR_2026)
+    assert sum(row["count"] for row in rows) == now["waiting_certificates"] == 4
+    assert len(rows) == now["waiting_activities"] == 2

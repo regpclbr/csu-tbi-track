@@ -41,7 +41,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Django admin: ACTIVITY_STATUS, DOCUMENT_STATUS are view only; ACTIVITY_TYPE, DOCUMENT_TYPE
   editable but never deleted; ROLE only its three flags (through
   `accounts.services.update_role_permissions`, which keeps at least one active System Administrator and refuses
-  can_manage_users together with can_create_activity or can_approve_documents: `check_role_flags`, separation of duties).
+  can_manage_users together with can_create_activity, can_approve_documents or can_approve_certificates:
+  `check_role_flags`, separation of duties).
 - ROLE.can_approve_documents (ASSUMPTIONS 344): approve/return documents. Migration accounts/0004 gave it to "Director"
   only; `seed_data` sets it only when creating a role (never re-applied). The System Administrator switches it in the
   Admin Console roles screen (`set_role_document_approval`) or the Django admin; no last-approver guard, only a warning.
@@ -64,16 +65,21 @@ owner is a student, so explain important decisions briefly and keep the code sim
   neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
   `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
 - ACTIVITY_AUDIT_LOG.changed_by empty = System (automatic status change); show it with `formatting.changed_by_name()`.
-- Certificate status: Generated → Pending Sign-off → Approved → Issued, one step at a time;
-  Pending Sign-off → Generated on rejection; Issued is final. Change it only through
-  `certificates.services.set_certificate_status()`, which enforces the rules.
+- Certificate status: Generated ("Waiting for approval") → Approved (by the Director) → Issued; Approved → Generated only
+  when regenerated; Issued is final. Change it only through `certificates.services.set_certificate_status()`, which
+  enforces the rules (ASSUMPTIONS 357). CERTIFICATE has `approved_by` / `approved_at` / `send_failed_at` (no review or
+  sign-off columns).
+- ROLE.can_approve_certificates (ASSUMPTIONS 357): approve certificates. Migration accounts/0005 gave it to "Director" only;
+  same rules as can_approve_documents (seed only on create, roles screen switch `set_role_certificate_approval`, never
+  with can_manage_users, no last-approver guard).
 - File path columns use `max_length=255`.
 
 ## Login and permissions
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
   `staff_login_required` on views, `require_permission()` in services. Never rely on hiding a button.
 - `Permission.CREATE_ACTIVITY` (create/edit activities), `Permission.MANAGE_USERS` (Admin Console:
-  users, roles, master data, certificate design and signatories), `Permission.APPROVE_DOCUMENTS` (approve/return documents).
+  users, roles, master data, certificate design and signatories), `Permission.APPROVE_DOCUMENTS` (approve/return documents),
+  `Permission.APPROVE_CERTIFICATES` (approve certificates).
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
@@ -230,13 +236,19 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - `generate_certificates`: Conducted only, active template + VP + Director required, missing ones only,
   numbers from `_certificate_numbers()` (`TBI-<Manila year>-<00001>`, advisory lock). Each certificate keeps
   the design it was generated with.
-- Sign-off actions (review, record_signoff, approve, reject, mark_handed_over) take one list of IDs or an
-  activity, all or nothing, need can_create_activity. record_signoff logs who recorded it.
+- Actions take one list of IDs or an activity, all or nothing: `approve_certificates` (can_approve_certificates; refused
+  while a stored signatory's image is missing: `missing_signature_reason` / `approval_closed_reason`), and with
+  can_create_activity `regenerate_certificates` (current design, back to waiting for approval), `mark_handed_over`,
+  `resend_certificates`. The page's bulk view checks each action's permission.
+- Preview (`preview_pdf`): the same template as the final PDF with both signatures, a small "PREVIEW" corner mark only
+  while waiting for approval (ASSUMPTIONS 358). `certificates:preview` is the second `xframe_options_sameorigin` view
+  (the preview dialog's iframe); Download PDF gives the preview until the final PDF exists.
 - The participant's printed name and email come from EVALUATION_SUBMISSION (`certificate_name`,
   `certificate_email`, checked in `registrations.services.clean_certificate_details`), never the registration.
   Approved + evaluated (whichever is last) → `prepare_certificate` (task) renders, issues, queues the email.
   Resource persons: rendered on approval, Issued at hand-over, never emailed.
-- `send_certificate` locks the row (`select_for_update(of=("self",))`), sets `sent_at` only after sending.
+- `send_certificate` locks the row (`select_for_update(of=("self",))`), sets `sent_at` only after sending; a failure sets
+  `send_failed_at` ("Send failed" + Resend on the tab, ASSUMPTIONS 360).
   Retries: 5/30/120 min one-off schedules, then the 8:30 daily retry (`retry_pending_certificates`).
 - Email: `settings.MAILERS` (console in DEBUG unless `EMAIL_REAL_SENDING`; `config.mail.GuardedSMTPBackend`
   never sends to `EMAIL_BLOCKED_DOMAINS`). Tests never open SMTP (root conftest).
@@ -336,14 +348,21 @@ owner is a student, so explain important decisions briefly and keep the code sim
   the shared `documents/_dialog.html` (form loaded with HTMX, its own page without JS). Bulk certificate actions: one service
   call, all or nothing, refusals listed from `CertificateError.problems`; Generate shows `generation_closed_reason()`. An
   error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The certificate preview and
-  `documents:view` (the document preview) are the only inline files. New components: `file_drop`.
+  `documents:view` (the document preview) are the only inline files. New components: `file_drop`. (Since 2026-11-11 the
+  certificate tab's Sign-off actions are replaced by the Director's approval: see "Certificates tab" below.)
 - Documents page (ASSUMPTIONS 352): default "By activity" (`documents.services.overview_activities` +
   `activity_document_overview` = `document_checklist()`'s rule for many activities, parity test; `document_state_counts`
   for the summary cards), "All documents" = the flat list. Filters in the URL; no rules in `documents/_activity_card.html`.
+- Certificates tab (ASSUMPTIONS 357–360): approval panel (`certificates.pages.approval_panel`: summary, previews with
+  Previous / Next, "Approve all for this activity" behind a confirm dialog); S5 and Needs attention count ACTIVITIES waiting
+  for certificate approval ("Waiting for your approval" for the Director, "Waiting for the Director" for others).
+- Document page Back link (ASSUMPTIONS 359): list links add `?next={{ request|here|urlencode:"" }}` (`config.links`), and
+  `documents.pages.back_link` accepts only internal paths (`is_internal_path`).
 - Document preview (ASSUMPTIONS 329–330): Preview in `documents/_actions.html` opens the shared `#document-preview` dialog (HTMX,
   `documents.page_views.preview`): PDF iframe / image / "not available" + Download, kind from `preview_kind()` (confirmed stored type,
-  never the name). The file comes only from `documents:view` (Download's login rule, inline, nosniff, stored bytes checked again), the
-  ONLY `xframe_options_sameorigin` view; everything else stays `X-Frame-Options: DENY`. No CSP is set; adding one must allow it.
+  never the name). The file comes only from `documents:view` (Download's login rule, inline, nosniff, stored bytes checked again), one of
+  the TWO `xframe_options_sameorigin` views (with `certificates:preview`, ASSUMPTIONS 358); everything else stays
+  `X-Frame-Options: DENY`. No CSP is set; adding one must allow it.
 - Reports, Assistant, Startups, Notifications and search pages (F5, ASSUMPTIONS 301–311): `reports/page_views.py` + `reports/pages.py`
   (form: quick dates, sections preset by type, the AI switch adds `ai_summary`; a pending history row polls `reports:row` every 4 s and
   stops when ready/failed or after 15 min), `assistant/page_views.py` + `assistant/pages.py`, `startups/staff_views.py` + `startups/pages.py`
@@ -439,6 +458,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Happening now + documents by activity (2026-11-06): dashboard spotlight, Documents page cards by activity (351–352).
 - Grouped list + link requests (2026-11-08): grouped Activities list with follow-up actions, Back/Forward filter fix,
   evaluation link request log, HMAC rate-limit keys, two Needs attention items (353–356).
+- Certificate approval (2026-11-11): Director-only approval per activity (can_approve_certificates), statuses Generated →
+  Approved → Issued, in-system preview with signatures, regenerate, failed send + Resend, S5 by activity, document Back
+  link (357–360).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -477,7 +499,7 @@ python manage.py check_pdf                # WeasyPrint renders a test PDF in mem
 python manage.py send_test_email you@example.com [--smtp]   # one test email (--smtp: really send it, even in DEBUG)
 python manage.py retry_certificates       # render/issue ready certificates and send unsent emails now (the 8:30 retry)
 python manage.py make_sample_certificate_images <folder>    # DEMO: invented background + 2 signatures (PNG)
-python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG): try the certificate flow step by step
+python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG): certificate flow step by step (approve = as the Director)
 python manage.py show_dashboard [--start --end --activity-type]   # dashboard numbers as JSON (same as the API)
 python manage.py generate_report --type accomplishment --format pdf --start 2026-01-01 --end 2026-06-30   # build now (--report <id>: a pending one)
 python manage.py qcluster       # background worker (separate terminal; works on Windows; Ctrl+C stops)

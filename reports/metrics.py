@@ -602,22 +602,24 @@ def document_attention(filters: ReportFilters, now: datetime | None = None, type
 
 
 def certificates_now(filters: ReportFilters) -> dict:
-    """S5: Generated and Pending Sign-off; S6: Approved but not Issued yet."""
+    """S5: certificates waiting for the Director's approval (Generated), counted as ACTIVITIES (waiting_activities,
+    distinct) with the number of certificates (waiting_certificates) (ASSUMPTIONS 357); S6: Approved but not Issued
+    yet. One query on CERTIFICATE (the type filter joins ACTIVITY one to one, so nothing multiplies)."""
     status = Certificate.Status
+    waiting = Q(status=status.GENERATED)
     return _of_type(Certificate.objects.all(), filters, "activity__activity_type_id").aggregate(
-        generated=Count("pk", filter=Q(status=status.GENERATED)),
-        pending_signoff=Count("pk", filter=Q(status=status.PENDING_SIGNOFF)),
+        waiting_activities=Count("activity", filter=waiting, distinct=True),
+        waiting_certificates=Count("pk", filter=waiting),
         approved_not_issued=Count("pk", filter=Q(status=status.APPROVED)),
     )
 
 
 def certificates_waiting_by_activity(filters: ReportFilters, limit: int = 3) -> list[dict]:
-    """The activities with S5 certificates (Generated + Pending Sign-off), most certificates first:
+    """The activities of S5 (certificates waiting for approval), most certificates first:
     activity_id, title, count. Respects the activity type filter, like S5."""
     status = Certificate.Status
     rows = (
-        _of_type(Certificate.objects.filter(status__in=[status.GENERATED, status.PENDING_SIGNOFF]), filters,
-                 "activity__activity_type_id")
+        _of_type(Certificate.objects.filter(status=status.GENERATED), filters, "activity__activity_type_id")
         .order_by()
         .values("activity_id", "activity__title")
         .annotate(count=Count("pk"))
@@ -660,9 +662,8 @@ def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
         _card("documents_overdue", "Required documents overdue", NOW, documents["overdue"]),
         _card("documents_waiting_for_review", "Documents waiting for a reviewer", NOW, documents["waiting_for_review"],
               returned=documents["returned"]),
-        _card("certificates_waiting_for_signoff", "Certificates waiting for sign-off", NOW,
-              certificates["generated"] + certificates["pending_signoff"],
-              generated=certificates["generated"], pending_signoff=certificates["pending_signoff"],
+        _card("certificates_waiting_for_approval", "Activities with certificates waiting for the Director's approval", NOW,
+              certificates["waiting_activities"], certificates=certificates["waiting_certificates"],
               approved_not_issued=certificates["approved_not_issued"]),
         _card("certificates_issued", "Certificates issued", PERIOD, summary["certificates_issued"],
               participation=summary["certificates_issued_participation"],

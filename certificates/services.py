@@ -1,10 +1,13 @@
-"""Business logic for certificates: design (template and signatories), generating, sign-off,
+"""Business logic for certificates: design (template and signatories), generating, the Director's approval,
 the final PDF, issuing and emailing. Views, the Django admin and tasks call these functions.
 
-The life of a certificate (status rules in set_certificate_status, item 46):
+The life of a certificate (status rules in set_certificate_status, ASSUMPTIONS 357):
 
-    Generated --review--> Pending Sign-off --(both sign-offs)--> Approved --> Issued
-                 <------reject (clears the sign-offs)------
+    Generated ("Waiting for approval") --Director approves--> Approved --> Issued
+              <------------ regenerate (new design, approval cleared) ------
+
+- Generate / regenerate / hand over / resend: can_create_activity. Approve: can_approve_certificates (the Director),
+  one certificate or all of an activity at once. Approval is refused while a signature image is missing.
 
 - Participant (Certificate of Participation, by email): the name printed and the address come
   from the participant's EVALUATION_SUBMISSION. When the certificate is Approved AND the evaluation
@@ -46,18 +49,16 @@ DeliveryMethod = Certificate.DeliveryMethod
 Position = CertificateSignatory.Position
 
 DEFAULT_PAGE_SIZE = 20
-SIGN_OFF_FIELDS = ("reviewed_at", "director_signed_at", "vp_signed_at")
-SIGN_OFF_FIELD_BY_POSITION = {Position.DIRECTOR: "director_signed_at", Position.VP: "vp_signed_at"}
 
 # The only status moves allowed. Forward one step at a time, plus one backward move:
-# Pending Sign-off -> Generated when the reviewer rejects the certificate.
+# Approved -> Generated when the certificate is regenerated (it must be approved again).
 # Issued is final: a wrong certificate is replaced by a new one with a new number.
 ALLOWED_MOVES: dict[str, set[str]] = {
-    Status.GENERATED: {Status.PENDING_SIGNOFF},
-    Status.PENDING_SIGNOFF: {Status.APPROVED, Status.GENERATED},
-    Status.APPROVED: {Status.ISSUED},
+    Status.GENERATED: {Status.APPROVED},
+    Status.APPROVED: {Status.ISSUED, Status.GENERATED},
     Status.ISSUED: set(),
 }
+SIGNATORY_LABELS = {Position.VP: "VP", Position.DIRECTOR: "Director"}
 
 CERTIFICATE_DOCUMENT_TYPE = "Certificate"  # DOCUMENT_TYPE for evidence uploads (seeded name, item 48)
 NUMBER_LOCK_KEY = 9_000_001  # PostgreSQL advisory lock: one number allocation at a time
@@ -321,15 +322,52 @@ def get_submitted_evaluation(certificate: Certificate) -> EvaluationSubmission |
     return EvaluationSubmission.objects.filter(registration_id=certificate.registration_id).first()
 
 
+def _signature_present(signatory: CertificateSignatory) -> bool:
+    """The signatory's signature image is stored and is a PNG (the file can disappear from the disk)."""
+    field_file = signatory.signature_image_path
+    if not field_file or not field_file.name:
+        return False
+    try:
+        with field_file.storage.open(field_file.name, "rb") as handle:
+            return handle.read(len(document_services.PNG_SIGNATURE)) == document_services.PNG_SIGNATURE
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+
+
+def missing_signature_reason(signatories) -> str | None:
+    """None when every given signatory has a signature image; otherwise the reason approval is refused.
+    The certificate keeps the signatories it was generated with, so a new image needs a regeneration too."""
+    for signatory in sorted({s.pk: s for s in signatories}.values(), key=lambda s: s.position != Position.VP):
+        if not _signature_present(signatory):
+            label = SIGNATORY_LABELS.get(signatory.position, signatory.get_position_display())
+            return (f"The {label}'s signature image is missing. Upload it in the Admin Console, "
+                    "then regenerate the certificates.")
+    return None
+
+
+def _certificate_signatories(certificates) -> list[CertificateSignatory]:
+    return [person for c in certificates for person in (c.vp_signatory, c.director_signatory)]
+
+
+def approval_closed_reason(activity: Activity) -> str | None:
+    """Why "Approve all for this activity" cannot be used now, or None. Read only: the Certificates tab shows it
+    next to the button, and approve_certificates refuses with the same message."""
+    waiting = list(
+        Certificate.objects.filter(activity=activity, status=Status.GENERATED).select_related("vp_signatory", "director_signatory")
+    )
+    if not waiting:
+        return "No certificates of this activity are waiting for approval."
+    return missing_signature_reason(_certificate_signatories(waiting))
+
+
 def set_certificate_status(
     certificate: Certificate, new_status: str, *, member: TBIMember | None = None, now: datetime | None = None
 ) -> Certificate:
     """Move a certificate to `new_status` after checking the rules, then save it.
 
     - Only the moves in ALLOWED_MOVES are possible.
-    - Pending Sign-off (reviewed): sets reviewed_by and reviewed_at.
-    - Approved needs reviewed_at, director_signed_at and vp_signed_at.
-    - Rejecting (Pending Sign-off -> Generated) clears those three dates (reviewed_by is kept).
+    - Approved needs both signature images (missing_signature_reason); it sets approved_by and approved_at.
+    - Back to Generated (regenerated): clears approved_by and approved_at.
     - Issued needs, for participants, a submitted evaluation. Issuing sets issued_at and links
       the evaluation to the certificate.
     """
@@ -341,18 +379,15 @@ def set_certificate_status(
             f"Cannot move a certificate from {Status(certificate.status).label} to {Status(new_status).label}."
         )
 
-    if new_status == Status.PENDING_SIGNOFF:
-        certificate.reviewed_by = member
-        certificate.reviewed_at = now
+    if new_status == Status.APPROVED:
+        if reason := missing_signature_reason([certificate.vp_signatory, certificate.director_signatory]):
+            raise CertificateStatusError(reason)
+        certificate.approved_by = member
+        certificate.approved_at = now
 
-    elif new_status == Status.APPROVED:
-        missing = [name for name in SIGN_OFF_FIELDS if getattr(certificate, name) is None]
-        if missing:
-            raise CertificateStatusError(f"Cannot approve: missing {', '.join(missing)}.")
-
-    elif new_status == Status.GENERATED:  # rejected by the reviewer
-        for name in SIGN_OFF_FIELDS:
-            setattr(certificate, name, None)
+    elif new_status == Status.GENERATED:  # regenerated: must be approved again
+        certificate.approved_by = None
+        certificate.approved_at = None
 
     elif new_status == Status.ISSUED:
         if certificate.recipient_type == RecipientType.REGISTRATION:
@@ -363,26 +398,29 @@ def set_certificate_status(
         certificate.issued_at = now
 
     certificate.status = new_status
-    certificate.save(update_fields=["status", "reviewed_by", "evaluation_submission", "issued_at", *SIGN_OFF_FIELDS])
+    certificate.save(update_fields=["status", "approved_by", "approved_at", "evaluation_submission", "issued_at"])
     return certificate
 
 
-# --- Sign-off actions: one certificate, a list, or all of an activity (can_create_activity) -------
+# --- Actions: one certificate, a list, or all of an activity --------------------------------------
 
 
-def _select_for_action(certificate_ids: list[int] | None, activity: Activity | None, status: str, extra: Q | None = None) -> list[Certificate]:
-    """Lock the certificates to act on: the given IDs, or every certificate of `activity` in `status`
+def _select_for_action(certificate_ids: list[int] | None, activity: Activity | None, statuses, extra: Q | None = None,
+                       empty: str = "") -> list[Certificate]:
+    """Lock the certificates to act on: the given IDs, or every certificate of `activity` in one of `statuses`
     (and matching `extra`). Must be called inside a transaction."""
     if (certificate_ids is None) == (activity is None):
         raise CertificateError("Give either certificate_ids or activity_id.")
-    queryset = Certificate.objects.select_for_update().order_by("pk")
+    statuses = [statuses] if isinstance(statuses, str) else list(statuses)
+    queryset = Certificate.objects.select_for_update(of=("self",)).select_related("vp_signatory", "director_signatory").order_by("pk")
     if activity is not None:
-        queryset = queryset.filter(activity=activity, status=status)
+        queryset = queryset.filter(activity=activity, status__in=statuses)
         if extra is not None:
             queryset = queryset.filter(extra)
         certificates = list(queryset)
         if not certificates:
-            raise CertificateError(f"This activity has no certificates to act on in {Status(status).label}.")
+            labels = " or ".join(Status(s).label for s in statuses)
+            raise CertificateError(empty or f"This activity has no certificates to act on in {labels}.")
         return certificates
     ids = {int(i) for i in certificate_ids}
     certificates = list(queryset.filter(pk__in=ids))
@@ -405,56 +443,22 @@ def _apply_all(certificates: list[Certificate], action) -> None:
 
 
 @transaction.atomic
-def review_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
-    """Generated -> Pending Sign-off (reviewed). Sets reviewed_by and reviewed_at."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    certificates = _select_for_action(certificate_ids, activity, Status.GENERATED)
-    _apply_all(certificates, lambda c: set_certificate_status(c, Status.PENDING_SIGNOFF, member=member, now=now))
-    return len(certificates)
-
-
-@transaction.atomic
-def record_signoff(
-    member: TBIMember, position: str, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None
-) -> int:
-    """Record that the Director or the VP signed off (on paper or by email; signatories have no login).
-
-    Only for Pending Sign-off certificates whose sign-off for that position is not recorded yet.
-    The member who recorded it is logged (the ERD has no column for it).
-    """
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    if position not in SIGN_OFF_FIELD_BY_POSITION:
-        raise CertificateError("position must be director or vp.")
-    field = SIGN_OFF_FIELD_BY_POSITION[position]
-    certificates = _select_for_action(certificate_ids, activity, Status.PENDING_SIGNOFF, Q(**{f"{field}__isnull": True}))
-    label = Position(position).label
-
-    def sign(certificate: Certificate) -> None:
-        if certificate.status != Status.PENDING_SIGNOFF:
-            raise CertificateError(f"sign-offs can be recorded only while Pending Sign-off (it is {Status(certificate.status).label}).")
-        if getattr(certificate, field) is not None:
-            raise CertificateError(f"the {label} sign-off is already recorded.")
-        setattr(certificate, field, now or timezone.now())
-        certificate.save(update_fields=[field])
-
-    _apply_all(certificates, sign)
-    logger.info(
-        "Member %s recorded the %s sign-off for certificates %s.", member.pk, position, ", ".join(str(c.pk) for c in certificates)
-    )
-    return len(certificates)
-
-
-@transaction.atomic
 def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
-    """Pending Sign-off -> Approved (needs the review and both sign-offs).
+    """Generated -> Approved by the Director (can_approve_certificates). `activity` = "Approve all for this activity":
+    every certificate waiting for approval, all or nothing. Refused while a signature image is missing (one clear
+    reason for the whole action).
 
-    Approval means the activity's certificate (design, wording, activity details, signatories) is
-    approved. After the commit a background task renders the PDF of each certificate that is ready:
-    resource persons at once; participants once their evaluation is in (then issued and emailed).
+    Approval means the certificate (design, wording, activity details, signatures) is approved. After the commit a
+    background task renders the PDF of each certificate that is ready: resource persons at once; participants once
+    their evaluation is in (then issued and emailed).
     """
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    certificates = _select_for_action(certificate_ids, activity, Status.PENDING_SIGNOFF)
+    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    certificates = _select_for_action(certificate_ids, activity, Status.GENERATED,
+                                      empty="No certificates of this activity are waiting for approval.")
+    if reason := missing_signature_reason(_certificate_signatories(certificates)):
+        raise CertificateError(reason)
     _apply_all(certificates, lambda c: set_certificate_status(c, Status.APPROVED, member=member, now=now))
+    logger.info("Member %s approved certificates %s.", member.pk, ", ".join(str(c.pk) for c in certificates))
     for certificate in certificates:
         if _not_ready_reason(certificate) is None:
             # robust=True: a problem queueing never undoes the approval (the daily retry catches it).
@@ -463,11 +467,32 @@ def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None
 
 
 @transaction.atomic
-def reject_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
-    """Pending Sign-off -> Generated. Clears reviewed_at and both sign-offs (item 46)."""
+def regenerate_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
+    """Apply the design (template, VP, Director) that is active now to certificates that are not Issued, remove
+    their rendered PDF and send them back to "Waiting for approval" (the Director approves them again). The number
+    stays. Issued certificates are final (item 46): refused."""
     require_permission(member, Permission.CREATE_ACTIVITY)
-    certificates = _select_for_action(certificate_ids, activity, Status.PENDING_SIGNOFF)
-    _apply_all(certificates, lambda c: set_certificate_status(c, Status.GENERATED, member=member, now=now))
+    certificates = _select_for_action(certificate_ids, activity, [Status.GENERATED, Status.APPROVED],
+                                      empty="This activity has no certificates to regenerate (Issued certificates are final).")
+    template, vp, director = active_design()
+    old_files: list[str] = []
+
+    def regenerate(certificate: Certificate) -> None:
+        if certificate.status == Status.ISSUED:
+            raise CertificateError("Issued certificates are final and cannot be regenerated.")
+        if certificate.file_path:
+            old_files.append(certificate.file_path.name)
+        certificate.certificate_template, certificate.vp_signatory, certificate.director_signatory = template, vp, director
+        certificate.file_path = None
+        certificate.save(update_fields=["certificate_template", "vp_signatory", "director_signatory", "file_path"])
+        if certificate.status == Status.APPROVED:
+            set_certificate_status(certificate, Status.GENERATED, member=member, now=now)
+
+    _apply_all(certificates, regenerate)
+    storage = Certificate._meta.get_field("file_path").storage
+    for name in old_files:  # only once the change is saved
+        transaction.on_commit(lambda name=name: storage.delete(name), robust=True)
+    logger.info("Member %s regenerated certificates %s.", member.pk, ", ".join(str(c.pk) for c in certificates))
     return len(certificates)
 
 
@@ -486,6 +511,30 @@ def mark_handed_over(member: TBIMember, *, certificate_ids: list[int] | None = N
         set_certificate_status(certificate, Status.ISSUED, member=member, now=now)
 
     _apply_all(certificates, hand_over)
+    return len(certificates)
+
+
+@transaction.atomic
+def resend_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None) -> int:
+    """Queue the email again for Issued participant certificates that were not sent (usually "Send failed").
+    send_certificate still sends each one at most once."""
+    require_permission(member, Permission.CREATE_ACTIVITY)
+    certificates = _select_for_action(
+        certificate_ids, activity, Status.ISSUED, Q(delivery_method=DeliveryMethod.EMAIL, sent_at__isnull=True),
+        empty="This activity has no certificate emails waiting to be sent.",
+    )
+
+    def check(certificate: Certificate) -> None:
+        if certificate.delivery_method != DeliveryMethod.EMAIL:
+            raise CertificateError("hard-copy certificates are never emailed.")
+        if certificate.status != Status.ISSUED:
+            raise CertificateError("only Issued certificates are emailed (approved and evaluated).")
+        if certificate.sent_at is not None:
+            raise CertificateError("it was already sent.")
+
+    _apply_all(certificates, check)
+    for certificate in certificates:
+        transaction.on_commit(lambda certificate_id=certificate.pk: queue_send(certificate_id), robust=True)
     return len(certificates)
 
 
@@ -510,6 +559,10 @@ def _not_ready_reason(certificate: Certificate) -> str | None:
     if certificate.recipient_type == RecipientType.REGISTRATION and get_submitted_evaluation(certificate) is None:
         return "waiting for the evaluation"
     return None
+
+
+def _design(certificate: Certificate) -> tuple[int, int, int]:
+    return certificate.certificate_template_id, certificate.vp_signatory_id, certificate.director_signatory_id
 
 
 def final_pdf_name(certificate: Certificate) -> str:
@@ -543,6 +596,8 @@ def prepare_certificate(certificate_id: int, now: datetime | None = None) -> str
             locked = Certificate.objects.select_for_update().get(pk=certificate_id)
             if reason := _not_ready_reason(locked):  # another task finished first
                 return reason
+            if _design(locked) != _design(certificate):  # regenerated while rendering: the next task renders it
+                return "design changed"
             _write_file_atomically(name, content)
             written = True
             locked.file_path.name = name
@@ -567,16 +622,27 @@ def evaluation_submitted(registration_id: int) -> None:
         queue_prepare(certificate.pk)
 
 
+def preview_name(certificate: Certificate) -> tuple[str, bool]:
+    """(name shown on the preview, final?). The printed name of a participant comes from the evaluation; until it
+    is submitted the preview shows the registration name (final=False: the page says so, outside the certificate)."""
+    name = recipient_name(certificate)
+    if name is not None:
+        return name, True
+    return certificate.registration.name, False
+
+
+def preview_marked(certificate: Certificate) -> bool:
+    """A small "PREVIEW" mark in a corner until the certificate is Approved (owner decision, ASSUMPTIONS 358)."""
+    return certificate.status == Status.GENERATED
+
+
 def preview_pdf(member: TBIMember, certificate: Certificate) -> bytes:
-    """A PDF rendered on request, never stored: watermarked, no signature images. A participant's
-    shows the registration name marked "(name from evaluation)", because the printed name comes
-    from the evaluation. Lets reviewers check the layout and activity details before sign-off."""
+    """The certificate exactly as it will be printed, rendered now and never stored: the same template as the final
+    PDF, with the name, activity, dates, number and both signature images (a missing image is left blank). Marked
+    "PREVIEW" in a corner while it waits for approval. Any active staff member (ASSUMPTIONS 358)."""
     require_staff_member(member)
-    if certificate.recipient_type == RecipientType.REGISTRATION:
-        name = certificate.registration.name
-    else:
-        name = certificate.resource_person.name
-    return pdf.render_certificate_pdf(certificate, name=name, preview=True)
+    return pdf.render_certificate_pdf(certificate, name=preview_name(certificate)[0], mark=preview_marked(certificate),
+                                      missing_signature_ok=True)
 
 
 # --- Email ---------------------------------------------------------------------------------------
@@ -586,9 +652,17 @@ def send_certificate(certificate_id: int, now: datetime | None = None) -> str:
     """Email an Issued participant certificate (PDF attached) to the evaluation's certificate_email.
 
     The row stays locked while sending, so a second task waits and then sees sent_at: a
-    certificate is never sent twice. sent_at is set only after the mailer accepted the email.
-    Raises if sending fails (nothing is saved; the task retries).
+    certificate is never sent twice. sent_at is set only after the mailer accepted the email (and clears
+    send_failed_at). Raises if sending fails, after recording send_failed_at (the tab shows "Send failed").
     """
+    try:
+        return _send_certificate(certificate_id, now)
+    except Exception:
+        Certificate.objects.filter(pk=certificate_id, sent_at__isnull=True).update(send_failed_at=now or timezone.now())
+        raise
+
+
+def _send_certificate(certificate_id: int, now: datetime | None) -> str:
     with transaction.atomic():
         certificate = (
             Certificate.objects.select_for_update(of=("self",))  # lock only the certificate row
@@ -606,7 +680,8 @@ def send_certificate(certificate_id: int, now: datetime | None = None) -> str:
             content = handle.read()
         emails.send_certificate_email(certificate, evaluation.certificate_name, evaluation.certificate_email, content)
         certificate.sent_at = now or timezone.now()
-        certificate.save(update_fields=["sent_at"])
+        certificate.send_failed_at = None
+        certificate.save(update_fields=["sent_at", "send_failed_at"])
     return "sent"
 
 

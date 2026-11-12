@@ -81,10 +81,10 @@ class Certificate(models.Model):
         RESOURCE_PERSON = "resource_person", "Resource person"
 
     class Status(models.TextChoices):
-        """Rules for moving between statuses live in certificates/services.py."""
+        """Rules for moving between statuses live in certificates/services.py (ASSUMPTIONS 357).
+        Generated is shown as "Waiting for approval": the Director approves it."""
 
-        GENERATED = "generated", "Generated"
-        PENDING_SIGNOFF = "pending_signoff", "Pending Sign-off"
+        GENERATED = "generated", "Waiting for approval"
         APPROVED = "approved", "Approved"
         ISSUED = "issued", "Issued"
 
@@ -121,12 +121,13 @@ class Certificate(models.Model):
         related_name="certificates",
     )
     activity = models.ForeignKey("activities.Activity", on_delete=models.PROTECT, related_name="certificates")
-    reviewed_by = models.ForeignKey(
+    # The Director (a member with can_approve_certificates) who approved it; empty while waiting for approval.
+    approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
         null=True,
         blank=True,
-        related_name="reviewed_certificates",
+        related_name="approved_certificates",
     )
     vp_signatory = models.ForeignKey(
         CertificateSignatory, on_delete=models.PROTECT, related_name="vp_signed_certificates"
@@ -137,12 +138,12 @@ class Certificate(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.GENERATED)
     # Null until the background job renders the final PDF (certificates/<year>/<number>.pdf).
     file_path = models.FileField(upload_to="certificates/", max_length=255, null=True, blank=True)
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-    director_signed_at = models.DateTimeField(null=True, blank=True)
-    vp_signed_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
     delivery_method = models.CharField(max_length=20, choices=DeliveryMethod.choices)
     issued_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)
+    # The last email attempt failed (cleared when it is sent): the tab shows "Send failed" + Resend.
+    send_failed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "certificate"

@@ -162,30 +162,44 @@ def roles(request: HttpRequest) -> HttpResponse:
         "roles": Role.objects.annotate(member_count=Count("members", filter=Q(members__is_active=True))).order_by("role_name"),
         "admin_url": reverse("admin:accounts_role_changelist"),
         "no_approver": not services.active_document_approvers().exists(),
+        "no_certificate_approver": not services.active_certificate_approvers().exists(),
     }
     return _page(request, "console/roles.html", "accounts:console_roles", context)
 
 
-@manage_users
-@require_POST
-def role_document_approval(request: HttpRequest, role_id: int) -> HttpResponse:
-    """POST enabled=true|false: turn can_approve_documents on or off for one role (accounts.services, audit log)."""
+def _switch_role_flag(request: HttpRequest, role_id: int, switch, turned_on: str, turned_off: str) -> HttpResponse:
+    """POST enabled=true|false through one accounts.services switch (audit log there)."""
     role = get_object_or_404(Role, pk=role_id)
     back = redirect("accounts:console_roles")
     try:
         enabled = parse_bool(request.POST.get("enabled"), "enabled")
         if enabled is None:
             raise ValidationError({"enabled": ["enabled must be true or false."]})
-        services.set_role_document_approval(request.user, role, enabled)
+        switch(request.user, role, enabled)
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
         return back
     except services.MemberManagementError as error:
         messages.error(request, str(error))
         return back
-    state = "can now approve and return documents" if enabled else "can no longer approve or return documents"
-    messages.success(request, f"{role.role_name} {state}.")
+    messages.success(request, f"{role.role_name} {turned_on if enabled else turned_off}.")
     return back
+
+
+@manage_users
+@require_POST
+def role_document_approval(request: HttpRequest, role_id: int) -> HttpResponse:
+    """POST enabled=true|false: turn can_approve_documents on or off for one role (ASSUMPTIONS 344)."""
+    return _switch_role_flag(request, role_id, services.set_role_document_approval,
+                             "can now approve and return documents", "can no longer approve or return documents")
+
+
+@manage_users
+@require_POST
+def role_certificate_approval(request: HttpRequest, role_id: int) -> HttpResponse:
+    """POST enabled=true|false: turn can_approve_certificates on or off for one role (ASSUMPTIONS 357)."""
+    return _switch_role_flag(request, role_id, services.set_role_certificate_approval,
+                             "can now approve certificates", "can no longer approve certificates")
 
 
 # --- Certificate design ------------------------------------------------------------------------------

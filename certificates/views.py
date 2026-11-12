@@ -2,7 +2,8 @@
 
 - Any active staff member: list, detail, download the PDF, preview, list/download evidence, upload
   evidence (Step 6 rule).
-- can_create_activity: generate, review, record sign-offs, approve, reject, hand over, review evidence.
+- can_create_activity: generate, regenerate, hand over, resend. can_approve_certificates (the Director): approve
+  (ASSUMPTIONS 357). Evidence review: can_approve_documents (the Step 6 rules).
 - can_manage_users (Admin Console): templates and signatories, and their images.
 Files are never served from /media/: only through these views, always as attachments.
 """
@@ -15,11 +16,12 @@ from django.core.exceptions import ValidationError
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from config.json import JsonResponse  # date-times in Manila time
 
-from accounts.permissions import Permission, permission_required, staff_login_required
+from accounts.permissions import Permission, permission_required, require_permission, staff_login_required
 from activities.models import Activity
 from config.parsing import parse_bool
 from documents import services as document_services
@@ -100,8 +102,10 @@ def certificate_json(certificate: Certificate, detail: bool = False) -> dict:
         "delivery_method": certificate.delivery_method,
         "evaluation_submitted": evaluation is not None,
         "pdf_ready": bool(certificate.file_path),
+        "approved_at": certificate.approved_at,
         "issued_at": certificate.issued_at,
         "sent_at": certificate.sent_at,
+        "send_failed_at": certificate.send_failed_at,
     }
     if detail:
         data.update(
@@ -114,11 +118,8 @@ def certificate_json(certificate: Certificate, detail: bool = False) -> dict:
                 "template": {"certificate_template_id": certificate.certificate_template_id, "name": certificate.certificate_template.name},
                 "director": {"signatory_id": certificate.director_signatory_id, "name": certificate.director_signatory.name},
                 "vp": {"signatory_id": certificate.vp_signatory_id, "name": certificate.vp_signatory.name},
-                "reviewed_by": {"member_id": certificate.reviewed_by_id, "name": certificate.reviewed_by.name} if certificate.reviewed_by else None,
-                "reviewed_at": certificate.reviewed_at,
-                "director_signed_at": certificate.director_signed_at,
-                "vp_signed_at": certificate.vp_signed_at,
-                "download_url": reverse("certificates:download", args=[certificate.pk]) if certificate.file_path else None,
+                "approved_by": {"member_id": certificate.approved_by_id, "name": certificate.approved_by.name} if certificate.approved_by else None,
+                "download_url": reverse("certificates:download", args=[certificate.pk]),
                 "preview_url": reverse("certificates:preview", args=[certificate.pk]),
                 "evidence": [evidence_json(d) for d in services.evidence_for(certificate)],
             }
@@ -162,7 +163,7 @@ def signatory_json(signatory: CertificateSignatory) -> dict:
 @require_GET
 @api_errors
 def list_api(request: HttpRequest) -> JsonResponse:
-    """GET ?activity=<id>&status=<generated|pending_signoff|approved|issued>&recipient_type=&page="""
+    """GET ?activity=<id>&status=<generated|approved|issued>&recipient_type=&page="""
     activity = request.GET.get("activity") or None
     if activity is not None and not activity.isdigit():
         raise BadRequest("activity must be a number.")
@@ -188,25 +189,36 @@ def detail_api(request: HttpRequest, certificate_id: int) -> JsonResponse:
 
 @staff_login_required
 @require_GET
-def download_certificate(request: HttpRequest, certificate_id: int) -> FileResponse:
-    """The final PDF (any active staff member). 404 until it is rendered."""
+def download_certificate(request: HttpRequest, certificate_id: int) -> HttpResponse:
+    """"Download PDF" (any active staff member, always an attachment): the final PDF once it is rendered, otherwise
+    the preview rendered now (<number>-preview.pdf, marked PREVIEW while waiting for approval; ASSUMPTIONS 358)."""
     certificate = get_object_or_404(Certificate, pk=certificate_id)
-    return _file_response(certificate.file_path, f"{certificate.certificate_number}.pdf")
+    if certificate.file_path:
+        return _file_response(certificate.file_path, f"{certificate.certificate_number}.pdf")
+    try:
+        content = services.preview_pdf(request.user, certificate)
+    except Exception as error:  # e.g. WeasyPrint's system libraries are missing
+        return HttpResponse(f"The PDF could not be rendered ({type(error).__name__}). Run python manage.py check_pdf.",
+                            status=503, content_type="text/plain; charset=utf-8")
+    return _pdf_response(content, f"{certificate.certificate_number}-preview.pdf")
 
 
 @staff_login_required
 @require_GET
+@xframe_options_sameorigin  # the preview dialog's <iframe> (like documents:view); every other page keeps DENY
 def preview_certificate(request: HttpRequest, certificate_id: int) -> HttpResponse:
-    """A watermarked preview without signatures, rendered now and never stored. Shown inline (new tab)."""
+    """The certificate exactly as it will look (services.preview_pdf: same template, both signatures), rendered now
+    and never stored. Inline: shown in the preview dialog's <iframe> or a new tab."""
     certificate = get_object_or_404(Certificate, pk=certificate_id)
     try:
         content = services.preview_pdf(request.user, certificate)
     except Exception as error:  # e.g. WeasyPrint's system libraries are missing
-        return JsonResponse({"error": f"The preview could not be rendered ({type(error).__name__}). Run python manage.py check_pdf."}, status=503)
+        return HttpResponse(f"The preview could not be rendered ({type(error).__name__}). Run python manage.py check_pdf.",
+                            status=503, content_type="text/plain; charset=utf-8")
     return _pdf_response(content, f"PREVIEW-{certificate.certificate_number}.pdf", inline=True)
 
 
-# --- Staff: actions (can_create_activity) ------------------------------------------------------
+# --- Staff: actions (generate etc.: can_create_activity; approve: can_approve_certificates) ------
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
@@ -231,29 +243,27 @@ def _target(data: dict) -> dict:
     return {"activity": get_object_or_404(Activity, pk=activity_id)}
 
 
+# action -> (service, permission). The view checks the permission first (403); the service checks it again.
 ACTIONS = {
-    "review": services.review_certificates,
-    "approve": services.approve_certificates,
-    "reject": services.reject_certificates,
-    "hand-over": services.mark_handed_over,
+    "approve": (services.approve_certificates, Permission.APPROVE_CERTIFICATES),
+    "regenerate": (services.regenerate_certificates, Permission.CREATE_ACTIVITY),
+    "hand-over": (services.mark_handed_over, Permission.CREATE_ACTIVITY),
+    "resend": (services.resend_certificates, Permission.CREATE_ACTIVITY),
 }
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@staff_login_required
 @require_POST
 @api_errors
 def action_api(request: HttpRequest, action: str) -> JsonResponse:
-    """POST /certificates/api/<review|sign|approve|reject|hand-over>/
-    with {"certificate_ids": [..]} or {"activity_id": n}; sign also needs {"position": "director"|"vp"}."""
-    data = _json_body(request)
-    target = _target(data)
-    if action == "sign":
-        changed = services.record_signoff(request.user, str(data.get("position", "")), **target)
-    elif action in ACTIONS:
-        changed = ACTIONS[action](request.user, **target)
-    else:
+    """POST /certificates/api/<approve|regenerate|hand-over|resend>/ with {"certificate_ids": [..]} or
+    {"activity_id": n}. Each service checks its own permission (403 without it)."""
+    if action not in ACTIONS:
         raise Http404("Unknown action.")
-    return JsonResponse({"changed": changed})
+    run, permission = ACTIONS[action]
+    require_permission(request.user, permission)
+    target = _target(_json_body(request))
+    return JsonResponse({"changed": run(request.user, **target)})
 
 
 # --- Evidence documents (Step 6 rules) ---------------------------------------------------------------

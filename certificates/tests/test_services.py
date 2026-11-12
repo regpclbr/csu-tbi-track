@@ -1,7 +1,6 @@
 """Certificate status rules (certificates/services.py)."""
 
 import pytest
-from django.utils import timezone
 
 from activities.models import ResourcePerson
 from certificates.models import Certificate
@@ -11,20 +10,11 @@ from registrations.models import EvaluationSubmission, FormTemplate, FormType
 S = Certificate.Status
 
 
-def sign_off(certificate: Certificate) -> None:
-    now = timezone.now()
-    certificate.reviewed_at = now
-    certificate.director_signed_at = now
-    certificate.vp_signed_at = now
-
-
-def move_to(certificate: Certificate, target: str) -> Certificate:
-    """Walk a fresh certificate forward to `target`, signing it off on the way."""
-    path = [S.PENDING_SIGNOFF, S.APPROVED, S.ISSUED]
+def move_to(certificate: Certificate, target: str, member=None) -> Certificate:
+    """Walk a fresh certificate forward to `target` (Approved, then Issued)."""
+    path = [S.APPROVED, S.ISSUED]
     for status in path[: path.index(target) + 1]:
-        if status == S.APPROVED:
-            sign_off(certificate)
-        set_certificate_status(certificate, status)
+        set_certificate_status(certificate, status, member=member)
     return certificate
 
 
@@ -62,19 +52,15 @@ def test_forward_moves_one_step_at_a_time(certificate, submit_evaluation) -> Non
 @pytest.mark.parametrize(
     "start, target",
     [
-        (S.GENERATED, S.APPROVED),  # skips Pending Sign-off
-        (S.GENERATED, S.ISSUED),
+        (S.GENERATED, S.ISSUED),  # skips Approved
         (S.GENERATED, S.GENERATED),  # not a move
-        (S.PENDING_SIGNOFF, S.ISSUED),  # skips Approved
-        (S.APPROVED, S.PENDING_SIGNOFF),  # backward
-        (S.APPROVED, S.GENERATED),  # backward
+        (S.APPROVED, S.APPROVED),  # not a move
     ],
 )
 def test_blocked_moves(certificate, submit_evaluation, start, target) -> None:
     submit_evaluation()
     if start != S.GENERATED:
         move_to(certificate, start)
-    sign_off(certificate)
     with pytest.raises(CertificateStatusError, match="Cannot move"):
         set_certificate_status(certificate, target)
     certificate.refresh_from_db()
@@ -82,7 +68,7 @@ def test_blocked_moves(certificate, submit_evaluation, start, target) -> None:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("target", [S.GENERATED, S.PENDING_SIGNOFF, S.APPROVED, S.ISSUED])
+@pytest.mark.parametrize("target", [S.GENERATED, S.APPROVED, S.ISSUED])
 def test_issued_is_final(certificate, submit_evaluation, target) -> None:
     submit_evaluation()
     move_to(certificate, S.ISSUED)
@@ -91,48 +77,45 @@ def test_issued_is_final(certificate, submit_evaluation, target) -> None:
 
 
 @pytest.mark.django_db
-def test_unknown_status_is_rejected(certificate) -> None:
+@pytest.mark.parametrize("old", ["pending_signoff", "for_review"])
+def test_unknown_status_is_rejected(certificate, old) -> None:
     with pytest.raises(CertificateStatusError, match="Unknown"):
-        set_certificate_status(certificate, "for_review")
+        set_certificate_status(certificate, old)  # Pending Sign-off no longer exists (ASSUMPTIONS 357)
 
 
-# --- Rejection --------------------------------------------------------------
+# --- Approval and going back (regenerated) ---------------------------------------------
 
 
 @pytest.mark.django_db
-def test_reject_moves_back_to_generated_and_clears_sign_off(certificate) -> None:
-    set_certificate_status(certificate, S.PENDING_SIGNOFF)
-    sign_off(certificate)
-    certificate.save()
+def test_approval_records_who_and_when(certificate, member) -> None:
+    move_to(certificate, S.APPROVED, member=member)
+    certificate.refresh_from_db()
+    assert certificate.approved_by == member and certificate.approved_at is not None
 
+
+@pytest.mark.django_db
+def test_back_to_waiting_clears_the_approval(certificate, member) -> None:
+    move_to(certificate, S.APPROVED, member=member)
     set_certificate_status(certificate, S.GENERATED)
+    certificate.refresh_from_db()
+    assert certificate.status == S.GENERATED and certificate.approved_by is None and certificate.approved_at is None
+    move_to(certificate, S.APPROVED, member=member)  # and it can be approved again
+    assert certificate.status == S.APPROVED
 
+
+@pytest.mark.django_db
+def test_approval_needs_both_signature_images(certificate, signatories) -> None:
+    from pathlib import Path
+    from django.conf import settings
+
+    (Path(settings.MEDIA_ROOT) / signatories[1].signature_image_path.name).unlink()
+    with pytest.raises(CertificateStatusError, match="The Director's signature image is missing"):
+        set_certificate_status(certificate, S.APPROVED)
     certificate.refresh_from_db()
     assert certificate.status == S.GENERATED
-    assert certificate.reviewed_at is None
-    assert certificate.director_signed_at is None
-    assert certificate.vp_signed_at is None
 
 
-@pytest.mark.django_db
-def test_rejected_certificate_can_be_sent_for_sign_off_again(certificate) -> None:
-    set_certificate_status(certificate, S.PENDING_SIGNOFF)
-    set_certificate_status(certificate, S.GENERATED)
-    set_certificate_status(certificate, S.PENDING_SIGNOFF)
-    assert certificate.status == S.PENDING_SIGNOFF
-
-
-# --- Approved and Issued requirements -----------------------------------------
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("missing", ["reviewed_at", "director_signed_at", "vp_signed_at"])
-def test_approved_requires_all_sign_off_dates(certificate, missing) -> None:
-    set_certificate_status(certificate, S.PENDING_SIGNOFF)
-    sign_off(certificate)
-    setattr(certificate, missing, None)
-    with pytest.raises(CertificateStatusError, match=missing):
-        set_certificate_status(certificate, S.APPROVED)
+# --- Issued requirements -----------------------------------------
 
 
 @pytest.mark.django_db

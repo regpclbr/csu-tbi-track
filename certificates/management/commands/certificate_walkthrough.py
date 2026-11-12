@@ -1,15 +1,15 @@
 """DEMO ONLY: try the Step 9 certificate flow step by step on the development database.
 
 Every step calls the same services as the JSON API (no shortcuts), acting as --member <email> or, by default, the
-first active member allowed to do that step: the System Administrator for "design" (can_manage_users), a member who
-can create activities for every other step (separation of duties, ASSUMPTIONS 339). Refuses to run when DEBUG is False.
+first active member allowed to do that step: the System Administrator for "design" (can_manage_users), the Director
+for "approve" (can_approve_certificates, ASSUMPTIONS 357), a member who can create activities for every other step
+(separation of duties, ASSUMPTIONS 339). Refuses to run when DEBUG is False.
 
     python manage.py certificate_walkthrough design <folder with the sample PNGs>
     python manage.py certificate_walkthrough activity
     python manage.py certificate_walkthrough generate <activity_id>
     python manage.py certificate_walkthrough preview <certificate_id> <output.pdf>
-    python manage.py certificate_walkthrough review|approve|reject|handover <activity_id>
-    python manage.py certificate_walkthrough sign <activity_id> director|vp
+    python manage.py certificate_walkthrough approve|regenerate|handover <activity_id>
     python manage.py certificate_walkthrough evaluate <registration_id> --name "..." --email "..."
     python manage.py certificate_walkthrough status <activity_id>
     python manage.py certificate_walkthrough save-pdf <certificate_id> <output.pdf>
@@ -56,10 +56,10 @@ def sample_answer(field):
 
 
 class Command(BaseCommand):
-    help = "DEMO ONLY: try the certificate flow step by step (design, activity, generate, review, sign, approve, evaluate, ...)."
+    help = "DEMO ONLY: try the certificate flow step by step (design, activity, generate, approve, evaluate, ...)."
 
     def add_arguments(self, parser) -> None:
-        parser.add_argument("step", choices=["design", "activity", "generate", "preview", "review", "sign", "approve", "reject",
+        parser.add_argument("step", choices=["design", "activity", "generate", "preview", "approve", "regenerate",
                                              "handover", "evaluate", "status", "save-pdf"])
         parser.add_argument("values", nargs="*", help="The step's values (IDs, folder, position, output file).")
         parser.add_argument("--member", help="Act as this staff member (default: the first active member allowed to do the step).")
@@ -70,7 +70,7 @@ class Command(BaseCommand):
         if not settings.DEBUG:
             raise CommandError("certificate_walkthrough is demo-only and refuses to run when DEBUG is False.")
         step, values = options["step"], options["values"]
-        self.member = self.find_member(options["member"], manages_users=step == "design")
+        self.member = self.find_member(options["member"], step)
         self.options = options
         method = getattr(self, "step_" + step.replace("-", "_"))
         try:
@@ -84,9 +84,11 @@ class Command(BaseCommand):
 
     # --- helpers ---
 
-    def find_member(self, email: str | None, manages_users: bool) -> TBIMember:
+    def find_member(self, email: str | None, step: str) -> TBIMember:
         members = TBIMember.objects.filter(is_active=True).select_related("role")
-        flag = {"role__can_manage_users": True} if manages_users else {"role__can_create_activity": True}
+        flag = ({"role__can_manage_users": True} if step == "design"
+                else {"role__can_approve_certificates": True} if step == "approve"
+                else {"role__can_create_activity": True})
         member = members.filter(email__iexact=email).first() if email else members.filter(**flag).order_by("pk").first()
         if member is None:
             raise CommandError("No active member found (run seed_data, or pass --member <email>).")
@@ -157,19 +159,13 @@ class Command(BaseCommand):
         Path(output).write_bytes(services.preview_pdf(self.member, certificate))
         self.say(f"Preview of {certificate.certificate_number} written to {Path(output).resolve()}")
 
-    def step_review(self, activity_id) -> None:
-        self.say(f"Reviewed {services.review_certificates(self.member, activity=self.activity(activity_id))} certificate(s): Pending Sign-off.")
-
-    def step_sign(self, activity_id, position) -> None:
-        changed = services.record_signoff(self.member, position, activity=self.activity(activity_id))
-        self.say(f"Recorded the {position} sign-off on {changed} certificate(s).")
-
     def step_approve(self, activity_id) -> None:
         changed = services.approve_certificates(self.member, activity=self.activity(activity_id))
         self.say(f"Approved {changed} certificate(s). qcluster now renders the ready ones (resource person; evaluated participants).")
 
-    def step_reject(self, activity_id) -> None:
-        self.say(f"Rejected {services.reject_certificates(self.member, activity=self.activity(activity_id))} certificate(s): back to Generated.")
+    def step_regenerate(self, activity_id) -> None:
+        changed = services.regenerate_certificates(self.member, activity=self.activity(activity_id))
+        self.say(f"Regenerated {changed} certificate(s) with the current design: waiting for the Director's approval again.")
 
     def step_handover(self, activity_id) -> None:
         self.say(f"Marked {services.mark_handed_over(self.member, activity=self.activity(activity_id))} hard-copy certificate(s) Issued.")

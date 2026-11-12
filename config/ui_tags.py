@@ -11,6 +11,14 @@ register = template.Library()
 
 
 @register.filter
+def here(request) -> str:
+    """The current page as an internal path ({{ request|here|urlencode:"" }} for a ?next= link back, ASSUMPTIONS 359)."""
+    from config.links import current_page
+
+    return current_page(request) if request is not None else ""
+
+
+@register.filter
 def number(value) -> str:
     """1240 -> "1,240"; None -> "–"."""
     if value is None or value == "":

@@ -27,12 +27,12 @@ KPI cards (full width), Needs attention (main column), next activity (beside the
     {% with upcoming=cards.upcoming_activities %}
       {% include "components/kpi_card.html" with label="Upcoming activities" value=upcoming.within_30_days|number icon="calendar" chip="blue" pill="30 days" pill_tone="success" %}
     {% endwith %}
-    {# "sign‑off" below uses a non-breaking hyphen (U+2011), so the label never breaks as "sign-" / "off" #}
-    {% with signoff=cards.certificates_waiting_for_signoff %}
-      {% if signoff.pending_signoff %}
-        {% include "components/kpi_card.html" with label="Certificates waiting for sign‑off" value=signoff.value|number icon="award" chip="amber" pill="Director + VP" pill_tone="warning" %}
+    {# S5 counts ACTIVITIES with certificates waiting for the Director's approval; the pill says how many certificates #}
+    {% with waiting=cards.certificates_waiting_for_approval %}
+      {% if waiting.value %}
+        {% include "components/kpi_card.html" with label="Certificates waiting for approval" value=waiting.value|number icon="award" chip="amber" pill=page.certificates_pill pill_tone="warning" note=page.certificates_note %}
       {% else %}
-        {% include "components/kpi_card.html" with label="Certificates waiting for sign‑off" value=signoff.value|number icon="award" chip="amber" %}
+        {% include "components/kpi_card.html" with label="Certificates waiting for approval" value=waiting.value|number icon="award" chip="amber" note="activities" %}
       {% endif %}
     {% endwith %}
     {% if page.review.mine %}
@@ -85,7 +85,7 @@ KPI cards (full width), Needs attention (main column), next activity (beside the
       {% endif %}
     </ul>
   {% else %}
-    {% include "components/empty_state.html" with icon="circle-check" title="Nothing needs attention" text="No overdue or soon-due required documents, nothing waiting for your review and no certificates waiting for sign-off." %}
+    {% include "components/empty_state.html" with icon="circle-check" title="Nothing needs attention" text="No overdue or soon-due required documents, nothing waiting for your review and no certificates waiting for approval." %}
   {% endif %}
 </section>
 

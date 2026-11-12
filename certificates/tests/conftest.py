@@ -119,12 +119,9 @@ def run_tasks(monkeypatch):
 
 @pytest.fixture
 def approve_all(director):
-    """Review, record both sign-offs and approve every certificate of an activity."""
+    """The Director approves every certificate of an activity waiting for approval ("Approve all")."""
 
     def run(activity: Activity) -> None:
-        services.review_certificates(director, activity=activity)
-        services.record_signoff(director, "director", activity=activity)
-        services.record_signoff(director, "vp", activity=activity)
         services.approve_certificates(director, activity=activity)
 
     return run

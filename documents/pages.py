@@ -5,7 +5,7 @@ the checklist; the review state). This module turns their results into what the 
 
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, QueryDict
@@ -402,6 +402,29 @@ def safe_next(request: HttpRequest, fallback: str) -> str:
     if target and url_has_allowed_host_and_scheme(target, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
         return target
     return fallback
+
+
+def back_link(request: HttpRequest, document: Document) -> dict:
+    """The document page's Back link (ASSUMPTIONS 359): the page the member came from (?next=, internal paths only:
+    the Documents page with its filters and view, the review tab, or the activity's tab), otherwise the document's
+    place (place_of). {"url", "label"}."""
+    from config.links import is_internal_path
+
+    activity_title = document.activity.title
+    where = "the certificates" if document.related_certificate_id else "the documents"
+    fallback = {"url": place_of(document), "label": f"Back to {where} of {activity_title}"}
+    target = request.GET.get("next", "")
+    if not is_internal_path(request, target):
+        return fallback
+    path = urlsplit(target).path
+    if path.startswith(reverse("documents:list")):
+        label = "Back to Documents"
+    elif path == reverse("activities:detail", args=[document.activity_id]):
+        tab = parse_qs(urlsplit(target).query).get("tab", [""])[0]
+        label = f"Back to the {tab} of {activity_title}" if tab in ("documents", "certificates") else f"Back to {activity_title}"
+    else:
+        label = "Back"
+    return {"url": target, "label": label}
 
 
 def place_of(document: Document) -> str:

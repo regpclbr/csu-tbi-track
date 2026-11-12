@@ -24,12 +24,14 @@ class Permission(StrEnum):
     CREATE_ACTIVITY = "can_create_activity"  # create or edit activities
     MANAGE_USERS = "can_manage_users"  # Admin Console: users, roles, master data, certificate design/signatories
     APPROVE_DOCUMENTS = "can_approve_documents"  # approve or return documents (ASSUMPTIONS 344)
+    APPROVE_CERTIFICATES = "can_approve_certificates"  # approve certificates (ASSUMPTIONS 357)
 
 
 PERMISSION_LABELS = {
     Permission.CREATE_ACTIVITY: "create or edit activities",
     Permission.MANAGE_USERS: "use the Admin Console",
     Permission.APPROVE_DOCUMENTS: "approve or return documents",
+    Permission.APPROVE_CERTIFICATES: "approve certificates",
 }
 
 

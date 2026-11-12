@@ -248,13 +248,14 @@ def test_prepare_twice_renders_once(generated, approve_all, evaluate, monkeypatc
 # --- Preview ------------------------------------------------------------------------------------------
 
 
-def test_preview_is_watermarked_without_signatures(generated, director, fake_pdf_renderer, client) -> None:
+def test_preview_looks_like_the_certificate_with_a_corner_mark(generated, director, fake_pdf_renderer, client) -> None:
+    """ASSUMPTIONS 358: same template as the final PDF, both signatures, a small PREVIEW mark while waiting."""
     certificate = certificate_of(generated[1][0])
     content = services.preview_pdf(director, certificate)
     html = fake_pdf_renderer.last
-    assert content.startswith(b"%PDF-") and "PREVIEW" in html
-    assert html.count("data:image/png;base64,") == 1  # the background only, no signatures
-    assert "Ana Cruz" in html and "(name from evaluation)" in html
+    assert content.startswith(b"%PDF-") and 'class="preview-mark">PREVIEW<' in html and "NOT VALID" not in html
+    assert html.count("data:image/png;base64,") == 3  # background + both signatures
+    assert "Ana Cruz" in html and "(name from evaluation)" not in html
     assert certificate_files() == []  # never stored
 
     client.force_login(director)
@@ -273,7 +274,7 @@ def test_preview_explains_a_rendering_problem(generated, director, fake_pdf_rend
     fake_pdf_renderer.fail = OSError("cannot load library")
     client.force_login(director)
     response = client.get(f"/certificates/{appreciation_of(generated[0]).pk}/preview/")
-    assert response.status_code == 503 and "check_pdf" in response.json()["error"]
+    assert response.status_code == 503 and "check_pdf" in response.content.decode()  # plain text in the iframe
 
 
 # --- Demo addresses are never really emailed ------------------------------------------------------------

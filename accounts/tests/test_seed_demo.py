@@ -96,10 +96,10 @@ def test_demo_gives_every_dashboard_card_and_chart_something_to_show(demo_settin
     data = metrics.dashboard(metrics.ReportFilters(today - timedelta(days=300), today + timedelta(days=60)))
     cards = {card["key"]: card for card in data["cards"]}
     for key in ("activities_by_status", "upcoming_activities", "activities_conducted", "registrations", "evaluations",
-                "documents_complete", "documents_overdue", "documents_waiting_for_review", "certificates_waiting_for_signoff",
+                "documents_complete", "documents_overdue", "documents_waiting_for_review", "certificates_waiting_for_approval",
                 "startups_engaged"):
         assert cards[key]["value"] > 0, key
-    assert cards["certificates_waiting_for_signoff"]["approved_not_issued"] > 0  # issued by retry_certificates / qcluster
+    assert cards["certificates_waiting_for_approval"]["approved_not_issued"] > 0  # issued by retry_certificates / qcluster
     assert sum(1 for month in data["charts"]["per_month"] if month["activities"]) >= 3
     assert len(data["charts"]["by_type"]) >= 4
     assert all(row["activities"] for row in data["charts"]["by_category"])
@@ -110,7 +110,8 @@ def test_demo_gives_every_dashboard_card_and_chart_something_to_show(demo_settin
 def test_demo_certificates_go_through_the_services_and_are_not_duplicated(demo_settings, admin_member) -> None:
     run_demo()
     statuses = set(Certificate.objects.values_list("status", flat=True))
-    assert statuses == {"generated", "pending_signoff", "approved"}
+    assert statuses == {"generated", "approved"}
+    assert set(Certificate.objects.filter(status="approved").values_list("approved_by__role__role_name", flat=True)) == {"Director"}
     count = Certificate.objects.count()
     run_demo()
     assert Certificate.objects.count() == count

@@ -50,9 +50,13 @@ def test_any_active_staff_member_lists_and_reads(client, both_issued, admin_staf
     assert response["X-Content-Type-Options"] == "nosniff"
 
 
-def test_download_is_404_before_the_pdf_exists(client, generated, admin_staff) -> None:
+def test_download_before_the_pdf_exists_gives_the_preview(client, generated, admin_staff) -> None:
+    """ASSUMPTIONS 358: "Download PDF" works before rendering: the preview, as an attachment (was 404)."""
     client.force_login(admin_staff)
-    assert client.get(f"/certificates/{appreciation_of(generated[0]).pk}/download/").status_code == 404
+    certificate = appreciation_of(generated[0])
+    response = client.get(f"/certificates/{certificate.pk}/download/")
+    assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
+    assert response["Content-Disposition"] == f'attachment; filename="{certificate.certificate_number}-preview.pdf"'
 
 
 def test_not_logged_in_is_sent_to_the_login(client, both_issued) -> None:

@@ -24,6 +24,8 @@ class Role(models.Model):
     # Approve or return documents (ASSUMPTIONS 344): True only for Director by default; the System Administrator
     # turns it on or off in the Admin Console roles screen.
     can_approve_documents = models.BooleanField(default=False, db_default=False)
+    # Approve certificates (ASSUMPTIONS 357): True only for Director by default; switched like can_approve_documents.
+    can_approve_certificates = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

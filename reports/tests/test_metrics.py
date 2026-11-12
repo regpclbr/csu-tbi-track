@@ -253,12 +253,16 @@ def test_n17_emailed_counts_by_manila_date_of_sent_at(make_activity, register, m
 
 
 def test_s5_s6_certificates_now(make_activity, register, make_certificate_row) -> None:
-    activity = make_activity(start=date(2024, 5, 1))  # outside the range: "now" ignores it
-    statuses = [Certificate.Status.GENERATED, Certificate.Status.PENDING_SIGNOFF, Certificate.Status.PENDING_SIGNOFF,
-                Certificate.Status.APPROVED]
-    for number, status in enumerate(statuses):
+    """S5 counts ACTIVITIES with certificates waiting for the Director's approval (ASSUMPTIONS 357), plus the
+    certificates; a join never multiplies them."""
+    first = make_activity("First", start=date(2024, 5, 1))  # outside the range: "now" ignores it
+    second = make_activity("Second", start=date(2024, 6, 1))
+    statuses = [(first, Certificate.Status.GENERATED), (first, Certificate.Status.GENERATED),
+                (first, Certificate.Status.APPROVED), (second, Certificate.Status.GENERATED),
+                (second, Certificate.Status.ISSUED)]
+    for number, (activity, status) in enumerate(statuses):
         make_certificate_row(activity=activity, registration=register(activity, f"P{number}", attended=True), status=status)
-    assert metrics.certificates_now(YEAR_2026) == {"generated": 1, "pending_signoff": 2, "approved_not_issued": 1}
+    assert metrics.certificates_now(YEAR_2026) == {"waiting_activities": 2, "waiting_certificates": 3, "approved_not_issued": 1}
 
 
 # --- N18: startups engaged ---------------------------------------------------------------------------

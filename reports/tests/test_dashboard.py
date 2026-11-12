@@ -85,7 +85,7 @@ def test_every_card_says_its_scope(admin_staff, login, some_data) -> None:
         "documents_complete": "period",
         "documents_overdue": "now",
         "documents_waiting_for_review": "now",
-        "certificates_waiting_for_signoff": "now",
+        "certificates_waiting_for_approval": "now",
         "certificates_issued": "period",
         "startups_engaged": "period",
     }
@@ -103,7 +103,7 @@ def test_now_cards_ignore_the_range_but_period_cards_do_not(admin_staff, login, 
     other_year = cards(client.get(URL, {"start": "2020-01-01", "end": "2020-12-31"}).json())
     assert this_year["activities_conducted"]["value"] == 1 and other_year["activities_conducted"]["value"] == 0
     assert this_year["activities_by_status"]["value"] == 3 and other_year["activities_by_status"]["value"] == 0
-    for key in ("upcoming_activities", "documents_overdue", "documents_waiting_for_review", "certificates_waiting_for_signoff"):
+    for key in ("upcoming_activities", "documents_overdue", "documents_waiting_for_review", "certificates_waiting_for_approval"):
         assert this_year[key]["value"] == other_year[key]["value"], key
 
 
@@ -112,7 +112,7 @@ def test_now_cards_respect_the_activity_type(admin_staff, login, some_data) -> N
     seminar = ActivityType.objects.get(name="Seminar")
     data = cards(login(admin_staff).get(URL, {"activity_type": seminar.pk}).json())
     assert data["upcoming_activities"]["value"] == 1  # the Scheduled Seminar
-    assert data["certificates_waiting_for_signoff"]["approved_not_issued"] == 0  # certificates are on a Workshop
+    assert data["certificates_waiting_for_approval"]["approved_not_issued"] == 0  # certificates are on a Workshop
 
 
 def test_default_range_is_the_current_year(admin_staff, login) -> None:

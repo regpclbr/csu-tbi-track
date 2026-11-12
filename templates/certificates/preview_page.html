@@ -1,0 +1,7 @@
+{% extends "layouts/app.html" %}
+{# The certificate preview without JavaScript: the same panel as in the preview dialog, on a page of its own. #}
+{% block content %}
+<section class="card mx-auto max-w-5xl p-6" aria-labelledby="certificate-preview-title">
+  {% include "certificates/_preview.html" with standalone=True %}
+</section>
+{% endblock %}

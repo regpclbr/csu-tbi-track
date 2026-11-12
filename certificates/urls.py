@@ -9,6 +9,7 @@ app_name = "certificates"
 urlpatterns = [
     # Pages (phase F4)
     path("", page_views.certificate_list, name="list"),
+    path("<int:certificate_id>/preview/dialog/", page_views.preview_dialog, name="preview_dialog"),
     path("<int:certificate_id>/evidence/", page_views.evidence, name="evidence"),
     path("<int:certificate_id>/evidence/upload/", page_views.evidence_upload, name="evidence_upload"),
     # Staff: reading and files
@@ -16,9 +17,9 @@ urlpatterns = [
     path("api/<int:certificate_id>/", views.detail_api, name="api_detail"),
     path("<int:certificate_id>/download/", views.download_certificate, name="download"),
     path("<int:certificate_id>/preview/", views.preview_certificate, name="preview"),
-    # Staff: actions (can_create_activity)
+    # Staff: actions (approve: can_approve_certificates; the others: can_create_activity)
     path("api/activities/<int:activity_id>/generate/", views.generate_api, name="api_generate"),
-    path("api/<str:action>/", views.action_api, name="api_action"),  # review, sign, approve, reject, hand-over
+    path("api/<str:action>/", views.action_api, name="api_action"),  # approve, regenerate, hand-over, resend
     # Evidence documents (DOCUMENT.related_certificate)
     path("api/<int:certificate_id>/evidence/", views.evidence_api, name="api_evidence"),
     path("api/evidence/<int:document_id>/<str:action>/", views.evidence_action_api, name="api_evidence_action"),

@@ -2,11 +2,12 @@
 {% comment %}
 /documents/<id>/ (documents.page_views.document_detail): every fact of one document (activity document or certificate
 evidence), its review history (who and when; the return reason is not stored: it went to the uploader as a
-notification), Download and the actions this member may take (documents.services.allowed_actions).
+notification), Download and the actions this member may take (documents.services.allowed_actions). Back goes to the
+page the member came from (?next=, documents.pages.back_link); the Activity link stays in the details.
 {% endcomment %}
 {% block content %}
 <div class="mx-auto max-w-4xl space-y-5">
-  <a href="{{ place }}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to {% if document.related_certificate %}the certificates{% else %}the documents{% endif %} of {{ document.activity.title|truncatechars:60 }}</a>
+  <a href="{{ back_link.url }}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}{{ back_link.label|truncatechars:90 }}</a>
 
   <section class="card p-6" aria-labelledby="document-title">
     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -40,7 +41,7 @@ notification), Download and the actions this member may take (documents.services
           {% elif document.review_state == "returned" %}
             Returned by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. The reason was sent to {{ document.uploaded_by.name }} as a notification. It can be reviewed again after the file is replaced.
           {% else %}
-            Not reviewed yet. A member who can create activities (not the uploader) approves or returns it.
+            Not reviewed yet. The Director (a member with approval rights) approves or returns it.
           {% endif %}
         </dd>
       </div>

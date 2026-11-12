@@ -81,7 +81,7 @@ def review_list(request: HttpRequest) -> HttpResponse:
 def document_detail(request: HttpRequest, document_id: int) -> HttpResponse:
     document = _document(document_id)
     row = pages.document_row(request.user, document)
-    context = {"page_title": document.title, **row, "view_row": row, "place": pages.place_of(document)}
+    context = {"page_title": document.title, **row, "view_row": row, "back_link": pages.back_link(request, document)}
     return render(request, "documents/detail.html", context)
 
 

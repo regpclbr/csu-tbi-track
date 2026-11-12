@@ -15,8 +15,6 @@ from django.template.loader import render_to_string
 
 from .models import Certificate
 
-PREVIEW_NAME_NOTE = "(name from evaluation)"
-
 
 class WeasyPrintRenderer:
     def render(self, html: str) -> bytes:
@@ -31,6 +29,17 @@ _override = None  # tests put a fake renderer here
 
 def get_renderer():
     return _override or WeasyPrintRenderer()
+
+
+def _signature_uri(signatory, missing_ok: bool) -> str | None:
+    """The signature as a data: URI. missing_ok (previews only): a file that cannot be read is left blank instead of
+    failing; approval is refused in that case anyway (services.missing_signature_reason)."""
+    try:
+        return _data_uri(signatory.signature_image_path)
+    except (FileNotFoundError, OSError, ValueError):
+        if missing_ok:
+            return None
+        raise
 
 
 def _data_uri(field_file) -> str:
@@ -55,8 +64,9 @@ def _name_size(name: str) -> str:
     return "name-long" if len(name) > 45 else "name-medium" if len(name) > 30 else "name-short"
 
 
-def certificate_html(certificate: Certificate, *, name: str, preview: bool) -> str:
-    """The certificate as print HTML. A preview has a watermark and no signature images."""
+def certificate_html(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False) -> str:
+    """The certificate as print HTML: the same for the preview and the final PDF (ASSUMPTIONS 358). `mark` adds a small
+    "PREVIEW" in a corner (a preview of a certificate still waiting for approval)."""
     activity = certificate.activity
     is_participant = certificate.recipient_type == Certificate.RecipientType.REGISTRATION
     topic = ""
@@ -68,7 +78,6 @@ def certificate_html(certificate: Certificate, *, name: str, preview: bool) -> s
         "title": "Certificate of Participation" if is_participant else "Certificate of Appreciation",
         "is_participant": is_participant,
         "name": name,
-        "name_note": PREVIEW_NAME_NOTE if preview and is_participant else "",
         "name_size": _name_size(name),
         "activity_title": activity.title,
         "dates": _dates(activity.start_date, activity.end_date),
@@ -82,17 +91,18 @@ def certificate_html(certificate: Certificate, *, name: str, preview: bool) -> s
             {
                 "name": person.name,
                 "position": person.get_position_display(),
-                "signature": None if preview else _data_uri(person.signature_image_path),
+                "signature": _signature_uri(person, missing_signature_ok),
             }
             for person in (director, vp)
         ],
-        "preview": preview,
+        "mark": mark,
     }
     return render_to_string("certificates/certificate_pdf.html", context)
 
 
-def render_certificate_pdf(certificate: Certificate, *, name: str, preview: bool = False) -> bytes:
-    pdf = get_renderer().render(certificate_html(certificate, name=name, preview=preview))
+def render_certificate_pdf(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False) -> bytes:
+    html = certificate_html(certificate, name=name, mark=mark, missing_signature_ok=missing_signature_ok)
+    pdf = get_renderer().render(html)
     if not pdf.startswith(b"%PDF-"):
         raise RuntimeError("The PDF renderer returned something that is not a PDF.")
     return pdf

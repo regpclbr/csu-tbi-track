@@ -110,16 +110,15 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
         fact.links_failed, fact.links_not_sent = failed, not_sent
 
     Status = Certificate.Status
-    signed = Q(director_signed_at__isnull=False, vp_signed_at__isnull=False)
+    unsent = Q(status=Status.ISSUED, delivery_method=Certificate.DeliveryMethod.EMAIL, sent_at__isnull=True)
     certificates = (
         Certificate.objects.filter(activity_id__in=ids).values("activity_id").order_by()
         .annotate(
             total=Count("pk"),
-            to_review=Count("pk", filter=Q(status=Status.GENERATED)),
-            to_sign=Count("pk", filter=Q(status=Status.PENDING_SIGNOFF) & ~signed),
-            to_approve=Count("pk", filter=Q(status=Status.PENDING_SIGNOFF) & signed),
+            to_approve=Count("pk", filter=Q(status=Status.GENERATED)),
             to_hand_over=Count("pk", filter=Q(status=Status.APPROVED, recipient_type=Certificate.RecipientType.RESOURCE_PERSON)),
-            unsent=Count("pk", filter=Q(status=Status.ISSUED, delivery_method=Certificate.DeliveryMethod.EMAIL, sent_at__isnull=True)),
+            send_failed=Count("pk", filter=unsent & Q(send_failed_at__isnull=False)),
+            unsent=Count("pk", filter=unsent & Q(send_failed_at__isnull=True)),
         )
     )
     for row in certificates:
@@ -127,8 +126,9 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
     return facts
 
 
-def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
-    """The one place that turns facts into items (both public functions use it)."""
+def _items(fact: _Facts, now: datetime, can_approve_certificates: bool = False) -> list[AttentionItem]:
+    """The one place that turns facts into items (both public functions use it). `can_approve_certificates` only
+    changes the wording ("your approval" for the Director, "the Director's approval" for others), never the items."""
     activity = fact.activity
     status = activity.status.name
     today = timezone.localdate(now)
@@ -175,11 +175,11 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
     certificates = fact.certificates
     if status == CONDUCTED and fact.attended and not certificates.get("total"):
         items.append(AttentionItem(f"Conducted with {_plural(fact.attended, 'attendee', 'attendees')} but no certificates generated yet.", "certificates"))
+    waiting_for = "your approval" if can_approve_certificates else "the Director's approval"
     for key, text in (
-        ("to_review", "waiting for review"),
-        ("to_sign", "waiting for the Director's and VP's sign-off"),
-        ("to_approve", "signed and waiting for approval"),
+        ("to_approve", f"waiting for {waiting_for}"),
         ("to_hand_over", "for resource persons approved but not handed over"),
+        ("send_failed", "could not be emailed. Resend on the Certificates tab"),
         ("unsent", "issued but their email not sent yet"),
     ):
         if count := certificates.get(key):
@@ -194,17 +194,19 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
     return items
 
 
-def activity_attention(activity: Activity, now: datetime | None = None) -> list[AttentionItem]:
+def activity_attention(activity: Activity, now: datetime | None = None, can_approve_certificates: bool = False) -> list[AttentionItem]:
     """Everything that needs attention on one activity (the amber box below the title). Empty = "All set"."""
     now = now or timezone.now()
-    return _items(_load_facts([activity], now)[activity.pk], now)
+    return _items(_load_facts([activity], now)[activity.pk], now, can_approve_certificates)
 
 
-def attention_items(activities: list[Activity], now: datetime | None = None) -> dict[int, list[AttentionItem]]:
+def attention_items(activities: list[Activity], now: datetime | None = None,
+                    can_approve_certificates: bool = False) -> dict[int, list[AttentionItem]]:
     """Every activity's items (the Activities list: the count, and the follow-up cards' note), in a fixed number
     of queries."""
     now = now or timezone.now()
-    return {activity_id: _items(fact, now) for activity_id, fact in _load_facts(list(activities), now).items()}
+    return {activity_id: _items(fact, now, can_approve_certificates)
+            for activity_id, fact in _load_facts(list(activities), now).items()}
 
 
 def attention_counts(activities: list[Activity], now: datetime | None = None) -> dict[int, int]:

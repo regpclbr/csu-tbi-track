@@ -1,0 +1,13 @@
+{% comment %}Inside the "Approve all for this activity" confirm dialog (certificates/_tab_certificates.html). POST to
+activities:certificates_approve_all: services.approve_certificates(activity=...) approves every certificate waiting for
+approval, all or nothing, and checks the permission and the signature images again.{% endcomment %}
+<form method="post" action="{% url 'activities:certificates_approve_all' activity.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">You are approving all certificates of “{{ activity.title }}” that are waiting: <strong class="font-semibold text-ink">{{ approval.summary }}</strong>.</p>
+  <p class="text-sm text-slate-700">Each participant's certificate is emailed once they have submitted the evaluation. Resource persons' certificates are printed and handed over.</p>
+  <p class="text-sm text-muted">If a certificate is regenerated later, it waits for your approval again.</p>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Approve all</button>
+  </div>
+</form>

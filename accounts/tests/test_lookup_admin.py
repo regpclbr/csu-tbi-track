@@ -94,11 +94,12 @@ def test_update_role_permissions_service(admin_member, make_member) -> None:
     with pytest.raises(services.MemberManagementError):
         services.update_role_permissions(admin_member, admin_role, can_create_activity=True, can_manage_users=False)
 
-    # Allowed once a member of another role can manage users (that role gives up can_create_activity and
-    # can_approve_documents: never together with can_manage_users).
+    # Allowed once a member of another role can manage users (that role gives up can_create_activity and both
+    # approval flags: never together with can_manage_users).
     director_role = Role.objects.get(role_name="Director")
     services.update_role_permissions(
-        admin_member, director_role, can_create_activity=False, can_manage_users=True, can_approve_documents=False
+        admin_member, director_role, can_create_activity=False, can_manage_users=True, can_approve_documents=False,
+        can_approve_certificates=False,
     )
     make_member("Director")
     services.update_role_permissions(admin_member, admin_role, can_create_activity=True, can_manage_users=False)

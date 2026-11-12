@@ -324,9 +324,10 @@ def update_role_permissions(
     can_create_activity: bool,
     can_manage_users: bool,
     can_approve_documents: bool | None = None,
+    can_approve_certificates: bool | None = None,
 ) -> Role:
     """Change a role's permission flags (roles are never renamed or deleted). Used by the Django admin and the
-    Admin Console roles screen. can_approve_documents=None keeps the current value.
+    Admin Console roles screen. can_approve_documents / can_approve_certificates = None keeps the current value.
 
     Refused if the role would get can_manage_users together with another flag (separation of duties,
     check_role_flags) or if taking can_manage_users away from this role would leave no active System Administrator.
@@ -334,17 +335,21 @@ def update_role_permissions(
     require_permission(acting_member, Permission.MANAGE_USERS)
     if can_approve_documents is None:
         can_approve_documents = role.can_approve_documents
+    if can_approve_certificates is None:
+        can_approve_certificates = role.can_approve_certificates
     check_role_flags(
         can_create_activity=can_create_activity,
         can_manage_users=can_manage_users,
         can_approve_documents=can_approve_documents,
+        can_approve_certificates=can_approve_certificates,
     )
     if role.can_manage_users and not can_manage_users:
         ensure_admins_remain_without_role(role)
-    flags = ("can_create_activity", "can_manage_users", "can_approve_documents")
+    flags = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates")
     old = {flag: getattr(role, flag) for flag in flags}
     role.can_create_activity, role.can_manage_users = can_create_activity, can_manage_users
     role.can_approve_documents = can_approve_documents
+    role.can_approve_certificates = can_approve_certificates
     role.save(update_fields=list(flags))
     for flag, before in old.items():
         if before != getattr(role, flag):
@@ -369,6 +374,25 @@ def set_role_document_approval(acting_member: TBIMember, role: Role, enabled: bo
     )
 
 
+@transaction.atomic
+def set_role_certificate_approval(acting_member: TBIMember, role: Role, enabled: bool) -> Role:
+    """Admin Console roles screen: turn can_approve_certificates on or off for one role (the other flags stay).
+    No last-approver guard (like documents): the roles screen warns when nobody can approve certificates."""
+    role = Role.objects.select_for_update().get(pk=role.pk)
+    return update_role_permissions(
+        acting_member,
+        role,
+        can_create_activity=role.can_create_activity,
+        can_manage_users=role.can_manage_users,
+        can_approve_certificates=enabled,
+    )
+
+
+def active_certificate_approvers():
+    """Active members whose role can approve certificates (the roles screen warning)."""
+    return TBIMember.objects.filter(is_active=True, role__can_approve_certificates=True)
+
+
 def active_document_approvers():
     """Active members whose role can approve documents (review notifications, the roles screen warning)."""
     return TBIMember.objects.filter(is_active=True, role__can_approve_documents=True)
@@ -383,14 +407,24 @@ APPROVE_AND_MANAGE_REFUSED = (
     "Turn one of the two flags off."
 )
 
+APPROVE_CERTIFICATES_AND_MANAGE_REFUSED = (
+    "A role cannot both manage users and approve certificates (separation of duties). "
+    "Turn one of the two flags off."
+)
 
-def check_role_flags(*, can_create_activity: bool, can_manage_users: bool, can_approve_documents: bool = False) -> None:
-    """Separation of duties (ASSUMPTIONS 339, 344): a role with can_manage_users may have neither
-    can_create_activity nor can_approve_documents."""
+
+def check_role_flags(
+    *, can_create_activity: bool, can_manage_users: bool, can_approve_documents: bool = False,
+    can_approve_certificates: bool = False,
+) -> None:
+    """Separation of duties (ASSUMPTIONS 339, 344, 357): a role with can_manage_users may have none of
+    can_create_activity, can_approve_documents and can_approve_certificates."""
     if can_create_activity and can_manage_users:
         raise MemberManagementError(BOTH_FLAGS_REFUSED)
     if can_approve_documents and can_manage_users:
         raise MemberManagementError(APPROVE_AND_MANAGE_REFUSED)
+    if can_approve_certificates and can_manage_users:
+        raise MemberManagementError(APPROVE_CERTIFICATES_AND_MANAGE_REFUSED)
 
 
 @transaction.atomic
