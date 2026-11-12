@@ -12,7 +12,7 @@ as the registration notice; a small green "All set" when nothing is left.
           {% if item.tab == "edit" %}
             {% if can_edit %}<a href="{% url 'activities:edit' activity.pk %}" class="underline underline-offset-2 hover:no-underline">{{ item.text }}</a>{% else %}{{ item.text }}{% endif %}
           {% else %}
-            <a href="?tab={{ item.tab }}" hx-get="?tab={{ item.tab }}" hx-target="#tab-area" hx-push-url="true" class="underline underline-offset-2 hover:no-underline">{{ item.text }}</a>
+            <a href="{{ activity_url }}?tab={{ item.tab }}" hx-get="{{ activity_url }}?tab={{ item.tab }}" hx-target="#tab-area" hx-push-url="true" class="underline underline-offset-2 hover:no-underline">{{ item.text }}</a>
           {% endif %}
         </li>
       {% endfor %}

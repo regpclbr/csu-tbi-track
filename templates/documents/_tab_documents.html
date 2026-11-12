@@ -22,7 +22,7 @@ preselects the type). Uploads are normal POSTs: success comes back here with a t
                   {% include "components/badge.html" with text=item.state.label tone=item.state.tone %}
                   {% if item.is_overdue %}<span class="badge badge-danger">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}Overdue</span>{% endif %}
                   {% if item.state.label == "Missing" %}
-                    <a href="?tab=documents&amp;type={{ item.document_type.pk }}#upload" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="upload" class="size-4" %}Upload<span class="sr-only"> {{ item.document_type.name }}</span></a>
+                    <a href="{{ activity_url }}?tab=documents&amp;type={{ item.document_type.pk }}#upload" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="upload" class="size-4" %}Upload<span class="sr-only"> {{ item.document_type.name }}</span></a>
                   {% endif %}
                 </div>
               </div>

@@ -1,0 +1,11 @@
+{% comment %}Inside the "Apply the current design" confirm dialog (can_create_activity). POST to
+activities:certificates_apply_design: services.regenerate_certificates(activity=...) (ASSUMPTIONS 362).{% endcomment %}
+<form method="post" action="{% url 'activities:certificates_apply_design' activity.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">The active certificate design and signatories are applied to every certificate of “{{ activity.title }}” that is not issued yet.</p>
+  <p class="text-sm text-slate-700">Approved certificates go back to waiting for approval. Issued certificates are not changed.</p>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Apply the current design</button>
+  </div>
+</form>

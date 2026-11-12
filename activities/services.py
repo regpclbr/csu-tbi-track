@@ -71,6 +71,7 @@ TEXT_FIELDS = ("title", "description", "venue")
 STATUS_LABEL = "Status"
 RESOURCE_PERSON_ADDED = "Resource Person Added"
 RESOURCE_PERSON_REMOVED = "Resource Person Removed"
+CERTIFICATES_LABEL = "Certificates"  # created automatically / deleted with an undone attendance (ASSUMPTIONS 362)
 
 DEFAULT_PAGE_SIZE = 20
 
@@ -283,6 +284,12 @@ def _write_audit(activity: Activity, member: TBIMember | None, changes: list[tup
         )
 
 
+def write_certificate_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
+    """One History row about the activity's certificates (certificates.services): "3 created automatically (...)" by
+    System (member None), or a certificate deleted because its attendance was undone (by the member)."""
+    _write_audit(activity, member, [(CERTIFICATES_LABEL, old, new)])
+
+
 @dataclass
 class PageResult:
     """One page of results, plus what a pager needs."""
@@ -434,6 +441,10 @@ def _move_status(current: Activity, new_status: str, member: TBIMember | None) -
     current.status = target
     current.save(update_fields=["status", "updated_at"])
     _write_audit(current, member, [(STATUS_LABEL, old_status, target)])
+    if target.name == CONDUCTED:  # the System creates the certificates (ASSUMPTIONS 362); never blocks the move
+        from certificates.services import auto_generate_certificates
+
+        auto_generate_certificates(current)
 
 
 @transaction.atomic

@@ -52,9 +52,18 @@ def test_the_seeded_approver_roles_have_the_flag(roles) -> None:
     assert {name for name, role in roles.items() if role.can_approve_certificates} == set(APPROVERS)
 
 
+@pytest.fixture
+def evaluated(generated, evaluate):
+    """Both participants evaluated: every certificate is ready for approval (ASSUMPTIONS 362)."""
+    activity, people = generated
+    for n, person in enumerate(people):
+        evaluate(person, name=f"Person {n}", email=f"person{n}.cert@example.com")
+    return activity, people
+
+
 @pytest.mark.parametrize("role_name", APPROVERS)
-def test_approvers_approve_all_for_the_activity(generated, make_member, role_name) -> None:
-    activity, _ = generated
+def test_approvers_approve_all_for_the_activity(evaluated, make_member, role_name) -> None:
+    activity, _ = evaluated
     member = make_member(role_name, email=f"approver.{role_name.split()[0].lower()}@example.com")
     assert services.approve_certificates(member, activity=activity) == 3
     assert set(Certificate.objects.values_list("status", "approved_by")) == {(S.APPROVED, member.pk)}
@@ -67,18 +76,18 @@ def test_admin_staff_only_views(generated, admin_staff) -> None:
     with pytest.raises(PermissionDenied):
         services.upload_signature(admin_staff, activity, "vp", png())
     client = client_for(admin_staff)
-    assert client.post(reverse("activities:certificates_approve_all", args=[activity.pk])).status_code == 403
+    assert client.post(reverse("activities:certificates_approve_ready", args=[activity.pk])).status_code == 403
     assert client.post(signature_url(activity, "vp"), {"file": png()}).status_code == 403
     html = client.get(tab_url(activity.pk)).content.decode()
-    assert "Waiting for approval" in html and "Approve all for this activity" not in html
+    assert "Waiting for approval" in html and "Approve all ready certificates" not in html
     assert 'name="file"' not in html.split('id="signatures-title"')[1].split("certificate-preview")[0]
     assert "A member with approval rights adds it." not in html  # both signatures are there
 
 
-def test_system_administrator_approves_and_adds_signatures_but_cannot_generate(conducted, design, admin_member) -> None:
-    activity, _ = conducted
+def test_system_administrator_adds_signatures_but_cannot_apply_the_design(generated, admin_member) -> None:
+    activity, _ = generated
     with pytest.raises(PermissionDenied):
-        services.generate_certificates(admin_member, activity)
+        services.regenerate_certificates(admin_member, activity=activity)
     result = services.upload_signature(admin_member, activity, "director", png())
     assert result["action"] == "replaced"
 
@@ -116,7 +125,7 @@ def test_certificates_can_be_generated_before_the_signatures_exist(conducted, de
     activity, _ = conducted
     _, vp, head = design
     without_image(vp), without_image(head)
-    assert services.generate_certificates(director, activity)["total"] == 3
+    assert services.generate_missing_certificates(activity)["total"] == 3
     assert services.approval_closed_reason(activity) == "Add the VP's signature first."
     assert services.preview_pdf(director, Certificate.objects.first()).startswith(b"%PDF-")  # blank signature lines
 
@@ -124,8 +133,8 @@ def test_certificates_can_be_generated_before_the_signatures_exist(conducted, de
 # --- Adding and replacing a signature ----------------------------------------------------------------------------
 
 
-def test_adding_a_missing_signature_fills_the_same_row_and_unblocks_approval(generated, design, director, caplog) -> None:
-    activity, _ = generated
+def test_adding_a_missing_signature_fills_the_same_row_and_unblocks_approval(evaluated, design, director, caplog) -> None:
+    activity, _ = evaluated
     _, vp, _ = design
     without_image(vp)
     with caplog.at_level("INFO", logger="certificates.audit"):
@@ -143,7 +152,7 @@ def test_adding_a_missing_signature_fills_the_same_row_and_unblocks_approval(gen
 def test_replacing_a_signature_creates_a_new_row_and_sends_approved_back(
     generated, design, director, approve_all, run_tasks, django_capture_on_commit_callbacks, caplog,
 ) -> None:
-    activity, people = generated
+    activity, people = generated  # only the resource person is ready (and approved) here
     _, vp, _ = design
     with django_capture_on_commit_callbacks(execute=True):
         approve_all(activity)
@@ -166,7 +175,7 @@ def test_replacing_a_signature_creates_a_new_row_and_sends_approved_back(
 
     # Approved again: the new signature is the one printed.
     services.approve_certificates(director, activity=activity)
-    assert set(Certificate.objects.values_list("status", flat=True)) == {S.APPROVED}
+    assert appreciation_of(activity).status == S.APPROVED
 
 
 def test_replacing_leaves_issued_certificates_and_other_activities_alone(
@@ -175,9 +184,8 @@ def test_replacing_leaves_issued_certificates_and_other_activities_alone(
     activity, people = generated
     _, vp, _ = design
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
-    with django_capture_on_commit_callbacks(execute=True):
         evaluate(people[0])
+        approve_all(activity)
     issued = certificate_of(people[0])
     issued.refresh_from_db()
     assert issued.status == S.ISSUED
@@ -224,11 +232,11 @@ def test_upload_page_flow(generated, design, director) -> None:
     assert reverse("certificates:signature_image", args=[design[1].pk]) in html  # thumbnail for approvers
     response = client.post(signature_url(activity, "director"), {"file": png()}, follow=True)
     messages = [str(m) for m in response.context["messages"]]
-    assert messages == ["Replaced the Director's signature. 3 certificates of this activity now use it; "
-                        "approved ones wait for approval again."]
+    assert messages == ["Replaced the Director's signature. 3 certificates of this activity now use it (the preview "
+                        "shows it); approved ones wait for approval again. Issued certificates keep the copy that was sent."]
     response = client.post(signature_url(activity, "vp"), {"file": upload("x.png", b"nope")}, follow=True)
     assert "not a valid PNG image" in " ".join(str(m) for m in response.context["messages"])
-    assert client.get(signature_url(activity, "vp")).status_code == 405
+    assert client.get(signature_url(activity, "vp"))["Location"] == tab_url(activity.pk)  # a GET goes to the tab
 
 
 def test_signature_thumbnail_needs_approval_or_admin_rights(design, director, admin_staff, admin_member) -> None:
@@ -256,25 +264,27 @@ def test_tab_shows_the_first_certificate_large_with_previous_next(generated, dir
     for member in (director, admin_staff):
         html = client_for(member).get(tab_url(activity.pk)).content.decode()
         assert 'id="certificate-preview"' in html and "Previous" in html and "Next" in html
-        assert f'src="{reverse("certificates:preview", args=[first.pk])}"' in html
+        assert f'src="{reverse("certificates:preview", args=[first.pk])}?v=' in html
         assert "The final name comes from the evaluation." in html
         assert f"$dispatch('certificate-preview', {first.pk})" in html  # the row's Preview shows it here
         assert f'href="{reverse("certificates:preview_dialog", args=[first.pk])}"' in html  # without JavaScript
 
 
 def test_preview_items_know_when_the_name_is_final(generated, evaluate, run_tasks) -> None:
-    from certificates.pages import preview_items
+    from certificates.pages import preview_items, printed_names
 
     activity, people = generated
     evaluate(people[0], name="Ana Final")
-    items = {item["pk"]: item for item in preview_items(list(Certificate.objects.filter(activity=activity)))}
+    certificates = list(Certificate.objects.filter(activity=activity))
+    items = {item["pk"]: item for item in preview_items(certificates, printed_names(certificates), {})}
     assert items[certificate_of(people[0]).pk]["name_final"] is True
     assert items[certificate_of(people[1]).pk]["name_final"] is False
     assert items[appreciation_of(activity).pk]["name_final"] is True
 
 
-def test_preview_is_marked_until_approved(generated, director, approve_all) -> None:
+def test_preview_is_marked_until_approved(generated, director, approve_all, evaluate) -> None:
     activity, people = generated
+    evaluate(people[0])
     certificate = certificate_of(people[0])
     assert services.preview_marked(certificate)
     assert 'class="preview-mark"' in services.pdf.certificate_html(certificate, name="X", mark=True)
@@ -289,8 +299,8 @@ def test_preview_is_marked_until_approved(generated, director, approve_all) -> N
 def test_needs_attention_has_one_certificate_line(generated, design, director) -> None:
     activity, _ = generated
     texts = [item.text for item in attention.activity_attention(activity)]
-    assert "3 certificates waiting for approval." in texts
+    assert "1 certificate ready for approval." in texts  # the resource person; participants wait for the evaluation
     without_image(design[1])
     texts = [item.text for item in attention.activity_attention(activity)]
-    assert "Add the VP's signature first." in texts and "3 certificates waiting for approval." not in texts
+    assert "Add the VP's signature first." in texts and "1 certificate ready for approval." not in texts
     assert attention.attention_counts([activity])[activity.pk] == len(texts)

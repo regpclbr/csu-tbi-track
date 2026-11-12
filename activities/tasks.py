@@ -12,12 +12,17 @@ logger = logging.getLogger("activities")
 
 def run_activity_automation() -> dict[str, int]:
     """1. The automatic status moves (Scheduled -> Ongoing -> Conducted, ASSUMPTIONS 346).
-    2. The first evaluation link to each attendee of a Conducted activity (ASSUMPTIONS 348): sent here, inside
+    2. The missing certificates of Conducted activities (ASSUMPTIONS 362: a catch-up; the move to Conducted already
+       creates them, unless the certificate design was incomplete then).
+    3. The first evaluation link to each attendee of a Conducted activity (ASSUMPTIONS 348): sent here, inside
        qcluster, one locked registration at a time, so nobody gets two emails.
-    Page loads only do step 1; emails are sent only by this task."""
+    Page loads only do step 1 (with its certificates); emails are sent only by this task."""
+    from certificates.services import generate_pending_certificates
+
     moves = services.apply_automatic_statuses()
+    certificates = generate_pending_certificates()
     links = registration_services.send_automatic_evaluation_links()
-    result = {"status_changes": moves, **links}
-    if moves or links["sent"] or links["failed"]:
+    result = {"status_changes": moves, "certificates_created": certificates, **links}
+    if moves or certificates or links["sent"] or links["failed"]:
         logger.info("Activity automation: %s", result)
     return result

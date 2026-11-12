@@ -34,7 +34,7 @@ def test_whole_flow(admin_member, director, defaults, settings, tmp_path, run_ta
     ana, ben, carla = Registration.objects.order_by("pk")
 
     with django_capture_on_commit_callbacks(execute=True):
-        run("generate", str(activity_id))
+        run("generate", str(activity_id))  # nothing new: the System created them at Conducted (ASSUMPTIONS 362)
         run("evaluate", str(ben.pk), name="Benedict Walkthrough", email="ben.personal@example.com")  # BEFORE approval
         run("preview", str(Certificate.objects.get(registration=ana).pk), str(tmp_path / "preview.pdf"))
     assert not [m for m in mail.outbox if m.subject.startswith("Your Certificate")]  # not approved yet
@@ -45,7 +45,10 @@ def test_whole_flow(admin_member, director, defaults, settings, tmp_path, run_ta
     assert [m.to for m in sent] == [["ben.personal@example.com"]]  # sent right after approval
 
     with django_capture_on_commit_callbacks(execute=True):
-        run("evaluate", str(ana.pk), name="Ana Maria Walkthrough", email="ana.personal@example.com")  # AFTER approval
+        run("evaluate", str(ana.pk), name="Ana Maria Walkthrough", email="ana.personal@example.com")  # now ready
+    assert len([m for m in mail.outbox if m.subject.startswith("Your Certificate")]) == 1  # still waiting for approval
+    with django_capture_on_commit_callbacks(execute=True):
+        run("approve", str(activity_id))
     sent = [m for m in mail.outbox if m.subject.startswith("Your Certificate")]
     assert [m.to for m in sent] == [["ben.personal@example.com"], ["ana.personal@example.com"]]
     assert not Certificate.objects.filter(registration=carla).exists()  # did not attend

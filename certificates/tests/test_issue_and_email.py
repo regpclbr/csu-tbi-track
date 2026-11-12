@@ -39,10 +39,11 @@ def assert_emailed(certificate: Certificate, name: str, address: str, fake_pdf_r
 # --- Both orders ------------------------------------------------------------------------------------
 
 
-def test_evaluation_after_approval_issues_and_emails(generated, approve_all, evaluate, run_tasks, fake_pdf_renderer, django_capture_on_commit_callbacks) -> None:
+def test_evaluation_after_approval_issues_and_emails(generated, director, evaluate, run_tasks, fake_pdf_renderer, django_capture_on_commit_callbacks) -> None:
+    """A certificate approved before the evaluation (possible before ASSUMPTIONS 362; such rows are kept): the
+    evaluation then renders, issues and emails it."""
     activity, people = generated
-    with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
+    Certificate.objects.filter(registration__in=people).update(status=S.APPROVED, approved_by=director)
     certificate = certificate_of(people[0])
     assert certificate.status == S.APPROVED and not certificate.file_path  # no evaluation yet: nothing rendered
     assert mail.outbox == []
@@ -67,11 +68,11 @@ def test_evaluation_before_approval_is_emailed_right_after_approval(generated, a
     assert len(mail.outbox) == 1  # people[0] has not evaluated: no email for them
 
 
-def test_printed_name_is_the_evaluation_name_not_the_registration_name(generated, approve_all, evaluate, run_tasks, fake_pdf_renderer, django_capture_on_commit_callbacks) -> None:
+def test_printed_name_is_the_evaluation_name_not_the_registration_name(generated, director, evaluate, run_tasks, fake_pdf_renderer, django_capture_on_commit_callbacks) -> None:
     activity, people = generated
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0], name="Juana Dela Cruz", email="juana@example.com")
+        services.approve_certificate(director, certificate_of(people[0]))  # only this one: the last PDF rendered
     html = fake_pdf_renderer.last
     assert "Juana Dela Cruz" in html and "Ana Cruz" not in html
     assert html.count("data:image/png;base64,") == 3  # background + both signatures
@@ -114,8 +115,8 @@ def issued(generated, approve_all, evaluate, monkeypatch, django_capture_on_comm
     monkeypatch.setattr(services, "queue_send", lambda *args: None)
     monkeypatch.setattr(services, "queue_prepare", services.prepare_certificate)
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0], name="Ana Cruz", email="ana.cert@example.com")
+        approve_all(activity)
     certificate = certificate_of(people[0])
     assert certificate.status == S.ISSUED and certificate.sent_at is None
     return certificate
@@ -162,11 +163,11 @@ def test_daily_retry_sends_issued_and_unsent(issued) -> None:
 def test_never_sent_twice_under_concurrency(director, conducted, design, approve_all, evaluate, monkeypatch) -> None:
     """Two send tasks at the same moment: the row lock makes the second wait, then skip."""
     activity, people = conducted
-    services.generate_certificates(director, activity)
+    services.generate_missing_certificates(activity)
     monkeypatch.setattr(services, "queue_send", lambda *args: None)
     monkeypatch.setattr(services, "queue_prepare", services.prepare_certificate)
-    approve_all(activity)  # transaction=True: on_commit callbacks run for real
     evaluate(people[0])
+    approve_all(activity)  # transaction=True: on_commit callbacks run for real
     certificate = certificate_of(people[0])
     assert certificate.status == S.ISSUED
 
@@ -203,8 +204,8 @@ def test_failed_render_leaves_no_file_and_is_retried(generated, approve_all, eva
     activity, people = generated
     fake_pdf_renderer.fail = OSError("cannot load library 'libgobject-2.0-0'")
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0])
+        approve_all(activity)
     certificate = certificate_of(people[0])
     assert certificate.status == S.APPROVED and not certificate.file_path and certificate.issued_at is None
     assert certificate_files() == [] and mail.outbox == []
@@ -219,8 +220,8 @@ def test_failed_render_leaves_no_file_and_is_retried(generated, approve_all, eva
 
 def test_failed_save_removes_the_written_file(generated, approve_all, evaluate, monkeypatch, django_capture_on_commit_callbacks) -> None:
     activity, people = generated
-    approve_all(activity)
     evaluate(people[0])
+    approve_all(activity)
     certificate = certificate_of(people[0])
 
     def broken(*args, **kwargs):
@@ -237,8 +238,8 @@ def test_failed_save_removes_the_written_file(generated, approve_all, evaluate, 
 def test_prepare_twice_renders_once(generated, approve_all, evaluate, monkeypatch, fake_pdf_renderer) -> None:
     activity, people = generated
     monkeypatch.setattr(services, "queue_send", lambda *args: None)
-    approve_all(activity)
     evaluate(people[0])
+    approve_all(activity)
     certificate = certificate_of(people[0])
     assert services.prepare_certificate(certificate.pk) == "issued"
     assert services.prepare_certificate(certificate.pk) == "not Approved"  # already Issued: nothing to do

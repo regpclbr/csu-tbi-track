@@ -1,38 +1,36 @@
-"""The Certificates pages (phase F4): the Certificates page (/certificates/), Generate, "Approve all for this activity"
-and the bulk actions of the activity's Certificates tab, the preview dialog and the evidence modal. Thin views: every
-rule is in certificates.services (and documents.services for evidence); certificates/pages.py prepares what the
-templates show.
+"""The Certificates pages (phase F4; ASSUMPTIONS 362): the Certificates page (/certificates/), the actions of the
+activity's Certificates tab (Approve on the preview, "Approve all ready certificates", Apply the current design, Mark
+handed over, Resend, signatures), the preview page and the evidence modal. Thin views: every rule is in
+certificates.services (and documents.services for evidence); certificates/pages.py prepares what the templates show.
 
-Viewing, previews, downloads and evidence uploads: any active staff member. Generate, regenerate, hand over and resend:
-can_create_activity. Approve and add signatures: can_approve_certificates (the Director, both Project Heads and the
-System Administrator, ASSUMPTIONS 361). A bulk action changes all the selected certificates or none; a refusal shows
-every refused certificate with its reason.
+Viewing, previews, downloads and evidence uploads: any active staff member. Apply the current design, hand over and
+resend: can_create_activity. Approve and add signatures: can_approve_certificates (the Director, both Project Heads and
+the System Administrator). Certificates are created by the System (no Generate).
+
+Every action ends on the activity's Certificates tab (/activities/<id>/?tab=certificates, a redirect after the POST);
+a GET on an action address goes there too (config.links.post_only_or_tab). Refusals are kept for that one page view
+(pages.keep_problems).
 """
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
-from config.mail import email_sent_message
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import Permission, is_htmx, permission_required, require_permission, staff_login_required
 from activities.models import Activity
-from activities.page_views import render_activity_page
+from config.links import post_only_or_tab
+from config.mail import email_sent_message
 from documents import pages as document_pages
 
 from . import pages, services
 from .models import Certificate
 
-APPROVED_DONE = "Approved {n}. Each participant's certificate is emailed once their evaluation is in; ready PDFs are rendered in the background."
 SIGNATURE_NAMES = {"vp": "VP", "director": "Director"}
 
-# value posted -> (service call, permission, what it did). The services check every certificate: all or nothing.
-BULK_ACTIONS = {
-    "approve": (lambda member, ids: services.approve_certificates(member, certificate_ids=ids), Permission.APPROVE_CERTIFICATES,
-                APPROVED_DONE),
-    "regenerate": (lambda member, ids: services.regenerate_certificates(member, certificate_ids=ids), Permission.CREATE_ACTIVITY,
-                   "Regenerated {n} with the current design: waiting for approval again."),
+# The row actions (value posted -> service call, permission, what it did). The service checks every certificate.
+ROW_ACTIONS = {
     "hand_over": (lambda member, ids: services.mark_handed_over(member, certificate_ids=ids), Permission.CREATE_ACTIVITY,
                   "Marked {n} as handed over: now Issued."),
     "resend": (lambda member, ids: services.resend_certificates(member, certificate_ids=ids), Permission.CREATE_ACTIVITY,
@@ -46,6 +44,20 @@ def _activity(activity_id: int) -> Activity:
 
 def _certificates(n: int) -> str:
     return f"{n} certificate{'' if n == 1 else 's'}"
+
+
+def approved_message(certificates: list[Certificate]) -> str:
+    """"Approved 3 certificates. 2 are emailed once the PDF is ready; 1 is ready for printing (...)." Development
+    mode adds the "printed in the terminal" note (ASSUMPTIONS 342)."""
+    by_email = sum(1 for c in certificates if c.delivery_method == Certificate.DeliveryMethod.EMAIL)
+    by_hand = len(certificates) - by_email
+    parts = []
+    if by_email:
+        parts.append(f"{by_email} {'is' if by_email == 1 else 'are'} emailed once the PDF is ready")
+    if by_hand:
+        parts.append(f"{by_hand} {'is' if by_hand == 1 else 'are'} ready for printing (Mark handed over afterwards)")
+    text = f"Approved {_certificates(len(certificates))}. {'; '.join(parts)}."
+    return email_sent_message("", before=text + " ").strip() if by_email else text
 
 
 # --- The Certificates page --------------------------------------------------------------------------------------
@@ -63,67 +75,84 @@ def certificate_list(request: HttpRequest) -> HttpResponse:
     return render(request, "certificates/list.html", context)
 
 
-# --- Generate and the bulk actions (can_create_activity) --------------------------------------------------------
-
-
-@permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
-def generate(request: HttpRequest, activity_id: int) -> HttpResponse:
-    activity = _activity(activity_id)
-    try:
-        result = services.generate_certificates(request.user, activity)
-    except services.CertificateError as error:
-        messages.error(request, str(error))
-    else:
-        created = result["participation_created"] + result["appreciation_created"]
-        if created:
-            messages.success(request, f"Created {result['participation_created']} Certificate(s) of Participation and "
-                                      f"{result['appreciation_created']} of Appreciation. The activity now has {result['total']}.")
-        else:
-            messages.info(request, f"Nothing new to create: the activity already has all {result['total']} certificates.")
-    return redirect(pages.tab_url(activity.pk))
+# --- Approval (can_approve_certificates) --------------------------------------------------------------------------
 
 
 @permission_required(Permission.APPROVE_CERTIFICATES)
-@require_POST
-def approve_all(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """"Approve all for this activity" (after the confirm dialog): every certificate waiting for approval, all or
-    nothing. A refusal (e.g. a missing signature image) is shown as one message."""
+@post_only_or_tab("certificates")
+def approve_one(request: HttpRequest, activity_id: int, certificate_id: int) -> HttpResponse:
+    """The preview card's Approve: this certificate only (refused unless it is ready). Afterwards the preview shows
+    the next certificate waiting for approval."""
     activity = _activity(activity_id)
+    certificate = get_object_or_404(Certificate, pk=certificate_id, activity=activity)
     try:
-        changed = services.approve_certificates(request.user, activity=activity)
+        services.approve_certificate(request.user, certificate)
+    except services.CertificateError as error:
+        reason = error.problems[0] if error.problems else str(error)
+        messages.error(request, f"Not approved: {reason}")
+        return redirect(pages.tab_url(activity.pk, preview=certificate.pk))
+    messages.success(request, approved_message([certificate]))
+    return redirect(pages.tab_url(activity.pk, preview=pages.next_to_approve(activity, certificate)))
+
+
+@permission_required(Permission.APPROVE_CERTIFICATES)
+@post_only_or_tab("certificates")
+def approve_ready(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """"Approve all ready certificates" (after the confirm dialog): every ready certificate of the activity; the
+    others keep waiting. A refusal (none ready, a missing signature) is one message."""
+    activity = _activity(activity_id)
+    ready = services.ready_certificates(activity)
+    try:
+        services.approve_certificates(request.user, activity=activity)
     except services.CertificateError as error:
         messages.error(request, str(error))
     else:
-        messages.success(request, APPROVED_DONE.format(n=_certificates(changed)))
+        messages.success(request, approved_message(ready))
+    return redirect(pages.tab_url(activity.pk))
+
+
+# --- Apply the current design, hand over, resend (can_create_activity) --------------------------------------------
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@post_only_or_tab("certificates")
+def apply_design(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """"Apply the current design": the active template and signatories on every certificate of the activity that is
+    not Issued; Approved ones wait for approval again (services.regenerate_certificates)."""
+    activity = _activity(activity_id)
+    try:
+        changed = services.regenerate_certificates(request.user, activity=activity)
+    except services.CertificateError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, f"Applied the current design to {_certificates(changed)}. Approved ones wait for "
+                                  "approval again; issued certificates are not changed.")
     return redirect(pages.tab_url(activity.pk))
 
 
 @staff_login_required
-@require_POST
-def bulk_action(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """POST action (BULK_ACTIONS) and certificate_ids (one or more, of this activity). 403 without the action's
-    permission (checked again by the service)."""
+@post_only_or_tab("certificates")
+def row_action(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """POST action (hand_over | resend) and certificate_ids (of this activity): a row's "Mark handed over" or
+    "Resend". 403 without the action's permission (checked again by the service)."""
     activity = _activity(activity_id)
     action = request.POST.get("action", "")
-    if action in BULK_ACTIONS:
-        require_permission(request.user, BULK_ACTIONS[action][1])
-    raw_ids = {value for value in request.POST.getlist("certificate_ids") if value.isdigit()}
-    ids = list(activity.certificates.filter(pk__in=raw_ids).values_list("pk", flat=True))
-    if action not in BULK_ACTIONS:
+    if action not in ROW_ACTIONS:
         messages.error(request, "Choose an action.")
         return redirect(pages.tab_url(activity.pk))
+    require_permission(request.user, ROW_ACTIONS[action][1])
+    raw_ids = {value for value in request.POST.getlist("certificate_ids") if value.isdigit()}
+    ids = list(activity.certificates.filter(pk__in=raw_ids).values_list("pk", flat=True))
     if not raw_ids or len(ids) != len(raw_ids):
-        messages.error(request, "Select at least one certificate of this activity first.")
+        messages.error(request, "Choose a certificate of this activity first.")
         return redirect(pages.tab_url(activity.pk))
-    run, _permission, done = BULK_ACTIONS[action]
+    run, _permission, done = ROW_ACTIONS[action]
     try:
         changed = run(request.user, ids)
     except services.CertificateError as error:
-        problems = error.problems or [str(error)]
-        messages.error(request, f"Nothing was changed: {len(problems)} of the {_certificates(len(ids))} selected "
-                                f"{'was' if len(problems) == 1 else 'were'} refused. See the list on the page.")
-        return render_activity_page(request, activity, "certificates", {"problems": problems}, status=400)
+        messages.error(request, "Nothing was changed. See the list on the page.")
+        pages.keep_problems(request, activity, error.problems or [str(error)])
+        return redirect(pages.tab_url(activity.pk))
     if done == "RESEND":
         # Development mode adds "Email printed in the terminal ..." (ASSUMPTIONS 342).
         messages.success(request, email_sent_message("", before=f"Queued {_certificates(changed)} to be emailed again. ").strip())
@@ -136,9 +165,11 @@ def bulk_action(request: HttpRequest, activity_id: int) -> HttpResponse:
 
 
 @permission_required(Permission.APPROVE_CERTIFICATES)
-@require_POST
+@post_only_or_tab("certificates")
 def signature_upload(request: HttpRequest, activity_id: int, position: str) -> HttpResponse:
-    """POST file: add or replace the VP's or Director's signature (services.upload_signature checks everything)."""
+    """POST file: add or replace the VP's or Director's signature (services.upload_signature checks everything). The
+    preview is drawn again on its next load (no background worker needed); approved certificates wait for approval
+    again; issued ones keep the copy that was sent."""
     activity = _activity(activity_id)
     try:
         result = services.upload_signature(request.user, activity, position, request.FILES.get("file"))
@@ -149,8 +180,8 @@ def signature_upload(request: HttpRequest, activity_id: int, position: str) -> H
     else:
         text = f"{result['action'].capitalize()} the {SIGNATURE_NAMES[position]}'s signature."
         if result["updated"]:
-            text += (f" {_certificates(result['updated'])} of this activity now use it; approved ones wait for "
-                     "approval again.")
+            text += (f" {_certificates(result['updated'])} of this activity now use it (the preview shows it); approved "
+                     "ones wait for approval again. Issued certificates keep the copy that was sent.")
         messages.success(request, text)
     return redirect(pages.tab_url(activity.pk))
 
@@ -163,7 +194,7 @@ def signature_upload(request: HttpRequest, activity_id: int, position: str) -> H
 def preview_dialog(request: HttpRequest, certificate_id: int) -> HttpResponse:
     """The preview dialog's content for HTMX (the PDF in an <iframe> + Download PDF); its own page without JavaScript."""
     certificate = get_object_or_404(Certificate.objects.select_related("activity", "registration", "resource_person"), pk=certificate_id)
-    context = {"page_title": f"Certificate {certificate.certificate_number}", **pages.preview(certificate)}
+    context = {"page_title": f"Certificate {certificate.certificate_number}", **pages.preview(certificate, request.user)}
     if is_htmx(request):
         return render(request, "certificates/_preview.html", context)
     return render(request, "certificates/preview_page.html", context)

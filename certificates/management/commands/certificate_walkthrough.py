@@ -8,7 +8,7 @@ other step
 
     python manage.py certificate_walkthrough design <folder with the sample PNGs>
     python manage.py certificate_walkthrough activity
-    python manage.py certificate_walkthrough generate <activity_id>
+    python manage.py certificate_walkthrough generate <activity_id>      (the System already did it at Conducted)
     python manage.py certificate_walkthrough preview <certificate_id> <output.pdf>
     python manage.py certificate_walkthrough approve|regenerate|handover <activity_id>
     python manage.py certificate_walkthrough evaluate <registration_id> --name "..." --email "..."
@@ -154,9 +154,11 @@ class Command(BaseCommand):
         self.stdout.write(f"  resource person: {speaker.name} (topic: Pitch Decks That Work)")
 
     def step_generate(self, activity_id) -> None:
-        result = services.generate_certificates(self.member, self.activity(activity_id))
+        """Normally nothing to do: the System creates the certificates when the activity becomes Conducted
+        (ASSUMPTIONS 362). Creates the missing ones, e.g. when the design was set up after that."""
+        result = services.generate_missing_certificates(self.activity(activity_id))
         self.say(f"Created {result['participation_created']} Certificate(s) of Participation and "
-                 f"{result['appreciation_created']} of Appreciation. The activity now has {result['total']}.")
+                 f"{result['appreciation_created']} of Appreciation automatically. The activity now has {result['total']}.")
         self.step_status(activity_id)
 
     def step_preview(self, certificate_id, output) -> None:
@@ -166,11 +168,12 @@ class Command(BaseCommand):
 
     def step_approve(self, activity_id) -> None:
         changed = services.approve_certificates(self.member, activity=self.activity(activity_id))
-        self.say(f"Approved {changed} certificate(s). qcluster now renders the ready ones (resource person; evaluated participants).")
+        self.say(f"Approved {changed} ready certificate(s) (both signatures; participants after their evaluation). "
+                 "qcluster now renders them, issues and emails the participants'.")
 
     def step_regenerate(self, activity_id) -> None:
         changed = services.regenerate_certificates(self.member, activity=self.activity(activity_id))
-        self.say(f"Regenerated {changed} certificate(s) with the current design: waiting for approval again.")
+        self.say(f"Applied the current design to {changed} certificate(s): approved ones wait for approval again.")
 
     def step_handover(self, activity_id) -> None:
         self.say(f"Marked {services.mark_handed_over(self.member, activity=self.activity(activity_id))} hard-copy certificate(s) Issued.")

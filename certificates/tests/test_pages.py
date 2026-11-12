@@ -1,6 +1,7 @@
-"""Phase F4: the activity's Certificates tab (Generate, the Director's approval, the bulk actions, previews, evidence) and the
-Certificates page, plus the small read-only service helpers they use. The rules are tested with the services; these
-tests check that the pages call them, show their messages and refusals, and respect the permissions."""
+"""Phase F4 and ASSUMPTIONS 362: the activity's Certificates tab (created automatically, Approve on the preview, "Approve
+all ready certificates", Apply the current design, row actions, previews, evidence) and the Certificates page, plus the
+small read-only service helpers they use. The rules are tested with the services; these tests check that the pages call
+them, show their messages and refusals, and respect the permissions. More in test_tab_flow.py."""
 
 import re
 
@@ -38,9 +39,13 @@ def tab(activity) -> str:
     return f"{reverse('activities:detail', args=[activity.pk])}?tab=certificates"
 
 
-def bulk(client, activity, action: str, certificates, **extra):
+def row_action(client, activity, action: str, certificates, **extra):
     data = {"action": action, "certificate_ids": [c.pk for c in certificates]}
-    return client.post(reverse("activities:certificates_bulk", args=[activity.pk]), data, **extra)
+    return client.post(reverse("activities:certificates_action", args=[activity.pk]), data, **extra)
+
+
+def approve_url(activity, certificate) -> str:
+    return reverse("activities:certificates_approve", args=[activity.pk, certificate.pk])
 
 
 # --- The tab ---------------------------------------------------------------------------------------------------
@@ -55,81 +60,68 @@ def test_tab_lists_every_certificate(director, login, generated) -> None:
     assert "Dr. Maria Santos" in html and "Participation" in html and "Appreciation" in html
     assert "Hard copy" in html and "Email" in html
     assert re.search(r'Waiting for approval</span>\s*<span class="font-semibold text-ink">3</span>', html)
+    assert "Waiting for evaluation" in html and "Ready for approval" in html  # the computed labels
+    assert "Created automatically when the activity is Conducted" in html
     page = reverse("certificates:preview_dialog", args=[certificate_of(people[0]).pk])
     assert f'href="{page}"' in html and f"$dispatch('certificate-preview', {certificate_of(people[0]).pk})" in html
     assert reverse("certificates:download", args=[certificate_of(people[0]).pk]) in html  # Download PDF (preview until rendered)
 
 
-def test_generate_is_refused_before_conducted(director, login, scheduled) -> None:
-    client = login(director)
-    html = client.get(tab(scheduled)).content.decode()
-    assert services.NOT_CONDUCTED in html and re.search(r"Generate certificates</button>", html)
-    assert re.search(r'<button type="submit" class="btn btn-primary btn-sm" disabled', html)
-    response = client.post(reverse("activities:certificates_generate", args=[scheduled.pk]), follow=True)
-    assert services.NOT_CONDUCTED in messages_of(response) and not Certificate.objects.exists()
+def test_before_conducted_the_tab_explains_when_certificates_come(director, login, scheduled) -> None:
+    html = login(director).get(tab(scheduled)).content.decode()
+    assert "Certificates are created automatically when the activity is Conducted." in html
+    assert "Generate certificates" not in html
 
 
-def test_generating_without_a_template_shows_the_service_message(director, login, conducted) -> None:
+def test_without_a_template_the_tab_says_why_nothing_was_created(director, login, conducted) -> None:
     activity, _ = conducted
-    client = login(director)
-    html = client.get(tab(activity)).content.decode()
-    assert "Cannot generate certificates: there is no active certificate template" in html
-    response = client.post(reverse("activities:certificates_generate", args=[activity.pk]), follow=True)
-    assert any(m.startswith("Cannot generate certificates: there is no active certificate template") for m in messages_of(response))
+    html = login(director).get(tab(activity)).content.decode()
+    assert "Certificates are not created yet: Cannot generate certificates: there is no active certificate template" in html
     assert not Certificate.objects.exists()
 
 
-def test_generate_creates_the_missing_certificates(director, login, conducted, design) -> None:
-    activity, _ = conducted
-    response = login(director).post(reverse("activities:certificates_generate", args=[activity.pk]), follow=True)
-    assert "Created 2 Certificate(s) of Participation and 1 of Appreciation. The activity now has 3." in messages_of(response)
-    response = login(director).post(reverse("activities:certificates_generate", args=[activity.pk]), follow=True)
-    assert "Nothing new to create: the activity already has all 3 certificates." in messages_of(response)
-
-
-def test_director_sees_the_approval_screen_and_approves_all(director, login, generated, run_tasks,
-                                                            django_capture_on_commit_callbacks) -> None:
+def test_approve_on_the_preview_and_approve_all_ready(director, login, generated, evaluate, run_tasks,
+                                                     django_capture_on_commit_callbacks) -> None:
     activity, people = generated
+    evaluate(people[0])
     client = login(director)
     html = client.get(tab(activity)).content.decode()
-    assert "Waiting for your approval" in html
-    assert "3 certificates · 2 participants by email · 1 resource person by hard copy" in html
-    assert "Approve all for this activity" in html and 'id="approve-all-dialog"' in html
-    assert reverse("activities:certificates_approve_all", args=[activity.pk]) in html
-    first = Certificate.objects.filter(activity=activity, status=S.GENERATED).order_by("certificate_number").first()
-    assert f'src="{reverse("certificates:preview", args=[first.pk])}"' in html  # the first certificate's preview
+    assert "Approve all ready certificates" in html and 'id="approve-ready-dialog"' in html
+    assert "2 certificates will be approved" in html and "1 other certificate is not ready yet" in html
+    assert reverse("activities:certificates_approve_ready", args=[activity.pk]) in html
+    first = Certificate.objects.filter(activity=activity).order_by("certificate_number").first()
+    assert f'src="{reverse("certificates:preview", args=[first.pk])}?v=' in html  # the first row's preview
     assert 'id="certificate-previews"' in html and "Previous" in html and "Next" in html
 
     with django_capture_on_commit_callbacks(execute=True):  # approval queues the PDF rendering after the commit
-        response = client.post(reverse("activities:certificates_approve_all", args=[activity.pk]), follow=True)
-    assert ("Approved 3 certificates. Each participant's certificate is emailed once their evaluation is in; "
-            "ready PDFs are rendered in the background.") in messages_of(response)
-    assert set(Certificate.objects.values_list("status", flat=True)) == {S.APPROVED}
-    html = client.get(tab(activity)).content.decode()
-    assert "Waiting for your approval" not in html and "Approve all for this activity" not in html
+        response = client.post(reverse("activities:certificates_approve_ready", args=[activity.pk]), follow=True)
+    assert any(m.startswith("Approved 2 certificates. 1 is emailed once the PDF is ready; 1 is ready for printing")
+               for m in messages_of(response))
+    assert certificate_of(people[0]).status == S.ISSUED and certificate_of(people[1]).status == S.GENERATED
+    response = client.post(approve_url(activity, certificate_of(people[1])), follow=True)
+    assert "Not approved: " in messages_of(response)[0] and "Waiting for evaluation" in messages_of(response)[0]
 
 
-def test_project_heads_approve_and_regenerate(make_member, login, generated) -> None:
+def test_project_heads_approve(make_member, login, generated) -> None:
     activity, _ = generated
     client = login(make_member("Incubation Project Head"))
     html = client.get(tab(activity)).content.decode()
-    assert "Waiting for your approval" in html and 'value="approve"' in html and 'value="regenerate"' in html
-    client.post(reverse("activities:certificates_approve_all", args=[activity.pk]))
-    assert set(Certificate.objects.values_list("status", flat=True)) == {S.APPROVED}
+    assert "Approve all ready certificates" in html and "Apply the current design" in html
+    client.post(approve_url(activity, appreciation_of(activity)))
+    assert appreciation_of(activity).status == S.APPROVED
 
 
-def test_admin_staff_see_waiting_for_approval(make_member, login, generated) -> None:
+def test_admin_staff_see_no_approval_controls(make_member, login, generated) -> None:
     activity, _ = generated
     client = login(make_member("Admin Staff"))
     html = client.get(tab(activity)).content.decode()
-    assert "Waiting for approval" in html and "Members with approval rights approve certificates." in html
-    assert "Approve all for this activity" not in html and 'value="approve"' not in html
-    assert client.post(reverse("activities:certificates_approve_all", args=[activity.pk])).status_code == 403
-    assert bulk(client, activity, "approve", Certificate.objects.all()).status_code == 403
+    assert "Approve all ready certificates" not in html and "Apply the current design" not in html
+    assert client.post(reverse("activities:certificates_approve_ready", args=[activity.pk])).status_code == 403
+    assert client.post(approve_url(activity, appreciation_of(activity))).status_code == 403
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
-def test_missing_signature_disables_approve_all(director, login, generated, design) -> None:
+def test_missing_signature_disables_approve_all_ready(director, login, generated, design) -> None:
     activity, _ = generated
     from pathlib import Path
     from django.conf import settings
@@ -137,38 +129,17 @@ def test_missing_signature_disables_approve_all(director, login, generated, desi
     client = login(director)
     html = client.get(tab(activity)).content.decode()
     message = "Add the VP&#x27;s signature first."
-    assert message in html and 'aria-describedby="approval-reason"' in html and 'id="approve-all-dialog"' not in html
-    response = client.post(reverse("activities:certificates_approve_all", args=[activity.pk]), follow=True)
+    assert message in html and 'aria-describedby="approval-reason"' in html and 'id="approve-ready-dialog"' not in html
+    response = client.post(reverse("activities:certificates_approve_ready", args=[activity.pk]), follow=True)
     assert message.replace("&#x27;", "'") in messages_of(response)
 
 
-def test_bulk_approve_selected(director, login, generated) -> None:
-    activity, people = generated
-    response = bulk(login(director), activity, "approve", [certificate_of(people[0])], follow=True)
-    assert any(m.startswith("Approved 1 certificate.") for m in messages_of(response))
-    assert certificate_of(people[0]).status == S.APPROVED
-
-
-def test_bulk_with_one_invalid_certificate_changes_nothing_and_lists_it(director, login, generated) -> None:
-    activity, people = generated
-    already = certificate_of(people[0])
-    services.approve_certificates(director, certificate_ids=[already.pk])
-    certificates = list(Certificate.objects.filter(activity=activity))
-    response = bulk(login(director), activity, "approve", certificates)
-    html = response.content.decode()
-    assert response.status_code == 400
-    assert "Nothing was changed. These certificates were refused:" in html
-    assert re.search(rf"<li>{already.certificate_number}: Cannot move a certificate from Approved to Approved.</li>", html)
-    assert Certificate.objects.filter(status=S.GENERATED).count() == 2  # the other two were not changed
-    assert "Nothing was changed: 1 of the 3 certificates selected was refused. See the list on the page." in messages_of(response)
-
-
-def test_regenerate_goes_back_to_waiting_for_approval(director, login, generated) -> None:
+def test_apply_the_current_design_goes_back_to_waiting_for_approval(director, login, generated) -> None:
     activity, _ = generated
-    services.approve_certificates(director, activity=activity)
-    response = bulk(login(director), activity, "regenerate", Certificate.objects.filter(activity=activity), follow=True)
-    assert ("Regenerated 3 certificates with the current design: waiting for approval again."
-            in messages_of(response))
+    services.approve_certificate(director, appreciation_of(activity))
+    response = login(director).post(reverse("activities:certificates_apply_design", args=[activity.pk]), follow=True)
+    assert ("Applied the current design to 3 certificates. Approved ones wait for approval again; issued certificates "
+            "are not changed.") in messages_of(response)
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
@@ -177,26 +148,28 @@ def test_hand_over_only_for_hard_copy(director, login, generated, approve_all, r
     with django_capture_on_commit_callbacks(execute=True):  # the resource person's PDF is rendered after approval
         approve_all(activity)
     client = login(director)
+    html = client.get(tab(activity)).content.decode()
+    speaker = appreciation_of(activity)
+    assert f'form="hand-over-{speaker.pk}"' in html and f'form="hand-over-{certificate_of(people[0]).pk}"' not in html
     participant = certificate_of(people[0])
-    response = bulk(client, activity, "hand_over", [participant, appreciation_of(activity)])
-    assert response.status_code == 400
+    response = row_action(client, activity, "hand_over", [participant], follow=True)
+    assert response.redirect_chain[-1][0] == tab(activity)
     assert f"{participant.certificate_number}: only hard-copy certificates are handed over" in response.content.decode()
-    assert appreciation_of(activity).status == S.APPROVED  # all or nothing
 
-    response = bulk(client, activity, "hand_over", [appreciation_of(activity)], follow=True)
+    response = row_action(client, activity, "hand_over", [speaker], follow=True)
     assert "Marked 1 certificate as handed over: now Issued." in messages_of(response)
     assert appreciation_of(activity).status == S.ISSUED
 
 
-def test_bulk_needs_a_selection_of_this_activity(director, login, generated, conducted) -> None:
+def test_row_action_needs_a_certificate_of_this_activity(director, login, generated) -> None:
     activity, _ = generated
     client = login(director)
-    response = bulk(client, activity, "approve", [], follow=True)
-    assert "Select at least one certificate of this activity first." in messages_of(response)
-    response = client.post(reverse("activities:certificates_bulk", args=[activity.pk]), {"action": "approve", "certificate_ids": ["999999"]}, follow=True)
-    assert "Select at least one certificate of this activity first." in messages_of(response)
-    response = client.post(reverse("activities:certificates_bulk", args=[activity.pk]), {"action": "review", "certificate_ids": [Certificate.objects.first().pk]}, follow=True)
-    assert "Choose an action." in messages_of(response)  # the old sign-off actions are gone
+    response = row_action(client, activity, "resend", [], follow=True)
+    assert "Choose a certificate of this activity first." in messages_of(response)
+    response = client.post(reverse("activities:certificates_action", args=[activity.pk]), {"action": "resend", "certificate_ids": ["999999"]}, follow=True)
+    assert "Choose a certificate of this activity first." in messages_of(response)
+    response = client.post(reverse("activities:certificates_action", args=[activity.pk]), {"action": "approve", "certificate_ids": [Certificate.objects.first().pk]}, follow=True)
+    assert "Choose an action." in messages_of(response)  # approval is only on the preview
     assert not Certificate.objects.exclude(status=S.GENERATED).exists()
 
 
@@ -204,27 +177,25 @@ def test_read_only_member_sees_no_actions(make_member, login, generated) -> None
     activity, _ = generated
     client = login(make_member("Admin Staff"))
     html = client.get(tab(activity)).content.decode()
-    assert "Generate certificates" not in html and 'name="certificate_ids"' not in html and 'value="approve"' not in html
-    assert "Approve all for this activity" not in html
+    assert "Generate certificates" not in html and 'name="certificate_ids"' not in html
+    assert "Approve all ready certificates" not in html
     assert "Preview" in html and "Evidence" in html and "PDF<span" in html
-    for action in ("approve", "regenerate", "hand_over", "resend"):
-        assert bulk(client, activity, action, Certificate.objects.all()).status_code == 403
-    assert client.post(reverse("activities:certificates_generate", args=[activity.pk])).status_code == 403
-    assert client.post(reverse("activities:certificates_approve_all", args=[activity.pk])).status_code == 403
+    for action in ("hand_over", "resend"):
+        assert row_action(client, activity, action, Certificate.objects.all()).status_code == 403
+    assert client.post(reverse("activities:certificates_apply_design", args=[activity.pk])).status_code == 403
     assert not Certificate.objects.exclude(status=S.GENERATED).exists()
 
 
-def test_system_administrator_approves_but_never_generates(admin_member, login, generated) -> None:
+def test_system_administrator_approves_but_never_applies_the_design(admin_member, login, generated) -> None:
     activity, _ = generated
     client = login(admin_member)
     html = client.get(tab(activity)).content.decode()
-    assert "Generate certificates" not in html and "Approve all for this activity" in html
-    assert 'value="approve"' in html and 'value="regenerate"' not in html
-    for action in ("regenerate", "hand_over", "resend"):
-        assert bulk(client, activity, action, Certificate.objects.all()).status_code == 403
-    assert client.post(reverse("activities:certificates_generate", args=[activity.pk])).status_code == 403
-    client.post(reverse("activities:certificates_approve_all", args=[activity.pk]))
-    assert set(Certificate.objects.values_list("status", flat=True)) == {S.APPROVED}
+    assert "Approve all ready certificates" in html and "Apply the current design" not in html
+    for action in ("hand_over", "resend"):
+        assert row_action(client, activity, action, Certificate.objects.all()).status_code == 403
+    assert client.post(reverse("activities:certificates_apply_design", args=[activity.pk])).status_code == 403
+    client.post(reverse("activities:certificates_approve_ready", args=[activity.pk]))
+    assert appreciation_of(activity).status == S.APPROVED
 
 
 def test_preview_opens_inline_and_downloads_need_a_login(director, login, generated, client) -> None:
@@ -247,7 +218,7 @@ def test_preview_dialog_and_page(admin_staff, login, generated) -> None:
     url = reverse("certificates:preview_dialog", args=[certificate.pk])
     html = client.get(url, **HTMX).content.decode()
     assert certificate.certificate_number in html and "Download PDF" in html
-    assert f'src="{reverse("certificates:preview", args=[certificate.pk])}"' in html
+    assert f'src="{reverse("certificates:preview", args=[certificate.pk])}?v=' in html
     assert "Marked “PREVIEW” until it is approved." in html
     assert "The final name comes from the evaluation." in html  # not evaluated yet
     page = client.get(url)
@@ -262,7 +233,7 @@ def test_preview_shows_both_signatures_and_a_corner_mark_until_approved(director
     assert html.count("data:image/png;base64,") == 3  # background + both signatures: exactly as printed
     assert 'class="preview-mark">PREVIEW<' in html and "NOT VALID" not in html
     assert "Ana Cruz" in html  # the registration name until the evaluation is in
-    services.approve_certificates(director, activity=activity)
+    Certificate.objects.filter(pk=certificate.pk).update(status=S.APPROVED)
     certificate.refresh_from_db()
     services.preview_pdf(director, certificate)
     assert "preview-mark" not in fake_pdf_renderer.last.split("<body>", 1)[1]  # approved: no mark
@@ -278,8 +249,8 @@ def test_failed_send_shows_send_failed_and_resend(director, login, generated, ap
     monkeypatch.setattr(emails, "send_certificate_email", lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
     monkeypatch.setattr(services, "schedule_send_retry", lambda *args: None)
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0])
+        approve_all(activity)
     certificate = certificate_of(people[0])
     client = login(director)
     html = client.get(tab(activity)).content.decode()
@@ -288,7 +259,7 @@ def test_failed_send_shows_send_failed_and_resend(director, login, generated, ap
 
     monkeypatch.setattr(emails, "send_certificate_email", real_send)
     with django_capture_on_commit_callbacks(execute=True):
-        response = bulk(client, activity, "resend", [certificate], follow=True)
+        response = row_action(client, activity, "resend", [certificate], follow=True)
     assert any(m.startswith("Queued 1 certificate to be emailed again.") for m in messages_of(response))
     certificate.refresh_from_db()
     assert certificate.sent_at and certificate.send_failed_at is None
@@ -334,7 +305,7 @@ def test_evidence_page_without_javascript(admin_staff, login, generated) -> None
 
 def test_certificates_page_lists_counts_and_filters(director, login, generated) -> None:
     activity, people = generated
-    services.approve_certificates(director, certificate_ids=[certificate_of(people[0]).pk])
+    services.approve_certificate(director, appreciation_of(activity))
     client = login(director)
     html = client.get(reverse("certificates:list")).content.decode()
     assert "3 certificates" in html and activity.title in html and "is coming soon" not in html
@@ -342,7 +313,7 @@ def test_certificates_page_lists_counts_and_filters(director, login, generated) 
     assert re.search(r'Waiting for approval</span>\s*<span class="font-semibold text-ink">2</span>', html)
     html = client.get(reverse("certificates:list"), {"delivery_method": "hard_copy"}, **HTMX).content.decode()
     assert "1 certificate matching the filters" in html and "Dr. Maria Santos" in html and "layouts/app.html" not in html
-    html = client.get(reverse("certificates:list"), {"status": "approved", "recipient_type": "registration"}).content.decode()
+    html = client.get(reverse("certificates:list"), {"status": "approved", "recipient_type": "resource_person"}).content.decode()
     assert "1 certificate matching the filters" in html
     html = client.get(reverse("certificates:list"), {"status": "nope", "activity": "x"}).content.decode()
     assert "Some filters could not be read and were ignored: activity, status." in html and "3 certificates" in html
@@ -357,10 +328,10 @@ def test_certificates_page_empty_state(admin_staff, login) -> None:
 
 def test_status_counts_ignore_the_status_filter_and_fill_zeros(director, generated) -> None:
     activity, people = generated
-    services.approve_certificates(director, certificate_ids=[certificate_of(people[0]).pk])
+    services.approve_certificate(director, appreciation_of(activity))
     counts = services.certificate_status_counts({"activity": activity.pk, "status": S.ISSUED})
     assert counts == {S.GENERATED: 2, S.APPROVED: 1, S.ISSUED: 0}
-    assert services.certificate_status_counts({"delivery_method": "hard_copy"})[S.GENERATED] == 1
+    assert services.certificate_status_counts({"delivery_method": "email"})[S.GENERATED] == 2
 
 
 def test_list_filters_by_delivery_method(generated) -> None:
@@ -369,8 +340,10 @@ def test_list_filters_by_delivery_method(generated) -> None:
         services.list_certificates({"delivery_method": "pigeon"})
 
 
-def test_bulk_refusal_lists_its_problems(director, generated) -> None:
+def test_bulk_refusal_lists_its_problems(director, generated, evaluate) -> None:
     activity, people = generated
+    for person in people:
+        evaluate(person)
     services.approve_certificates(director, certificate_ids=[certificate_of(people[0]).pk])
     with pytest.raises(services.CertificateError) as error:
         services.approve_certificates(director, certificate_ids=list(Certificate.objects.values_list("pk", flat=True)))

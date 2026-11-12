@@ -64,9 +64,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - ACTIVITY has `start_time` / `end_time` (Manila, nullable only for old rows the migration could not read; both or
   neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
   `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
-- ACTIVITY_AUDIT_LOG.changed_by empty = System (automatic status change); show it with `formatting.changed_by_name()`.
-- Certificate status: Generated ("Waiting for approval") → Approved (can_approve_certificates) → Issued; Approved →
-  Generated only when regenerated or a signature is replaced; Issued is final. Change it only through `certificates.services.set_certificate_status()`, which
+- ACTIVITY_AUDIT_LOG.changed_by empty = System (automatic status change, certificates created automatically); show it
+  with `formatting.changed_by_name()`. Certificate rows in History use the label "Certificates"
+  (`activities.services.write_certificate_history`).
+- Certificate status: created by the System → Generated ("Waiting for approval") → Approved (can_approve_certificates, only
+  when ready) → Issued; Approved → Generated only when the current design is applied again or a signature is replaced;
+  Issued is final. Change it only through `certificates.services.set_certificate_status()`, which
   enforces the rules (ASSUMPTIONS 357). CERTIFICATE has `approved_by` / `approved_at` / `send_failed_at` (no review or
   sign-off columns).
 - ROLE.can_approve_certificates (ASSUMPTIONS 357, 361): approve certificates and add/replace signatures. Migration
@@ -110,6 +113,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `refresh_status`; same `_move_status` code, SKIP LOCKED, audit row by System; ASSUMPTIONS 66, 346). They run every
   `ACTIVITY_STATUS_INTERVAL_MINUTES` (`activities.tasks.run_activity_automation`) and on activity page / list loads.
   Page loads only change statuses, never send emails. Draft is never touched. `activity_start_end()` = the moments.
+  Every move to Conducted also creates the certificates (`certificates.services.auto_generate_certificates`, never blocks
+  the move; ASSUMPTIONS 362).
 - The audit log is append-only (enforced in the model). Format values only with
   `activities.formatting.format_audit_value()`.
 - Creating: start_date not before today and registration_deadline not in the past (Manila time).
@@ -244,17 +249,25 @@ owner is a student, so explain important decisions briefly and keep the code sim
   with can_approve_certificates add or replace a signature on the activity's Certificates tab only through
   `upload_signature` (add = fills a signatory with no image; replace = new signatory row; the activity's not-Issued
   certificates switch to it via `_refresh_certificates`: PDF removed, Approved → Generated; logged on `certificates.audit`).
-- `generate_certificates`: Conducted only, active template + VP + Director required, missing ones only,
-  numbers from `_certificate_numbers()` (`TBI-<Manila year>-<00001>`, advisory lock). Each certificate keeps
-  the design it was generated with.
-- Actions take one list of IDs or an activity, all or nothing: `approve_certificates` (can_approve_certificates; refused
-  while a stored signatory's image is missing: "Add the VP's signature first.", `missing_signature_reason` /
-  `approval_closed_reason`), and with
-  can_create_activity `regenerate_certificates` (current design, back to waiting for approval), `mark_handed_over`,
-  `resend_certificates`. The page's bulk view checks each action's permission.
+- Certificates are created only by the System (ASSUMPTIONS 362): `generate_missing_certificates(activity, registration_ids=)`
+  (no member; Conducted only, active template + VP + Director signatory rows required, missing ones only, safe to rerun,
+  one History row by System "N created automatically (…)"), called through `auto_generate_certificates` from the move to
+  Conducted, from `set_attendance` (marked after Conducted) and the 5-minute job (`generate_pending_certificates`). No
+  Generate button or endpoint. Numbers from `_certificate_numbers()` (`TBI-<Manila year>-<00001>`, advisory lock). Each
+  certificate keeps the design it was generated with. Undoing attendance deletes a certificate that is still waiting
+  (`delete_certificate_for_undone_attendance`, History row, number gap); refused once approved or evaluated.
+- "Ready for approval" is computed only by `services.readiness()` / `readiness_map()` (both signature images; participants
+  also the evaluation; labels "Waiting for signatures", "Waiting for evaluation", "Evaluation closed without an answer")
+  and, for counts, `ready_for_approval_q()`. Never store it.
+- `approve_certificates` (can_approve_certificates): IDs = all or nothing, each must be ready (`approve_certificate` = one,
+  the preview's Approve); activity = only the ready ones ("Approve all ready certificates"), refused with
+  `approval_closed_reason`. With can_create_activity: `regenerate_certificates` ("Apply the current design": not-Issued
+  ones, back to waiting), `mark_handed_over`, `resend_certificates` (row actions).
 - Preview (`preview_pdf`): the same template as the final PDF with both signatures, a small "PREVIEW" corner mark only
-  while waiting for approval (ASSUMPTIONS 358). `certificates:preview` is the second `xframe_options_sameorigin` view
-  (the tab's large preview iframe); Download PDF gives the preview until the final PDF exists.
+  while waiting for approval (ASSUMPTIONS 358). An Issued certificate's preview is its stored final PDF
+  (`shows_final_copy`, "Issued — this copy was already sent and is not changed."). `certificates:preview` is the second
+  `xframe_options_sameorigin` view (the tab's large preview iframe); Download PDF gives the preview until the final PDF
+  exists. Preview/download links carry `?v=` (`preview_version`) and the responses `Cache-Control: private, no-store`.
 - The participant's printed name and email come from EVALUATION_SUBMISSION (`certificate_name`,
   `certificate_email`, checked in `registrations.services.clean_certificate_details`), never the registration.
   Approved + evaluated (whichever is last) → `prepare_certificate` (task) renders, issues, queues the email.
@@ -357,20 +370,27 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents and certificates pages (F4, ASSUMPTIONS 290–300): `documents/page_views.py` + `documents/pages.py`,
   `certificates/page_views.py` + `certificates/pages.py`. Buttons follow `documents.services.allowed_actions()`; the four
   states (Missing / Waiting for review / Returned / Approved) come only from `documents.pages`. Return / replace / delete use
-  the shared `documents/_dialog.html` (form loaded with HTMX, its own page without JS). Bulk certificate actions: one service
-  call, all or nothing, refusals listed from `CertificateError.problems`; Generate shows `generation_closed_reason()`. An
-  error re-renders the activity page with `activities.page_views.render_activity_page(..., extra)`. The certificate preview and
+  the shared `documents/_dialog.html` (form loaded with HTMX, its own page without JS). Certificate row actions: one service
+  call, refusals listed from `CertificateError.problems` (kept in the session for the next view of the tab,
+  `certificates.pages.keep_problems`; certificate actions always redirect). A documents upload error re-renders the activity
+  page with `activities.page_views.render_activity_page(..., extra)` (the address bar is fixed with `history.replaceState`). The certificate preview and
   `documents:view` (the document preview) are the only inline files. New components: `file_drop`. (Since 2026-11-11 the
   certificate tab's Sign-off actions are replaced by the Director's approval: see "Certificates tab" below.)
 - Documents page (ASSUMPTIONS 352): default "By activity" (`documents.services.overview_activities` +
   `activity_document_overview` = `document_checklist()`'s rule for many activities, parity test; `document_state_counts`
   for the summary cards), "All documents" = the flat list. Filters in the URL; no rules in `documents/_activity_card.html`.
-- Certificates tab (ASSUMPTIONS 357–361): approval card (`certificates.pages.approval_panel`: summary, "Approve all for this
-  activity" behind a confirm dialog, the closed reason for everyone), Signatures (`pages.signatures_panel`: VP and Director
-  slots, upload for can_approve_certificates), the large preview (`pages.preview_items`: every certificate, Previous / Next;
-  a row's Preview dispatches `certificate-preview` to show it there; "The final name comes from the evaluation."). S5 and
-  the dashboard count ACTIVITIES waiting for approval ("Waiting for your approval" with the flag, "Waiting for approval"
-  otherwise); the activity's Needs attention has one line ("N certificates waiting for approval." or the signature reason).
+- Certificates tab (ASSUMPTIONS 357–362): "Approve all ready certificates" (secondary, confirm dialog with the counts,
+  `pages.approval_panel`) and the preview's Approve exist ONLY for can_approve_certificates (others see no approve button,
+  not even disabled); "Apply the current design" for can_create_activity; Signatures (`pages.signatures_panel`); the
+  preview (`pages.preview_items`: exactly the list's certificates in the same order, printed name + "registered as", starts at
+  the first row or `?preview=<id>`, after an approval `pages.next_to_approve`; Approve enabled only when ready, otherwise
+  "Not ready for approval: <label>."); the list (no checkboxes): Preview, Mark handed over, Resend, PDF, Evidence. S5 and the
+  dashboard count ACTIVITIES with certificates READY for approval ("2 activities (45 certificates) ready for your
+  approval"); Needs attention: the signature reason or "N certificates ready for approval.". Not-ready certificates are
+  not a staff task. When approved work waits and qcluster is down, the tab says so (`pages.worker_notice`).
+- Activity page links (ASSUMPTIONS 362): every tab link, pager and in-tab link starts with `activity_url` (never `?tab=`
+  alone). POST-only actions under `/activities/<id>/…` use `config.links.post_only_or_tab(tab)` instead of `require_POST`
+  (a GET goes to that tab); every action ends on `/activities/<id>/?tab=<tab>` (`config.links.activity_tab_url`).
 - Document page Back link (ASSUMPTIONS 359): list links add `?next={{ request|here|urlencode:"" }}` (`config.links`), and
   `documents.pages.back_link` accepts only internal paths (`is_internal_path`).
 - Document preview (ASSUMPTIONS 329–330): Preview in `documents/_actions.html` opens the shared `#document-preview` dialog (HTMX,
@@ -479,6 +499,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Approvers and signatures (2026-11-12): Director, both Project Heads and the System Administrator approve and add
   signatures on the Certificates tab (nullable signature image, PNG/JPG), large preview with Previous / Next, one Needs
   attention line, new-activity notification to the Director (361).
+- Automatic certificates (2026-11-12): created by the System at Conducted (and attendance marked later, 5-minute
+  catch-up), computed "ready for approval", Approve on the preview + "Approve all ready certificates", Apply the current
+  design, ready-only counts, undo attendance deletes a waiting certificate, tab URL fixes, Issued preview = sent copy,
+  `?v=` + no-store (362).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

@@ -85,7 +85,7 @@ def audit_sentence(entry) -> str:
     """One ACTIVITY_AUDIT_LOG row as a sentence, for example
     "Juan Dela Cruz changed the status of Business Model Training from Draft to Scheduled".
     Uses the stored (already readable) values; the labels are the ones activities.services writes."""
-    from .services import RESOURCE_PERSON_ADDED, RESOURCE_PERSON_REMOVED, STATUS_LABEL
+    from .services import CERTIFICATES_LABEL, RESOURCE_PERSON_ADDED, RESOURCE_PERSON_REMOVED, STATUS_LABEL
 
     who, title = changed_by_name(entry), entry.activity.title
     label, old, new = entry.field_changed, _short(entry.old_value), _short(entry.new_value)
@@ -98,6 +98,10 @@ def audit_sentence(entry) -> str:
         return f"{who} added {new} as a resource person to {title}"
     if label == RESOURCE_PERSON_REMOVED:
         return f"{who} removed {old} as a resource person from {title}"
+    if label == CERTIFICATES_LABEL and not old:  # "System: certificates of X: 3 created automatically (...)"
+        return f"{who}: certificates of {title}: {new}"
+    if label == CERTIFICATES_LABEL:  # a certificate deleted because its attendance was undone
+        return f"{who}: certificate {old} of {title}: {new}"
     if label == "Description":
         return f"{who} changed the description of {title}"
     if not new:

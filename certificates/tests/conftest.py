@@ -92,7 +92,7 @@ def conducted(attended, director, move_to) -> tuple[Activity, list[Registration]
 @pytest.fixture
 def generated(conducted, design, director) -> tuple[Activity, list[Registration]]:
     activity, people = conducted
-    services.generate_certificates(director, activity)
+    services.generate_missing_certificates(activity)
     return activity, people
 
 

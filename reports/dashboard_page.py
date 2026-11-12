@@ -128,7 +128,7 @@ class DashboardPage:
     @property
     def certificates_note(self) -> str:
         """Under S5's number (which counts activities): who it waits for."""
-        who = "waiting for your approval" if self.can_approve_certificates else "waiting for approval"
+        who = "ready for your approval" if self.can_approve_certificates else "ready for approval"
         count = self.cards["certificates_waiting_for_approval"]["value"]
         return f"{'activity' if count == 1 else 'activities'} · {who}"
 
@@ -263,7 +263,7 @@ def documents_tab_url(row: dict) -> str:
 
 def certificates_url(by_activity: list[dict]) -> str:
     """One activity: its Certificates tab (the approval screen). Several: the Certificates page, narrowed to the
-    certificates waiting for approval."""
+    certificates waiting for approval (the ready ones show "Ready for approval" there)."""
     if len(by_activity) == 1:
         return reverse("activities:detail", args=[by_activity[0]["activity_id"]]) + "?tab=certificates"
     return f"{reverse('certificates:list')}?status={Certificate.Status.GENERATED}"
@@ -315,9 +315,10 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_ap
         detail = ", ".join(row["title"] for row in by_activity[:ATTENTION_TITLES_SHOWN])
         if waiting["value"] > ATTENTION_TITLES_SHOWN:
             detail += " and more"
-        who = "Waiting for your approval" if can_approve_certificates else "Waiting for approval"
+        # "2 activities (45 certificates) ready for your approval" (ASSUMPTIONS 362: ready ones only)
+        who = "ready for your approval" if can_approve_certificates else "ready for approval"
         items.append(AttentionItem(
-            "primary", f"Certificates waiting for approval: {certificates_waiting_text(waiting)}", f"{who} · {detail}",
+            "primary", f"{certificates_waiting_text(waiting)} {who}", f"Certificates · {detail}",
             "Approve" if can_approve_certificates else "Open", certificates_url(by_activity),
         ))
     return items

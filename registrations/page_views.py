@@ -16,6 +16,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from config.links import post_only_or_tab
 from activities.models import Activity
 from config.mail import email_sent_message
 
@@ -55,7 +56,7 @@ def _card(request: HttpRequest, form: FormTemplate, text: str = "", level: str =
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
+@post_only_or_tab("forms")
 def form_create(request: HttpRequest, activity_id: int, form_type: str) -> HttpResponse:
     """Create from the activity type's default fields. A full page load afterwards, so the header's
     registration notice and link update too."""
@@ -191,7 +192,7 @@ def _attendance_request(post) -> tuple[list[str], bool]:
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
+@post_only_or_tab("registrations")
 def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST method=wet_signature|email (the "Confirmed by" choice above the table, used by every mark button), then
     either row_action=mark:<id>|undo:<id> or action=mark|undo with registration_ids. `filters` (the table's
@@ -218,7 +219,7 @@ def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
+@post_only_or_tab("evaluation")
 def send_links(request: HttpRequest, activity_id: int) -> HttpResponse:
     """Resend evaluation links (Evaluation tab): POST registration_id=<id> for one attendee, or nothing for everyone
     who has not answered. Same rules as services.send_evaluation_links."""

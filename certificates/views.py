@@ -2,10 +2,12 @@
 
 - Any active staff member: list, detail, download the PDF, preview, list/download evidence, upload
   evidence (Step 6 rule).
-- can_create_activity: generate, regenerate, hand over, resend. can_approve_certificates (the Director): approve
-  (ASSUMPTIONS 357). Evidence review: can_approve_documents (the Step 6 rules).
+- can_create_activity: regenerate (Apply the current design), hand over, resend. can_approve_certificates (the
+  Director, both Project Heads, the System Administrator): approve ready certificates (ASSUMPTIONS 362). Certificates
+  are created by the System (no generate endpoint). Evidence review: can_approve_documents (the Step 6 rules).
 - can_manage_users (Admin Console): templates and signatories, and their images.
-Files are never served from /media/: only through these views, always as attachments.
+Files are never served from /media/: only through these views, as attachments (inline only for the certificate
+preview: the rendered preview, or an Issued certificate's final PDF).
 """
 
 import json
@@ -62,16 +64,24 @@ def _json_body(request: HttpRequest) -> dict:
     return data
 
 
-def _file_response(field_file, filename: str) -> FileResponse:
-    """Always an attachment, never shown inline; 404 when the file is missing."""
+def _file_response(field_file, filename: str, inline: bool = False) -> FileResponse:
+    """An attachment (inline=True only for an Issued certificate's final PDF in the preview); 404 when the file is
+    missing."""
     if not field_file:
         raise Http404("The file is not available yet.")
     try:
         handle = field_file.open("rb")
     except (FileNotFoundError, ValueError) as error:
         raise Http404("The file is missing.") from error
-    response = FileResponse(handle, as_attachment=True, filename=filename)
+    response = FileResponse(handle, as_attachment=not inline, filename=filename)
     response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+def _no_store(response: HttpResponse) -> HttpResponse:
+    """Certificate PDFs change when a signature or the design changes: never kept by the browser (the page's links
+    also carry ?v=, services.preview_version; ASSUMPTIONS 362)."""
+    response["Cache-Control"] = "private, no-store"
     return response
 
 
@@ -194,13 +204,13 @@ def download_certificate(request: HttpRequest, certificate_id: int) -> HttpRespo
     the preview rendered now (<number>-preview.pdf, marked PREVIEW while waiting for approval; ASSUMPTIONS 358)."""
     certificate = get_object_or_404(Certificate, pk=certificate_id)
     if certificate.file_path:
-        return _file_response(certificate.file_path, f"{certificate.certificate_number}.pdf")
+        return _no_store(_file_response(certificate.file_path, f"{certificate.certificate_number}.pdf"))
     try:
         content = services.preview_pdf(request.user, certificate)
     except Exception as error:  # e.g. WeasyPrint's system libraries are missing
         return HttpResponse(f"The PDF could not be rendered ({type(error).__name__}). Run python manage.py check_pdf.",
                             status=503, content_type="text/plain; charset=utf-8")
-    return _pdf_response(content, f"{certificate.certificate_number}-preview.pdf")
+    return _no_store(_pdf_response(content, f"{certificate.certificate_number}-preview.pdf"))
 
 
 @staff_login_required
@@ -208,25 +218,21 @@ def download_certificate(request: HttpRequest, certificate_id: int) -> HttpRespo
 @xframe_options_sameorigin  # the preview dialog's <iframe> (like documents:view); every other page keeps DENY
 def preview_certificate(request: HttpRequest, certificate_id: int) -> HttpResponse:
     """The certificate exactly as it will look (services.preview_pdf: same template, both signatures), rendered now
-    and never stored. Inline: shown in the preview dialog's <iframe> or a new tab."""
+    and never stored. An Issued certificate shows its stored final PDF instead: the copy that was sent or handed
+    over, never changed (services.shows_final_copy). Inline: shown in the tab's preview <iframe> or a new tab."""
     certificate = get_object_or_404(Certificate, pk=certificate_id)
+    if services.shows_final_copy(certificate):
+        return _no_store(_file_response(certificate.file_path, f"{certificate.certificate_number}.pdf", inline=True))
     try:
         content = services.preview_pdf(request.user, certificate)
     except Exception as error:  # e.g. WeasyPrint's system libraries are missing
         return HttpResponse(f"The preview could not be rendered ({type(error).__name__}). Run python manage.py check_pdf.",
                             status=503, content_type="text/plain; charset=utf-8")
-    return _pdf_response(content, f"PREVIEW-{certificate.certificate_number}.pdf", inline=True)
+    return _no_store(_pdf_response(content, f"PREVIEW-{certificate.certificate_number}.pdf", inline=True))
 
 
-# --- Staff: actions (generate etc.: can_create_activity; approve: can_approve_certificates) ------
-
-
-@permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
-@api_errors
-def generate_api(request: HttpRequest, activity_id: int) -> JsonResponse:
-    activity = get_object_or_404(Activity, pk=activity_id)
-    return JsonResponse(services.generate_certificates(request.user, activity), status=201)
+# --- Staff: actions (regenerate etc.: can_create_activity; approve: can_approve_certificates) ---------
+# Certificates are created by the System when the activity is Conducted (ASSUMPTIONS 362): no generate endpoint.
 
 
 def _target(data: dict) -> dict:

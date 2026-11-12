@@ -1,7 +1,7 @@
 """Display helpers for the Certificates pages (phase F4): the activity's Certificates tab, the Certificates page and the
-evidence modal, the preview dialog. Display only: every rule is in certificates.services (who may generate, approve or
-act, the status moves, the all-or-nothing bulk actions, the missing signature reason). This module turns their results
-into what the templates show (ASSUMPTIONS 357-358).
+evidence modal, the preview page. Display only: every rule is in certificates.services (who may approve or act, the
+status moves, readiness, the missing signature reason). This module turns their results into what the templates show
+(ASSUMPTIONS 357-362).
 """
 
 from dataclasses import dataclass, field
@@ -14,6 +14,7 @@ from django.urls import reverse
 
 from accounts.permissions import Permission, has_permission
 from activities.models import Activity
+from config.links import activity_tab_url
 from config.mail import prints_emails
 from documents import pages as document_pages
 from registrations.models import EvaluationSubmission
@@ -28,28 +29,49 @@ DeliveryMethod = Certificate.DeliveryMethod
 STATUS_TONES = {Status.GENERATED: "warning", Status.APPROVED: "info", Status.ISSUED: "success"}
 KIND_LABELS = {RecipientType.REGISTRATION: "Participation", RecipientType.RESOURCE_PERSON: "Appreciation"}
 DELIVERY_LABELS = {DeliveryMethod.EMAIL: "Email", DeliveryMethod.HARD_COPY: "Hard copy"}
-
-# The bulk actions of the Certificates tab: (value posted, button label, icon, permission). Each calls one service
-# function (certificates.page_views.BULK_ACTIONS), which checks every selected certificate and changes all or nothing.
-# A button is shown only to members with its permission; the view and the service check it again.
-BULK_BUTTONS = [
-    ("approve", "Approve selected", "circle-check", Permission.APPROVE_CERTIFICATES),
-    ("regenerate", "Regenerate", "refresh-cw", Permission.CREATE_ACTIVITY),
-    ("hand_over", "Mark handed over", "award", Permission.CREATE_ACTIVITY),
-    ("resend", "Resend email", "send", Permission.CREATE_ACTIVITY),
-]
+READY_LABEL = "Ready for approval"
+PREPARING_LABEL = "Being prepared"  # Approved, the PDF not rendered yet (the background worker does it)
+ISSUED_NOTES = {
+    DeliveryMethod.EMAIL: "Issued — this copy was already sent and is not changed.",
+    DeliveryMethod.HARD_COPY: "Issued — this copy was already handed over and is not changed.",
+}
+PROBLEMS_KEY = "certificate_problems:{}"  # session: a refused row action's list, shown once on the tab
 
 
-def tab_url(activity_id: int) -> str:
-    return f"{reverse('activities:detail', args=[activity_id])}?tab=certificates"
+def tab_url(activity_id: int, preview: int | None = None) -> str:
+    """The activity's Certificates tab (every action ends here, ASSUMPTIONS 362); preview=<id> opens that certificate
+    in the preview card."""
+    url = activity_tab_url(activity_id, "certificates")
+    return f"{url}&preview={preview}#certificate-preview" if preview else url
+
+
+def keep_problems(request: HttpRequest, activity: Activity, problems: list[str]) -> None:
+    """Keep a refused action's list for the next view of the tab (the action redirects there, never renders)."""
+    request.session[PROBLEMS_KEY.format(activity.pk)] = list(problems)
 
 
 def recipient(certificate: Certificate) -> str:
-    """Who the certificate is for: the participant's registration name or the resource person's name. (The printed
-    name of a participant comes from the evaluation: services.recipient_name.)"""
+    """Who the certificate is for, as registered: the registration name or the resource person's name. (The printed
+    name of a participant comes from the evaluation: printed_names.)"""
     if certificate.recipient_type == RecipientType.RESOURCE_PERSON:
         return certificate.resource_person.name
     return certificate.registration.name
+
+
+def printed_names(certificates: list[Certificate]) -> dict[int, str]:
+    """Registration id -> the name typed in the evaluation (certificate_name), one query. The list, the preview header
+    and the PDF then show the same name (ASSUMPTIONS 362)."""
+    ids = [c.registration_id for c in certificates if c.registration_id]
+    if not ids:
+        return {}
+    return dict(EvaluationSubmission.objects.filter(registration_id__in=ids).values_list("registration_id", "certificate_name"))
+
+
+def names(certificate: Certificate, printed: dict[int, str]) -> tuple[str, str]:
+    """(name shown, "registered as" name or ""): the printed name first, the registration name only when it differs."""
+    registered = recipient(certificate)
+    shown = printed.get(certificate.registration_id) or registered
+    return shown, registered if shown.strip().casefold() != registered.strip().casefold() else ""
 
 
 def sending(certificate: Certificate) -> dict:
@@ -61,22 +83,39 @@ def sending(certificate: Certificate) -> dict:
     if certificate.send_failed_at:
         return {"key": "failed", "label": "Send failed", "tone": "danger"}
     if certificate.status == Status.ISSUED:
-        return {"key": "queued", "label": "Waiting for qcluster", "tone": "neutral"}
+        return {"key": "queued", "label": "Being emailed", "tone": "neutral"}
     if certificate.status == Status.APPROVED:
-        return {"key": "evaluation", "label": "After the evaluation", "tone": "neutral"}
+        return {"key": "evaluation", "label": "After the PDF is ready", "tone": "neutral"}
     return {"key": "approval", "label": "After approval", "tone": "neutral"}
 
 
-def certificate_row(certificate: Certificate) -> dict:
+def state_label(certificate: Certificate, label: str | None) -> dict | None:
+    """The small second badge beside the status: for one waiting for approval, "Ready for approval" or what it
+    waits for (services.readiness); for an Approved one without its PDF yet, "Being prepared"."""
+    if certificate.status == Status.GENERATED:
+        return {"label": label, "tone": "neutral"} if label else {"label": READY_LABEL, "tone": "success"}
+    if certificate.status == Status.APPROVED and not certificate.file_path and not services._not_ready_reason(certificate):
+        return {"label": PREPARING_LABEL, "tone": "neutral"}
+    return None
+
+
+def certificate_row(certificate: Certificate, printed: dict[int, str] | None = None, label: str | None = None,
+                    can_act: bool = False) -> dict:
+    shown, registered_as = names(certificate, printed or {})
+    hard_copy = certificate.delivery_method == DeliveryMethod.HARD_COPY
     return {
         "certificate": certificate,
-        "recipient": recipient(certificate),
+        "recipient": shown,
+        "registered_as": registered_as,
         "kind": KIND_LABELS[certificate.recipient_type],
         "delivery": DELIVERY_LABELS[certificate.delivery_method],
         "status": {"label": certificate.get_status_display(), "tone": STATUS_TONES[certificate.status]},
+        "state": state_label(certificate, label),
         "sending": sending(certificate),
         "pdf_ready": bool(certificate.file_path),
         "evidence_count": getattr(certificate, "evidence_count", 0),
+        # The row's "Mark handed over" (can_create_activity): an Approved hard copy whose PDF is ready.
+        "can_hand_over": can_act and hard_copy and certificate.status == Status.APPROVED and bool(certificate.file_path),
     }
 
 
@@ -85,7 +124,7 @@ def _plural(count: int, one: str, many: str) -> str:
 
 
 def approval_summary(certificates: list[Certificate]) -> str:
-    """"26 certificates · 24 participants by email · 2 resource persons by hard copy" (the waiting ones)."""
+    """"26 certificates · 24 participants by email · 2 resource persons by hard copy"."""
     by_email = sum(1 for c in certificates if c.delivery_method == DeliveryMethod.EMAIL)
     by_hand = len(certificates) - by_email
     parts = [_plural(len(certificates), "certificate", "certificates")]
@@ -96,18 +135,24 @@ def approval_summary(certificates: list[Certificate]) -> str:
     return " · ".join(parts)
 
 
-def approval_panel(member, activity: Activity, certificates: list[Certificate]) -> dict | None:
-    """The per-activity approval card: the summary of the certificates waiting for approval and "Approve all for this
-    activity" (disabled with the service's reason, services.approval_closed_reason, e.g. "Add the VP's signature
-    first."). The reason is shown to everyone; the button only to members with can_approve_certificates. None when
-    nothing waits."""
+def approval_panel(member, activity: Activity, certificates: list[Certificate], labels: dict[int, str | None]) -> dict | None:
+    """"Approve all ready certificates" (approvers only, ASSUMPTIONS 362): how many are ready (the confirm dialog's
+    text: how many are approved, emailed and printed) and the reason it is closed (services.approval_closed_reason).
+    None for members without can_approve_certificates (nothing is shown) or when nothing waits for approval."""
+    if not has_permission(member, Permission.APPROVE_CERTIFICATES):
+        return None
     waiting = [c for c in certificates if c.status == Status.GENERATED]
     if not waiting:
         return None
+    ready = [c for c in waiting if labels.get(c.pk) is None]
+    by_email = sum(1 for c in ready if c.delivery_method == DeliveryMethod.EMAIL)
     return {
-        "count": len(waiting),
-        "summary": approval_summary(waiting),
-        "can_approve": has_permission(member, Permission.APPROVE_CERTIFICATES),
+        "ready": len(ready),
+        "waiting": len(waiting),
+        "not_ready": len(waiting) - len(ready),
+        "by_email": by_email,
+        "by_hand": len(ready) - by_email,
+        "summary": approval_summary(ready) if ready else "",
         "closed_reason": services.approval_closed_reason(activity),
     }
 
@@ -132,26 +177,59 @@ def signatures_panel(member, activity: Activity) -> dict:
     return {"slots": slots, "can_edit": can_edit, "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB}
 
 
-def preview_items(certificates: list[Certificate]) -> list[dict]:
-    """The large preview with Previous / Next (ASSUMPTIONS 361): every certificate of the activity, in number order.
-    name_final=False: a participant who has not evaluated yet (the preview shows the registration name; the page
-    says "The final name comes from the evaluation.")."""
-    registration_ids = [c.registration_id for c in certificates if c.registration_id]
-    evaluated = set(EvaluationSubmission.objects.filter(registration_id__in=registration_ids)
-                    .values_list("registration_id", flat=True))
-    return [
-        {
+def preview_items(certificates: list[Certificate], printed: dict[int, str], labels: dict[int, str | None],
+                  can_approve: bool = False) -> list[dict]:
+    """The large preview with Previous / Next: exactly the list below it, in the same order (ASSUMPTIONS 362).
+    Each item: the printed name (and "registered as"), the readiness (services.readiness: the Approve button is
+    enabled only when ready; approvers only), the URLs with ?v= (services.preview_version: a changed certificate is
+    never shown from the browser's cache) and the Issued note."""
+    items = []
+    for c in certificates:
+        shown, registered_as = names(c, printed)
+        evaluated = c.registration_id in printed
+        version = services.preview_version(c, evaluated)
+        waiting = c.status == Status.GENERATED
+        items.append({
             "pk": c.pk,
-            "url": reverse("certificates:preview", args=[c.pk]),
-            "download_url": reverse("certificates:download", args=[c.pk]),
+            "url": f"{reverse('certificates:preview', args=[c.pk])}?v={version}",
+            "download_url": f"{reverse('certificates:download', args=[c.pk])}?v={version}",
             "number": c.certificate_number,
-            "recipient": recipient(c),
+            "recipient": shown,
+            "registered_as": registered_as,
             "kind": KIND_LABELS[c.recipient_type],
             "status": c.get_status_display(),
-            "name_final": c.recipient_type == RecipientType.RESOURCE_PERSON or c.registration_id in evaluated,
-        }
-        for c in certificates
-    ]
+            "name_final": c.recipient_type == RecipientType.RESOURCE_PERSON or evaluated,
+            "issued_note": ISSUED_NOTES[c.delivery_method] if services.shows_final_copy(c) else "",
+            "can_approve": can_approve and waiting,
+            "ready": waiting and labels.get(c.pk) is None,
+            "readiness": labels.get(c.pk) or "" if waiting else "",
+            "approve_url": reverse("activities:certificates_approve", args=[c.activity_id, c.pk]) if can_approve and waiting else "",
+        })
+    return items
+
+
+def preview_start(items: list[dict], raw: str | None) -> int:
+    """Where the preview starts: the certificate named by ?preview=<id> (after an approval), else the first row."""
+    if raw and raw.isdigit():
+        for index, item in enumerate(items):
+            if item["pk"] == int(raw):
+                return index
+    return 0
+
+
+def next_to_approve(activity: Activity, current: Certificate) -> int | None:
+    """After an approval: the next certificate in the list (number order) that is waiting for approval, a ready one
+    first; from the top when none follows. None: nothing waits (the preview starts at the first row)."""
+    waiting = list(services._waiting(activity))
+    labels = services.readiness_map(waiting)
+    after = [c for c in waiting if c.certificate_number > current.certificate_number]
+    before = [c for c in waiting if c.certificate_number < current.certificate_number]
+    for group in (after, before):
+        ready = [c for c in group if labels[c.pk] is None]
+        if ready:
+            return ready[0].pk
+    rest = after or before
+    return rest[0].pk if rest else None
 
 
 def _with_evidence_count(queryset):
@@ -166,53 +244,82 @@ def status_counts(counts: dict[str, int]) -> list[dict]:
     ]
 
 
+def worker_notice(certificates: list[Certificate]) -> bool:
+    """True when this activity has background work waiting (a PDF to render, an email to send) and the background
+    worker (qcluster) is not running: the tab says so instead of leaving "Being prepared" unexplained."""
+    waiting = any(
+        (c.status == Status.APPROVED and not c.file_path and not services._not_ready_reason(c))
+        or (c.status == Status.ISSUED and c.delivery_method == DeliveryMethod.EMAIL and not c.sent_at and not c.send_failed_at)
+        for c in certificates
+    )
+    if not waiting:
+        return False
+    from accounts.system_status import OK, qcluster_status
+
+    return qcluster_status().tone != OK
+
+
 # --- The activity's Certificates tab -----------------------------------------------------------------------------
 
 
 def certificates_tab(request: HttpRequest, activity: Activity, problems: list[str] | None = None) -> dict:
-    """The approval panel (approval_panel), the table (every certificate of the activity), counts per status,
-    Generate (with the reason it is not possible now, services.generation_closed_reason) and the bulk actions this
-    member may use. `problems`: the refusals of a bulk action that changed nothing, one per certificate."""
+    """The tab (ASSUMPTIONS 362): counts per status, why certificates are not created yet (generation_closed_reason;
+    they are created by the System), "Approve all ready certificates" (approvers only), Signatures, the preview with
+    Approve, and the list (Preview, Mark handed over, Resend, PDF, Evidence). `problems`: a refused row action's list
+    (kept in the session for this one view)."""
     certificates = list(_with_evidence_count(
-        Certificate.objects.filter(activity=activity).select_related("registration", "resource_person")
+        Certificate.objects.filter(activity=activity)
+        .select_related("activity", "registration", "resource_person", "vp_signatory", "director_signatory")
     ).order_by("certificate_number"))
     member = request.user
     can_act = has_permission(member, Permission.CREATE_ACTIVITY)
-    buttons = [(value, label, icon) for value, label, icon, permission in BULK_BUTTONS if has_permission(member, permission)]
+    can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    labels = services.readiness_map(certificates)
+    printed = printed_names(certificates)
+    previews = preview_items(certificates, printed, labels, can_approve)
+    start = preview_start(previews, request.GET.get("preview"))
+    kept = request.session.pop(PROBLEMS_KEY.format(activity.pk), None) if hasattr(request, "session") else None
     return {
-        "rows": [certificate_row(c) for c in certificates],
+        "rows": [certificate_row(c, printed, labels.get(c.pk), can_act) for c in certificates],
         "counts": status_counts(services.certificate_status_counts({"activity": activity.pk})),
         "can_act": can_act,
-        "can_select": bool(buttons),
-        "generation_reason": services.generation_closed_reason(activity) if can_act else None,
-        "bulk_buttons": buttons,
-        "approval": approval_panel(member, activity, certificates),
+        "can_approve": can_approve,
+        "generation_reason": services.generation_closed_reason(activity),
+        "approval": approval_panel(member, activity, certificates, labels),
         "signatures": signatures_panel(member, activity),
-        "previews": preview_items(certificates),
+        "previews": previews,
+        "preview_start": start,
+        "shown": previews[start] if previews else None,  # the certificate the preview card shows first
+        "can_apply_design": can_act and any(c.status != Status.ISSUED for c in certificates),
+        "worker_stopped": worker_notice(certificates),
         "emails_printed": prints_emails() and any(c.delivery_method == DeliveryMethod.EMAIL for c in certificates),
-        "problems": problems or [],
+        "problems": problems or kept or [],
         "back": tab_url(activity.pk),
     }
 
 
-# --- The preview dialog -----------------------------------------------------------------------------------------
+# --- The preview page (without JavaScript) --------------------------------------------------------------------
 
 
-def preview(certificate: Certificate) -> dict:
-    """The preview dialog / page: the PDF (certificates:preview in an <iframe>), Download PDF, and whether the name is
-    final (a participant's printed name comes from the evaluation)."""
-    name, final = services.preview_name(certificate)
+def preview(certificate: Certificate, member=None) -> dict:
+    """The preview page: the PDF (certificates:preview in an <iframe>, ?v=), Download PDF, the printed name and
+    whether it is final, the Issued note, and Approve for approvers (enabled only when ready)."""
+    printed = printed_names([certificate])
+    labels = services.readiness_map([certificate])
+    can_approve = member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES)
+    item = preview_items([certificate], printed, labels, can_approve)[0]
     return {
         "certificate": certificate,
-        "recipient": recipient(certificate),
-        "kind": KIND_LABELS[certificate.recipient_type],
+        "item": item,
+        "recipient": item["recipient"],
+        "registered_as": item["registered_as"],
+        "kind": item["kind"],
         "status": {"label": certificate.get_status_display(), "tone": STATUS_TONES[certificate.status]},
-        "name": name,
-        "name_final": final,
+        "name_final": item["name_final"],
         "marked": services.preview_marked(certificate),
-        "file_url": reverse("certificates:preview", args=[certificate.pk]),
-        "download_url": reverse("certificates:download", args=[certificate.pk]),
-        "back": tab_url(certificate.activity_id),
+        "file_url": item["url"],
+        "download_url": item["download_url"],
+        "back": tab_url(certificate.activity_id, preview=certificate.pk),
     }
 
 
@@ -269,10 +376,12 @@ def certificate_list(filters: CertificateFilters) -> dict:
     result = services.list_certificates(filters.for_service(), page=filters.page)
     ids = [certificate.pk for certificate in result.items]
     counted = {c.pk: c.evidence_count for c in _with_evidence_count(Certificate.objects.filter(pk__in=ids))}
+    labels = services.readiness_map(result.items)
+    printed = printed_names(result.items)
     rows = []
     for certificate in result.items:
         certificate.evidence_count = counted.get(certificate.pk, 0)
-        rows.append(certificate_row(certificate))
+        rows.append(certificate_row(certificate, printed, labels.get(certificate.pk)))
     without_status = {**filters.for_service(), "status": ""}
     return {
         "result": result,

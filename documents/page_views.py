@@ -16,6 +16,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from config.links import post_only_or_tab
 from activities.models import Activity
 from activities.page_views import render_activity_page
 from assistant.indexing import with_searchable
@@ -108,7 +109,7 @@ def preview(request: HttpRequest, document_id: int) -> HttpResponse:
 
 
 @staff_login_required
-@require_POST
+@post_only_or_tab("documents")
 def upload(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST document_type, title (optional), file. Errors come back under their fields on the Documents tab."""
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type", "created_by"), pk=activity_id)

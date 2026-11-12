@@ -26,9 +26,14 @@ urlpatterns = [
     # Actions of the Documents and Certificates tabs (phase F4). Under /activities/ so the page that comes back
     # (an upload error, a refused bulk action) keeps "Activities" active in the sidebar; the views live in their apps.
     path("<int:activity_id>/documents/upload/", document_page_views.upload, name="document_upload"),
-    path("<int:activity_id>/certificates/generate/", certificate_page_views.generate, name="certificates_generate"),
-    path("<int:activity_id>/certificates/bulk/", certificate_page_views.bulk_action, name="certificates_bulk"),
-    path("<int:activity_id>/certificates/approve-all/", certificate_page_views.approve_all, name="certificates_approve_all"),
+    # Certificates are created by the System (ASSUMPTIONS 362): no Generate. Each action redirects to the tab.
+    path("<int:activity_id>/certificates/<int:certificate_id>/approve/", certificate_page_views.approve_one,
+         name="certificates_approve"),
+    path("<int:activity_id>/certificates/approve-ready/", certificate_page_views.approve_ready,
+         name="certificates_approve_ready"),
+    path("<int:activity_id>/certificates/apply-design/", certificate_page_views.apply_design,
+         name="certificates_apply_design"),
+    path("<int:activity_id>/certificates/action/", certificate_page_views.row_action, name="certificates_action"),
     path("<int:activity_id>/certificates/signatures/<str:position>/", certificate_page_views.signature_upload,
          name="certificates_signature"),
     # JSON API

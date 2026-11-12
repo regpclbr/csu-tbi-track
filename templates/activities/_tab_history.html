@@ -14,7 +14,7 @@
         </li>
       {% endfor %}
     </ol>
-    {% include "components/pagination.html" with result=history query="tab=history" hx_target="#tab-area" %}
+    {% include "components/pagination.html" with result=history query="tab=history" hx_target="#tab-area" base_url=activity_url %}
   {% else %}
     {% include "components/empty_state.html" with icon="history" title="No history yet" text="Every change to this activity is written here." %}
   {% endif %}

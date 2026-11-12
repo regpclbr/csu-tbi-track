@@ -1,19 +1,32 @@
 {% comment %}
-The certificate preview (certificates.page_views.preview_dialog, certificates.pages.preview; ASSUMPTIONS 358): number,
-recipient, status, Download PDF and Close, then the PDF in an <iframe> of certificates:preview (rendered now from the same
-template as the final PDF, with both signatures; a small "PREVIEW" mark while it waits for approval).
-standalone=True: its own page without JavaScript (Close becomes a link back to the Certificates tab).
+The certificate preview on a page of its own (certificates.page_views.preview_dialog, certificates.pages.preview;
+ASSUMPTIONS 358, 362): what a row's Preview opens without JavaScript (with JavaScript it shows in the tab's preview card).
+Number, printed name (and "registered as"), status, Approve for approvers (enabled only when ready, otherwise the reason),
+Download PDF, then the PDF in an <iframe> of certificates:preview (?v=: never an old copy from the browser's cache). An
+Issued certificate shows its final PDF, the copy that was sent or handed over.
+standalone=True: its own page (Close becomes a link back to the Certificates tab).
 {% endcomment %}
 <div class="flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
     <p class="text-xs font-semibold tracking-wide text-primary uppercase">Certificate of {{ kind }}</p>
     <h2 id="certificate-preview-title" class="mt-1 text-xl leading-tight font-bold break-words text-ink">{{ certificate.certificate_number }} · {{ recipient }}</h2>
+    {% if registered_as %}<p class="mt-0.5 text-sm text-slate-700">Registered as {{ registered_as }}</p>{% endif %}
     <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
       {% include "components/badge.html" with text=status.label tone=status.tone %}
       {% if marked %}<span>Marked “PREVIEW” until it is approved.</span>{% endif %}
     </div>
   </div>
-  <div class="flex items-center gap-2">
+  <div class="flex flex-wrap items-center gap-2">
+    {% if item.can_approve %}
+      {% if item.ready %}
+        <form method="post" action="{{ item.approve_url }}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="circle-check" class="size-4" %}Approve<span class="sr-only"> {{ certificate.certificate_number }}</span></button>
+        </form>
+      {% else %}
+        <button type="button" class="btn btn-primary btn-sm" disabled aria-describedby="preview-page-reason">{% include "components/icon.html" with name="circle-check" class="size-4" %}Approve</button>
+      {% endif %}
+    {% endif %}
     <a href="{{ download_url }}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download PDF<span class="sr-only"> of {{ certificate.certificate_number }}</span></a>
     {% if standalone %}
       <a href="{{ back }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="x" class="size-4" %}Close</a>
@@ -22,10 +35,16 @@ standalone=True: its own page without JavaScript (Close becomes a link back to t
     {% endif %}
   </div>
 </div>
-{% if not name_final %}
+{% if item.can_approve and not item.ready %}
+  <p id="preview-page-reason" class="mt-3 text-sm text-slate-700">Not ready for approval: {{ item.readiness }}.</p>
+{% endif %}
+{% if item.issued_note %}
+  <p class="mt-3 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="note">
+    {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span>{{ item.issued_note }}</span></p>
+{% elif not name_final %}
   <p class="mt-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note">
     {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-primary" %}
-    <span>Shown with the registration name “{{ name }}”. The final name comes from the evaluation.</span></p>
+    <span>Shown with the registration name “{{ recipient }}”. The final name comes from the evaluation.</span></p>
 {% endif %}
 <div class="mt-4">
   <iframe src="{{ file_url }}" title="Preview of certificate {{ certificate.certificate_number }}" class="h-[70vh] w-full rounded-xl border border-line bg-slate-50"></iframe>

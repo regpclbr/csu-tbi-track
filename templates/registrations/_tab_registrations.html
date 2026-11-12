@@ -21,7 +21,7 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
       <div class="flex flex-wrap items-center gap-2">
         <a href="{% url 'registrations:attendance_sheet' activity.pk %}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
           {% include "components/icon.html" with name="file-text" class="size-4" %}Print attendance sheet<span class="sr-only"> (opens in a new tab)</span></a>
-        <a href="?tab=evaluation" hx-get="?tab=evaluation" hx-target="#tab-area" hx-push-url="true" class="btn btn-secondary btn-sm">
+        <a href="{{ activity_url }}?tab=evaluation" hx-get="{{ activity_url }}?tab=evaluation" hx-target="#tab-area" hx-push-url="true" class="btn btn-secondary btn-sm">
           {% include "components/icon.html" with name="mail" class="size-4" %}Evaluation links</a>
       </div>
     </div>

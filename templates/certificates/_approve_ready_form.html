@@ -1,0 +1,19 @@
+{% comment %}Inside the "Approve all ready certificates" confirm dialog (certificates/_tab_certificates.html, approvers only).
+POST to activities:certificates_approve_ready: services.approve_certificates(activity=...) approves every certificate that
+is ready (services.readiness) and checks the permission and the signatures again. The counts come from
+certificates.pages.approval_panel.{% endcomment %}
+<form method="post" action="{% url 'activities:certificates_approve_ready' activity.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700"><strong class="font-semibold text-ink">{{ approval.ready }} certificate{{ approval.ready|pluralize }} will be approved</strong> for “{{ activity.title }}”.</p>
+  <ul class="list-disc space-y-1 pl-5 text-sm text-slate-700">
+    {% if approval.by_email %}<li>{{ approval.by_email }} participant{{ approval.by_email|pluralize }}: emailed automatically (PDF attached).</li>{% endif %}
+    {% if approval.by_hand %}<li>{{ approval.by_hand }} resource person{{ approval.by_hand|pluralize }}: printed and handed over (Mark handed over afterwards).</li>{% endif %}
+  </ul>
+  {% if approval.not_ready %}
+    <p class="text-sm text-muted">{{ approval.not_ready }} other certificate{{ approval.not_ready|pluralize }} {{ approval.not_ready|pluralize:"is,are" }} not ready yet and will keep waiting.</p>
+  {% endif %}
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Approve {{ approval.ready }}</button>
+  </div>
+</form>

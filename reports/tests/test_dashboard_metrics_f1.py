@@ -129,12 +129,18 @@ def test_inactive_required_types_are_left_out(document_cases) -> None:
 # --- Certificates waiting for the Director's approval, by activity (ASSUMPTIONS 357) ----------------------
 
 
-def test_certificates_waiting_by_activity(make_activity, register, make_certificate_row) -> None:
+def test_certificates_waiting_by_activity(make_activity, register, make_certificate_row, evaluate) -> None:
+    """Only certificates READY for approval (ASSUMPTIONS 362): here every participant has evaluated, except U."""
     big = make_activity("Big")
     small = make_activity("Small")
     for i in range(3):
-        make_certificate_row(activity=big, registration=register(big, f"B{i}"), status=Certificate.Status.GENERATED)
-    make_certificate_row(activity=small, registration=register(small, "S"), status=Certificate.Status.GENERATED)
+        registration = register(big, f"B{i}")
+        make_certificate_row(activity=big, registration=registration, status=Certificate.Status.GENERATED)
+        evaluate(registration, {})
+    registration = register(small, "S")
+    make_certificate_row(activity=small, registration=registration, status=Certificate.Status.GENERATED)
+    evaluate(registration, {})
+    make_certificate_row(activity=small, registration=register(small, "U"), status=Certificate.Status.GENERATED)  # not ready
     make_certificate_row(activity=small, registration=register(small, "T"), status=Certificate.Status.APPROVED)  # not S5
     rows = metrics.certificates_waiting_by_activity(YEAR_2026)
     assert [(row["title"], row["count"]) for row in rows] == [("Big", 3), ("Small", 1)]

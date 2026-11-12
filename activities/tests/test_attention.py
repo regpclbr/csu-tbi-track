@@ -99,19 +99,23 @@ def test_conducted_with_attendees_but_no_certificates(new_activity, move_to, reg
     registration_services.set_attendance(director, new_activity, [person.pk], True, "email")
     services.change_status(director, new_activity, "Conducted")
     items = attention.activity_attention(new_activity, manila(new_activity.end_date, 18))
-    assert attention.AttentionItem("Conducted with 1 attendee but no certificates generated yet.", "certificates") in items
+    assert attention.AttentionItem(
+        "Conducted with 1 attendee but no certificates yet: they are created automatically once the certificate design "
+        "and signatories are set up.", "certificates") in items
 
 
 def test_certificates_waiting_for_approval(activity, registration, make_certificate, signatories) -> None:
-    """One line, the same for everyone (ASSUMPTIONS 361): the count, or the missing signature first."""
+    """One line, the same for everyone (ASSUMPTIONS 361, 362): the missing signature first, otherwise only certificates
+    READY for approval (this participant has not evaluated: not a staff task; the ready count is tested in
+    certificates/tests/test_automatic_flow.py)."""
     from certificates.models import CertificateSignatory
 
     make_certificate(registration)
     now = manila(activity.start_date - timedelta(days=20), 9)
-    assert "1 certificate waiting for approval." in texts(activity, now)
+    assert not [text for text in texts(activity, now) if "approval" in text]
     CertificateSignatory.objects.filter(pk=signatories[1].pk).update(signature_image_path=None)
     items = texts(activity, now)
-    assert "Add the Director's signature first." in items and "1 certificate waiting for approval." not in items
+    assert "Add the Director's signature first." in items
 
 
 def test_failed_certificate_emails(activity, registration, make_certificate) -> None:

@@ -110,13 +110,16 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
         fact.registered, fact.attended, fact.attended_after_evaluation = registered, attended, late
         fact.links_failed, fact.links_not_sent = failed, not_sent
 
+    from certificates import services as certificate_services
+
     Status = Certificate.Status
     unsent = Q(status=Status.ISSUED, delivery_method=Certificate.DeliveryMethod.EMAIL, sent_at__isnull=True)
     certificates = (
         Certificate.objects.filter(activity_id__in=ids).values("activity_id").order_by()
         .annotate(
             total=Count("pk"),
-            to_approve=Count("pk", filter=Q(status=Status.GENERATED)),
+            # Only certificates READY for approval are a staff task (ASSUMPTIONS 362); the joins are one to one.
+            ready=Count("pk", filter=certificate_services.ready_for_approval_q()),
             to_hand_over=Count("pk", filter=Q(status=Status.APPROVED, recipient_type=Certificate.RecipientType.RESOURCE_PERSON)),
             send_failed=Count("pk", filter=unsent & Q(send_failed_at__isnull=False)),
             unsent=Count("pk", filter=unsent & Q(send_failed_at__isnull=True)),
@@ -127,8 +130,6 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
 
     # Signatures of the certificates waiting for approval (ASSUMPTIONS 361): one query (DISTINCT ON the signatory
     # pair per activity), then certificates.services' own check (it reads the files, no queries).
-    from certificates import services as certificate_services
-
     pairs = (
         Certificate.objects.filter(activity_id__in=ids, status=Status.GENERATED)
         .select_related("vp_signatory", "director_signatory")
@@ -190,13 +191,15 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
     # Certificates
     certificates = fact.certificates
     if status == CONDUCTED and fact.attended and not certificates.get("total"):
-        items.append(AttentionItem(f"Conducted with {_plural(fact.attended, 'attendee', 'attendees')} but no certificates generated yet.", "certificates"))
-    # Waiting for approval: one line, the missing signature first ("Add the VP's signature first.", ASSUMPTIONS 361).
-    if certificates.get("to_approve"):
         items.append(AttentionItem(
-            fact.signature_missing or f"{_plural(certificates['to_approve'], 'certificate', 'certificates')} waiting for approval.",
-            "certificates",
-        ))
+            f"Conducted with {_plural(fact.attended, 'attendee', 'attendees')} but no certificates yet: they are created "
+            "automatically once the certificate design and signatories are set up.", "certificates"))
+    # Approval (ASSUMPTIONS 361, 362): one line. A missing signature first (it blocks every certificate); otherwise only
+    # the certificates READY for approval. Waiting for an evaluation is not a staff task.
+    if fact.signature_missing:
+        items.append(AttentionItem(fact.signature_missing, "certificates"))
+    elif certificates.get("ready"):
+        items.append(AttentionItem(f"{_plural(certificates['ready'], 'certificate', 'certificates')} ready for approval.", "certificates"))
     for key, text in (
         ("to_hand_over", "for resource persons approved but not handed over"),
         ("send_failed", "could not be emailed. Resend on the Certificates tab"),

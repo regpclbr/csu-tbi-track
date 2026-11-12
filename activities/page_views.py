@@ -8,9 +8,10 @@ from django.db import transaction
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from config.links import activity_tab_url, post_only_or_tab
 from certificates import pages as certificate_pages
 from documents import pages as document_pages
 from documents import services as document_services
@@ -175,6 +176,8 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     can_create = _can_create(request)
     context = {
         "page_title": activity.title, "activity": activity, "detail": detail, "tab": tab, "tabs": pages.tabs(tab),
+        # Every tab link starts with the activity's own address, never "?tab=" alone (ASSUMPTIONS 362).
+        "activity_url": reverse("activities:detail", args=[activity.pk]),
         "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
         "registration": pages.registration_summary(activity),
@@ -200,6 +203,8 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         context.update(certificate_pages.certificates_tab(request, activity, (extra or {}).get("problems")))
     if is_htmx(request):
         return render(request, "activities/_tab.html", context, status=status)
+    if request.path != context["activity_url"]:  # re-shown after a POST (form errors): fix the address bar
+        context["canonical_url"] = activity_tab_url(activity.pk, tab)
     return render(request, "activities/detail.html", context, status=status)
 
 
@@ -221,7 +226,7 @@ def qr_code(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
+@post_only_or_tab("overview")
 def activity_change_status(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST status=<name> (&next=list: back to the Activities list, from a "Needs follow-up" card's "Mark as
     Conducted"; any other value goes to the activity page). Same messages as the Django admin's "Change status"."""
@@ -242,7 +247,7 @@ def activity_change_status(request: HttpRequest, activity_id: int) -> HttpRespon
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
+@post_only_or_tab("overview")
 def resource_person_add(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST mode=existing (resource_person, topic) or mode=new (name, email, contact_number, topic)."""
     activity = get_object_or_404(Activity, pk=activity_id)
@@ -269,7 +274,7 @@ def resource_person_add(request: HttpRequest, activity_id: int) -> HttpResponse:
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
-@require_POST
+@post_only_or_tab("overview")
 def resource_person_remove(request: HttpRequest, activity_id: int, resource_person_id: int) -> HttpResponse:
     activity = get_object_or_404(Activity, pk=activity_id)
     person = get_object_or_404(ResourcePerson, pk=resource_person_id)

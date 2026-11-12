@@ -1,10 +1,11 @@
 {% comment %}
-The tabs and the current tab's panel (what HTMX swaps, into #tab-area). Tabs are links (?tab=...), so they also work
-without JavaScript and a reload keeps the tab.
+The tabs and the current tab's panel (what HTMX swaps, into #tab-area). Tabs are links to the activity's own address
+(/activities/<id>/?tab=..., never relative to the current path: ASSUMPTIONS 362), so they also work without JavaScript
+and a reload keeps the tab.
 {% endcomment %}
 <nav class="mb-4 flex gap-1 overflow-x-auto rounded-full border border-line bg-white p-1 shadow-card" aria-label="Activity sections">
   {% for item in tabs %}
-    <a href="?tab={{ item.key }}" hx-get="?tab={{ item.key }}" hx-target="#tab-area" hx-push-url="true" hx-indicator="#tab-loading"
+    <a href="{{ activity_url }}?tab={{ item.key }}" hx-get="{{ activity_url }}?tab={{ item.key }}" hx-target="#tab-area" hx-push-url="true" hx-indicator="#tab-loading"
        {% if item.current %}aria-current="page"{% endif %}
        class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap {% if item.current %}bg-primary text-white{% else %}text-slate-600 hover:bg-slate-100 hover:text-ink{% endif %}">
       {{ item.label }}

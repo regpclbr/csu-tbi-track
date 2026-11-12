@@ -23,9 +23,9 @@ def both_issued(generated, approve_all, evaluate, run_tasks, django_capture_on_c
     """Both participants evaluated and their certificates Issued (and emailed)."""
     activity, people = generated
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0], name="Person Zero", email="zero.cert@example.com")
         evaluate(people[1], name="Person One", email="one.cert@example.com")
+        approve_all(activity)
     return activity, people
 
 

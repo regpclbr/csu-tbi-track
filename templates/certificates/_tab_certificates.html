@@ -1,55 +1,54 @@
 {% comment %}
-Certificates tab of the activity page (certificates.pages.certificates_tab; ASSUMPTIONS 357-361).
-- Counts per status and Generate (disabled with services.generation_closed_reason).
-- The approval card when certificates wait for approval (pages.approval_panel): the summary and, for members with
-  can_approve_certificates, "Approve all for this activity" behind a confirm dialog; the reason it is closed
-  (services.approval_closed_reason, e.g. "Add the VP's signature first.") is shown to everyone.
-- Signatures (pages.signatures_panel): the VP and the Director slot; members with can_approve_certificates add or
-  replace the image (services.upload_signature).
-- The large preview (pages.preview_items): the first certificate, Previous / Next; a row's Preview shows that one here
-  (without JavaScript it opens the preview page).
-- The table with the actions this member may use on the selected rows (all or nothing: a refusal lists every refused
-  certificate). Download PDF; Evidence opens a dialog (HTMX).
+Certificates tab of the activity page (certificates.pages.certificates_tab; ASSUMPTIONS 357-362).
+- Counts per status. Certificates are created by the System when the activity is Conducted (no Generate button); when
+  they cannot be created yet, the reason (services.generation_closed_reason) is shown.
+- Approvers only (can_approve_certificates): "Approve all ready certificates" behind a confirm dialog with the counts
+  (pages.approval_panel), or the disabled button with the reason (services.approval_closed_reason). Members without
+  the flag see no approve button at all.
+- Signatures (pages.signatures_panel): the VP and the Director slot; approvers add or replace the image.
+- The preview card (pages.preview_items): exactly the list below, same order; starts at the first row (or ?preview=<id>
+  after an approval). Approve (approvers only) is enabled only when the certificate is ready, otherwise the reason.
+  A row's Preview shows that certificate here (without JavaScript it opens the preview page).
+- The list: Preview, Mark handed over / Resend (can_create_activity), PDF, Evidence. No checkboxes.
+Every action redirects back to /activities/<id>/?tab=certificates.
 {% endcomment %}
 <div id="certificates-tab" class="space-y-5">
-  <ul class="flex flex-wrap gap-2" aria-label="Certificates per status">
-    {% for status in counts %}
-      <li class="flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm shadow-card">
-        {% include "components/badge.html" with text=status.label tone=status.tone %}<span class="font-semibold text-ink">{{ status.count }}</span>
-      </li>
-    {% endfor %}
-  </ul>
-
-  {% if approval %}
-    <section class="card p-6" aria-labelledby="approval-title">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="approval-title" class="card-title">{% if approval.can_approve %}Waiting for your approval{% else %}Waiting for approval{% endif %}</h2>
-          <p class="card-subtitle">{{ approval.summary }}</p>
-        </div>
-        {% if approval.can_approve %}
-          {% if approval.closed_reason %}
-            <button type="button" class="btn btn-primary btn-sm" disabled aria-describedby="approval-reason">
-              {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve all for this activity</button>
-          {% else %}
-            {% include "components/modal.html" with id="approve-all-dialog" title="Approve all certificates?" body="certificates/_approve_all_form.html" trigger_label="Approve all for this activity" trigger_icon="circle-check" trigger_class="btn btn-primary btn-sm" %}
-          {% endif %}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <ul class="flex flex-wrap gap-2" aria-label="Certificates per status">
+      {% for status in counts %}
+        <li class="flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm shadow-card">
+          {% include "components/badge.html" with text=status.label tone=status.tone %}<span class="font-semibold text-ink">{{ status.count }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if approval %}
+        {% if approval.closed_reason %}
+          <button type="button" class="btn btn-secondary btn-sm" disabled aria-describedby="approval-reason">
+            {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve all ready certificates</button>
+        {% else %}
+          {% include "components/modal.html" with id="approve-ready-dialog" title="Approve all ready certificates?" body="certificates/_approve_ready_form.html" trigger_label="Approve all ready certificates" trigger_icon="circle-check" trigger_class="btn btn-secondary btn-sm" %}
         {% endif %}
-      </div>
-      {% if approval.closed_reason %}
-        <p id="approval-reason" class="mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
-          {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4" %}{{ approval.closed_reason }}</p>
-      {% elif approval.can_approve %}
-        <p class="mt-4 text-sm text-slate-700">Check the certificates in the preview below, then approve them all at once (or select some in the table). Participants get theirs by email after they submit the evaluation; resource persons get a printed copy.</p>
-      {% else %}
-        <p class="mt-4 text-sm text-slate-700">Members with approval rights approve certificates. You can preview them below.</p>
       {% endif %}
-    </section>
+      {% if can_apply_design %}
+        {% include "components/modal.html" with id="apply-design-dialog" title="Apply the current design?" body="certificates/_apply_design_form.html" trigger_label="Apply the current design" trigger_icon="refresh-cw" trigger_class="btn btn-ghost btn-sm" %}
+      {% endif %}
+    </div>
+  </div>
+  {% if approval.closed_reason %}
+    <p id="approval-reason" class="-mt-2 flex items-start gap-2 text-sm text-slate-700">
+      {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}{{ approval.closed_reason }}</p>
+  {% endif %}
+
+  {% if worker_stopped %}
+    <p class="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-amber-700" %}
+      <span><strong class="font-semibold">Certificates are waiting for the background worker.</strong> The approved certificates are being updated (PDF, email) as soon as qcluster runs. Start it in a new terminal: <code>python manage.py qcluster</code></span></p>
   {% endif %}
 
   <section class="card p-6" aria-labelledby="signatures-title">
     <h2 id="signatures-title" class="card-title">Signatures</h2>
-    <p class="card-subtitle">Printed on every certificate of this activity. Adding or replacing one updates the certificates that are not issued yet; approved ones wait for approval again.</p>
+    <p class="card-subtitle">Printed on every certificate of this activity. Adding or replacing one updates the certificates that are not issued yet (the preview shows it at once); approved ones wait for approval again. Issued certificates keep the copy that was sent.</p>
     <div class="mt-4 grid gap-4 md:grid-cols-2">
       {% for slot in signatures.slots %}
         <div class="rounded-2xl border border-line p-4">
@@ -86,53 +85,57 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
   {% if previews %}
     {{ previews|json_script:"certificate-previews" }}
     <section id="certificate-preview" class="card scroll-mt-4 p-6" aria-labelledby="preview-title"
-             x-data="{ i: 0, items: JSON.parse(document.getElementById('certificate-previews').textContent) }"
+             x-data="{ i: {{ preview_start }}, items: JSON.parse(document.getElementById('certificate-previews').textContent) }"
              @certificate-preview.window="i = Math.max(0, items.findIndex(item => item.pk === $event.detail)); $el.scrollIntoView({ behavior: 'smooth', block: 'start' }); $nextTick(() => $refs.heading.focus())">
       <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
           <h2 id="preview-title" class="card-title" x-ref="heading" tabindex="-1">Certificate preview</h2>
           <p class="card-subtitle" aria-live="polite">
-            <span x-text="(i + 1) + ' of ' + items.length">1 of {{ previews|length }}</span> ·
-            <span class="font-semibold text-ink" x-text="items[i].number">{{ previews.0.number }}</span> ·
-            <span x-text="items[i].recipient + ' (' + items[i].kind + ')'">{{ previews.0.recipient }} ({{ previews.0.kind }})</span> ·
-            <span x-text="items[i].status">{{ previews.0.status }}</span>
+            <span x-text="(i + 1) + ' of ' + items.length">{{ preview_start|add:1 }} of {{ previews|length }}</span> ·
+            <span class="font-semibold text-ink" x-text="items[i].number">{{ shown.number }}</span> ·
+            <span x-text="items[i].recipient + ' (' + items[i].kind + ')'">{{ shown.recipient }} ({{ shown.kind }})</span>
+            <span x-show="items[i].registered_as" x-text="'· registered as ' + items[i].registered_as"{% if not shown.registered_as %} style="display: none"{% endif %}>· registered as {{ shown.registered_as }}</span> ·
+            <span x-text="items[i].status">{{ shown.status }}</span>
           </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <button type="button" class="btn btn-secondary btn-sm" @click="i--" :disabled="i === 0" disabled>
+          {% if can_approve %}
+            <form method="post" :action="items[i].approve_url" action="{{ shown.approve_url }}" x-show="items[i].can_approve"{% if not shown.can_approve %} style="display: none"{% endif %}>
+              {% csrf_token %}
+              <button type="submit" class="btn btn-primary btn-sm" :disabled="!items[i].ready" :aria-describedby="items[i].ready ? null : 'preview-readiness'"{% if not shown.ready %} disabled{% endif %}>
+                {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve<span class="sr-only" x-text="' ' + items[i].number"></span></button>
+            </form>
+          {% endif %}
+          <button type="button" class="btn btn-secondary btn-sm" @click="i--" :disabled="i === 0"{% if preview_start == 0 %} disabled{% endif %}>
             {% include "components/icon.html" with name="chevron-left" class="size-4" %}Previous</button>
-          <button type="button" class="btn btn-secondary btn-sm" @click="i++" :disabled="i === items.length - 1"{% if previews|length == 1 %} disabled{% endif %}>
+          <button type="button" class="btn btn-secondary btn-sm" @click="i++" :disabled="i === items.length - 1"{% if preview_start|add:1 == previews|length %} disabled{% endif %}>
             Next{% include "components/icon.html" with name="chevron-right" class="size-4" %}</button>
-          <a :href="items[i].download_url" href="{{ previews.0.download_url }}" class="btn btn-ghost btn-sm">
+          <a :href="items[i].download_url" href="{{ shown.download_url }}" class="btn btn-ghost btn-sm">
             {% include "components/icon.html" with name="download" class="size-4" %}Download PDF</a>
         </div>
       </div>
-      <p class="mb-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note" x-show="!items[i].name_final"{% if previews.0.name_final %} style="display: none"{% endif %}>
+      {% if can_approve %}
+        <p id="preview-readiness" class="mb-3 flex items-start gap-2 text-sm text-slate-700" x-show="items[i].can_approve && !items[i].ready"{% if not shown.can_approve or shown.ready %} style="display: none"{% endif %}>
+          {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}<span>Not ready for approval: <span x-text="items[i].readiness">{{ shown.readiness }}</span>.</span></p>
+      {% endif %}
+      <p class="mb-3 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="note" x-show="items[i].issued_note"{% if not shown.issued_note %} style="display: none"{% endif %}>
+        {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span x-text="items[i].issued_note">{{ shown.issued_note }}</span></p>
+      <p class="mb-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note" x-show="!items[i].name_final"{% if shown.name_final %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-primary" %}<span>The final name comes from the evaluation.</span></p>
-      <iframe :src="items[i].url" src="{{ previews.0.url }}" title="Certificate preview" class="h-[70vh] w-full rounded-xl border border-line bg-slate-50"></iframe>
-      <p class="mt-2 text-xs text-muted">Rendered from the same template as the final PDF. A small “PREVIEW” mark stays in the corner until the certificate is approved.</p>
+      <iframe :src="items[i].url" src="{{ shown.url }}" title="Certificate preview" class="h-[70vh] w-full rounded-xl border border-line bg-slate-50"></iframe>
+      <p class="mt-2 text-xs text-muted">Rendered from the same template as the final PDF. A small “PREVIEW” mark stays in the corner until the certificate is approved. Issued certificates show the copy that was sent or handed over.</p>
     </section>
   {% endif %}
 
   <section class="card p-6" aria-labelledby="certificates-title">
-    <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 id="certificates-title" class="card-title">Certificates</h2>
-        <p class="card-subtitle">Participants get a Certificate of Participation by email (after approval and their evaluation); resource persons a Certificate of Appreciation in hard copy.</p>
-      </div>
-      {% if can_act %}
-        <form method="post" action="{% url 'activities:certificates_generate' activity.pk %}">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-primary btn-sm"{% if generation_reason %} disabled aria-describedby="generate-reason"{% endif %}>
-            {% include "components/icon.html" with name="award" class="size-4" %}Generate certificates</button>
-        </form>
-      {% endif %}
+    <div class="mb-4">
+      <h2 id="certificates-title" class="card-title">Certificates</h2>
+      <p class="card-subtitle">Created automatically when the activity is Conducted: one Certificate of Participation (by email) per attendee and one Certificate of Appreciation (hard copy) per resource person. A participant's certificate is ready after their evaluation and both signatures.</p>
     </div>
-    {% if can_act %}
-      <p id="generate-reason" class="mb-4 flex items-start gap-2 text-sm text-slate-700">
-        {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}
-        {% if generation_reason %}{{ generation_reason }}{% else %}Generate creates the missing certificates only: one for each attendee and one for each resource person. Safe to run again. Regenerate applies the current design and signatures; the certificates then wait for approval again.{% endif %}
-      </p>
+
+    {% if generation_reason and activity.status.name == "Conducted" %}
+      <p class="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>Certificates are not created yet: {{ generation_reason }}</span></p>
     {% endif %}
 
     {% if emails_printed %}
@@ -149,90 +152,81 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
     {% endif %}
 
     {% if rows %}
-      <form method="post" action="{% url 'activities:certificates_bulk' activity.pk %}"
-            x-data="{ selected: [], all: [{% for row in rows %}'{{ row.certificate.pk }}'{% if not forloop.last %}, {% endif %}{% endfor %}] }">
-        {% csrf_token %}
-        {% if can_select %}
-          <p class="mb-2 text-sm text-slate-700" aria-live="polite" x-text="selected.length ? selected.length + ' selected' : 'Select certificates, then choose an action.'">Select certificates, then choose an action.</p>
-          <div class="mb-3 flex flex-wrap items-center gap-2" role="group" aria-label="Actions on the selected certificates">
-            {% for value, label, icon in bulk_buttons %}
-              <button type="submit" name="action" value="{{ value }}" class="btn btn-sm btn-secondary" :disabled="!selected.length">
-                {% include "components/icon.html" with name=icon class="size-4" %}{{ label }}</button>
-            {% endfor %}
-          </div>
-        {% endif %}
-        <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts inside the scroll box #}
-          <table class="w-full text-left text-sm">
-            <caption class="sr-only">Certificates of {{ activity.title }}</caption>
-            <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
-              <tr>
-                {% if can_select %}
-                  <th scope="col" class="w-10 px-3 py-2.5">
-                    <input type="checkbox" class="size-4 accent-primary" aria-label="Select all certificates"
-                           :checked="selected.length === all.length" @change="selected = $event.target.checked ? [...all] : []">
-                  </th>
-                {% endif %}
-                <th scope="col" class="px-3 py-2.5">Number</th>
-                <th scope="col" class="px-3 py-2.5">Recipient</th>
-                <th scope="col" class="px-3 py-2.5">Type</th>
-                <th scope="col" class="px-3 py-2.5">Delivery</th>
-                <th scope="col" class="px-3 py-2.5">Status</th>
-                <th scope="col" class="px-3 py-2.5">Issued</th>
-                <th scope="col" class="px-3 py-2.5">Sent</th>
-                <th scope="col" class="px-3 py-2.5"><span class="sr-only">Files and evidence</span></th>
+      <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts inside the scroll box #}
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">Certificates of {{ activity.title }}</caption>
+          <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+            <tr>
+              <th scope="col" class="px-3 py-2.5">Number</th>
+              <th scope="col" class="px-3 py-2.5">Recipient</th>
+              <th scope="col" class="px-3 py-2.5">Type</th>
+              <th scope="col" class="px-3 py-2.5">Status</th>
+              <th scope="col" class="px-3 py-2.5">Issued</th>
+              <th scope="col" class="px-3 py-2.5">Sent</th>
+              <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions, files and evidence</span></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-line">
+            {% for row in rows %}{% with certificate=row.certificate %}
+              <tr class="hover:bg-slate-50">
+                <th scope="row" class="px-3 py-2.5 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
+                <td class="min-w-48 px-3 py-2.5 text-slate-700">
+                  <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span>{{ row.recipient }}{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</span>
+                    <a href="{% url 'certificates:preview_dialog' certificate.pk %}" class="btn btn-ghost btn-sm"
+                       @click.prevent="$dispatch('certificate-preview', {{ certificate.pk }})">
+                      {% include "components/icon.html" with name="eye" class="size-4" %}Preview<span class="sr-only"> {{ certificate.certificate_number }}</span></a>
+                  </div>
+                </td>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.kind }}<span class="block text-xs text-muted">{{ row.delivery }}</span></td>
+                <td class="px-3 py-2.5">
+                  <div class="flex flex-wrap gap-1">
+                    {% include "components/badge.html" with text=row.status.label tone=row.status.tone %}
+                    {% if row.state %}{% include "components/badge.html" with text=row.state.label tone=row.state.tone %}{% endif %}
+                  </div>
+                </td>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{% if certificate.issued_at %}<time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y" }}</time>{% else %}<span class="text-muted">–</span>{% endif %}</td>
+                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">
+                  {% if row.sending.key == "sent" %}<time datetime="{{ certificate.sent_at|date:'c' }}">{{ certificate.sent_at|date:"M j, Y" }}</time>
+                  {% elif row.sending.key == "failed" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}{% if can_act %}<button type="submit" form="resend-{{ certificate.pk }}" class="btn btn-ghost btn-sm ml-1">{% include "components/icon.html" with name="send" class="size-4" %}Resend<span class="sr-only"> {{ certificate.certificate_number }}</span></button>{% endif %}
+                  {% else %}<span class="text-muted">{{ row.sending.label }}</span>{% endif %}
+                </td>
+                <td class="px-3 py-2.5">
+                  <div class="flex items-center justify-end gap-1">
+                    {% if row.can_hand_over %}
+                      <button type="submit" form="hand-over-{{ certificate.pk }}" class="btn btn-secondary btn-sm whitespace-nowrap">{% include "components/icon.html" with name="award" class="size-4" %}Mark handed over<span class="sr-only"> {{ certificate.certificate_number }}</span></button>
+                    {% endif %}
+                    <a href="{% url 'certificates:download' certificate.pk %}" class="btn btn-ghost btn-sm whitespace-nowrap">{% include "components/icon.html" with name="download" class="size-4" %}PDF<span class="sr-only"> of {{ certificate.certificate_number }}</span></a>
+                    {% url 'certificates:evidence' certificate.pk as evidence_url %}
+                    <a href="{{ evidence_url }}" class="btn btn-ghost btn-sm whitespace-nowrap" aria-haspopup="dialog"
+                       hx-get="{{ evidence_url }}" hx-target="#evidence-dialog-body" hx-on::before-request="window.evidenceDialogOpener = this"
+                       hx-on::after-request="if (event.detail.successful) document.getElementById('evidence-dialog').showModal()">
+                      {% include "components/icon.html" with name="file-text" class="size-4" %}Evidence{% if row.evidence_count %} ({{ row.evidence_count }}){% endif %}<span class="sr-only"> for {{ certificate.certificate_number }}</span></a>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody class="divide-y divide-line">
-              {% for row in rows %}{% with certificate=row.certificate %}
-                <tr class="hover:bg-slate-50">
-                  {% if can_select %}
-                    <td class="px-3 py-2.5"><input type="checkbox" name="certificate_ids" value="{{ certificate.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ certificate.certificate_number }} ({{ row.recipient }})"></td>
-                  {% endif %}
-                  <th scope="row" class="px-3 py-2.5 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
-                  <td class="min-w-48 px-3 py-2.5 text-slate-700">
-                    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span>{{ row.recipient }}</span>
-                      <a href="{% url 'certificates:preview_dialog' certificate.pk %}" class="btn btn-ghost btn-sm"
-                         @click.prevent="$dispatch('certificate-preview', {{ certificate.pk }})">
-                        {% include "components/icon.html" with name="eye" class="size-4" %}Preview<span class="sr-only"> {{ certificate.certificate_number }}</span></a>
-                    </div>
-                  </td>
-                  <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.kind }}</td>
-                  <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.delivery }}</td>
-                  <td class="px-3 py-2.5 whitespace-nowrap">{% include "components/badge.html" with text=row.status.label tone=row.status.tone %}</td>
-                  <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{% if certificate.issued_at %}<time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y" }}</time>{% else %}<span class="text-muted">–</span>{% endif %}</td>
-                  <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">
-                    {% if row.sending.key == "sent" %}<time datetime="{{ certificate.sent_at|date:'c' }}">{{ certificate.sent_at|date:"M j, Y" }}</time>
-                    {% elif row.sending.key == "failed" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}{% if can_act %}<button type="submit" form="resend-{{ certificate.pk }}" class="btn btn-ghost btn-sm ml-1">{% include "components/icon.html" with name="send" class="size-4" %}Resend<span class="sr-only"> {{ certificate.certificate_number }}</span></button>{% endif %}
-                    {% else %}<span class="text-muted">{{ row.sending.label }}</span>{% endif %}
-                  </td>
-                  <td class="px-3 py-2.5">
-                    <div class="flex items-center justify-end gap-1">
-                      <a href="{% url 'certificates:download' certificate.pk %}" class="btn btn-ghost btn-sm whitespace-nowrap">{% include "components/icon.html" with name="download" class="size-4" %}PDF<span class="sr-only"> of {{ certificate.certificate_number }}</span></a>
-                      {% url 'certificates:evidence' certificate.pk as evidence_url %}
-                      <a href="{{ evidence_url }}" class="btn btn-ghost btn-sm whitespace-nowrap" aria-haspopup="dialog"
-                         hx-get="{{ evidence_url }}" hx-target="#evidence-dialog-body" hx-on::before-request="window.evidenceDialogOpener = this"
-                         hx-on::after-request="if (event.detail.successful) document.getElementById('evidence-dialog').showModal()">
-                        {% include "components/icon.html" with name="file-text" class="size-4" %}Evidence{% if row.evidence_count %} ({{ row.evidence_count }}){% endif %}<span class="sr-only"> for {{ certificate.certificate_number }}</span></a>
-                    </div>
-                  </td>
-                </tr>
-              {% endwith %}{% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </form>
-      {% if can_act %}{# one small form per failed email: the row's Resend button posts it (form="resend-<id>") #}
-        {% for row in rows %}{% if row.sending.key == "failed" %}
-          <form id="resend-{{ row.certificate.pk }}" method="post" action="{% url 'activities:certificates_bulk' activity.pk %}" hidden>
-            {% csrf_token %}<input type="hidden" name="action" value="resend"><input type="hidden" name="certificate_ids" value="{{ row.certificate.pk }}">
-          </form>
-        {% endif %}{% endfor %}
+            {% endwith %}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if can_act %}{# one small form per row action: the row's button posts it (form="...") #}
+        {% for row in rows %}
+          {% if row.sending.key == "failed" %}
+            <form id="resend-{{ row.certificate.pk }}" method="post" action="{% url 'activities:certificates_action' activity.pk %}" hidden>
+              {% csrf_token %}<input type="hidden" name="action" value="resend"><input type="hidden" name="certificate_ids" value="{{ row.certificate.pk }}">
+            </form>
+          {% endif %}
+          {% if row.can_hand_over %}
+            <form id="hand-over-{{ row.certificate.pk }}" method="post" action="{% url 'activities:certificates_action' activity.pk %}" hidden>
+              {% csrf_token %}<input type="hidden" name="action" value="hand_over"><input type="hidden" name="certificate_ids" value="{{ row.certificate.pk }}">
+            </form>
+          {% endif %}
+        {% endfor %}
       {% endif %}
     {% elif activity.status.name == "Conducted" %}
-      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Generate them once the attendance is complete and the System Administrator has set up the certificate design and signatories." %}
+      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="They are created automatically for each attendee and resource person once the System Administrator has set up the certificate design and signatories." %}
     {% else %}
-      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Certificates are generated after the activity is Conducted." %}
+      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Certificates are created automatically when the activity is Conducted." %}
     {% endif %}
   </section>
 

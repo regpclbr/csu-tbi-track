@@ -481,8 +481,9 @@ class Command(BaseCommand):
         return True
 
     def create_certificates(self) -> int:
-        """Generate demo certificates and approve some as the demo Director, through the real services. Only for demo
-        activities that have no certificate yet, so running twice adds nothing."""
+        """Create the demo certificates (as the System would at the move to Conducted) and approve the ready ones of
+        some activities as the demo Director, through the real services. Only for demo activities that have no
+        certificate yet, so running twice adds nothing."""
         todo = [
             (activity, target)
             for title, target in DEMO_CERTIFICATES.items()
@@ -493,9 +494,11 @@ class Command(BaseCommand):
             return 0
         created = 0
         for activity, target in todo:
-            member = activity.created_by
-            created += certificate_services.generate_certificates(member, activity)["total"]
+            created += certificate_services.generate_missing_certificates(activity)["total"]
             if target == "approved":
-                certificate_services.approve_certificates(self.staff["Director"], activity=activity)
+                try:  # only the ready ones (ASSUMPTIONS 362); none ready is fine for a demo
+                    certificate_services.approve_certificates(self.staff["Director"], activity=activity)
+                except certificate_services.CertificateError:
+                    pass
             self.stdout.write(f"  certificates ({target}): {activity.title}")
         return created

@@ -1,25 +1,29 @@
-"""Business logic for certificates: design (template and signatories), generating, approval,
+"""Business logic for certificates: design (template and signatories), automatic generation, approval,
 the final PDF, issuing and emailing. Views, the Django admin and tasks call these functions.
 
-The life of a certificate (status rules in set_certificate_status, ASSUMPTIONS 357):
+The life of a certificate (status rules in set_certificate_status; ASSUMPTIONS 357, 361, 362):
 
-    Generated ("Waiting for approval") --Director approves--> Approved --> Issued
-              <------------ regenerate (new design, approval cleared) ------
+    created by the System --> Generated ("Waiting for approval") --approved when ready--> Approved --> Issued
+                                       <---- new signature / "Apply the current design" (approval cleared) ----
 
-- Generate / regenerate / hand over / resend: can_create_activity. Approve and add signatures: can_approve_certificates
-  (the Director, both Project Heads and the System Administrator, ASSUMPTIONS 361), one certificate or all of an
-  activity at once. Approval is refused while a signature image is missing ("Add the VP's signature first.").
+- The System creates the certificates when the activity becomes Conducted (generate_missing_certificates: one per
+  attendee, one per resource person; also attendees marked later; the 5-minute job catches up). No Generate button.
+- "Ready for approval" is computed (readiness()): both signature images, and for a participant the submitted
+  evaluation. Approve (one certificate, on the preview) and "Approve all ready certificates": can_approve_certificates
+  (the Director, both Project Heads and the System Administrator). Apply the current design, hand over, resend:
+  can_create_activity.
 - Adding or replacing a signature on the activity's Certificates tab (upload_signature) updates that activity's
   certificates that are not Issued: the PDF is rendered again and Approved ones wait for approval again.
 
 - Participant (Certificate of Participation, by email): the name printed and the address come
-  from the participant's EVALUATION_SUBMISSION. When the certificate is Approved AND the evaluation
-  is submitted (whichever happens last), a background task renders the PDF, issues the certificate
-  and queues the email.
+  from the participant's EVALUATION_SUBMISSION. Approval needs the evaluation, so right after it a background task
+  renders the PDF, issues the certificate and queues the email (certificates approved earlier without an evaluation
+  are issued when it arrives).
 - Resource person (Certificate of Appreciation, hard copy): the PDF is rendered when it is
   Approved; staff mark it Issued when the hard copy is handed over. Never emailed.
 """
 
+import hashlib
 import logging
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
@@ -28,18 +32,18 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection, transaction
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 from django.utils import timezone
 from PIL import Image
 
 from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission, require_staff_member
 from config.files import write_file_atomically
-from activities.models import Activity, ActivityStatus
+from activities.models import Activity, ActivityResourcePerson, ActivityStatus
 from activities.services import PageResult, _paginate
 from documents import services as document_services
 from documents.models import Document, DocumentType
-from registrations.models import EvaluationSubmission
+from registrations.models import EvaluationSubmission, Registration
 
 from . import emails, pdf
 from .models import Certificate, CertificateSignatory, CertificateTemplate
@@ -260,16 +264,16 @@ def _certificate_numbers(now: datetime | None = None):
         yield f"{prefix}{last:05d}"
 
 
-# --- Generating (can_create_activity) ------------------------------------------------------------
+# --- Generating: automatic, by the System (ASSUMPTIONS 362) ---------------------------------------
 
 
-NOT_CONDUCTED = "Certificates can be generated only for Conducted activities."
+NOT_CONDUCTED = "Certificates are created automatically when the activity is Conducted."
 
 
 def generation_closed_reason(activity: Activity) -> str | None:
-    """None when certificates can be generated for `activity` now; otherwise why not (not Conducted, or the
-    template / VP / Director that active_design() names as missing). Read only: the Certificates tab shows it
-    next to the button, and generate_certificates refuses with the same message."""
+    """None when the missing certificates of `activity` can be created now; otherwise why not (not Conducted, or the
+    template / VP / Director that active_design() names as missing). Read only: the Certificates tab and Needs
+    attention show it, and generate_missing_certificates refuses with the same message."""
     if activity.status.name != ActivityStatus.CONDUCTED:
         return NOT_CONDUCTED
     try:
@@ -279,47 +283,97 @@ def generation_closed_reason(activity: Activity) -> str | None:
     return None
 
 
+def _missing_recipients(activity: Activity, registration_ids: list[int] | None = None):
+    """(registrations, resource person links) of `activity` that should have a certificate and do not yet."""
+    registrations = activity.registrations.filter(attendance_confirmed=True, certificates__isnull=True)
+    has_certificate = Certificate.objects.filter(activity=activity, resource_person__isnull=False).values("resource_person")
+    links = activity.resource_person_links.exclude(resource_person__in=has_certificate)
+    if registration_ids is not None:  # attendance marked after Conducted: only these people
+        registrations = registrations.filter(pk__in=registration_ids)
+        links = links.none()
+    return (registrations.order_by("name", "pk"),
+            links.select_related("resource_person").order_by("resource_person__name", "pk"))
+
+
+def created_text(participation: int, appreciation: int) -> str:
+    """The History row's text: "3 created automatically (2 Participation, 1 Appreciation)"."""
+    parts = [f"{n} {label}" for n, label in ((participation, "Participation"), (appreciation, "Appreciation")) if n]
+    return f"{participation + appreciation} created automatically ({', '.join(parts)})"
+
+
 @transaction.atomic
-def generate_certificates(member: TBIMember, activity: Activity, now: datetime | None = None) -> dict[str, int]:
-    """Create the missing certificates of a Conducted activity. Safe to run twice.
+def generate_missing_certificates(activity: Activity, *, registration_ids: list[int] | None = None,
+                                  now: datetime | None = None) -> dict[str, int]:
+    """Create the missing certificates of a Conducted activity, by the System (no member). Safe to run any number of
+    times: the activity row is locked and the unique constraints allow one certificate per registration and per
+    resource person per activity.
 
     - One Certificate of Participation (email) per registration with attendance confirmed.
     - One Certificate of Appreciation (hard copy) per linked resource person.
-    Each records the template and the VP and Director that are active now.
-    """
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
+    `registration_ids`: only these attendees (attendance marked after the activity was Conducted).
+    Each records the template and the VP and Director that are active now. One History row by System
+    ("Certificates: 3 created automatically (...)") when something was created. Refused (CertificateError) when the
+    activity is not Conducted or the design is incomplete (generation_closed_reason)."""
+    from activities.services import write_certificate_history
+
+    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     if reason := generation_closed_reason(locked):
         raise CertificateError(reason)
-    template, vp, director = active_design()
-
-    registrations = locked.registrations.filter(attendance_confirmed=True, certificates__isnull=True).order_by("name", "pk")
-    has_certificate = Certificate.objects.filter(activity=locked, resource_person__isnull=False).values("resource_person")
-    links = (
-        locked.resource_person_links.exclude(resource_person__in=has_certificate)
-        .select_related("resource_person")
-        .order_by("resource_person__name", "pk")
-    )
-    numbers = _certificate_numbers(now)
-    common = {"certificate_template": template, "activity": locked, "vp_signatory": vp, "director_signatory": director}
+    registrations, links = (list(rows) for rows in _missing_recipients(locked, registration_ids))
     participation = appreciation = 0
-    for registration in registrations:
-        Certificate.objects.create(
-            certificate_number=next(numbers), recipient_type=RecipientType.REGISTRATION, registration=registration,
-            delivery_method=DeliveryMethod.EMAIL, **common,
-        )
-        participation += 1
-    for link in links:
-        Certificate.objects.create(
-            certificate_number=next(numbers), recipient_type=RecipientType.RESOURCE_PERSON,
-            resource_person=link.resource_person, delivery_method=DeliveryMethod.HARD_COPY, **common,
-        )
-        appreciation += 1
+    if registrations or links:
+        template, vp, director = active_design()
+        numbers = _certificate_numbers(now)
+        common = {"certificate_template": template, "activity": locked, "vp_signatory": vp, "director_signatory": director}
+        for registration in registrations:
+            Certificate.objects.create(
+                certificate_number=next(numbers), recipient_type=RecipientType.REGISTRATION, registration=registration,
+                delivery_method=DeliveryMethod.EMAIL, **common,
+            )
+            participation += 1
+        for link in links:
+            Certificate.objects.create(
+                certificate_number=next(numbers), recipient_type=RecipientType.RESOURCE_PERSON,
+                resource_person=link.resource_person, delivery_method=DeliveryMethod.HARD_COPY, **common,
+            )
+            appreciation += 1
+        write_certificate_history(locked, None, "", created_text(participation, appreciation))
     return {
         "participation_created": participation,
         "appreciation_created": appreciation,
         "total": Certificate.objects.filter(activity=locked).count(),
     }
+
+
+def auto_generate_certificates(activity: Activity, *, registration_ids: list[int] | None = None,
+                               now: datetime | None = None) -> int:
+    """generate_missing_certificates for the automatic callers (the move to Conducted, attendance marked after it, the
+    5-minute job). A refusal (incomplete design) never stops the caller: nothing is created, the Certificates tab and
+    Needs attention show the reason, and the 5-minute job tries again. Returns how many were created."""
+    try:
+        with transaction.atomic():  # a savepoint: a refusal leaves the caller's transaction usable
+            result = generate_missing_certificates(activity, registration_ids=registration_ids, now=now)
+    except CertificateError:
+        return 0
+    return result["participation_created"] + result["appreciation_created"]
+
+
+def activities_missing_certificates() -> QuerySet:
+    """Conducted activities with an attendee or a resource person who has no certificate yet (the 5-minute job's
+    catch-up: the design was incomplete at the move, or a run was interrupted)."""
+    attendee_without = Registration.objects.filter(
+        activity=OuterRef("pk"), attendance_confirmed=True, certificates__isnull=True)
+    speaker_without = ActivityResourcePerson.objects.filter(activity=OuterRef("pk")).exclude(
+        resource_person__in=Certificate.objects.filter(activity=OuterRef(OuterRef("pk")), resource_person__isnull=False)
+        .values("resource_person"))
+    return (Activity.objects.filter(status__name=ActivityStatus.CONDUCTED)
+            .filter(Exists(attendee_without) | Exists(speaker_without)).order_by("pk"))
+
+
+def generate_pending_certificates(now: datetime | None = None) -> int:
+    """The 5-minute job: create the missing certificates of every Conducted activity (auto_generate_certificates).
+    Returns how many certificates were created."""
+    return sum(auto_generate_certificates(activity, now=now) for activity in activities_missing_certificates())
 
 
 # --- Status rules ---------------------------------------------------------------------------------
@@ -367,15 +421,104 @@ def _certificate_signatories(certificates) -> list[CertificateSignatory]:
     return [person for c in certificates for person in (c.vp_signatory, c.director_signatory)]
 
 
-def approval_closed_reason(activity: Activity) -> str | None:
-    """Why "Approve all for this activity" cannot be used now, or None. Read only: the Certificates tab shows it
-    next to the button, and approve_certificates refuses with the same message."""
-    waiting = list(
-        Certificate.objects.filter(activity=activity, status=Status.GENERATED).select_related("vp_signatory", "director_signatory")
+# --- Ready for approval (computed, never stored; ASSUMPTIONS 362) ---------------------------------
+
+WAITING_FOR_EVALUATION = "Waiting for evaluation"
+WAITING_FOR_SIGNATURES = "Waiting for signatures"
+# Until the TBI answers (TBI_QUESTIONS): no certificate is sent, and it is not a staff task.
+EVALUATION_CLOSED = "Evaluation closed without an answer"
+NOTHING_WAITING = "No certificates of this activity are waiting for approval."
+NOTHING_READY = "No certificates of this activity are ready for approval yet."
+
+
+def ready_for_approval_q(prefix: str = "") -> Q:
+    """The database version of "ready for approval" (counts: the dashboard's S5, Needs attention): waiting for approval,
+    both signatories have a signature image stored, and the recipient is a resource person or has evaluated.
+    `prefix` e.g. "certificates__" when filtering another table. readiness() checks the same and also reads the
+    image files (a file missing from the disk counts as no signature: approval refuses it)."""
+    def f(name: str) -> str:
+        return prefix + name
+
+    return (
+        Q(**{f("status"): Status.GENERATED})
+        & Q(**{f("vp_signatory__signature_image_path__gt"): ""})  # NULL and "" are both excluded
+        & Q(**{f("director_signatory__signature_image_path__gt"): ""})
+        & (Q(**{f("recipient_type"): RecipientType.RESOURCE_PERSON})
+           | Q(**{f("registration__evaluation_submission__isnull"): False}))
     )
+
+
+def readiness(certificate: Certificate, *, evaluated: bool | None = None, signatures: dict | None = None,
+              now: datetime | None = None) -> str | None:
+    """None when the certificate is ready for approval (or is not waiting for approval at all); otherwise the label
+    shown instead of the Approve button:
+    - "Evaluation closed without an answer": a participant who did not evaluate before evaluation_deadline (never
+      ready: no certificate is sent until the TBI decides otherwise; not a staff task);
+    - "Waiting for signatures": the VP's or the Director's signature image is missing;
+    - "Waiting for evaluation": the participant has not submitted the evaluation (the printed name and email come
+      from it).
+    A resource person's certificate needs only the signatures. `evaluated` / `signatures` (signatory pk -> present)
+    let readiness_map() check many certificates with fixed queries."""
+    if certificate.status != Status.GENERATED:
+        return None
+    signatures = {} if signatures is None else signatures
+
+    def present(signatory: CertificateSignatory) -> bool:
+        if signatory.pk not in signatures:
+            signatures[signatory.pk] = signature_present(signatory)
+        return signatures[signatory.pk]
+
+    participant = certificate.recipient_type == RecipientType.REGISTRATION
+    if participant:
+        if evaluated is None:
+            evaluated = get_submitted_evaluation(certificate) is not None
+        if not evaluated and (now or timezone.now()) > certificate.activity.evaluation_deadline:
+            return EVALUATION_CLOSED
+    if not (present(certificate.vp_signatory) and present(certificate.director_signatory)):
+        return WAITING_FOR_SIGNATURES
+    if participant and not evaluated:
+        return WAITING_FOR_EVALUATION
+    return None
+
+
+def readiness_map(certificates: list[Certificate], now: datetime | None = None) -> dict[int, str | None]:
+    """readiness() of many certificates (certificate pk -> label or None) with one query for the evaluations; each
+    signature file is read once. The certificates should come with activity, vp_signatory and director_signatory."""
+    registration_ids = [c.registration_id for c in certificates if c.registration_id and c.status == Status.GENERATED]
+    evaluated = set(EvaluationSubmission.objects.filter(registration_id__in=registration_ids)
+                    .values_list("registration_id", flat=True)) if registration_ids else set()
+    signatures: dict[int, bool] = {}
+    now = now or timezone.now()
+    return {
+        c.pk: readiness(c, evaluated=c.registration_id in evaluated, signatures=signatures, now=now)
+        for c in certificates
+    }
+
+
+def _waiting(activity: Activity):
+    return (Certificate.objects.filter(activity=activity, status=Status.GENERATED)
+            .select_related("activity", "vp_signatory", "director_signatory").order_by("certificate_number"))
+
+
+def ready_certificates(activity: Activity, now: datetime | None = None) -> list[Certificate]:
+    """The activity's certificates that are ready for approval, in number order (the confirm dialog's count and
+    "Approve all ready certificates")."""
+    waiting = list(_waiting(activity))
+    labels = readiness_map(waiting, now)
+    return [c for c in waiting if labels[c.pk] is None]
+
+
+def approval_closed_reason(activity: Activity, now: datetime | None = None) -> str | None:
+    """Why "Approve all ready certificates" cannot be used now, or None (at least one is ready). Read only: the
+    Certificates tab shows it on the disabled button (approvers only), and approve_certificates refuses with it.
+    Nothing waiting; a missing signature ("Add the VP's signature first."); otherwise nothing is ready yet."""
+    waiting = list(_waiting(activity))
     if not waiting:
-        return "No certificates of this activity are waiting for approval."
-    return missing_signature_reason(_certificate_signatories(waiting))
+        return NOTHING_WAITING
+    labels = readiness_map(waiting, now)
+    if any(label is None for label in labels.values()):
+        return None
+    return missing_signature_reason(_certificate_signatories(waiting)) or NOTHING_READY
 
 
 def set_certificate_status(
@@ -520,6 +663,63 @@ def upload_signature(member: TBIMember, activity: Activity, position: str, file:
     return {"action": action, "signatory": signatory, "updated": len(certificates)}
 
 
+# --- Attendance undone after the certificate was created (ASSUMPTIONS 362) ------------------------
+
+
+def undo_attendance_refused_reason(registration) -> str | None:
+    """Why attendance cannot be undone because of the person's certificate, or None. A certificate still waiting for
+    approval (not approved, not issued, no evidence) is deleted with the undo; any other blocks it."""
+    certificate = registration.certificates.first()
+    if certificate is None:
+        return None
+    if certificate.status != Status.GENERATED:
+        return "the certificate was already approved."
+    if certificate.documents.filter(related_certificate__isnull=False).exists():
+        return "the certificate has evidence documents."
+    return None
+
+
+def delete_certificate_for_undone_attendance(member: TBIMember, registration) -> str | None:
+    """Delete the person's certificate when their attendance is undone (registrations.services.set_attendance, inside
+    its transaction, after undo_attendance_refused_reason allowed it). Its number is not reused (a gap). One History
+    row by the member. Returns the deleted certificate's number, or None when there was none."""
+    from activities.services import write_certificate_history
+
+    certificate = Certificate.objects.select_for_update(of=("self",)).filter(registration=registration).first()
+    if certificate is None:
+        return None
+    if reason := undo_attendance_refused_reason(registration):
+        raise CertificateError(reason)
+    number = certificate.certificate_number
+    if certificate.file_path:
+        storage = Certificate._meta.get_field("file_path").storage
+        transaction.on_commit(lambda name=certificate.file_path.name: storage.delete(name), robust=True)
+    certificate.delete()
+    write_certificate_history(registration.activity, member, f"{number} ({registration.name})",
+                              "Deleted: attendance undone")
+    return number
+
+
+# --- Preview helpers ----------------------------------------------------------------------------------
+
+
+def preview_version(certificate: Certificate, evaluated: bool) -> str:
+    """A short value that changes whenever the preview would look different (status, design, signatories, the final
+    file, the evaluation). Added to the preview and download URLs (?v=...) so a browser never shows an old copy."""
+    raw = "|".join(str(value) for value in (
+        certificate.status, certificate.certificate_template_id, certificate.vp_signatory_id,
+        certificate.director_signatory_id, certificate.file_path.name if certificate.file_path else "",
+        certificate.evaluation_submission_id, evaluated,
+    ))
+    return hashlib.sha256(raw.encode()).hexdigest()[:12]
+
+
+def shows_final_copy(certificate: Certificate) -> bool:
+    """An Issued certificate's preview is its stored final PDF: exactly the copy that was sent or handed over. It is
+    never changed (a new signature or design applies only to certificates that are not Issued)."""
+    return certificate.status == Status.ISSUED and bool(certificate.file_path)
+
+
 # --- Actions: one certificate, a list, or all of an activity --------------------------------------
 
 
@@ -561,27 +761,49 @@ def _apply_all(certificates: list[Certificate], action) -> None:
 
 
 @transaction.atomic
-def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
-    """Generated -> Approved (can_approve_certificates: the Director, both Project Heads, the System Administrator). `activity` = "Approve all for this activity":
-    every certificate waiting for approval, all or nothing. Refused while a signature image is missing (one clear
-    reason for the whole action).
+def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None,
+                         now: datetime | None = None) -> int:
+    """Waiting for approval -> Approved (can_approve_certificates: the Director, both Project Heads, the System
+    Administrator; ASSUMPTIONS 362). Only certificates that are ready (readiness()) are approved.
 
-    Approval means the certificate (design, wording, activity details, signatures) is approved. After the commit a
-    background task renders the PDF of each certificate that is ready: resource persons at once; participants once
-    their evaluation is in (then issued and emailed).
+    - certificate_ids (the preview's Approve, the API): all or nothing; a certificate that is not ready is refused
+      with its label ("Waiting for evaluation", ...).
+    - activity ("Approve all ready certificates", after the confirm dialog): every ready certificate of the
+      activity; the ones that are not ready stay waiting. Refused (approval_closed_reason) when none is ready.
+
+    After the commit a background task renders the PDF of each approved certificate: a participant's is then issued
+    and emailed, a resource person's waits for the hand-over.
     """
     require_permission(member, Permission.APPROVE_CERTIFICATES)
-    certificates = _select_for_action(certificate_ids, activity, Status.GENERATED,
-                                      empty="No certificates of this activity are waiting for approval.")
-    if reason := missing_signature_reason(_certificate_signatories(certificates)):
-        raise CertificateError(reason)
-    _apply_all(certificates, lambda c: set_certificate_status(c, Status.APPROVED, member=member, now=now))
+    now = now or timezone.now()
+    if activity is not None:
+        if reason := approval_closed_reason(activity, now):
+            raise CertificateError(reason)
+        ready_ids = [c.pk for c in ready_certificates(activity, now)]
+        certificates = _select_for_action(ready_ids, None, Status.GENERATED)
+    else:
+        certificates = _select_for_action(certificate_ids, None, Status.GENERATED)
+    labels = readiness_map([c for c in certificates if c.status == Status.GENERATED], now)
+
+    def approve(certificate: Certificate) -> None:
+        if label := labels.get(certificate.pk):
+            raise CertificateError(f"not ready for approval ({label}).")
+        set_certificate_status(certificate, Status.APPROVED, member=member, now=now)
+
+    _apply_all(certificates, approve)
     logger.info("Member %s approved certificates %s.", member.pk, ", ".join(str(c.pk) for c in certificates))
     for certificate in certificates:
         if _not_ready_reason(certificate) is None:
             # robust=True: a problem queueing never undoes the approval (the daily retry catches it).
             transaction.on_commit(lambda certificate_id=certificate.pk: queue_prepare(certificate_id), robust=True)
     return len(certificates)
+
+
+def approve_certificate(member: TBIMember, certificate: Certificate, now: datetime | None = None) -> Certificate:
+    """The preview card's Approve: one certificate, refused unless it is ready (approve_certificates)."""
+    approve_certificates(member, certificate_ids=[certificate.pk], now=now)
+    certificate.refresh_from_db()
+    return certificate
 
 
 @transaction.atomic
@@ -862,7 +1084,7 @@ def retry_pending_certificates() -> dict[str, int]:
 
 
 def _filtered_certificates(filters: dict, with_status: bool = True) -> QuerySet:
-    queryset = Certificate.objects.select_related("activity", "registration", "resource_person", "evaluation_submission")
+    queryset = Certificate.objects.select_related("activity", "registration", "resource_person", "evaluation_submission", "vp_signatory", "director_signatory")
     if filters.get("activity"):
         queryset = queryset.filter(activity_id=filters["activity"])
     if with_status and filters.get("status"):

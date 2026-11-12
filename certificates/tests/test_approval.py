@@ -1,6 +1,6 @@
-"""Certificate approval (ASSUMPTIONS 357, 361): who may generate / approve, approve one or all of an activity, the missing
-signature image, regenerate (approve again), hand-over, failed send and resend. More on approvers and signatures in
-test_signatures.py."""
+"""Certificate approval (ASSUMPTIONS 357, 361, 362): who may approve, approve one or all ready certificates of an
+activity, the missing signature image, apply the current design (approve again), hand-over, failed send and resend. More
+in test_signatures.py and test_automatic_flow.py. Participants are approved only after their evaluation (ready)."""
 
 import logging
 from pathlib import Path
@@ -34,20 +34,6 @@ def remove_signature_file(signatory: CertificateSignatory) -> None:
 # --- Who may do what ---------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("role_name", ["Director", "Incubation Project Head", "Community Development Head"])
-def test_director_and_project_heads_generate(conducted, design, make_member, role_name) -> None:
-    activity, _ = conducted
-    member = make_member(role_name, email=f"generator.{role_name.split()[0].lower()}@example.com")
-    assert services.generate_certificates(member, activity)["total"] == 3
-
-
-@pytest.mark.parametrize("role_name", ["Admin Staff", Role.SYSTEM_ADMINISTRATOR])
-def test_admin_staff_and_system_administrator_cannot_generate(conducted, design, make_member, role_name) -> None:
-    with pytest.raises(PermissionDenied):
-        services.generate_certificates(make_member(role_name), conducted[0])
-    assert not Certificate.objects.exists()
-
-
 def test_admin_staff_cannot_approve(generated, make_member) -> None:
     activity, _ = generated
     member = make_member("Admin Staff")
@@ -77,8 +63,17 @@ def test_regenerate_hand_over_and_resend_need_can_create_activity(generated, mak
 # --- Approve all for this activity ---------------------------------------------------------------------
 
 
-def test_approve_all_for_the_activity(generated, director, caplog) -> None:
-    activity, _ = generated
+@pytest.fixture
+def evaluated(generated, evaluate):
+    """Both participants evaluated: every certificate is ready for approval."""
+    activity, people = generated
+    for n, person in enumerate(people):
+        evaluate(person, name=f"Person {n}", email=f"person{n}.cert@example.com")
+    return activity, people
+
+
+def test_approve_all_for_the_activity(evaluated, director, caplog) -> None:
+    activity, _ = evaluated
     assert services.approval_closed_reason(activity) is None
     with caplog.at_level(logging.INFO, logger="certificates"):
         assert services.approve_certificates(director, activity=activity) == 3
@@ -90,15 +85,15 @@ def test_approve_all_for_the_activity(generated, director, caplog) -> None:
     assert services.approval_closed_reason(activity) == "No certificates of this activity are waiting for approval."
 
 
-def test_approve_one_then_the_rest(generated, director) -> None:
-    activity, people = generated
+def test_approve_one_then_the_rest(evaluated, director) -> None:
+    activity, people = evaluated
     assert services.approve_certificates(director, certificate_ids=ids(certificate_of(people[0]))) == 1
     assert Certificate.objects.filter(status=S.GENERATED).count() == 2
     assert services.approve_certificates(director, activity=activity) == 2  # only the ones still waiting
 
 
-def test_approving_a_selection_is_all_or_nothing(generated, director) -> None:
-    _, people = generated
+def test_approving_a_selection_is_all_or_nothing(evaluated, director) -> None:
+    _, people = evaluated
     first, second = certificate_of(people[0]), certificate_of(people[1])
     services.approve_certificates(director, certificate_ids=ids(first))
     with pytest.raises(services.CertificateError) as error:
@@ -117,7 +112,7 @@ def test_a_missing_signature_image_blocks_approval(generated, design, director, 
     with pytest.raises(services.CertificateError) as error:
         services.approve_certificates(director, activity=activity)
     assert str(error.value) == message
-    with pytest.raises(services.CertificateError, match="signature first"):
+    with pytest.raises(services.CertificateError, match="Waiting for signatures"):
         services.approve_certificates(director, certificate_ids=[Certificate.objects.first().pk])
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
@@ -128,8 +123,8 @@ def test_a_file_that_is_not_a_png_or_jpg_counts_as_missing(generated, design, di
     assert services.approval_closed_reason(generated[0]) == MISSING_VP
 
 
-def test_new_signatory_plus_regenerate_unblocks_approval(generated, design, director, admin_member) -> None:
-    activity, _ = generated
+def test_new_signatory_plus_regenerate_unblocks_approval(evaluated, design, director, admin_member) -> None:
+    activity, _ = evaluated
     remove_signature_file(design[1])
     new_vp = services.add_signatory(admin_member, "Dr. New Vice Pres", "vp", upload("vp.png", image_bytes()))
     assert services.approval_closed_reason(activity) == MISSING_VP  # the certificates keep the old VP
@@ -138,8 +133,8 @@ def test_new_signatory_plus_regenerate_unblocks_approval(generated, design, dire
     assert services.approve_certificates(director, activity=activity) == 3
 
 
-def test_replacing_a_lost_signature_on_the_tab_unblocks_approval(generated, design, director) -> None:
-    activity, _ = generated
+def test_replacing_a_lost_signature_on_the_tab_unblocks_approval(evaluated, design, director) -> None:
+    activity, _ = evaluated
     remove_signature_file(design[1])
     services.upload_signature(director, activity, "vp", upload("vp.png", image_bytes()))  # no regenerate needed
     assert services.approval_closed_reason(activity) is None
@@ -153,7 +148,7 @@ def test_regenerating_after_approval_needs_approval_again(generated, design, dir
                                                           django_capture_on_commit_callbacks) -> None:
     activity, _ = generated
     with django_capture_on_commit_callbacks(execute=True):
-        services.approve_certificates(director, activity=activity)
+        assert services.approve_certificates(director, activity=activity) == 1  # the resource person: ready
     speaker = appreciation_of(activity)
     assert speaker.file_path  # resource persons are rendered on approval
     old_pdf = Path(settings.MEDIA_ROOT) / speaker.file_path.name
@@ -167,7 +162,7 @@ def test_regenerating_after_approval_needs_approval_again(generated, design, dir
         assert certificate.approved_by is None and certificate.approved_at is None
         assert certificate.certificate_template == new_template and not certificate.file_path
     assert not old_pdf.exists()  # the old rendered PDF is removed after the commit
-    assert services.approve_certificates(director, activity=activity) == 3
+    assert services.approve_certificates(director, activity=activity) == 1
 
 
 def test_regenerate_keeps_the_number_and_refuses_issued(generated, director, approve_all, evaluate, run_tasks,
@@ -175,8 +170,8 @@ def test_regenerate_keeps_the_number_and_refuses_issued(generated, director, app
     activity, people = generated
     number = certificate_of(people[1]).certificate_number
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0])
+        approve_all(activity)
     issued = certificate_of(people[0])
     assert issued.status == S.ISSUED
     with pytest.raises(services.CertificateError, match="Issued certificates are final"):
@@ -219,8 +214,8 @@ def test_failed_send_is_recorded_and_resend_sends_it_once(generated, approve_all
     monkeypatch.setattr(emails, "send_certificate_email", broken)
     monkeypatch.setattr(services, "schedule_send_retry", lambda *args: None)  # no automatic retry in this test
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0])
+        approve_all(activity)
     certificate = certificate_of(people[0])
     assert certificate.status == S.ISSUED and certificate.sent_at is None and certificate.send_failed_at
     assert mail.outbox == []
@@ -252,8 +247,8 @@ def test_the_send_task_records_the_failure_too(generated, approve_all, evaluate,
     retries = []
     monkeypatch.setattr(services, "schedule_send_retry", lambda *args: retries.append(args))
     with django_capture_on_commit_callbacks(execute=True):
-        approve_all(activity)
         evaluate(people[0])
+        approve_all(activity)
     certificate = certificate_of(people[0])
     assert certificate.send_failed_at and retries  # recorded, and the automatic retries still run
     assert tasks.run_send_certificate(certificate.pk, 99)["result"] == "failed"

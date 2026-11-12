@@ -569,7 +569,9 @@ def set_attendance(
 
     Allowed only while the activity is Ongoing or Conducted (Conducted locks the activity's own fields, not its
     registrations). Marking records the method, who marked it and when (attendance_marked_by / _at); undo clears
-    all three. Undo is refused for anyone who has already submitted the evaluation or has a certificate.
+    all three. Undo is refused for anyone who has already submitted the evaluation or whose certificate was approved;
+    a certificate still waiting for approval is deleted with the undo (History row). Marking someone on a Conducted
+    activity creates their certificate (ASSUMPTIONS 362).
     All or nothing. Every mark and undo is logged on registrations.audit (IDs only).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
@@ -589,11 +591,15 @@ def set_attendance(
             raise RegistrationError(
                 f"Cannot undo attendance for {', '.join(sorted(evaluated))}: already submitted the evaluation."
             )
-        with_certificate = [r.name for r in registrations if r.certificates.exists()]
-        if with_certificate:  # Step 9: a certificate was generated for their attendance
-            raise RegistrationError(
-                f"Cannot undo attendance for {', '.join(sorted(with_certificate))}: a certificate was already generated."
-            )
+        # A certificate still waiting for approval is deleted with the undo; an approved one blocks it (ASSUMPTIONS 362).
+        from certificates import services as certificate_services
+
+        blocked = sorted(f"{r.name} ({reason[:-1]})" for r in registrations
+                         if (reason := certificate_services.undo_attendance_refused_reason(r)))
+        if blocked:
+            raise RegistrationError(f"Cannot undo attendance for {', '.join(blocked)}.")
+        for registration in registrations:
+            certificate_services.delete_certificate_for_undone_attendance(member, registration)
 
     now = now or timezone.now()
     for registration in registrations:
@@ -608,22 +614,33 @@ def set_attendance(
         "Attendance %s: activity %s, registrations %s, by member %s.",
         f"marked ({method})" if attended else "undone", locked.pk, sorted(ids), member.pk,
     )
+    if attended and locked.status.name == ActivityStatus.CONDUCTED:  # marked after Conducted: their certificate too
+        from certificates.services import auto_generate_certificates
+
+        auto_generate_certificates(locked, registration_ids=sorted(ids), now=now)
     return len(registrations)
 
 
 UNDO_REFUSED_EVALUATED = "Already evaluated: attendance can no longer be undone."
+UNDO_REFUSED_CERTIFICATE = "Certificate approved: attendance can no longer be undone."
 
 
 def undo_refused_reason(registration: Registration) -> str | None:
     """Why this person's attendance cannot be undone (the row's Undo button is hidden with this text), or None.
-    The same rule set_attendance checks: a submitted evaluation (a certificate is checked there too)."""
+    The same rules set_attendance checks: a submitted evaluation, or a certificate that is no longer waiting for
+    approval (a waiting one is deleted with the undo; evidence documents are checked there too)."""
     if not registration.attendance_confirmed:
         return None
     try:
         registration.evaluation_submission  # no query when list_registrations loaded it (select_related)
     except EvaluationSubmission.DoesNotExist:
-        return None
-    return UNDO_REFUSED_EVALUATED
+        pass
+    else:
+        return UNDO_REFUSED_EVALUATED
+    # .all(): no query when list_registrations prefetched them
+    if any(c.status != c.Status.GENERATED for c in registration.certificates.all()):
+        return UNDO_REFUSED_CERTIFICATE
+    return None
 
 
 def list_registrations(
@@ -635,7 +652,7 @@ def list_registrations(
         activity.registrations.select_related(
             "participant_category", "startup", "evaluation_submission", "attendance_marked_by"
         )
-        .prefetch_related("answers__field")
+        .prefetch_related("answers__field", "certificates")
         .order_by("name", "registration_id")
     )
     if search := (search or "").strip():

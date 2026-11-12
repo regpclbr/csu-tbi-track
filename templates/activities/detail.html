@@ -46,4 +46,7 @@ from activities.pages.registration_summary (registrations.services.registration_
     {% include "activities/_tab.html" %}
   </div>
 </div>
+{% if canonical_url %}{# shown after a POST with errors (e.g. an upload): the address bar shows the activity page, not the action (ASSUMPTIONS 362) #}
+  <script>history.replaceState(null, "", "{{ canonical_url|escapejs }}");</script>
+{% endif %}
 {% endblock %}
