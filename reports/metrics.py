@@ -602,7 +602,7 @@ def document_attention(filters: ReportFilters, now: datetime | None = None, type
 
 
 def certificates_now(filters: ReportFilters) -> dict:
-    """S5: certificates waiting for the Director's approval (Generated), counted as ACTIVITIES (waiting_activities,
+    """S5: certificates waiting for approval (Generated), counted as ACTIVITIES (waiting_activities,
     distinct) with the number of certificates (waiting_certificates) (ASSUMPTIONS 357); S6: Approved but not Issued
     yet. One query on CERTIFICATE (the type filter joins ACTIVITY one to one, so nothing multiplies)."""
     status = Certificate.Status
@@ -662,7 +662,7 @@ def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
         _card("documents_overdue", "Required documents overdue", NOW, documents["overdue"]),
         _card("documents_waiting_for_review", "Documents waiting for a reviewer", NOW, documents["waiting_for_review"],
               returned=documents["returned"]),
-        _card("certificates_waiting_for_approval", "Activities with certificates waiting for the Director's approval", NOW,
+        _card("certificates_waiting_for_approval", "Activities with certificates waiting for approval", NOW,
               certificates["waiting_activities"], certificates=certificates["waiting_certificates"],
               approved_not_issued=certificates["approved_not_issued"]),
         _card("certificates_issued", "Certificates issued", PERIOD, summary["certificates_issued"],

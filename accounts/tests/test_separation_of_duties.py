@@ -186,9 +186,10 @@ def test_upload_allowed_but_review_refused(sysadmin, director, new_activity) -> 
 
 
 def test_refused_certificate_actions(sysadmin, new_activity) -> None:
+    """The System Administrator approves certificates and adds signatures (ASSUMPTIONS 361, tested in
+    certificates/tests/test_signatures.py) but never generates, regenerates, hands over or resends."""
     for action in (
         lambda: certificate_services.generate_certificates(sysadmin, new_activity),
-        lambda: certificate_services.approve_certificates(sysadmin, activity=new_activity),
         lambda: certificate_services.regenerate_certificates(sysadmin, activity=new_activity),
         lambda: certificate_services.mark_handed_over(sysadmin, activity=new_activity),
         lambda: certificate_services.resend_certificates(sysadmin, activity=new_activity),

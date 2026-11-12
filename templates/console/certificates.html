@@ -96,7 +96,7 @@ Errors of a refused upload appear under their fields (template_errors / signator
           </div>
           {% if signatory_errors.position %}<p id="signatory-position-error" class="field-error">{{ signatory_errors.position }}</p>{% endif %}
         </fieldset>
-        {% include "console/_image_input.html" with id="signatory-file" accept="image/png" help="PNG only (a transparent background prints cleanly)." error=signatory_errors.file %}
+        {% include "console/_image_input.html" with id="signatory-file" accept="image/png,image/jpeg" help="Optional: PNG or JPG (a PNG with a transparent background prints cleanly). It can also be added later on an activity's Certificates tab." error=signatory_errors.file %}
         <button type="submit" class="btn btn-primary" :disabled="busy">{% include "components/icon.html" with name="plus" class="size-4" %}Add signatory</button>
       </form>
     </details>
@@ -112,7 +112,11 @@ Errors of a refused upload appear under their fields (template_errors / signator
             <ul class="mt-2 divide-y divide-line overflow-hidden rounded-2xl border border-line">
               {% for signatory in position.signatories %}
                 <li class="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap {% if signatory.is_active %}bg-blue-50/50{% endif %}">
-                  <img src="{% url 'certificates:signature_image' signatory.pk %}" alt="Signature of {{ signatory.name }}" loading="lazy" class="h-12 w-28 shrink-0 rounded-lg border border-line bg-white object-contain p-1">
+                  {% if signatory.signature_image_path %}
+                    <img src="{% url 'certificates:signature_image' signatory.pk %}" alt="Signature of {{ signatory.name }}" loading="lazy" class="h-12 w-28 shrink-0 rounded-lg border border-line bg-white object-contain p-1">
+                  {% else %}
+                    <span class="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-line bg-white px-1 text-center text-xs text-muted">No signature yet</span>
+                  {% endif %}
                   <div class="min-w-0 flex-1">
                     <p class="font-semibold break-words text-ink">{{ signatory.name }}</p>
                     <p class="text-xs text-muted">Added {{ signatory.created_at|date:"M j, Y" }}</p>

@@ -39,10 +39,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   those rows; deactivate them (`is_active = False`) where the table has `is_active`.
 - ROLE, ACTIVITY_STATUS, DOCUMENT_STATUS have fixed names the code relies on and no `is_active`.
 - Django admin: ACTIVITY_STATUS, DOCUMENT_STATUS are view only; ACTIVITY_TYPE, DOCUMENT_TYPE
-  editable but never deleted; ROLE only its three flags (through
+  editable but never deleted; ROLE only its four flags (through
   `accounts.services.update_role_permissions`, which keeps at least one active System Administrator and refuses
-  can_manage_users together with can_create_activity, can_approve_documents or can_approve_certificates:
-  `check_role_flags`, separation of duties).
+  can_manage_users together with can_create_activity or can_approve_documents: `check_role_flags`, separation of
+  duties; can_approve_certificates IS allowed with can_manage_users, ASSUMPTIONS 361).
 - ROLE.can_approve_documents (ASSUMPTIONS 344): approve/return documents. Migration accounts/0004 gave it to "Director"
   only; `seed_data` sets it only when creating a role (never re-applied). The System Administrator switches it in the
   Admin Console roles screen (`set_role_document_approval`) or the Django admin; no last-approver guard, only a warning.
@@ -65,13 +65,18 @@ owner is a student, so explain important decisions briefly and keep the code sim
   neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
   `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
 - ACTIVITY_AUDIT_LOG.changed_by empty = System (automatic status change); show it with `formatting.changed_by_name()`.
-- Certificate status: Generated ("Waiting for approval") → Approved (by the Director) → Issued; Approved → Generated only
-  when regenerated; Issued is final. Change it only through `certificates.services.set_certificate_status()`, which
+- Certificate status: Generated ("Waiting for approval") → Approved (can_approve_certificates) → Issued; Approved →
+  Generated only when regenerated or a signature is replaced; Issued is final. Change it only through `certificates.services.set_certificate_status()`, which
   enforces the rules (ASSUMPTIONS 357). CERTIFICATE has `approved_by` / `approved_at` / `send_failed_at` (no review or
   sign-off columns).
-- ROLE.can_approve_certificates (ASSUMPTIONS 357): approve certificates. Migration accounts/0005 gave it to "Director" only;
-  same rules as can_approve_documents (seed only on create, roles screen switch `set_role_certificate_approval`, never
-  with can_manage_users, no last-approver guard).
+- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361): approve certificates and add/replace signatures. Migration
+  accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and System Administrator (not
+  Admin Staff); seed only on create, roles screen switch `set_role_certificate_approval`, no last-approver guard, allowed
+  together with can_manage_users (the System Administrator approves but never generates: that needs can_create_activity).
+- `Role.DIRECTOR` ("Director") is used only to choose who gets the new-activity notification
+  (`notifications.services.notify_directors_of_new_activity`), never for a permission.
+- CERTIFICATE_SIGNATORY.signature_image_path is nullable (certificates/0005, ASSUMPTIONS 361): a signatory can exist
+  before its signature image; approval is refused until both images are there.
 - File path columns use `max_length=255`.
 
 ## Login and permissions
@@ -79,7 +84,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `staff_login_required` on views, `require_permission()` in services. Never rely on hiding a button.
 - `Permission.CREATE_ACTIVITY` (create/edit activities), `Permission.MANAGE_USERS` (Admin Console:
   users, roles, master data, certificate design and signatories), `Permission.APPROVE_DOCUMENTS` (approve/return documents),
-  `Permission.APPROVE_CERTIFICATES` (approve certificates).
+  `Permission.APPROVE_CERTIFICATES` (approve certificates, add/replace signatures on the Certificates tab).
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
@@ -188,7 +193,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
-- Notifications: `notifications/services.py`; a member only sees/changes their own.
+- Notifications: `notifications/services.py`; a member only sees/changes their own. Creating an activity
+  (`save_new_activity`) notifies every active Director in the same transaction ("activity_created"), except when a
+  Director creates it; no email (ASSUMPTIONS 361).
   NOTIFICATION.activity stays nullable (future startup notifications may have no activity).
 
 ## Startups and Navigatu
@@ -231,18 +238,23 @@ owner is a student, so explain important decisions briefly and keep the code sim
   PDFs only through `certificates/pdf.py` (`get_renderer()`; tests use `certificates.testing.FakeRenderer`
   from the root conftest, a real WeasyPrint render fails a test; only tests marked `real_weasyprint`
   render for real, skipped without Pango). Images go in as `data:` URIs only.
-- Templates/signatories: Admin only, image checks in `validate_template_image` / `validate_signature_image`,
-  files never change after upload (new row instead), served only by the Admin views (never `/media/`).
+- Templates/signatories: Admin only, image checks in `validate_template_image` / `validate_signature_image` (signatures:
+  PNG or JPG), files never change after upload (new row instead), served only by `certificates/views.py` (never
+  `/media/`; signature images to can_manage_users or can_approve_certificates). Exception (ASSUMPTIONS 361): members
+  with can_approve_certificates add or replace a signature on the activity's Certificates tab only through
+  `upload_signature` (add = fills a signatory with no image; replace = new signatory row; the activity's not-Issued
+  certificates switch to it via `_refresh_certificates`: PDF removed, Approved → Generated; logged on `certificates.audit`).
 - `generate_certificates`: Conducted only, active template + VP + Director required, missing ones only,
   numbers from `_certificate_numbers()` (`TBI-<Manila year>-<00001>`, advisory lock). Each certificate keeps
   the design it was generated with.
 - Actions take one list of IDs or an activity, all or nothing: `approve_certificates` (can_approve_certificates; refused
-  while a stored signatory's image is missing: `missing_signature_reason` / `approval_closed_reason`), and with
+  while a stored signatory's image is missing: "Add the VP's signature first.", `missing_signature_reason` /
+  `approval_closed_reason`), and with
   can_create_activity `regenerate_certificates` (current design, back to waiting for approval), `mark_handed_over`,
   `resend_certificates`. The page's bulk view checks each action's permission.
 - Preview (`preview_pdf`): the same template as the final PDF with both signatures, a small "PREVIEW" corner mark only
   while waiting for approval (ASSUMPTIONS 358). `certificates:preview` is the second `xframe_options_sameorigin` view
-  (the preview dialog's iframe); Download PDF gives the preview until the final PDF exists.
+  (the tab's large preview iframe); Download PDF gives the preview until the final PDF exists.
 - The participant's printed name and email come from EVALUATION_SUBMISSION (`certificate_name`,
   `certificate_email`, checked in `registrations.services.clean_certificate_details`), never the registration.
   Approved + evaluated (whichever is last) → `prepare_certificate` (task) renders, issues, queues the email.
@@ -353,9 +365,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents page (ASSUMPTIONS 352): default "By activity" (`documents.services.overview_activities` +
   `activity_document_overview` = `document_checklist()`'s rule for many activities, parity test; `document_state_counts`
   for the summary cards), "All documents" = the flat list. Filters in the URL; no rules in `documents/_activity_card.html`.
-- Certificates tab (ASSUMPTIONS 357–360): approval panel (`certificates.pages.approval_panel`: summary, previews with
-  Previous / Next, "Approve all for this activity" behind a confirm dialog); S5 and Needs attention count ACTIVITIES waiting
-  for certificate approval ("Waiting for your approval" for the Director, "Waiting for the Director" for others).
+- Certificates tab (ASSUMPTIONS 357–361): approval card (`certificates.pages.approval_panel`: summary, "Approve all for this
+  activity" behind a confirm dialog, the closed reason for everyone), Signatures (`pages.signatures_panel`: VP and Director
+  slots, upload for can_approve_certificates), the large preview (`pages.preview_items`: every certificate, Previous / Next;
+  a row's Preview dispatches `certificate-preview` to show it there; "The final name comes from the evaluation."). S5 and
+  the dashboard count ACTIVITIES waiting for approval ("Waiting for your approval" with the flag, "Waiting for approval"
+  otherwise); the activity's Needs attention has one line ("N certificates waiting for approval." or the signature reason).
 - Document page Back link (ASSUMPTIONS 359): list links add `?next={{ request|here|urlencode:"" }}` (`config.links`), and
   `documents.pages.back_link` accepts only internal paths (`is_internal_path`).
 - Document preview (ASSUMPTIONS 329–330): Preview in `documents/_actions.html` opens the shared `#document-preview` dialog (HTMX,
@@ -408,8 +423,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - The client IP comes only from `config.network.client_ip()` (`TRUSTED_PROXY_HEADER` behind a proxy).
 - Request values meaning true/false go through `config.parsing.parse_bool()` (true/false only, else 400).
 - Lookup lists for the frontend come from `/api/lookups/` (`config/lookups.py`). Master data and role
-  flags are managed only in the Django admin (no Admin Console screens for them), except can_approve_documents, which
-  the Admin Console roles screen also switches (ASSUMPTIONS 344).
+  flags are managed only in the Django admin (no Admin Console screens for them), except can_approve_documents and can_approve_certificates, which
+  the Admin Console roles screen also switches (ASSUMPTIONS 344, 357).
 - Numbers about evaluations (also one activity's, `/reports/api/activities/<id>/evaluation/`) come
   from `reports/metrics.py`.
 - Write pytest-django tests for every business rule (`<app>/tests/test_*.py`).
@@ -461,6 +476,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Certificate approval (2026-11-11): Director-only approval per activity (can_approve_certificates), statuses Generated →
   Approved → Issued, in-system preview with signatures, regenerate, failed send + Resend, S5 by activity, document Back
   link (357–360).
+- Approvers and signatures (2026-11-12): Director, both Project Heads and the System Administrator approve and add
+  signatures on the Certificates tab (nullable signature image, PNG/JPG), large preview with Previous / Next, one Needs
+  attention line, new-activity notification to the Director (361).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

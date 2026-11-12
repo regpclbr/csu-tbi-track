@@ -29,6 +29,8 @@ urlpatterns = [
     path("<int:activity_id>/certificates/generate/", certificate_page_views.generate, name="certificates_generate"),
     path("<int:activity_id>/certificates/bulk/", certificate_page_views.bulk_action, name="certificates_bulk"),
     path("<int:activity_id>/certificates/approve-all/", certificate_page_views.approve_all, name="certificates_approve_all"),
+    path("<int:activity_id>/certificates/signatures/<str:position>/", certificate_page_views.signature_upload,
+         name="certificates_signature"),
     # JSON API
     path("api/", views.activities_api, name="api_list"),  # GET list, POST create
     path("api/stats/", views.stats_api, name="api_stats"),

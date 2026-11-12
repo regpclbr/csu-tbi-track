@@ -27,7 +27,7 @@ KPI cards (full width), Needs attention (main column), next activity (beside the
     {% with upcoming=cards.upcoming_activities %}
       {% include "components/kpi_card.html" with label="Upcoming activities" value=upcoming.within_30_days|number icon="calendar" chip="blue" pill="30 days" pill_tone="success" %}
     {% endwith %}
-    {# S5 counts ACTIVITIES with certificates waiting for the Director's approval; the pill says how many certificates #}
+    {# S5 counts ACTIVITIES with certificates waiting for approval; the pill says how many certificates #}
     {% with waiting=cards.certificates_waiting_for_approval %}
       {% if waiting.value %}
         {% include "components/kpi_card.html" with label="Certificates waiting for approval" value=waiting.value|number icon="award" chip="amber" pill=page.certificates_pill pill_tone="warning" note=page.certificates_note %}

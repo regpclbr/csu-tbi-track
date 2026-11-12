@@ -1,8 +1,9 @@
 """DEMO ONLY: try the Step 9 certificate flow step by step on the development database.
 
 Every step calls the same services as the JSON API (no shortcuts), acting as --member <email> or, by default, the
-first active member allowed to do that step: the System Administrator for "design" (can_manage_users), the Director
-for "approve" (can_approve_certificates, ASSUMPTIONS 357), a member who can create activities for every other step
+first active member allowed to do that step: the System Administrator for "design" (can_manage_users), for "approve" a
+member with can_approve_certificates, the Director first (ASSUMPTIONS 361), a member who can create activities for every
+other step
 (separation of duties, ASSUMPTIONS 339). Refuses to run when DEBUG is False.
 
     python manage.py certificate_walkthrough design <folder with the sample PNGs>
@@ -28,7 +29,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from accounts.models import TBIMember
+from accounts.models import Role, TBIMember
 from activities import services as activity_services
 from activities.models import Activity, ActivityType, ParticipantCategory
 from certificates import services
@@ -89,7 +90,11 @@ class Command(BaseCommand):
         flag = ({"role__can_manage_users": True} if step == "design"
                 else {"role__can_approve_certificates": True} if step == "approve"
                 else {"role__can_create_activity": True})
-        member = members.filter(email__iexact=email).first() if email else members.filter(**flag).order_by("pk").first()
+        if email:
+            member = members.filter(email__iexact=email).first()
+        else:  # "approve": the Director's account first (a demo choice only; the permission is the flag)
+            allowed = members.filter(**flag).order_by("pk")
+            member = (allowed.filter(role__role_name=Role.DIRECTOR).first() if step == "approve" else None) or allowed.first()
         if member is None:
             raise CommandError("No active member found (run seed_data, or pass --member <email>).")
         return member
@@ -165,7 +170,7 @@ class Command(BaseCommand):
 
     def step_regenerate(self, activity_id) -> None:
         changed = services.regenerate_certificates(self.member, activity=self.activity(activity_id))
-        self.say(f"Regenerated {changed} certificate(s) with the current design: waiting for the Director's approval again.")
+        self.say(f"Regenerated {changed} certificate(s) with the current design: waiting for approval again.")
 
     def step_handover(self, activity_id) -> None:
         self.say(f"Marked {services.mark_handed_over(self.member, activity=self.activity(activity_id))} hard-copy certificate(s) Issued.")

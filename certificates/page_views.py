@@ -4,8 +4,9 @@ rule is in certificates.services (and documents.services for evidence); certific
 templates show.
 
 Viewing, previews, downloads and evidence uploads: any active staff member. Generate, regenerate, hand over and resend:
-can_create_activity. Approve: can_approve_certificates (the Director, ASSUMPTIONS 357). A bulk action changes all the
-selected certificates or none; a refusal shows every refused certificate with its reason.
+can_create_activity. Approve and add signatures: can_approve_certificates (the Director, both Project Heads and the
+System Administrator, ASSUMPTIONS 361). A bulk action changes all the selected certificates or none; a refusal shows
+every refused certificate with its reason.
 """
 
 from django.contrib import messages
@@ -24,13 +25,14 @@ from . import pages, services
 from .models import Certificate
 
 APPROVED_DONE = "Approved {n}. Each participant's certificate is emailed once their evaluation is in; ready PDFs are rendered in the background."
+SIGNATURE_NAMES = {"vp": "VP", "director": "Director"}
 
 # value posted -> (service call, permission, what it did). The services check every certificate: all or nothing.
 BULK_ACTIONS = {
     "approve": (lambda member, ids: services.approve_certificates(member, certificate_ids=ids), Permission.APPROVE_CERTIFICATES,
                 APPROVED_DONE),
     "regenerate": (lambda member, ids: services.regenerate_certificates(member, certificate_ids=ids), Permission.CREATE_ACTIVITY,
-                   "Regenerated {n} with the current design: waiting for the Director's approval again."),
+                   "Regenerated {n} with the current design: waiting for approval again."),
     "hand_over": (lambda member, ids: services.mark_handed_over(member, certificate_ids=ids), Permission.CREATE_ACTIVITY,
                   "Marked {n} as handed over: now Issued."),
     "resend": (lambda member, ids: services.resend_certificates(member, certificate_ids=ids), Permission.CREATE_ACTIVITY,
@@ -127,6 +129,29 @@ def bulk_action(request: HttpRequest, activity_id: int) -> HttpResponse:
         messages.success(request, email_sent_message("", before=f"Queued {_certificates(changed)} to be emailed again. ").strip())
     else:
         messages.success(request, done.format(n=_certificates(changed)))
+    return redirect(pages.tab_url(activity.pk))
+
+
+# --- Signatures (can_approve_certificates, ASSUMPTIONS 361) -------------------------------------------------------
+
+
+@permission_required(Permission.APPROVE_CERTIFICATES)
+@require_POST
+def signature_upload(request: HttpRequest, activity_id: int, position: str) -> HttpResponse:
+    """POST file: add or replace the VP's or Director's signature (services.upload_signature checks everything)."""
+    activity = _activity(activity_id)
+    try:
+        result = services.upload_signature(request.user, activity, position, request.FILES.get("file"))
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+    except services.CertificateError as error:
+        messages.error(request, str(error))
+    else:
+        text = f"{result['action'].capitalize()} the {SIGNATURE_NAMES[position]}'s signature."
+        if result["updated"]:
+            text += (f" {_certificates(result['updated'])} of this activity now use it; approved ones wait for "
+                     "approval again.")
+        messages.success(request, text)
     return redirect(pages.tab_url(activity.pk))
 
 

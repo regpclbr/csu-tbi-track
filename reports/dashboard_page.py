@@ -128,7 +128,7 @@ class DashboardPage:
     @property
     def certificates_note(self) -> str:
         """Under S5's number (which counts activities): who it waits for."""
-        who = "waiting for your approval" if self.can_approve_certificates else "waiting for the Director"
+        who = "waiting for your approval" if self.can_approve_certificates else "waiting for approval"
         count = self.cards["certificates_waiting_for_approval"]["value"]
         return f"{'activity' if count == 1 else 'activities'} · {who}"
 
@@ -278,7 +278,7 @@ def certificates_waiting_text(card: dict) -> str:
 def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_approve_certificates: bool,
                now: datetime | None) -> list[AttentionItem]:
     """Overdue required documents (red), documents due soon (amber), my review queue, certificates waiting for the
-    Director's approval (counted as activities)."""
+    approval (counted as activities)."""
     items: list[AttentionItem] = []
     rows = metrics.document_attention(filters, now)
     for type_name, group in _group_by_type(rows["overdue"]).items():
@@ -315,7 +315,7 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_ap
         detail = ", ".join(row["title"] for row in by_activity[:ATTENTION_TITLES_SHOWN])
         if waiting["value"] > ATTENTION_TITLES_SHOWN:
             detail += " and more"
-        who = "Waiting for your approval" if can_approve_certificates else "Waiting for the Director"
+        who = "Waiting for your approval" if can_approve_certificates else "Waiting for approval"
         items.append(AttentionItem(
             "primary", f"Certificates waiting for approval: {certificates_waiting_text(waiting)}", f"{who} · {detail}",
             "Approve" if can_approve_certificates else "Open", certificates_url(by_activity),

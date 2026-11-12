@@ -180,7 +180,7 @@ CONDUCTED_DOCUMENTS = {
     },
 }
 
-# Certificates per Conducted demo activity: "generated" ones wait for the Director's approval (ASSUMPTIONS 357).
+# Certificates per Conducted demo activity: "generated" ones wait for approval (ASSUMPTIONS 357, 361).
 # "approved" ones are rendered, issued and emailed by `python manage.py retry_certificates` (or qcluster).
 DEMO_CERTIFICATES = {
     "Startup Pitch Competition": "approved",

@@ -58,6 +58,7 @@ class _Facts:
     attended_after_evaluation: int = 0
     links_failed: int = 0
     links_not_sent: int = 0
+    signature_missing: str = ""  # certificates.services.missing_signature_reason for the waiting certificates
     certificates: dict[str, int] = field(default_factory=dict)
 
 
@@ -70,7 +71,7 @@ _WAITING_TO_EVALUATE = Q(registrations__attendance_confirmed=True, registrations
 
 
 def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
-    """Everything the items need, for any number of activities, in five queries."""
+    """Everything the items need, for any number of activities, in six queries."""
     facts = {activity.pk: _Facts(activity) for activity in activities}
     if not facts:
         return facts
@@ -123,12 +124,27 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
     )
     for row in certificates:
         facts[row.pop("activity_id")].certificates = row
+
+    # Signatures of the certificates waiting for approval (ASSUMPTIONS 361): one query (DISTINCT ON the signatory
+    # pair per activity), then certificates.services' own check (it reads the files, no queries).
+    from certificates import services as certificate_services
+
+    pairs = (
+        Certificate.objects.filter(activity_id__in=ids, status=Status.GENERATED)
+        .select_related("vp_signatory", "director_signatory")
+        .order_by("activity_id", "vp_signatory_id", "director_signatory_id")
+        .distinct("activity_id", "vp_signatory_id", "director_signatory_id")
+    )
+    signatories: dict[int, list] = {}
+    for certificate in pairs:
+        signatories.setdefault(certificate.activity_id, []).extend([certificate.vp_signatory, certificate.director_signatory])
+    for activity_id, people in signatories.items():
+        facts[activity_id].signature_missing = certificate_services.missing_signature_reason(people) or ""
     return facts
 
 
-def _items(fact: _Facts, now: datetime, can_approve_certificates: bool = False) -> list[AttentionItem]:
-    """The one place that turns facts into items (both public functions use it). `can_approve_certificates` only
-    changes the wording ("your approval" for the Director, "the Director's approval" for others), never the items."""
+def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
+    """The one place that turns facts into items (both public functions use it)."""
     activity = fact.activity
     status = activity.status.name
     today = timezone.localdate(now)
@@ -175,9 +191,13 @@ def _items(fact: _Facts, now: datetime, can_approve_certificates: bool = False) 
     certificates = fact.certificates
     if status == CONDUCTED and fact.attended and not certificates.get("total"):
         items.append(AttentionItem(f"Conducted with {_plural(fact.attended, 'attendee', 'attendees')} but no certificates generated yet.", "certificates"))
-    waiting_for = "your approval" if can_approve_certificates else "the Director's approval"
+    # Waiting for approval: one line, the missing signature first ("Add the VP's signature first.", ASSUMPTIONS 361).
+    if certificates.get("to_approve"):
+        items.append(AttentionItem(
+            fact.signature_missing or f"{_plural(certificates['to_approve'], 'certificate', 'certificates')} waiting for approval.",
+            "certificates",
+        ))
     for key, text in (
-        ("to_approve", f"waiting for {waiting_for}"),
         ("to_hand_over", "for resource persons approved but not handed over"),
         ("send_failed", "could not be emailed. Resend on the Certificates tab"),
         ("unsent", "issued but their email not sent yet"),
@@ -194,19 +214,17 @@ def _items(fact: _Facts, now: datetime, can_approve_certificates: bool = False) 
     return items
 
 
-def activity_attention(activity: Activity, now: datetime | None = None, can_approve_certificates: bool = False) -> list[AttentionItem]:
+def activity_attention(activity: Activity, now: datetime | None = None) -> list[AttentionItem]:
     """Everything that needs attention on one activity (the amber box below the title). Empty = "All set"."""
     now = now or timezone.now()
-    return _items(_load_facts([activity], now)[activity.pk], now, can_approve_certificates)
+    return _items(_load_facts([activity], now)[activity.pk], now)
 
 
-def attention_items(activities: list[Activity], now: datetime | None = None,
-                    can_approve_certificates: bool = False) -> dict[int, list[AttentionItem]]:
+def attention_items(activities: list[Activity], now: datetime | None = None) -> dict[int, list[AttentionItem]]:
     """Every activity's items (the Activities list: the count, and the follow-up cards' note), in a fixed number
     of queries."""
     now = now or timezone.now()
-    return {activity_id: _items(fact, now, can_approve_certificates)
-            for activity_id, fact in _load_facts(list(activities), now).items()}
+    return {activity_id: _items(fact, now) for activity_id, fact in _load_facts(list(activities), now).items()}
 
 
 def attention_counts(activities: list[Activity], now: datetime | None = None) -> dict[int, int]:

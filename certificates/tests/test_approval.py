@@ -1,5 +1,6 @@
-"""The Director's approval (ASSUMPTIONS 357): who may generate / approve, approve one or all of an activity, the missing
-signature image, regenerate (approve again), hand-over, failed send and resend."""
+"""Certificate approval (ASSUMPTIONS 357, 361): who may generate / approve, approve one or all of an activity, the missing
+signature image, regenerate (approve again), hand-over, failed send and resend. More on approvers and signatures in
+test_signatures.py."""
 
 import logging
 from pathlib import Path
@@ -18,8 +19,8 @@ from conftest import image_bytes
 
 pytestmark = pytest.mark.django_db
 
-MISSING_VP = "The VP's signature image is missing. Upload it in the Admin Console, then regenerate the certificates."
-MISSING_DIRECTOR = "The Director's signature image is missing. Upload it in the Admin Console, then regenerate the certificates."
+MISSING_VP = "Add the VP's signature first."
+MISSING_DIRECTOR = "Add the Director's signature first."
 
 
 def ids(*certificates: Certificate) -> list[int]:
@@ -47,10 +48,9 @@ def test_admin_staff_and_system_administrator_cannot_generate(conducted, design,
     assert not Certificate.objects.exists()
 
 
-@pytest.mark.parametrize("role_name", ["Incubation Project Head", "Community Development Head", "Admin Staff", Role.SYSTEM_ADMINISTRATOR])
-def test_only_the_director_approves(generated, make_member, role_name) -> None:
+def test_admin_staff_cannot_approve(generated, make_member) -> None:
     activity, _ = generated
-    member = make_member(role_name)
+    member = make_member("Admin Staff")
     with pytest.raises(PermissionDenied, match="approve certificates"):
         services.approve_certificates(member, activity=activity)
     with pytest.raises(PermissionDenied):
@@ -58,8 +58,8 @@ def test_only_the_director_approves(generated, make_member, role_name) -> None:
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
-def test_the_seeded_director_role_alone_has_the_flag(roles) -> None:
-    assert {name for name, role in roles.items() if role.can_approve_certificates} == {"Director"}
+def test_admin_staff_alone_lacks_the_flag(roles) -> None:
+    assert {name for name, role in roles.items() if not role.can_approve_certificates} == {"Admin Staff"}
 
 
 @pytest.mark.parametrize("role_name", ["Admin Staff", Role.SYSTEM_ADMINISTRATOR, "Incubation Project Head"])
@@ -117,24 +117,32 @@ def test_a_missing_signature_image_blocks_approval(generated, design, director, 
     with pytest.raises(services.CertificateError) as error:
         services.approve_certificates(director, activity=activity)
     assert str(error.value) == message
-    with pytest.raises(services.CertificateError, match="signature image is missing"):
+    with pytest.raises(services.CertificateError, match="signature first"):
         services.approve_certificates(director, certificate_ids=[Certificate.objects.first().pk])
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
-def test_a_file_that_is_not_a_png_counts_as_missing(generated, design, director) -> None:
+def test_a_file_that_is_not_a_png_or_jpg_counts_as_missing(generated, design, director) -> None:
     _, vp, _ = design
     (Path(settings.MEDIA_ROOT) / vp.signature_image_path.name).write_bytes(b"not an image")
     assert services.approval_closed_reason(generated[0]) == MISSING_VP
 
 
-def test_new_signature_plus_regenerate_unblocks_approval(generated, design, director, admin_member) -> None:
+def test_new_signatory_plus_regenerate_unblocks_approval(generated, design, director, admin_member) -> None:
     activity, _ = generated
     remove_signature_file(design[1])
     new_vp = services.add_signatory(admin_member, "Dr. New Vice Pres", "vp", upload("vp.png", image_bytes()))
     assert services.approval_closed_reason(activity) == MISSING_VP  # the certificates keep the old VP
     assert services.regenerate_certificates(director, activity=activity) == 3
     assert set(Certificate.objects.values_list("vp_signatory", flat=True)) == {new_vp.pk}
+    assert services.approve_certificates(director, activity=activity) == 3
+
+
+def test_replacing_a_lost_signature_on_the_tab_unblocks_approval(generated, design, director) -> None:
+    activity, _ = generated
+    remove_signature_file(design[1])
+    services.upload_signature(director, activity, "vp", upload("vp.png", image_bytes()))  # no regenerate needed
+    assert services.approval_closed_reason(activity) is None
     assert services.approve_certificates(director, activity=activity) == 3
 
 

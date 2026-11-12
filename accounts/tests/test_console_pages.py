@@ -214,9 +214,10 @@ def test_activate_and_deactivate_designs_but_never_delete(admin, admin_member) -
 
 def test_add_and_deactivate_signatories_but_never_delete(admin) -> None:
     url = reverse("accounts:console_signatory_add")
-    jpg = admin.post(url, {"name": "Dr. VP", "position": "vp", "file": upload("sig.jpg", image_bytes(kind="JPEG"))})
-    assert jpg.status_code == 400 and "Only PNG images can be uploaded." in jpg.content.decode()
-    assert 'open id="add-signatory"' in jpg.content.decode()
+    gif = admin.post(url, {"name": "Dr. VP", "position": "vp", "file": upload("sig.gif", b"GIF89a")})
+    assert gif.status_code == 400 and "Only JPG or PNG images can be uploaded." in gif.content.decode()
+    assert 'open id="add-signatory"' in gif.content.decode()
+    assert not CertificateSignatory.objects.exists()
     no_position = admin.post(url, {"name": "Dr. VP", "file": upload("sig.png", image_bytes())})
     assert 'id="signatory-position-error"' in no_position.content.decode()
     admin.post(url, {"name": "Dr. First VP", "position": "vp", "file": upload("a.png", image_bytes())})

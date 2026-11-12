@@ -1,5 +1,5 @@
-"""ROLE.can_approve_certificates (ASSUMPTIONS 357): the migration's data step, seed_data, the Admin Console roles switch,
-separation of duties, the Django admin and the audit log (same pattern as can_approve_documents)."""
+"""ROLE.can_approve_certificates (ASSUMPTIONS 357, 361): the migrations' data steps, seed_data, the Admin Console roles
+switch, separation of duties (allowed with can_manage_users), the Django admin and the audit log."""
 
 import importlib
 
@@ -16,6 +16,7 @@ from accounts.seed import load_lookups
 pytestmark = pytest.mark.django_db
 
 SYSADMIN = Role.SYSTEM_ADMINISTRATOR
+APPROVERS = {"Director", "Incubation Project Head", "Community Development Head", SYSADMIN}
 
 
 def client_for(member) -> Client:
@@ -50,48 +51,64 @@ def test_migration_gives_the_flag_to_the_director_only() -> None:
     }
 
 
-def test_seed_gives_it_to_the_director_and_never_reapplies_it(roles) -> None:
-    assert {name for name, role in roles.items() if role.can_approve_certificates} == {"Director"}
+def test_migration_0006_gives_it_to_the_four_approver_roles() -> None:
+    migration = importlib.import_module("accounts.migrations.0006_certificate_approvers")
+    for name in ("Director", "Incubation Project Head", "Community Development Head", "Admin Staff"):
+        Role.objects.create(role_name=name, can_create_activity=True)
+    Role.objects.create(role_name=SYSADMIN, can_manage_users=True)
+    Role.objects.filter(role_name="Admin Staff").update(can_approve_certificates=True)  # a wrong value is reset too
+    migration.forwards(django_apps, None)
+    assert {name for name, flag in Role.objects.values_list("role_name", "can_approve_certificates") if flag} == APPROVERS
+    migration.backwards(django_apps, None)
+    assert {name for name, flag in Role.objects.values_list("role_name", "can_approve_certificates") if flag} == {"Director"}
+
+
+def test_seed_gives_it_to_the_approver_roles_and_never_reapplies_it(roles) -> None:
+    assert {name for name, role in roles.items() if role.can_approve_certificates} == APPROVERS
     Role.objects.filter(role_name="Director").update(can_approve_certificates=False)
-    Role.objects.filter(role_name="Incubation Project Head").update(can_approve_certificates=True)
+    Role.objects.filter(role_name="Admin Staff").update(can_approve_certificates=True)
     load_lookups()
     flags = dict(Role.objects.values_list("role_name", "can_approve_certificates"))
-    assert flags["Director"] is False and flags["Incubation Project Head"] is True
+    assert flags["Director"] is False and flags["Admin Staff"] is True
 
 
 def test_permission_comes_from_the_flag(make_member) -> None:
-    assert has_permission(make_member("Director"), Permission.APPROVE_CERTIFICATES)
-    for name in ("Incubation Project Head", "Community Development Head", "Admin Staff", SYSADMIN):
-        assert not has_permission(make_member(name), Permission.APPROVE_CERTIFICATES)
+    for name in APPROVERS:
+        assert has_permission(make_member(name), Permission.APPROVE_CERTIFICATES)
+    assert not has_permission(make_member("Admin Staff"), Permission.APPROVE_CERTIFICATES)
 
 
 def test_roles_screen_switches_it_and_logs_it(sysadmin, make_member, roles, caplog) -> None:
     client = client_for(sysadmin)
     html = client.get(reverse("accounts:console_roles")).content.decode()
-    assert "Approve certificates" in html and "No active member can approve certificates" in html
-    make_member("Director")
+    assert "Approve certificates" in html and "No active member can approve certificates" not in html  # the sysadmin
+    response = toggle(client, roles[SYSADMIN], "false")  # no last-approver guard, only the warning
+    assert f"{SYSADMIN} can no longer approve certificates." in messages_of(response)
+    assert "No active member can approve certificates" in client.get(reverse("accounts:console_roles")).content.decode()
+
+    staff_role = roles["Admin Staff"]
+    with caplog.at_level("INFO", logger="accounts.audit"):
+        response = toggle(client, staff_role, "true")
+    assert "Admin Staff can now approve certificates." in messages_of(response)
+    assert "Role flag changed: role='Admin Staff' can_approve_certificates False -> True" in caplog.text
+    staff_role.refresh_from_db()
+    assert staff_role.can_approve_certificates and not staff_role.can_create_activity and not staff_role.can_approve_documents
+    make_member("Admin Staff")
     assert "No active member can approve certificates" not in client.get(reverse("accounts:console_roles")).content.decode()
 
-    head_role = roles["Incubation Project Head"]
-    with caplog.at_level("INFO", logger="accounts.audit"):
-        response = toggle(client, head_role, "true")
-    assert "Incubation Project Head can now approve certificates." in messages_of(response)
-    assert "Role flag changed: role='Incubation Project Head' can_approve_certificates False -> True" in caplog.text
-    head_role.refresh_from_db()
-    assert head_role.can_approve_certificates and head_role.can_create_activity and not head_role.can_approve_documents
 
-    response = toggle(client, roles["Director"], "false")  # no last-approver guard, only the warning
-    assert "Director can no longer approve certificates." in messages_of(response)
-
-
-def test_system_administrator_role_cannot_get_it(sysadmin, roles) -> None:
-    response = toggle(client_for(sysadmin), roles[SYSADMIN], "true")
-    assert services.APPROVE_CERTIFICATES_AND_MANAGE_REFUSED in messages_of(response)
-    services.set_role_document_approval(sysadmin, roles["Director"], False)  # so only this flag is in the way
-    roles["Director"].refresh_from_db()
-    with pytest.raises(services.MemberManagementError, match="approve certificates"):
-        services.update_role_permissions(sysadmin, roles["Director"], can_create_activity=False, can_manage_users=True)
-    assert not Role.objects.filter(can_manage_users=True, can_approve_certificates=True).exists()
+def test_it_may_go_with_managing_users(sysadmin, roles) -> None:
+    """Separation of duties no longer covers this flag (ASSUMPTIONS 361); it still covers the other two."""
+    client = client_for(sysadmin)
+    toggle(client, roles[SYSADMIN], "false")
+    response = toggle(client, roles[SYSADMIN], "true")
+    assert f"{SYSADMIN} can now approve certificates." in messages_of(response)
+    roles[SYSADMIN].refresh_from_db()
+    assert roles[SYSADMIN].can_manage_users and roles[SYSADMIN].can_approve_certificates
+    with pytest.raises(services.MemberManagementError, match="create activities"):
+        services.update_role_permissions(sysadmin, roles[SYSADMIN], can_create_activity=True, can_manage_users=True)
+    with pytest.raises(services.MemberManagementError, match="approve documents"):
+        services.set_role_document_approval(sysadmin, roles[SYSADMIN], True)
 
 
 @pytest.mark.parametrize("role_name", ["Director", "Incubation Project Head", "Admin Staff"])
@@ -127,7 +144,11 @@ def test_django_admin_role_form_edits_it(sysadmin, roles) -> None:
     response = client_for(sysadmin).post(
         f"/admin/accounts/role/{sysadmin_role.pk}/change/", {"can_manage_users": "on", "can_approve_certificates": "on"}
     )
-    assert response.status_code == 200 and services.APPROVE_CERTIFICATES_AND_MANAGE_REFUSED in response.content.decode()
+    assert response.status_code == 302  # allowed together (ASSUMPTIONS 361)
+    response = client_for(sysadmin).post(
+        f"/admin/accounts/role/{sysadmin_role.pk}/change/", {"can_manage_users": "on", "can_approve_documents": "on"}
+    )
+    assert response.status_code == 200 and services.APPROVE_AND_MANAGE_REFUSED in response.content.decode()
 
 
 def test_roles_api_returns_it(sysadmin, roles) -> None:

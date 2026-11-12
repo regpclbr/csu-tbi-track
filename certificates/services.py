@@ -1,4 +1,4 @@
-"""Business logic for certificates: design (template and signatories), generating, the Director's approval,
+"""Business logic for certificates: design (template and signatories), generating, approval,
 the final PDF, issuing and emailing. Views, the Django admin and tasks call these functions.
 
 The life of a certificate (status rules in set_certificate_status, ASSUMPTIONS 357):
@@ -6,8 +6,11 @@ The life of a certificate (status rules in set_certificate_status, ASSUMPTIONS 3
     Generated ("Waiting for approval") --Director approves--> Approved --> Issued
               <------------ regenerate (new design, approval cleared) ------
 
-- Generate / regenerate / hand over / resend: can_create_activity. Approve: can_approve_certificates (the Director),
-  one certificate or all of an activity at once. Approval is refused while a signature image is missing.
+- Generate / regenerate / hand over / resend: can_create_activity. Approve and add signatures: can_approve_certificates
+  (the Director, both Project Heads and the System Administrator, ASSUMPTIONS 361), one certificate or all of an
+  activity at once. Approval is refused while a signature image is missing ("Add the VP's signature first.").
+- Adding or replacing a signature on the activity's Certificates tab (upload_signature) updates that activity's
+  certificates that are not Issued: the PDF is rendered again and Approved ones wait for approval again.
 
 - Participant (Certificate of Participation, by email): the name printed and the address come
   from the participant's EVALUATION_SUBMISSION. When the certificate is Approved AND the evaluation
@@ -42,6 +45,7 @@ from . import emails, pdf
 from .models import Certificate, CertificateSignatory, CertificateTemplate
 
 logger = logging.getLogger("certificates")
+audit_logger = logging.getLogger("certificates.audit")  # who added or replaced a signature (member IDs only)
 
 Status = Certificate.Status
 RecipientType = Certificate.RecipientType
@@ -59,6 +63,7 @@ ALLOWED_MOVES: dict[str, set[str]] = {
     Status.ISSUED: set(),
 }
 SIGNATORY_LABELS = {Position.VP: "VP", Position.DIRECTOR: "Director"}
+SIGNATORY_FIELDS = {Position.VP: "vp_signatory", Position.DIRECTOR: "director_signatory"}  # CERTIFICATE columns
 
 CERTIFICATE_DOCUMENT_TYPE = "Certificate"  # DOCUMENT_TYPE for evidence uploads (seeded name, item 48)
 NUMBER_LOCK_KEY = 9_000_001  # PostgreSQL advisory lock: one number allocation at a time
@@ -130,8 +135,9 @@ def validate_template_image(file: UploadedFile | None) -> str:
 
 
 def validate_signature_image(file: UploadedFile | None) -> str:
-    """PNG only (a transparent background prints cleanly over the design)."""
-    return _check_image(file, "file", {"png"})[0]
+    """PNG or JPG (ASSUMPTIONS 361), at most CERTIFICATE_IMAGE_MAX_MB, checked by its real content. A PNG with a
+    transparent background prints cleanly over the design; a JPG prints with its white background."""
+    return _check_image(file, "file", {"png", "jpg"})[0]
 
 
 def _clean_name(name: str, field: str = "name") -> str:
@@ -190,22 +196,28 @@ def deactivate_template(member: TBIMember, template: CertificateTemplate) -> Cer
 
 @transaction.atomic
 def add_signatory(member: TBIMember, name: str, position: str, file: UploadedFile | None) -> CertificateSignatory:
-    """Add the VP or Director with their signature (PNG). They become the active signatory for that
-    position; the previous one is deactivated in the same transaction."""
+    """Add the VP or Director, with their signature (PNG or JPG) or without it (added later on an activity's
+    Certificates tab, ASSUMPTIONS 361). They become the active signatory for that position; the previous one is
+    deactivated in the same transaction."""
     require_permission(member, Permission.MANAGE_USERS)
     name = _clean_name(name)
     if position not in Position.values:
         raise ValidationError({"position": ["Choose vp or director."]})
-    validate_signature_image(file)
+    if file is not None:
+        validate_signature_image(file)
     list(CertificateSignatory.objects.select_for_update().filter(position=position, is_active=True))
     CertificateSignatory.objects.filter(position=position, is_active=True).update(is_active=False)
     signatory = CertificateSignatory(name=name, position=position, is_active=True)
-    signatory.signature_image_path.save(file.name, file, save=False)
+    if file is not None:
+        signatory.signature_image_path.save(file.name, file, save=False)
     try:
         signatory.save()
     except Exception:
         _delete_file(signatory.signature_image_path)
         raise
+    if file is not None:
+        audit_logger.info("Signature added: position=%s signatory_id=%s (Admin Console) by member_id=%s",
+                          position, signatory.pk, member.pk)
     return signatory
 
 
@@ -322,26 +334,32 @@ def get_submitted_evaluation(certificate: Certificate) -> EvaluationSubmission |
     return EvaluationSubmission.objects.filter(registration_id=certificate.registration_id).first()
 
 
-def _signature_present(signatory: CertificateSignatory) -> bool:
-    """The signatory's signature image is stored and is a PNG (the file can disappear from the disk)."""
-    field_file = signatory.signature_image_path
+def signature_present(signatory: CertificateSignatory | None) -> bool:
+    """The signatory's signature image is stored and is a PNG or JPG (the file is read: it can disappear from the
+    disk)."""
+    field_file = signatory.signature_image_path if signatory is not None else None
     if not field_file or not field_file.name:
         return False
     try:
         with field_file.storage.open(field_file.name, "rb") as handle:
-            return handle.read(len(document_services.PNG_SIGNATURE)) == document_services.PNG_SIGNATURE
+            head = handle.read(len(document_services.PNG_SIGNATURE))
     except (FileNotFoundError, OSError, ValueError):
         return False
+    return head.startswith((document_services.PNG_SIGNATURE, document_services.JPEG_SIGNATURE))
+
+
+def add_signature_reason(position: str) -> str:
+    """ "Add the VP's signature first." (the reason approval is refused, ASSUMPTIONS 361)."""
+    return f"Add the {SIGNATORY_LABELS[position]}'s signature first."
 
 
 def missing_signature_reason(signatories) -> str | None:
-    """None when every given signatory has a signature image; otherwise the reason approval is refused.
-    The certificate keeps the signatories it was generated with, so a new image needs a regeneration too."""
+    """None when every given signatory has a signature image; otherwise the reason approval is refused (VP first).
+    A certificate keeps the signatories it was generated with; adding or replacing a signature on the activity's
+    Certificates tab updates them (upload_signature)."""
     for signatory in sorted({s.pk: s for s in signatories}.values(), key=lambda s: s.position != Position.VP):
-        if not _signature_present(signatory):
-            label = SIGNATORY_LABELS.get(signatory.position, signatory.get_position_display())
-            return (f"The {label}'s signature image is missing. Upload it in the Admin Console, "
-                    "then regenerate the certificates.")
+        if not signature_present(signatory):
+            return add_signature_reason(signatory.position)
     return None
 
 
@@ -402,6 +420,106 @@ def set_certificate_status(
     return certificate
 
 
+# --- Signatures on the activity's Certificates tab (can_approve_certificates, ASSUMPTIONS 361) -----
+
+
+def activity_signatories(activity: Activity) -> dict[str, CertificateSignatory | None]:
+    """Per position (vp, director): the signatory this activity's certificates that are not Issued use (the newest
+    one if they differ), otherwise the active one (the one Generate will use). None: no active signatory at all."""
+    result: dict[str, CertificateSignatory | None] = {}
+    pending = Certificate.objects.filter(activity=activity).exclude(status=Status.ISSUED)
+    for position, field in SIGNATORY_FIELDS.items():
+        signatory_id = pending.order_by(f"-{field}_id").values_list(f"{field}_id", flat=True).first()
+        if signatory_id is not None:
+            result[position] = CertificateSignatory.objects.get(pk=signatory_id)
+        else:
+            result[position] = CertificateSignatory.objects.filter(position=position, is_active=True).first()
+    return result
+
+
+def no_signatory_reason(position: str) -> str:
+    return (f"There is no active {SIGNATORY_LABELS[position]} signatory yet. "
+            "The System Administrator adds one in the Admin Console first.")
+
+
+def signature_closed_reason(activity: Activity, position: str) -> str | None:
+    """Why a signature cannot be added for `position` now, or None (the tab shows it instead of the upload)."""
+    if activity_signatories(activity).get(position) is None:
+        return no_signatory_reason(position)
+    return None
+
+
+def _refresh_certificates(certificates: list[Certificate], member: TBIMember, now: datetime | None, **changes) -> None:
+    """Apply design changes (e.g. a new signatory) to certificates that are not Issued: the rendered PDF is removed
+    after the commit (rendered again on approval / evaluation) and Approved ones go back to "Waiting for approval".
+    Must run inside a transaction with the rows locked."""
+    storage = Certificate._meta.get_field("file_path").storage
+    for certificate in certificates:
+        if certificate.status == Status.ISSUED:
+            raise CertificateError("Issued certificates are final.")
+        if certificate.file_path:
+            transaction.on_commit(lambda name=certificate.file_path.name: storage.delete(name), robust=True)
+        for name, value in changes.items():
+            setattr(certificate, name, value)
+        certificate.file_path = None
+        certificate.save(update_fields=[*changes, "file_path"])
+        if certificate.status == Status.APPROVED:
+            set_certificate_status(certificate, Status.GENERATED, member=member, now=now)
+
+
+@transaction.atomic
+def upload_signature(member: TBIMember, activity: Activity, position: str, file: UploadedFile | None,
+                     now: datetime | None = None) -> dict:
+    """Add or replace the VP's or Director's signature image (PNG or JPG) from the activity's Certificates tab.
+
+    - Add (the signatory has no image yet): the image is stored on that signatory (every certificate using it,
+      of any activity, gets it).
+    - Replace: a new signatory row with the same name and position and the new image (an image never changes:
+      other activities keep the one they were generated with); it is active if the old one was.
+    Either way this activity's certificates that are not Issued use it from now on: their PDF is rendered again and
+    Approved ones wait for approval again. Logged on certificates.audit (member and signatory IDs only).
+    Returns {"action": "added" | "replaced", "signatory": ..., "updated": <certificates updated>}.
+    """
+    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    if position not in SIGNATORY_FIELDS:
+        raise ValidationError({"position": ["Choose vp or director."]})
+    if reason := signature_closed_reason(activity, position):
+        raise CertificateError(reason)
+    validate_signature_image(file)
+    current = CertificateSignatory.objects.select_for_update().get(pk=activity_signatories(activity)[position].pk)
+    field = SIGNATORY_FIELDS[position]
+    # Certificates of an older signatory than the one shown are left alone (activity_signatories shows the newest).
+    certificates = list(
+        Certificate.objects.select_for_update(of=("self",)).filter(activity=activity, **{field: current})
+        .exclude(status=Status.ISSUED).order_by("pk")
+    )
+    stored = None
+    try:
+        if not current.signature_image_path:
+            action, signatory = "added", current
+            signatory.signature_image_path.save(file.name, file, save=False)
+            stored = signatory.signature_image_path.name
+            signatory.save(update_fields=["signature_image_path"])
+        else:
+            action = "replaced"
+            if current.is_active:
+                CertificateSignatory.objects.filter(pk=current.pk).update(is_active=False)
+            signatory = CertificateSignatory(name=current.name, position=position, is_active=current.is_active)
+            signatory.signature_image_path.save(file.name, file, save=False)
+            stored = signatory.signature_image_path.name
+            signatory.save()
+        _refresh_certificates(certificates, member, now, **{field: signatory})
+    except BaseException:
+        if stored:
+            CertificateSignatory._meta.get_field("signature_image_path").storage.delete(stored)
+        raise
+    audit_logger.info(
+        "Signature %s: position=%s signatory_id=%s -> %s activity_id=%s certificates_updated=%s by member_id=%s",
+        action, position, current.pk, signatory.pk, activity.pk, len(certificates), member.pk,
+    )
+    return {"action": action, "signatory": signatory, "updated": len(certificates)}
+
+
 # --- Actions: one certificate, a list, or all of an activity --------------------------------------
 
 
@@ -444,7 +562,7 @@ def _apply_all(certificates: list[Certificate], action) -> None:
 
 @transaction.atomic
 def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
-    """Generated -> Approved by the Director (can_approve_certificates). `activity` = "Approve all for this activity":
+    """Generated -> Approved (can_approve_certificates: the Director, both Project Heads, the System Administrator). `activity` = "Approve all for this activity":
     every certificate waiting for approval, all or nothing. Refused while a signature image is missing (one clear
     reason for the whole action).
 
@@ -469,29 +587,20 @@ def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None
 @transaction.atomic
 def regenerate_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
     """Apply the design (template, VP, Director) that is active now to certificates that are not Issued, remove
-    their rendered PDF and send them back to "Waiting for approval" (the Director approves them again). The number
+    their rendered PDF and send them back to "Waiting for approval" (they are approved again). The number
     stays. Issued certificates are final (item 46): refused."""
     require_permission(member, Permission.CREATE_ACTIVITY)
     certificates = _select_for_action(certificate_ids, activity, [Status.GENERATED, Status.APPROVED],
                                       empty="This activity has no certificates to regenerate (Issued certificates are final).")
     template, vp, director = active_design()
-    old_files: list[str] = []
 
     def regenerate(certificate: Certificate) -> None:
         if certificate.status == Status.ISSUED:
             raise CertificateError("Issued certificates are final and cannot be regenerated.")
-        if certificate.file_path:
-            old_files.append(certificate.file_path.name)
-        certificate.certificate_template, certificate.vp_signatory, certificate.director_signatory = template, vp, director
-        certificate.file_path = None
-        certificate.save(update_fields=["certificate_template", "vp_signatory", "director_signatory", "file_path"])
-        if certificate.status == Status.APPROVED:
-            set_certificate_status(certificate, Status.GENERATED, member=member, now=now)
+        _refresh_certificates([certificate], member, now, certificate_template=template, vp_signatory=vp,
+                              director_signatory=director)
 
     _apply_all(certificates, regenerate)
-    storage = Certificate._meta.get_field("file_path").storage
-    for name in old_files:  # only once the change is saved
-        transaction.on_commit(lambda name=name: storage.delete(name), robust=True)
     logger.info("Member %s regenerated certificates %s.", member.pk, ", ".join(str(c.pk) for c in certificates))
     return len(certificates)
 

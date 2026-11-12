@@ -260,7 +260,8 @@ def template_action(request: HttpRequest, template_id: int, action: str) -> Http
 @manage_users
 @require_POST
 def add_signatory(request: HttpRequest) -> HttpResponse:
-    """A new VP or Director (certificates.services.add_signatory: PNG only; they replace the active one)."""
+    """A new VP or Director (certificates.services.add_signatory: PNG or JPG, or no image yet; they replace the active
+    one). The image can also be added later on an activity's Certificates tab (ASSUMPTIONS 361)."""
     values = {"name": request.POST.get("name", ""), "position": request.POST.get("position", "")}
     try:
         signatory = certificate_services.add_signatory(request.user, values["name"], values["position"], request.FILES.get("file"))

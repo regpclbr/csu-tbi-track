@@ -268,12 +268,17 @@ def test_certificates_of_several_activities_link_to_the_certificates_page(direct
     assert item.action_url == f"{reverse('certificates:list')}?status=generated"
 
 
-@pytest.mark.parametrize("role_name", ["Incubation Project Head", "Admin Staff"])
-def test_others_see_waiting_for_the_director(make_member, login, data, role_name) -> None:
+@pytest.mark.parametrize(("role_name", "approves"), [("Incubation Project Head", True), ("Admin Staff", False),
+                                                     ("System Administrator", True)])
+def test_approvers_and_others_see_their_wording(make_member, login, data, role_name, approves) -> None:
     response = login(make_member(role_name)).get(URL)
     item = next(item for item in response.context["page"].attention if item.title.startswith("Certificates waiting"))
-    assert item.detail.startswith("Waiting for the Director · ") and item.action_label == "Open"
-    assert "activity · waiting for the Director" in response.content.decode()
+    if approves:  # can_approve_certificates (ASSUMPTIONS 361)
+        assert item.detail.startswith("Waiting for your approval · ") and item.action_label == "Approve"
+        assert "activity · waiting for your approval" in response.content.decode()
+    else:
+        assert item.detail.startswith("Waiting for approval · ") and item.action_label == "Open"
+        assert "activity · waiting for approval" in response.content.decode()
 
 
 def test_needs_attention_empty_state(director, login) -> None:

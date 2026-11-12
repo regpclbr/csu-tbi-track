@@ -281,7 +281,7 @@ def _certificates(filters: ReportFilters, summary: dict, today: date) -> Section
                 ["Certificates emailed", summary["certificates_emailed"]],
             ]),
             Table(f"Right now ({long_date(today)})", columns, [
-                ["Certificates waiting for the Director's approval", now_counts["waiting_certificates"]],
+                ["Certificates waiting for approval", now_counts["waiting_certificates"]],
                 ["Activities with certificates waiting for approval", now_counts["waiting_activities"]],
                 ["Approved, not issued yet", now_counts["approved_not_issued"]],
             ]),

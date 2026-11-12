@@ -18,7 +18,9 @@ def template_upload_to(instance: "CertificateTemplate", filename: str) -> str:
 
 
 def signature_upload_to(instance: "CertificateSignatory", filename: str) -> str:
-    return f"signatures/{instance.position}-{secrets.token_hex(8)}.png"
+    """PNG or JPG (checked by the service, ASSUMPTIONS 361); a random name, never the uploaded one."""
+    extension = "jpg" if _extension(filename) in ("jpg", "jpeg") else "png"
+    return f"signatures/{instance.position}-{secrets.token_hex(8)}.{extension}"
 
 
 class CertificateTemplate(models.Model):
@@ -46,7 +48,10 @@ class CertificateTemplate(models.Model):
 
 
 class CertificateSignatory(models.Model):
-    """The VP or Director who signs certificates. One active per position."""
+    """The VP or Director who signs certificates. One active per position.
+
+    The signature image may be added later (ASSUMPTIONS 361): empty = "Add the VP's signature first." An image, once
+    stored, never changes: replacing it creates a new row (certificates keep what they were generated with)."""
 
     class Position(models.TextChoices):
         VP = "vp", "Vice President"
@@ -55,7 +60,7 @@ class CertificateSignatory(models.Model):
     signatory_id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=255)
     position = models.CharField(max_length=20, choices=Position.choices)
-    signature_image_path = models.ImageField(upload_to=signature_upload_to, max_length=255)
+    signature_image_path = models.ImageField(upload_to=signature_upload_to, max_length=255, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -82,7 +87,7 @@ class Certificate(models.Model):
 
     class Status(models.TextChoices):
         """Rules for moving between statuses live in certificates/services.py (ASSUMPTIONS 357).
-        Generated is shown as "Waiting for approval": the Director approves it."""
+        Generated is shown as "Waiting for approval": a member with can_approve_certificates approves it."""
 
         GENERATED = "generated", "Waiting for approval"
         APPROVED = "approved", "Approved"
@@ -121,7 +126,7 @@ class Certificate(models.Model):
         related_name="certificates",
     )
     activity = models.ForeignKey("activities.Activity", on_delete=models.PROTECT, related_name="certificates")
-    # The Director (a member with can_approve_certificates) who approved it; empty while waiting for approval.
+    # The member with can_approve_certificates who approved it; empty while waiting for approval.
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

@@ -9,7 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 
-from accounts.models import TBIMember
+from accounts.models import Role, TBIMember
 from accounts.permissions import require_staff_member
 from activities.services import PageResult, _paginate
 from startups.models import Startup
@@ -53,6 +53,23 @@ def mark_read(recipient: Recipient, notification_id: int) -> Notification:
         notification.is_read = True
         notification.save(update_fields=["is_read"])
     return notification
+
+
+def notify_directors_of_new_activity(activity, creator: TBIMember) -> int:
+    """In-app "<Name> created a new activity: <Title> (<Nov 20, 2026>)" for every active member whose role is the
+    Director (Role.DIRECTOR: who is told, never a permission; ASSUMPTIONS 361), linked to the activity. Nobody is
+    told when a Director creates it. Call it inside the transaction that saves the activity. No email."""
+    from activities.formatting import format_date  # activities.services imports this module's caller
+
+    if creator.role.role_name == Role.DIRECTOR:
+        return 0
+    recipients = TBIMember.objects.filter(is_active=True, role__role_name=Role.DIRECTOR).exclude(pk=creator.pk).order_by("pk")
+    message = f"{creator.name[:80]} created a new activity: {activity.title[:200]} ({format_date(activity.start_date)})"[:500]
+    created = Notification.objects.bulk_create(
+        Notification(member=recipient, activity=activity, type=Notification.ACTIVITY_CREATED, message=message)
+        for recipient in recipients
+    )
+    return len(created)
 
 
 def mark_all_read(recipient: Recipient) -> int:

@@ -102,14 +102,16 @@ def test_conducted_with_attendees_but_no_certificates(new_activity, move_to, reg
     assert attention.AttentionItem("Conducted with 1 attendee but no certificates generated yet.", "certificates") in items
 
 
-def test_certificates_waiting_for_approval(activity, registration, make_certificate) -> None:
-    """One item per activity; the wording depends on who looks (ASSUMPTIONS 357), never the count."""
+def test_certificates_waiting_for_approval(activity, registration, make_certificate, signatories) -> None:
+    """One line, the same for everyone (ASSUMPTIONS 361): the count, or the missing signature first."""
+    from certificates.models import CertificateSignatory
+
     make_certificate(registration)
     now = manila(activity.start_date - timedelta(days=20), 9)
-    assert "1 certificate waiting for the Director's approval." in texts(activity, now)
-    items = [item.text for item in attention.activity_attention(activity, now, can_approve_certificates=True)]
-    assert "1 certificate waiting for your approval." in items
-    assert len(items) == len(texts(activity, now))
+    assert "1 certificate waiting for approval." in texts(activity, now)
+    CertificateSignatory.objects.filter(pk=signatories[1].pk).update(signature_image_path=None)
+    items = texts(activity, now)
+    assert "Add the Director's signature first." in items and "1 certificate waiting for approval." not in items
 
 
 def test_failed_certificate_emails(activity, registration, make_certificate) -> None:
@@ -180,5 +182,5 @@ def test_activity_page_shows_the_box_or_all_set(client, director, new_activity, 
     url = reverse("activities:detail", args=[new_activity.pk])
     html = client.get(url).content.decode()
     assert "Needs attention (2)" in html and "Registration form not built yet." in html and "?tab=forms" in html
-    monkeypatch.setattr(attention, "activity_attention", lambda activity, now=None, can_approve_certificates=False: [])
+    monkeypatch.setattr(attention, "activity_attention", lambda activity, now=None: [])
     assert "All set" in client.get(url).content.decode()

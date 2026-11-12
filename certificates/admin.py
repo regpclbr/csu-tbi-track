@@ -38,10 +38,12 @@ class SignatoryAddForm(forms.ModelForm):
     class Meta:
         model = CertificateSignatory
         fields = ("name", "position", "signature_image_path")
-        labels = {"signature_image_path": "Signature image (PNG)"}
+        labels = {"signature_image_path": "Signature image (PNG or JPG, optional: it can be added later on an activity's Certificates tab)"}
 
     def clean_signature_image_path(self):
         file = self.cleaned_data.get("signature_image_path")
+        if not file:
+            return None
         try:
             services.validate_signature_image(file)
         except ValidationError as error:
@@ -129,7 +131,9 @@ class CertificateSignatoryAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
 
     @admin.display(description="Signature")
     def signature(self, obj: CertificateSignatory) -> str:
-        return format_html('<a href="{}">Download</a>', reverse("certificates:signature_image", args=[obj.pk])) if obj.pk else "-"
+        if not obj.pk or not obj.signature_image_path:
+            return "Not added yet"
+        return format_html('<a href="{}">Download</a>', reverse("certificates:signature_image", args=[obj.pk]))
 
     @admin.action(description="Deactivate selected signatories")
     def deactivate_selected(self, request, queryset) -> None:

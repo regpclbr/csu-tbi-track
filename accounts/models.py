@@ -8,13 +8,15 @@ from django.db.models.functions import Lower
 
 
 class Role(models.Model):
-    """A staff role. Never deleted. Permissions come only from the three flags, never from the name.
+    """A staff role. Never deleted. Permissions come only from the four flags, never from the name.
 
     SYSTEM_ADMINISTRATOR is the role create_superuser and seed_data give the system administrator: it manages users
     and does not create activities (separation of duties, ASSUMPTIONS 85 and 339).
     """
 
     SYSTEM_ADMINISTRATOR = "System Administrator"
+    # Used only to choose who is told about a new activity (ASSUMPTIONS 361), never for a permission.
+    DIRECTOR = "Director"
 
     role_id = models.BigAutoField(primary_key=True)
     role_name = models.CharField(max_length=100, unique=True)
@@ -24,7 +26,8 @@ class Role(models.Model):
     # Approve or return documents (ASSUMPTIONS 344): True only for Director by default; the System Administrator
     # turns it on or off in the Admin Console roles screen.
     can_approve_documents = models.BooleanField(default=False, db_default=False)
-    # Approve certificates (ASSUMPTIONS 357): True only for Director by default; switched like can_approve_documents.
+    # Approve certificates and add signatures (ASSUMPTIONS 357, 361): Director, both Project Heads and the System
+    # Administrator by default; switched like can_approve_documents. Allowed together with can_manage_users.
     can_approve_certificates = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 

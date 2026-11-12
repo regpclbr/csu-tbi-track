@@ -88,12 +88,13 @@ def test_new_signatory_replaces_the_active_one_for_that_position(admin_member) -
 @pytest.mark.parametrize(
     "file, message",
     [
-        (upload("sig.jpg", image_bytes(kind="JPEG")), "Only PNG"),
+        (upload("sig.gif", b"GIF89a"), "Only JPG or PNG"),
         (upload("sig.png", image_bytes(kind="JPEG")), "not a valid PNG"),
+        (upload("sig.jpg", image_bytes()), "not a valid JPG"),
         (upload("sig.png", b"GIF89a"), "not a valid PNG"),
     ],
 )
-def test_signature_must_be_a_real_png(admin_member, file, message) -> None:
+def test_signature_must_be_a_real_png_or_jpg(admin_member, file, message) -> None:
     with pytest.raises(ValidationError, match=message):
         services.add_signatory(admin_member, "VP", "vp", file)
     assert not CertificateSignatory.objects.exists()
@@ -129,14 +130,16 @@ def test_admin_downloads_images_as_attachments(client, admin_member, stored) -> 
         assert response["X-Content-Type-Options"] == "nosniff"
 
 
-def test_signature_images_are_never_public(client, director, stored, startup_portal) -> None:
+def test_signature_images_are_never_public(client, director, make_member, stored, startup_portal) -> None:
     template, signatory = stored
     urls = [reverse("certificates:signature_image", args=[signatory.pk]), reverse("certificates:template_image", args=[template.pk])]
     for url in urls:
         assert client.get(url).status_code == 302  # not logged in: sent to the staff login
-    client.force_login(director)  # staff without can_manage_users
+    client.force_login(make_member("Admin Staff"))  # staff with neither can_manage_users nor can_approve_certificates
     for url in urls:
         assert client.get(url).status_code == 403
+    client.force_login(director)  # approves certificates: the signature (Certificates tab), never the template
+    assert client.get(urls[0]).status_code == 200 and client.get(urls[1]).status_code == 403
     for url in urls:  # a logged-in startup is never staff
         assert startup_portal.get(url).status_code == 302
     # Never under /media/ (not even in DEBUG).

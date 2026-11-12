@@ -407,24 +407,18 @@ APPROVE_AND_MANAGE_REFUSED = (
     "Turn one of the two flags off."
 )
 
-APPROVE_CERTIFICATES_AND_MANAGE_REFUSED = (
-    "A role cannot both manage users and approve certificates (separation of duties). "
-    "Turn one of the two flags off."
-)
-
 
 def check_role_flags(
     *, can_create_activity: bool, can_manage_users: bool, can_approve_documents: bool = False,
     can_approve_certificates: bool = False,
 ) -> None:
-    """Separation of duties (ASSUMPTIONS 339, 344, 357): a role with can_manage_users may have none of
-    can_create_activity, can_approve_documents and can_approve_certificates."""
+    """Separation of duties (ASSUMPTIONS 339, 344): a role with can_manage_users may have neither
+    can_create_activity nor can_approve_documents. can_approve_certificates is allowed with it (ASSUMPTIONS 361):
+    the System Administrator approves certificates and adds signatures, but never generates them."""
     if can_create_activity and can_manage_users:
         raise MemberManagementError(BOTH_FLAGS_REFUSED)
     if can_approve_documents and can_manage_users:
         raise MemberManagementError(APPROVE_AND_MANAGE_REFUSED)
-    if can_approve_certificates and can_manage_users:
-        raise MemberManagementError(APPROVE_CERTIFICATES_AND_MANAGE_REFUSED)
 
 
 @transaction.atomic

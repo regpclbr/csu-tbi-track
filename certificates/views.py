@@ -21,7 +21,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from config.json import JsonResponse  # date-times in Manila time
 
-from accounts.permissions import Permission, permission_required, require_permission, staff_login_required
+from accounts.permissions import Permission, has_permission, permission_required, require_permission, staff_login_required
 from activities.models import Activity
 from config.parsing import parse_bool
 from documents import services as document_services
@@ -152,7 +152,7 @@ def signatory_json(signatory: CertificateSignatory) -> dict:
         "position_label": signatory.get_position_display(),
         "is_active": signatory.is_active,
         "created_at": signatory.created_at,
-        "signature_url": reverse("certificates:signature_image", args=[signatory.pk]),
+        "signature_url": reverse("certificates:signature_image", args=[signatory.pk]) if signatory.signature_image_path else None,
     }
 
 
@@ -371,12 +371,19 @@ def template_image(request: HttpRequest, template_id: int) -> FileResponse:
     return _file_response(template.file_path, f"template-{template.pk}{_suffix(template.file_path.name)}")
 
 
-@permission_required(Permission.MANAGE_USERS)
+@staff_login_required
 @require_GET
 def signature_image(request: HttpRequest, signatory_id: int) -> FileResponse:
-    """Signature images are never public: Admin only."""
+    """Signature images are never public: members who manage users (Admin Console) or approve certificates (the
+    Signatures section of the Certificates tab, ASSUMPTIONS 361). 404 while no image was added."""
+    if not (has_permission(request.user, Permission.MANAGE_USERS)
+            or has_permission(request.user, Permission.APPROVE_CERTIFICATES)):
+        require_permission(request.user, Permission.APPROVE_CERTIFICATES)  # 403 with the usual message
     signatory = get_object_or_404(CertificateSignatory, pk=signatory_id)
-    return _file_response(signatory.signature_image_path, f"signature-{signatory.pk}.png")
+    if not signatory.signature_image_path:
+        raise Http404("No signature image was added yet.")
+    name = signatory.signature_image_path.name
+    return _file_response(signatory.signature_image_path, f"signature-{signatory.pk}{_suffix(name)}")
 
 
 def _suffix(name: str) -> str:

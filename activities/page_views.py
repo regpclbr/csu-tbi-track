@@ -178,8 +178,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
         "registration": pages.registration_summary(activity),
-        "attention": attention.activity_attention(
-            activity, can_approve_certificates=has_permission(request.user, Permission.APPROVE_CERTIFICATES)),
+        "attention": attention.activity_attention(activity),
         # The public address (SITE_URL), never the Host header of this request.
         "register_url": registration_services.registration_page_url(activity),
     }

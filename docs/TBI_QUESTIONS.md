@@ -61,16 +61,18 @@ all of them are to be validated with the TBI too.
 
 ## Certificates
 
-- **Items 46, 357:** Is this the right certificate process: certificates are generated after the activity is Conducted, the TBI Director approves all certificates of an activity at once in the system ("Approve all for this activity", or one at a time), then participants get theirs by email after their evaluation and resource persons get a printed copy? An issued certificate is never changed (a wrong one is replaced by a new certificate with a new number).
+- **Items 46, 357, 361:** Is this the right certificate process: certificates are generated after the activity is Conducted (by the Director or a Project Head), then the Director, a Project Head or the System Administrator approves all certificates of the activity at once in the system ("Approve all for this activity", or one at a time), then participants get theirs by email after their evaluation and resource persons get a printed copy? An issued certificate is never changed (a wrong one is replaced by a new certificate with a new number).
+- **Item 361 (approvers):** Should the two Project Heads and the System Administrator really approve certificates and add signatures, or only the Director? (The System Administrator can switch this per role in the Admin Console.) Is it acceptable that the System Administrator approves certificates even though they manage the user accounts?
+- **Item 361 (signatures):** The VP's and the Director's signature images are added on each activity's Certificates tab (PNG or JPG). Who in the office will have the signature image files, and is it acceptable that an approver uploads them? Is a JPG acceptable (it prints with a white background), or should we require a transparent PNG?
 - **Item 357 (VP):** The VP does not approve in the system: their signature image is printed on every certificate. Is that acceptable, or must the VP also approve each activity's certificates?
-- **Item 357 (stand-in):** If the Director is unavailable, who may approve certificates? (The System Administrator can give the approval right to another role in the Admin Console.)
-- **Item 357 (changes):** If a certificate is regenerated after approval (for example with a new design or signature), it waits for the Director's approval again. Is that right?
+- **Items 357, 361 (changes):** If a certificate is regenerated after approval (new design) or a signature is replaced, it waits for approval again. Is that right?
 - **Item 183 (wording):** What exactly should a certificate say? (Current placeholder: "Certificate of Participation is presented to <name> for participating in "<activity>" held on <dates> at <venue>. Given on <end date> at CSU Technology Business Incubator." Resource persons: "Certificate of Appreciation … in grateful recognition of their valuable contribution as resource person on "<topic>" …".) What is the official name of the office to print?
 - **Item 183 (signatories):** Which titles should appear under the two signatures (for example "Director, CSU-TBI" and "Vice President for Research, Development and Extension"), and in which order (now: Director on the left, VP on the right)?
 - **Item 183 (date):** Should the "Given on" date be the activity's last day (now) or the day the certificate is approved or issued?
 - **Item 177:** Can the TBI give us its official certificate design as an image (A4 landscape, PNG or JPG, at least 1754 × 1240 pixels), with the centre left empty for the text?
 - **Item 176:** Is the number format `TBI-2026-00001` (year and a sequence that restarts every year) acceptable, or does the TBI already use another format?
-- **Item 358:** Staff can now preview each certificate exactly as it will be printed, with both signatures (marked "PREVIEW" in a corner until the Director approves it). May every staff member see these previews, or only some roles?
+- **Item 358:** Staff can now preview each certificate exactly as it will be printed, with both signatures (marked "PREVIEW" in a corner until it is approved). May every staff member see these previews, or only some roles?
+- **Item 361 (new activity):** When someone other than the Director creates an activity, the Director gets an in-app notification. Should the Director also get an email (for each activity, or a daily summary)?
 - **Item 175:** Participants type the name printed on their certificate and the email it is sent to when they submit the evaluation, and there is no way to correct them afterwards. Is that acceptable, or should staff be able to fix a typo before the certificate is issued?
 - **Item 189:** When a resource person's certificate is handed over, does the TBI keep any proof (a signed receipt, a photo)? Should it be uploaded to the system?
 - **Item 194:** What should happen to the certificate of a participant who attended but never submits the evaluation? (Now it stays Approved and is never sent.)
@@ -89,7 +91,7 @@ all of them are to be validated with the TBI too.
 - **Item 2:** When all slots are taken, should registration simply close (no waiting list)?
 - **Item 3:** Are walk-ins (people who did not register) never recorded as attendees?
 - **Item 4:** Should evaluations be linked to the person (not anonymous), open only after the activity ends, and only for people marked present?
-- **Item 5:** Should certificates be emailed automatically once the Director has approved them and the participant has submitted the evaluation?
+- **Item 5:** Should certificates be emailed automatically once they are approved and the participant has submitted the evaluation?
 - **Item 6:** Do participants get a Certificate of Participation by email, and resource persons a Certificate of Appreciation in hard copy?
 - **Item 7:** Is one certificate design used for all activities, managed by the Admin?
 - **Item 8:** Must every uploaded document be reviewed and approved before it counts?

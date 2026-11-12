@@ -26,14 +26,16 @@ DOCUMENT_STATUSES = [DocumentStatus.FOR_REVIEW, DocumentStatus.APPROVED]
 
 # role_name: (can_create_activity, can_manage_users, can_approve_documents, can_approve_certificates, description)
 ROLES: dict[str, tuple[bool, bool, bool, bool, str]] = {
-    # Only the Director approves or returns documents (ASSUMPTIONS 344) and approves certificates (357).
-    "Director": (True, False, True, True, "Director of the Technology Business Incubator."),
-    "Incubation Project Head": (True, False, False, False, "Leads incubation programs for startups."),
-    "Community Development Head": (True, False, False, False, "Leads community and MSME programs."),
+    # Only the Director approves or returns documents (ASSUMPTIONS 344). Certificates are approved (and signatures
+    # added) by the Director, both Project Heads and the System Administrator (ASSUMPTIONS 361).
+    Role.DIRECTOR: (True, False, True, True, "Director of the Technology Business Incubator."),
+    "Incubation Project Head": (True, False, False, True, "Leads incubation programs for startups."),
+    "Community Development Head": (True, False, False, True, "Leads community and MSME programs."),
     "Admin Staff": (False, False, False, False, "Supports activities and documents; cannot create activities."),
-    # Separation of duties (ASSUMPTIONS 85, 339): manages users, never creates activities or approves anything.
+    # Separation of duties (ASSUMPTIONS 85, 339): manages users, never creates activities or approves documents;
+    # may approve certificates (ASSUMPTIONS 361).
     Role.SYSTEM_ADMINISTRATOR: (
-        False, True, False, False,
+        False, True, False, True,
         "System administrator: manages user accounts and system settings; does not create activities.",
     ),
 }

@@ -9,12 +9,14 @@ from urllib.parse import urlencode
 
 from django.db.models import Count, Q
 from django.http import HttpRequest, QueryDict
+from django.conf import settings
 from django.urls import reverse
 
 from accounts.permissions import Permission, has_permission
 from activities.models import Activity
 from config.mail import prints_emails
 from documents import pages as document_pages
+from registrations.models import EvaluationSubmission
 
 from . import services
 from .models import Certificate
@@ -95,24 +97,61 @@ def approval_summary(certificates: list[Certificate]) -> str:
 
 
 def approval_panel(member, activity: Activity, certificates: list[Certificate]) -> dict | None:
-    """The per-activity approval screen: the summary of the certificates waiting for approval, their previews (the
-    first one shown, Previous / Next for the others) and "Approve all for this activity" (disabled with the service's
-    reason, services.approval_closed_reason). None when nothing waits."""
+    """The per-activity approval card: the summary of the certificates waiting for approval and "Approve all for this
+    activity" (disabled with the service's reason, services.approval_closed_reason, e.g. "Add the VP's signature
+    first."). The reason is shown to everyone; the button only to members with can_approve_certificates. None when
+    nothing waits."""
     waiting = [c for c in certificates if c.status == Status.GENERATED]
     if not waiting:
         return None
-    can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
     return {
         "count": len(waiting),
         "summary": approval_summary(waiting),
-        "can_approve": can_approve,
-        "closed_reason": services.approval_closed_reason(activity) if can_approve else None,
-        "previews": [
-            {"url": reverse("certificates:preview", args=[c.pk]), "number": c.certificate_number,
-             "recipient": recipient(c), "kind": KIND_LABELS[c.recipient_type]}
-            for c in waiting
-        ],
+        "can_approve": has_permission(member, Permission.APPROVE_CERTIFICATES),
+        "closed_reason": services.approval_closed_reason(activity),
     }
+
+
+def signatures_panel(member, activity: Activity) -> dict:
+    """The Signatures section (ASSUMPTIONS 361): a VP and a Director slot with the signatory this activity's
+    certificates use (services.activity_signatories), whether the image is there, and the upload form for members
+    with can_approve_certificates (a thumbnail too: signature images are shown only to them and the Admin)."""
+    can_edit = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    slots = []
+    for position, signatory in services.activity_signatories(activity).items():
+        present = services.signature_present(signatory)
+        slots.append({
+            "position": position,
+            "label": services.SIGNATORY_LABELS[position],
+            "signatory": signatory,
+            "present": present,
+            "image_url": reverse("certificates:signature_image", args=[signatory.pk]) if present and can_edit else "",
+            "closed_reason": services.no_signatory_reason(position) if signatory is None else "",
+            "upload_url": reverse("activities:certificates_signature", args=[activity.pk, position]),
+        })
+    return {"slots": slots, "can_edit": can_edit, "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB}
+
+
+def preview_items(certificates: list[Certificate]) -> list[dict]:
+    """The large preview with Previous / Next (ASSUMPTIONS 361): every certificate of the activity, in number order.
+    name_final=False: a participant who has not evaluated yet (the preview shows the registration name; the page
+    says "The final name comes from the evaluation.")."""
+    registration_ids = [c.registration_id for c in certificates if c.registration_id]
+    evaluated = set(EvaluationSubmission.objects.filter(registration_id__in=registration_ids)
+                    .values_list("registration_id", flat=True))
+    return [
+        {
+            "pk": c.pk,
+            "url": reverse("certificates:preview", args=[c.pk]),
+            "download_url": reverse("certificates:download", args=[c.pk]),
+            "number": c.certificate_number,
+            "recipient": recipient(c),
+            "kind": KIND_LABELS[c.recipient_type],
+            "status": c.get_status_display(),
+            "name_final": c.recipient_type == RecipientType.RESOURCE_PERSON or c.registration_id in evaluated,
+        }
+        for c in certificates
+    ]
 
 
 def _with_evidence_count(queryset):
@@ -148,6 +187,8 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
         "generation_reason": services.generation_closed_reason(activity) if can_act else None,
         "bulk_buttons": buttons,
         "approval": approval_panel(member, activity, certificates),
+        "signatures": signatures_panel(member, activity),
+        "previews": preview_items(certificates),
         "emails_printed": prints_emails() and any(c.delivery_method == DeliveryMethod.EMAIL for c in certificates),
         "problems": problems or [],
         "back": tab_url(activity.pk),

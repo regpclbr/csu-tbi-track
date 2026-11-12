@@ -335,7 +335,8 @@ def recent_audit_entries(limit: int = RECENT_CHANGES_LIMIT) -> list[ActivityAudi
 def save_new_activity(
     member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None
 ) -> Activity:
-    """Validate and save an unsaved Activity as Draft with its categories, and write its first audit row.
+    """Validate and save an unsaved Activity as Draft with its categories, write its first audit row and notify the
+    Director (notifications.services.notify_directors_of_new_activity).
 
     Used by create_activity() and by the Django admin's add form. `now` is only for tests
     and the demo seed (to create activities "as of" an earlier day); real calls leave it out.
@@ -348,6 +349,10 @@ def save_new_activity(
     activity.save()
     activity.participant_categories.set(categories)
     _write_audit(activity, member, [(STATUS_LABEL, "", activity.status)])
+    # Tell the Director (in-app, same transaction; not when a Director creates it; ASSUMPTIONS 361).
+    from notifications.services import notify_directors_of_new_activity  # notifications.services imports this module
+
+    notify_directors_of_new_activity(activity, member)
     return activity
 
 

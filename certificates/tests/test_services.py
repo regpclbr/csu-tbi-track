@@ -109,7 +109,7 @@ def test_approval_needs_both_signature_images(certificate, signatories) -> None:
     from django.conf import settings
 
     (Path(settings.MEDIA_ROOT) / signatories[1].signature_image_path.name).unlink()
-    with pytest.raises(CertificateStatusError, match="The Director's signature image is missing"):
+    with pytest.raises(CertificateStatusError, match="Add the Director's signature first."):
         set_certificate_status(certificate, S.APPROVED)
     certificate.refresh_from_db()
     assert certificate.status == S.GENERATED

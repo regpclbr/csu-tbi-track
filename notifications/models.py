@@ -13,6 +13,7 @@ class Notification(models.Model):
     DOCUMENT_OVERDUE = "document_overdue"
     DOCUMENT_RETURNED = "document_returned"
     DOCUMENT_WAITING_FOR_REVIEW = "document_waiting_for_review"  # to members who can approve documents, not the uploader
+    ACTIVITY_CREATED = "activity_created"  # to every active Director when someone else creates an activity (ASSUMPTIONS 361)
     REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
 
     notification_id = models.BigAutoField(primary_key=True)
