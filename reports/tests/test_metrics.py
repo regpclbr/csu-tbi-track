@@ -267,7 +267,7 @@ def test_s5_s6_certificates_now(make_activity, register, make_certificate_row, e
     unevaluated = register(second, "Not yet", attended=True)  # waiting for the evaluation: not counted
     make_certificate_row(activity=second, registration=unevaluated, status=Certificate.Status.GENERATED)
     assert metrics.certificates_now(YEAR_2026) == {"waiting_activities": 2, "waiting_certificates": 3, "approved_not_issued": 1}
-    CertificateSignatory.objects.filter(position="vp").update(signature_image_path=None)  # no VP signature: none ready
+    CertificateSignatory.objects.filter(position="Vice President", default_slot="right").update(signature_image_path=None)  # no VP signature: none ready
     assert metrics.certificates_now(YEAR_2026)["waiting_certificates"] == 0
 
 

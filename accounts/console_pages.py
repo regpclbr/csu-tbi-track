@@ -10,10 +10,12 @@ from django.core.exceptions import ValidationError
 from django.http import QueryDict
 from django.urls import reverse
 
-from certificates.models import CertificateSignatory, CertificateTemplate
+from certificates import services as certificate_services
+from certificates.models import CertificateTemplate
 from config.parsing import parse_bool
 
 from .models import Role
+from .permissions import Permission, has_permission
 
 # The tab row of every console page: (label, URL name, icon). Startups live on their own page (sync, set-password links).
 TABS = [
@@ -75,16 +77,14 @@ def role_from(value: str | None) -> Role | None:
     return Role.objects.filter(pk=value).first() if value.isdigit() else None
 
 
-def certificate_design() -> dict:
-    """Templates (newest first) and signatories by position, with the active one of each position."""
+def certificate_design(member=None) -> dict:
+    """Templates (newest first) and, read only, the default signatories (ASSUMPTIONS 363: the signatory list and the
+    defaults are managed on the Signatories page by members with can_approve_certificates)."""
     templates = list(CertificateTemplate.objects.select_related("uploaded_by").order_by("-is_active", "-created_at"))
-    positions = []
-    for value, label in CertificateSignatory.Position.choices:
-        people = list(CertificateSignatory.objects.filter(position=value).order_by("-is_active", "-created_at"))
-        positions.append({"value": value, "label": label, "active": next((s for s in people if s.is_active), None), "signatories": people})
+    defaults = certificate_services.default_signatories()
     return {
         "templates": templates,
         "active_template": next((t for t in templates if t.is_active), None),
-        "positions": positions,
-        "position_choices": CertificateSignatory.Position.choices,
+        "default_signatories": [(certificate_services.SLOT_LABELS[slot], defaults[slot]) for slot in certificate_services.SLOTS],
+        "can_manage_signatories": member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES),
     }

@@ -20,6 +20,7 @@ def run_prepare_certificate(certificate_id: int) -> dict:
     try:
         return {"certificate_id": certificate_id, "result": services.prepare_certificate(certificate_id)}
     except Exception as error:
+        services.record_render_failure(certificate_id, error)  # the tab shows "PDF failed — Retry" (ASSUMPTIONS 368)
         logger.error("Rendering certificate %s failed: %s. The daily retry will try again.", certificate_id, type(error).__name__)
         return {"certificate_id": certificate_id, "result": "failed", "reason": type(error).__name__}
 

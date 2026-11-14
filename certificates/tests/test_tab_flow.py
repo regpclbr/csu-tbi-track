@@ -170,7 +170,7 @@ def test_replacing_a_signature_changes_the_preview_url(generated, director) -> N
     activity, people = generated
     client = client_for(director)
     before = preview_items(tab_html(client, activity))[0]["url"]
-    client.post(reverse("activities:certificates_signature", args=[activity.pk, "director"]),
+    client.post(reverse("activities:certificates_signature", args=[activity.pk, "left"]),
                 {"file": upload("dir.png", image_bytes(40, 20))})
     after = preview_items(tab_html(client, activity))[0]["url"]
     assert before != after and before.split("?")[0] == after.split("?")[0]
@@ -208,7 +208,7 @@ def test_an_issued_certificate_shows_its_sent_copy(generated, director, evaluate
 def test_replace_sends_approved_back_to_waiting(generated, director, design) -> None:
     activity, _ = generated
     services.approve_certificate(director, appreciation_of(activity))
-    client_for(director).post(reverse("activities:certificates_signature", args=[activity.pk, "director"]),
+    client_for(director).post(reverse("activities:certificates_signature", args=[activity.pk, "left"]),
                               {"file": upload("dir.png", image_bytes(40, 20))})
     assert appreciation_of(activity).status == S.GENERATED
 
@@ -242,7 +242,7 @@ def test_approve_all_ready_disabled_with_reason_for_approvers_only(generated, di
     html = tab_html(client_for(director), activity)
     assert 'disabled aria-describedby="approval-reason"' in html and "Approve all ready certificates" in html
     assert 'id="approve-ready-dialog"' not in html  # no confirm dialog while closed
-    assert "Add the VP&#x27;s signature first." in html or "Add the VP's signature first." in html
+    assert "Add the signature of Dr. Vice Pres (Vice President) first." in html
     staff_html = tab_html(client_for(make_member("Admin Staff")), activity)
     assert "Approve all ready certificates" not in staff_html
 
@@ -250,7 +250,9 @@ def test_approve_all_ready_disabled_with_reason_for_approvers_only(generated, di
 def test_list_has_no_checkboxes_or_approve_selected(generated, director) -> None:
     activity, _ = generated
     html = tab_html(client_for(director), activity)
-    assert 'type="checkbox"' not in html and "Approve selected" not in html and "Generate certificates" not in html
+    # The only checkboxes are the upload dialogs' "Keep the background" (ASSUMPTIONS 366): no row checkboxes.
+    assert html.count('type="checkbox"') == html.count('name="keep_background"')
+    assert "Approve selected" not in html and "Generate certificates" not in html
 
 
 def test_admin_staff_cannot_post_approvals(generated, make_member, evaluate) -> None:

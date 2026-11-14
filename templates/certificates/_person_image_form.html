@@ -1,0 +1,16 @@
+{% comment %}Inside the Signatories page's Signature dialog (`row`, `person` from the loop; ASSUMPTIONS 363). Adding the first
+image is stored on the person; replacing one is a new version, and row.impact says what it changes. POST to
+certificates:signatory_image (services.replace_signature).{% endcomment %}
+<form method="post" action="{% url 'certificates:signatory_image' person.pk %}" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ busy: false }" @submit="busy = true">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">{{ person.name }} · {{ person.position }}</p>
+  {% if person.signature_image_path and row.impact %}
+    <p class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="note">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>{{ row.impact }}</span></p>
+  {% endif %}
+  {% include "certificates/_signature_file_field.html" with prefix=row.image_id required=True %}
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary" :disabled="busy">{% if person.signature_image_path %}Replace signature{% else %}Add signature{% endif %}</button>
+  </div>
+</form>

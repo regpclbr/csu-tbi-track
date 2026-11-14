@@ -1,0 +1,71 @@
+{% comment %}
+"Who signs the certificates" on the activity create / edit form (ASSUMPTIONS 365; activities.pages.signatory_form_section).
+Two dropdowns pre-filled with the defaults (new activity) or the activity's people (edit), "Name · Position" for active
+people, plus "Add a person…" for can_approve_certificates (opens #add-signatory-dialog; the new person is added to both
+dropdowns and chosen here). Next to each, the optional "Title on this certificate" (its placeholder follows the chosen
+person's usual position). A chosen slot has no empty option: it can be switched, never emptied. The rules are checked by
+certificates.services (assign_default_signatories / set_activity_signatories); errors appear under the fields.
+{% endcomment %}
+<section class="card p-6" aria-labelledby="section-signatories"
+         x-data="{
+           changed(event) {
+             const select = event.target;
+             if (select.value === 'add') {
+               select.value = select.dataset.previous;
+               document.getElementById('add-signatory-slot').value = select.dataset.signatory;
+               document.getElementById('add-signatory-dialog').showModal();
+               return;
+             }
+             select.dataset.previous = select.value;
+             this.placeholder(select);
+           },
+           placeholder(select) {
+             const option = select.selectedOptions[0];
+             const input = this.$root.querySelector('[data-title=' + select.dataset.signatory + ']');
+             input.placeholder = (option && option.dataset.position) || 'The person’s usual position';
+           },
+           added(detail) {
+             for (const select of this.$root.querySelectorAll('select[data-signatory]')) {
+               const option = new Option(detail.label, String(detail.pk));
+               option.dataset.position = detail.position;
+               select.insertBefore(option, select.querySelector('option[value=add]'));
+               if (select.dataset.signatory === detail.slot) {
+                 select.value = String(detail.pk);
+                 select.dataset.previous = select.value;
+                 this.placeholder(select);
+               }
+             }
+             document.getElementById('add-signatory-dialog').close();
+           }
+         }"
+         @signatory-added.window="added($event.detail)">
+  {% include "components/section_header.html" with id="section-signatories" title="Who signs the certificates" subtitle="The two people printed on this activity's certificates (left and right). New activities start with the default signatories; change them here or later on the Certificates tab." %}
+  {% if signatories.no_defaults %}
+    <p class="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="note">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>There are no default signatories yet. Choose two people here, or later on the Certificates tab: certificates are created only once both are chosen.</span></p>
+  {% endif %}
+  <div class="grid gap-4 md:grid-cols-2">
+    {% for slot in signatories.slots %}
+      <div class="space-y-3 rounded-2xl border border-line p-4">
+        <div>
+          <label for="{{ slot.field.id_for_label }}" class="text-sm font-semibold text-ink">{{ slot.label }}</label>
+          <select name="{{ slot.field.html_name }}" id="{{ slot.field.id_for_label }}" class="field-input field-select mt-1.5"
+                  data-signatory="{{ slot.slot }}" data-previous="{{ slot.field.value|default:'' }}" @change="changed($event)"
+                  {% if slot.field.errors %}aria-invalid="true" aria-describedby="{{ slot.field.id_for_label }}-error"{% endif %}>
+            {% for option in slot.options %}<option value="{{ option.value }}" data-position="{{ option.position }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+          </select>
+          {% if slot.field.errors %}<p id="{{ slot.field.id_for_label }}-error" class="field-error">{{ slot.field.errors|join:" " }}</p>{% endif %}
+          {% if slot.inactive %}<p class="mt-1.5 text-xs text-amber-900">This person is inactive. Choose an active person (or use the current version on the Certificates tab).</p>{% endif %}
+        </div>
+        <div>
+          <label for="{{ slot.title.id_for_label }}" class="text-sm font-semibold text-ink">Title on this certificate <span class="font-normal text-muted">(optional)</span></label>
+          <input type="text" name="{{ slot.title.html_name }}" id="{{ slot.title.id_for_label }}" value="{{ slot.title.value|default:'' }}" maxlength="255"
+                 class="field-input mt-1.5" placeholder="{{ slot.placeholder }}" data-title="{{ slot.slot }}"
+                 aria-describedby="{% if slot.title.errors %}{{ slot.title.id_for_label }}-error{% else %}{{ slot.title.id_for_label }}-help{% endif %}"{% if slot.title.errors %} aria-invalid="true"{% endif %}>
+          {% if slot.title.errors %}<p id="{{ slot.title.id_for_label }}-error" class="field-error">{{ slot.title.errors|join:" " }}</p>{% endif %}
+          <p id="{{ slot.title.id_for_label }}-help" class="field-help">Printed instead of the person's position, on this activity's certificates only. Empty: the position prints.</p>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>

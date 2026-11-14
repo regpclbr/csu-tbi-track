@@ -68,26 +68,36 @@ owner is a student, so explain important decisions briefly and keep the code sim
   with `formatting.changed_by_name()`. Certificate rows in History use the label "Certificates"
   (`activities.services.write_certificate_history`).
 - Certificate status: created by the System → Generated ("Waiting for approval") → Approved (can_approve_certificates, only
-  when ready) → Issued; Approved → Generated only when the current design is applied again or a signature is replaced;
-  Issued is final. Change it only through `certificates.services.set_certificate_status()`, which
-  enforces the rules (ASSUMPTIONS 357). CERTIFICATE has `approved_by` / `approved_at` / `send_failed_at` (no review or
-  sign-off columns).
+  when ready) → Issued; Approved → Generated only when the current design is applied again, the activity's signatory
+  changes or a new version of a signatory is saved; Issued stays Issued (a reissue keeps the status, ASSUMPTIONS 364).
+  Change it only through `certificates.services.set_certificate_status()`, which enforces the rules (ASSUMPTIONS 357).
+  CERTIFICATE has `approved_by` / `approved_at` / `send_failed_at` / `reissued_at`, `left_signatory` / `right_signatory`,
+  `left_signatory_title` / `right_signatory_title` (the titles printed, ASSUMPTIONS 365), `render_failed_at` /
+  `render_error` (plain words, ASSUMPTIONS 368) (no review, sign-off, VP or Director columns).
 - ROLE.can_approve_certificates (ASSUMPTIONS 357, 361): approve certificates and add/replace signatures. Migration
   accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and System Administrator (not
   Admin Staff); seed only on create, roles screen switch `set_role_certificate_approval`, no last-approver guard, allowed
   together with can_manage_users (the System Administrator approves but never generates: that needs can_create_activity).
 - `Role.DIRECTOR` ("Director") is used only to choose who gets the new-activity notification
   (`notifications.services.notify_directors_of_new_activity`), never for a permission.
-- CERTIFICATE_SIGNATORY.signature_image_path is nullable (certificates/0005, ASSUMPTIONS 361): a signatory can exist
-  before its signature image; approval is refused until both images are there.
+- CERTIFICATE_SIGNATORY is a list of people (ASSUMPTIONS 363): name, free-text position, nullable signature image,
+  is_active, `default_slot` (left/right, one per slot: who a new activity starts with), `previous_version` (the row it
+  replaced, ASSUMPTIONS 367). A row a certificate uses never changes: a new image or a name/position edit is a NEW row
+  (`services._new_version`) that every activity on ANY older version moves to; Issued certificates keep the old row.
+  ACTIVITY_SIGNATORY (activity, signatory, slot left/right, `position_on_certificate` = optional "Title on this
+  certificate"; one per slot, never the same person twice, never emptied) is changed only through
+  `set_activity_signatory` / `set_activity_signatories` / `use_current_version` (can_create_activity or
+  can_approve_certificates) and `assign_default_signatories` / `fill_empty_slots_from_defaults` (System).
+  Approval is refused until both images are there. 30 tables.
 - File path columns use `max_length=255`.
 
 ## Login and permissions
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
   `staff_login_required` on views, `require_permission()` in services. Never rely on hiding a button.
 - `Permission.CREATE_ACTIVITY` (create/edit activities), `Permission.MANAGE_USERS` (Admin Console:
-  users, roles, master data, certificate design and signatories), `Permission.APPROVE_DOCUMENTS` (approve/return documents),
-  `Permission.APPROVE_CERTIFICATES` (approve certificates, add/replace signatures on the Certificates tab).
+  users, roles, master data, certificate design), `Permission.APPROVE_DOCUMENTS` (approve/return documents),
+  `Permission.APPROVE_CERTIFICATES` (approve and reissue certificates, the signatory list and its images and defaults).
+  Either of several flags: `has_any_permission` / `require_any_permission`.
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email.
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
@@ -105,7 +115,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Activities
 - Every activity change goes through `activities/services.py` (create, update, change_status,
-  add/remove resource person), also from the Django admin and the demo seed. Never call
+  add/remove resource person), also from the Django admin and the demo seed. The create/edit form's "Who signs the
+  certificates" goes in the same call (`signatories=` on `create_activity` / `create_activity_with_documents` /
+  `update_activity`; ASSUMPTIONS 365). Never call
   `Activity.objects.create()` / `.save()` directly for user edits: the audit log would be skipped.
 - Moves: Draft→Scheduled→Ongoing→Conducted, plus Scheduled→Draft when nobody has registered. Conducted is final and
   read-only. Staff move by hand (`change_status`); the system also moves Scheduled→Ongoing at the start and
@@ -243,19 +255,37 @@ owner is a student, so explain important decisions briefly and keep the code sim
   PDFs only through `certificates/pdf.py` (`get_renderer()`; tests use `certificates.testing.FakeRenderer`
   from the root conftest, a real WeasyPrint render fails a test; only tests marked `real_weasyprint`
   render for real, skipped without Pango). Images go in as `data:` URIs only.
-- Templates/signatories: Admin only, image checks in `validate_template_image` / `validate_signature_image` (signatures:
-  PNG or JPG), files never change after upload (new row instead), served only by `certificates/views.py` (never
-  `/media/`; signature images to can_manage_users or can_approve_certificates). Exception (ASSUMPTIONS 361): members
-  with can_approve_certificates add or replace a signature on the activity's Certificates tab only through
-  `upload_signature` (add = fills a signatory with no image; replace = new signatory row; the activity's not-Issued
-  certificates switch to it via `_refresh_certificates`: PDF removed, Approved → Generated; logged on `certificates.audit`).
+- Templates: Admin only (`validate_template_image`). Signatories (ASSUMPTIONS 363): can_approve_certificates only, on the
+  Signatories page `/certificates/signatories/` (`add_signatory`, `edit_signatory`, `replace_signature`,
+  `deactivate_signatory` (refused for an active default), `set_default_signatories`) and the tab's Signatures section
+  (choose per slot and the title, `upload_signature`, "Add a person"); images PNG or JPG (`validate_signature_image`), a
+  white background made transparent on upload unless "Keep the background" (`prepare_signature_file`, Pillow only in
+  `certificates/imaging.py`; preview before saving `signature_preview`; "Remove white background" =
+  `remove_signature_background`, a new version; ASSUMPTIONS 366); files never change after upload; served only by `certificates/views.py` (never `/media/`; signature images to can_manage_users or
+  can_approve_certificates). A new version refreshes the not-Issued certificates of EVERY activity using the person
+  (`_refresh_certificates`: PDF removed, Approved → Generated); its dialog shows `version_impact_text()` first. Logged on
+  `certificates.audit` (IDs only). The Admin Console only shows the defaults; the Django admin is view only for both tables.
 - Certificates are created only by the System (ASSUMPTIONS 362): `generate_missing_certificates(activity, registration_ids=)`
-  (no member; Conducted only, active template + VP + Director signatory rows required, missing ones only, safe to rerun,
+  (no member; Conducted only, active template + both saved slots required (`design_fields(activity)`; an empty slot is
+  never filled here, ASSUMPTIONS 366), missing ones only, safe to rerun,
   one History row by System "N created automatically (…)"), called through `auto_generate_certificates` from the move to
   Conducted, from `set_attendance` (marked after Conducted) and the 5-minute job (`generate_pending_certificates`). No
   Generate button or endpoint. Numbers from `_certificate_numbers()` (`TBI-<Manila year>-<00001>`, advisory lock). Each
   certificate keeps the design it was generated with. Undoing attendance deletes a certificate that is still waiting
   (`delete_certificate_for_undone_attendance`, History row, number gap); refused once approved or evaluated.
+- Who signs (ASSUMPTIONS 365-367): the printed title = `services.printed_title()` (the slot's "Title on this
+  certificate", else the position), stored on each certificate (`design_fields`). Only saved slots count
+  (`activity_signatories`; no default fallback): a new activity gets the defaults, an empty slot stays empty until
+  chosen or a default is set (`fill_empty_slots_from_defaults`: empty slots of activities without certificates only,
+  History row by System). Needs attention: "Choose who signs the certificates (left/right)" and "A signatory on this
+  activity is inactive" (normal warnings, only while not every certificate is Issued). Inactive person on a slot:
+  amber note + "Use the current version" (`current_version_of`).
+- "Issued with an old signature" is computed only by `services.outdated_q()` (Issued, left or right row or its stored
+  title is not the activity's current one). `reissue_certificates` (can_approve_certificates; preview button + "Reissue all outdated
+  certificates (N)" with a confirm dialog): same number, still Issued, `reissued_at`, file/sent cleared, re-rendered by
+  `prepare_certificate` (same file name: the old PDF is replaced only when the new one is written), participants emailed
+  "Updated copy", resource persons "Not handed over (updated copy to print)" until Mark handed over (new `issued_at`).
+  The Needs attention line is `informational` (never counted: `attention.warning_count`) (ASSUMPTIONS 364).
 - "Ready for approval" is computed only by `services.readiness()` / `readiness_map()` (both signature images; participants
   also the evaluation; labels "Waiting for signatures", "Waiting for evaluation", "Evaluation closed without an answer")
   and, for counts, `ready_for_approval_q()`. Never store it.
@@ -272,6 +302,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `certificate_email`, checked in `registrations.services.clean_certificate_details`), never the registration.
   Approved + evaluated (whichever is last) → `prepare_certificate` (task) renders, issues, queues the email.
   Resource persons: rendered on approval, Issued at hand-over, never emailed.
+- An Approved (or reissued) certificate without a PDF shows why: `services.pdf_state()` (approved before the evaluation
+  rule — waiting / closed, PDF failed — Retry with `render_error`, waiting for the background worker, PDF being prepared;
+  labels `pages.PDF_STATE_LABELS`). Failures are recorded by `record_render_failure` in plain words
+  (`render_error_text`, never the raw message); Retry = `retry_certificate_pdfs` (can_approve_certificates); the 5-minute
+  job re-queues renders stalled for 10 minutes (`queue_stalled_preparations`) (ASSUMPTIONS 368).
 - `send_certificate` locks the row (`select_for_update(of=("self",))`), sets `sent_at` only after sending; a failure sets
   `send_failed_at` ("Send failed" + Resend on the tab, ASSUMPTIONS 360).
   Retries: 5/30/120 min one-off schedules, then the 8:30 daily retry (`retry_pending_certificates`).
@@ -411,8 +446,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (staff: 403; nobody: portal login). Login through `authenticate_startup`; `next` only within `/startups/portal/`. Registering only through
   `register_as_startup`; evaluation links only when `evaluation_state()` is open. Portal pages must work at phone width.
 - Admin Console (F6, ASSUMPTIONS 320–322): `accounts/console_views.py` + `accounts/console_pages.py`, `templates/console/`, all
-  `permission_required(MANAGE_USERS)`. Members through `accounts.services` (`list_members` for the list), designs and signatories through
-  `certificates.services` (no delete URL, ever), System status through `accounts/system_status.py` (read only; never calls Gemini, never
+  `permission_required(MANAGE_USERS)`. Members through `accounts.services` (`list_members` for the list), designs through
+  `certificates.services` (no delete URL, ever; the default signatories are shown read only, ASSUMPTIONS 363), System status through `accounts/system_status.py` (read only; never calls Gemini, never
   shows a secret; the PDF check goes through `get_renderer()`).
 - Modals: always `<dialog class="modal">` (centred by `.modal`: fixed, inset 0, `margin: auto !important`, max 85dvh,
   scrolls inside; never give a dialog margins). Browser check, opt-in: `BROWSER_TESTS=1`, `config/tests/test_modals_browser.py`
@@ -503,6 +538,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
   catch-up), computed "ready for approval", Approve on the preview + "Approve all ready certificates", Apply the current
   design, ready-only counts, undo attendance deletes a waiting certificate, tab URL fixes, Issued preview = sent copy,
   `?v=` + no-store (362).
+- Signatories per activity + reissue (2026-11-13): a list of signatories with free-text positions and versions, left/right
+  per activity (ACTIVITY_SIGNATORY), defaults, Signatories page, impact dialog; "Issued with an old signature" and reissue
+  (`reissued_at`), informational Needs attention line (363–364).
+- Who signs + titles (2026-11-14): "Who signs the certificates" on the activity form, "Title on this certificate"
+  (stored on each certificate), the system sticks to the defaults, white backgrounds removed with a preview, linked
+  versions + "Use the current version", the real reason an Approved certificate has no PDF + Retry (365–368).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

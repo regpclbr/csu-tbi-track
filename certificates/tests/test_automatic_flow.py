@@ -84,7 +84,7 @@ def test_an_incomplete_design_never_blocks_the_move_and_the_job_catches_up(ongoi
     activity_services.change_status(director, activity, "Conducted")  # no template or signatories yet
     activity.refresh_from_db()
     assert activity.status.name == "Conducted" and not Certificate.objects.exists()
-    assert "no active certificate template" in services.generation_closed_reason(activity)
+    assert "no active certificate design" in services.generation_closed_reason(activity)
     texts = [item.text for item in attention.activity_attention(activity)]
     assert any(text.startswith("Conducted with 2 attendees but no certificates yet") for text in texts)
     assert list(services.activities_missing_certificates()) == [activity]
@@ -176,7 +176,7 @@ def test_after_the_evaluation_deadline_it_never_becomes_ready(generated) -> None
 def test_readiness_map_matches_one_by_one(generated, evaluate, django_assert_max_num_queries) -> None:
     activity, people = generated
     evaluate(people[0])
-    certificates = list(Certificate.objects.filter(activity=activity).select_related("activity", "vp_signatory", "director_signatory"))
+    certificates = list(Certificate.objects.filter(activity=activity).select_related("activity", "right_signatory", "left_signatory"))
     with django_assert_max_num_queries(1):
         labels = services.readiness_map(certificates)
     assert labels == {c.pk: services.readiness(c) for c in certificates}
@@ -206,8 +206,8 @@ def test_approve_all_ready_leaves_the_others_waiting(generated, director, evalua
 def test_approve_all_ready_names_the_missing_signature(generated, director, design) -> None:
     activity, _ = generated
     without_image(design[1])
-    assert services.approval_closed_reason(activity) == "Add the VP's signature first."
-    with pytest.raises(services.CertificateError, match="Add the VP's signature first."):
+    assert services.approval_closed_reason(activity) == "Add the signature of Dr. Vice Pres (Vice President) first."
+    with pytest.raises(services.CertificateError, match=r"Add the signature of Dr\. Vice Pres"):
         services.approve_certificates(director, activity=activity)
 
 

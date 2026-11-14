@@ -60,6 +60,19 @@ def require_permission(user: object, permission: Permission) -> None:
         raise PermissionDenied(f"You do not have permission to {PERMISSION_LABELS[permission]}.")
 
 
+def has_any_permission(user: object, *permissions: Permission) -> bool:
+    """True if `user` has at least one of `permissions` (e.g. an activity's signatories: create activities OR approve
+    certificates, ASSUMPTIONS 363)."""
+    return any(has_permission(user, permission) for permission in permissions)
+
+
+def require_any_permission(user: object, *permissions: Permission) -> None:
+    """Raise PermissionDenied (HTTP 403) unless `user` has at least one of `permissions`."""
+    if not has_any_permission(user, *permissions):
+        labels = " or ".join(PERMISSION_LABELS[permission] for permission in permissions)
+        raise PermissionDenied(f"You do not have permission to do this (you must be able to {labels}).")
+
+
 ViewFunc = Callable[..., HttpResponse]
 
 

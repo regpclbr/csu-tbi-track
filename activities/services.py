@@ -290,6 +290,12 @@ def write_certificate_history(activity: Activity, member: TBIMember | None, old:
     _write_audit(activity, member, [(CERTIFICATES_LABEL, old, new)])
 
 
+def write_signatory_history(activity: Activity, member: TBIMember | None, label: str, old: str, new: str) -> None:
+    """One History row about the activity's certificate signatories (certificates.services, ASSUMPTIONS 363):
+    "Certificate signatory (left)": "<name> (<position>)" -> "<name> (<position>)"."""
+    _write_audit(activity, member, [(label, old, new)])
+
+
 @dataclass
 class PageResult:
     """One page of results, plus what a pager needs."""
@@ -340,13 +346,16 @@ def recent_audit_entries(limit: int = RECENT_CHANGES_LIMIT) -> list[ActivityAudi
 
 @transaction.atomic
 def save_new_activity(
-    member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None
+    member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None,
+    signatories: dict | None = None,
 ) -> Activity:
     """Validate and save an unsaved Activity as Draft with its categories, write its first audit row and notify the
     Director (notifications.services.notify_directors_of_new_activity).
 
     Used by create_activity() and by the Django admin's add form. `now` is only for tests
     and the demo seed (to create activities "as of" an earlier day); real calls leave it out.
+    `signatories`: the New activity form's "Who signs the certificates" ({slot: (person or None, title)}); empty slots
+    take the defaults (certificates.services.assign_default_signatories, ASSUMPTIONS 365, 366).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     categories = _category_set(participant_categories)
@@ -360,10 +369,15 @@ def save_new_activity(
     from notifications.services import notify_directors_of_new_activity  # notifications.services imports this module
 
     notify_directors_of_new_activity(activity, member)
+    # The certificate signatories: the form's choice, else the defaults (ASSUMPTIONS 363, 365), same transaction.
+    from certificates.services import assign_default_signatories  # certificates.services imports this module
+
+    assign_default_signatories(activity, signatories)
     return activity
 
 
-def create_activity(member: TBIMember, data: dict, now: datetime | None = None) -> Activity:
+def create_activity(member: TBIMember, data: dict, now: datetime | None = None,
+                    signatories: dict | None = None) -> Activity:
     """Create a Draft activity. `data` holds Python values (model instances, dates, Decimal);
     `participant_categories` is a list of one or more ParticipantCategory.
 
@@ -372,14 +386,17 @@ def create_activity(member: TBIMember, data: dict, now: datetime | None = None) 
     require_permission(member, Permission.CREATE_ACTIVITY)
     values = _clean_values(data)
     categories = values.pop(CATEGORIES, frozenset())
-    return save_new_activity(member, Activity(**values), categories, now=now)
+    return save_new_activity(member, Activity(**values), categories, now=now, signatories=signatories)
 
 
 @transaction.atomic
-def update_activity(member: TBIMember, activity: Activity, data: dict, now: datetime | None = None) -> Activity:
+def update_activity(member: TBIMember, activity: Activity, data: dict, now: datetime | None = None,
+                    signatories: dict | None = None) -> Activity:
     """Edit an activity. Saves only the fields that changed and writes one audit row for each.
 
     The edit and its audit rows are saved in one transaction: if anything fails, nothing is saved.
+    `signatories`: the edit form's "Who signs the certificates" ({slot: (person or None, title)}), saved in the same
+    transaction by certificates.services.set_activity_signatories (its History rows, certificates refreshed).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     changes = _clean_values(data)
@@ -401,6 +418,10 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
         _write_audit(
             current, member, [(FIELD_LABELS[field], old_values[field], changes[field]) for field in changed]
         )
+    if signatories is not None:
+        from certificates.services import set_activity_signatories  # certificates.services imports this module
+
+        set_activity_signatories(member, current, signatories, now=now)
     activity.refresh_from_db()
     return activity
 

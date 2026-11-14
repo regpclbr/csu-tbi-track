@@ -76,7 +76,7 @@ def test_before_conducted_the_tab_explains_when_certificates_come(director, logi
 def test_without_a_template_the_tab_says_why_nothing_was_created(director, login, conducted) -> None:
     activity, _ = conducted
     html = login(director).get(tab(activity)).content.decode()
-    assert "Certificates are not created yet: Cannot generate certificates: there is no active certificate template" in html
+    assert "Certificates are not created yet: Cannot create certificates: there is no active certificate design" in html
     assert not Certificate.objects.exists()
 
 
@@ -128,10 +128,10 @@ def test_missing_signature_disables_approve_all_ready(director, login, generated
     (Path(settings.MEDIA_ROOT) / design[1].signature_image_path.name).unlink()
     client = login(director)
     html = client.get(tab(activity)).content.decode()
-    message = "Add the VP&#x27;s signature first."
+    message = "Add the signature of Dr. Vice Pres (Vice President) first."
     assert message in html and 'aria-describedby="approval-reason"' in html and 'id="approve-ready-dialog"' not in html
     response = client.post(reverse("activities:certificates_approve_ready", args=[activity.pk]), follow=True)
-    assert message.replace("&#x27;", "'") in messages_of(response)
+    assert message in messages_of(response)
 
 
 def test_apply_the_current_design_goes_back_to_waiting_for_approval(director, login, generated) -> None:
@@ -360,4 +360,4 @@ def test_generation_closed_reason(conducted, design) -> None:
     assert services.generation_closed_reason(activity) is None
     design[0].is_active = False
     design[0].save()
-    assert services.generation_closed_reason(activity).startswith("Cannot generate certificates: there is no active certificate template")
+    assert services.generation_closed_reason(activity).startswith("Cannot create certificates: there is no active certificate design")

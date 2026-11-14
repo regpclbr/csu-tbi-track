@@ -42,10 +42,11 @@ def test_one_active_certificate_template(member, certificate_template) -> None:
 
 
 @pytest.mark.django_db
-def test_one_active_signatory_per_position(signatories) -> None:
-    CertificateSignatory.objects.create(name="Old VP", position="vp", signature_image_path="s.png", is_active=False)
+def test_one_default_signatory_per_slot(signatories) -> None:
+    """ASSUMPTIONS 363: many people may share a position; only one default per side."""
+    CertificateSignatory.objects.create(name="Another VP", position="Vice President", signature_image_path="s.png")
     with pytest.raises(IntegrityError):
-        CertificateSignatory.objects.create(name="New VP", position="vp", signature_image_path="s.png")
+        CertificateSignatory.objects.create(name="New VP", position="Vice President", default_slot="right", signature_image_path="s.png")
 
 
 def test_file_paths_allow_255_characters() -> None:

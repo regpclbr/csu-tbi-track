@@ -1,0 +1,12 @@
+{% comment %}The activity form's "Add a person…" dialog (can_approve_certificates; ASSUMPTIONS 365). Outside the activity
+<form> (forms cannot be nested); its own form posts with HTMX (certificates/_add_person_inline_form.html).{% endcomment %}
+<dialog id="add-signatory-dialog" class="modal" aria-labelledby="add-signatory-dialog-title" onclick="if (event.target === this) this.close()">
+  <div class="p-6">
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <h2 id="add-signatory-dialog-title" class="text-lg font-bold text-ink">Add a person</h2>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('dialog').close()" aria-label="Close">{% include "components/icon.html" with name="x" class="size-4" %}</button>
+    </div>
+    <p class="mb-4 text-sm text-slate-700">They are added to the list of signatories and chosen on this form. The activity is saved when you save the form.</p>
+    {% include "certificates/_add_person_inline_form.html" with add_url=signatories.add_url max_mb=signatories.max_mb values=None %}
+  </div>
+</dialog>

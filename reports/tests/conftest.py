@@ -161,10 +161,13 @@ def design(director):
     template = CertificateTemplate.objects.create(
         name="Design", file_path=_stored("certificate_templates/t.png", image_bytes()), uploaded_by=director, is_active=True
     )
-    vp = CertificateSignatory.objects.create(name="VP", position="vp", signature_image_path=_stored("signatures/vp.png", image_bytes()))
+    vp = CertificateSignatory.objects.create(name="VP", position="Vice President", default_slot="right", signature_image_path=_stored("signatures/vp.png", image_bytes()))
     head = CertificateSignatory.objects.create(
-        name="Director", position="director", signature_image_path=_stored("signatures/d.png", image_bytes())
+        name="Director", position="Director", default_slot="left", signature_image_path=_stored("signatures/d.png", image_bytes())
     )
+    from certificates.services import fill_empty_slots_from_defaults
+
+    fill_empty_slots_from_defaults()  # activities created before the defaults get them (ASSUMPTIONS 366)
     return template, vp, head
 
 
@@ -182,7 +185,7 @@ def make_certificate_row(design):
             certificate_template=template, certificate_number=f"TBI-TEST-{counter['n']:05d}",
             recipient_type=Certificate.RecipientType.REGISTRATION if participant else Certificate.RecipientType.RESOURCE_PERSON,
             registration=registration, resource_person=resource_person, activity=activity,
-            vp_signatory=vp, director_signatory=head, status=status, issued_at=issued_at, sent_at=sent_at,
+            right_signatory=vp, left_signatory=head, status=status, issued_at=issued_at, sent_at=sent_at,
             delivery_method=Certificate.DeliveryMethod.EMAIL if participant else Certificate.DeliveryMethod.HARD_COPY,
         )
 

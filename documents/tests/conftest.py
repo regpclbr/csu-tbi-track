@@ -146,8 +146,8 @@ def certificate_for(director):
             recipient_type=Certificate.RecipientType.REGISTRATION,
             registration=registration,
             activity=activity,
-            vp_signatory=CertificateSignatory.objects.create(name="VP", position="vp", signature_image_path="vp.png"),
-            director_signatory=CertificateSignatory.objects.create(name="D", position="director", signature_image_path="d.png"),
+            right_signatory=CertificateSignatory.objects.create(name="VP", position="Vice President", signature_image_path="vp.png"),
+            left_signatory=CertificateSignatory.objects.create(name="D", position="Director", signature_image_path="d.png"),
             delivery_method=Certificate.DeliveryMethod.EMAIL,
         )
 

@@ -5,7 +5,15 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
 - Approvers only (can_approve_certificates): "Approve all ready certificates" behind a confirm dialog with the counts
   (pages.approval_panel), or the disabled button with the reason (services.approval_closed_reason). Members without
   the flag see no approve button at all.
-- Signatures (pages.signatures_panel): the VP and the Director slot; approvers add or replace the image.
+- Signatures (pages.signatures_panel, ASSUMPTIONS 363, 365, 367): the left and right slot; can_create_activity or
+  can_approve_certificates choose the person (dropdown of active people, "Add a person…" for approvers) and the
+  "Title on this certificate"; an inactive person gets an amber note ("Use the current version" when a newer active
+  version exists); approvers add or replace the image (the dialog shows the impact of a new version and a preview with
+  the white background removed) and "Add a person". Admin Staff: view only.
+- The Sent column: while an Approved certificate has no PDF, the reason (pages.PDF_STATE_LABELS, ASSUMPTIONS 368);
+  "PDF failed — Retry" shows the error and, for approvers, Retry.
+- Reissue (approvers only, ASSUMPTIONS 364): "Reissue all outdated certificates (N)" with a confirm dialog
+  (pages.reissue_panel); "Reissue with current signatures" on the preview of an outdated Issued certificate.
 - The preview card (pages.preview_items): exactly the list below, same order; starts at the first row (or ?preview=<id>
   after an approval). Approve (approvers only) is enabled only when the certificate is ready, otherwise the reason.
   A row's Preview shows that certificate here (without JavaScript it opens the preview page).
@@ -30,6 +38,14 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           {% include "components/modal.html" with id="approve-ready-dialog" title="Approve all ready certificates?" body="certificates/_approve_ready_form.html" trigger_label="Approve all ready certificates" trigger_icon="circle-check" trigger_class="btn btn-secondary btn-sm" %}
         {% endif %}
       {% endif %}
+      {% if reissue %}
+        {% if reissue.closed_reason %}
+          <button type="button" class="btn btn-secondary btn-sm" disabled aria-describedby="reissue-reason">
+            {% include "components/icon.html" with name="refresh-cw" class="size-4" %}{{ reissue.label }}</button>
+        {% else %}
+          {% include "components/modal.html" with id="reissue-all-dialog" title="Reissue outdated certificates?" body="certificates/_reissue_all_form.html" trigger_label=reissue.label trigger_icon="refresh-cw" trigger_class="btn btn-secondary btn-sm" %}
+        {% endif %}
+      {% endif %}
       {% if can_apply_design %}
         {% include "components/modal.html" with id="apply-design-dialog" title="Apply the current design?" body="certificates/_apply_design_form.html" trigger_label="Apply the current design" trigger_icon="refresh-cw" trigger_class="btn btn-ghost btn-sm" %}
       {% endif %}
@@ -40,6 +56,11 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}{{ approval.closed_reason }}</p>
   {% endif %}
 
+  {% if reissue.closed_reason %}
+    <p id="reissue-reason" class="-mt-2 flex items-start gap-2 text-sm text-slate-700">
+      {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}Reissue: {{ reissue.closed_reason }}</p>
+  {% endif %}
+
   {% if worker_stopped %}
     <p class="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
       {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-amber-700" %}
@@ -47,35 +68,100 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   {% endif %}
 
   <section class="card p-6" aria-labelledby="signatures-title">
-    <h2 id="signatures-title" class="card-title">Signatures</h2>
-    <p class="card-subtitle">Printed on every certificate of this activity. Adding or replacing one updates the certificates that are not issued yet (the preview shows it at once); approved ones wait for approval again. Issued certificates keep the copy that was sent.</p>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h2 id="signatures-title" class="card-title">Signatures</h2>
+        <p class="card-subtitle">The two people printed on every certificate of this activity. Changing one updates the certificates that are not issued yet (the preview shows it at once); approved ones wait for approval again. Issued certificates keep the copy that was sent and can be reissued.</p>
+      </div>
+      {% if signatures.can_upload %}
+        <a href="{{ signatures.list_url }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="users" class="size-4" %}All signatories</a>
+      {% endif %}
+    </div>
+    {% if signatures.missing_reason %}
+      <p class="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>{{ signatures.missing_reason }}</span></p>
+    {% endif %}
     <div class="mt-4 grid gap-4 md:grid-cols-2">
       {% for slot in signatures.slots %}
-        <div class="rounded-2xl border border-line p-4">
+        <div class="rounded-2xl border border-line p-4"{% if signatures.can_upload and signatures.can_choose %} x-data="{ previous: '{{ slot.signatory.pk|default:'' }}' }"{% endif %}>
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
               <h3 class="text-sm font-semibold text-ink">{{ slot.label }}</h3>
-              <p class="text-sm break-words text-slate-700">{% if slot.signatory %}{{ slot.signatory.name }}{% else %}No active signatory{% endif %}</p>
+              {% if slot.signatory %}
+                <p class="text-sm font-semibold break-words text-ink">{{ slot.signatory.name }}{% if slot.inactive %} <span class="font-normal text-muted">(inactive)</span>{% endif %}</p>
+                <p class="text-sm break-words text-slate-700">{{ slot.title }}</p>
+                {% if slot.custom_title %}<p class="text-xs text-muted">Title on this certificate (usual position: {{ slot.signatory.position }})</p>{% endif %}
+              {% else %}
+                <p class="text-sm text-slate-700">Not chosen yet</p>
+              {% endif %}
             </div>
-            {% if slot.present %}{% include "components/badge.html" with text="Added" tone="success" %}{% elif slot.signatory %}{% include "components/badge.html" with text="Missing" tone="warning" %}{% endif %}
+            {% if slot.present %}{% include "components/badge.html" with text="Signature added" tone="success" %}{% elif slot.signatory %}{% include "components/badge.html" with text="Signature missing" tone="warning" %}{% endif %}
           </div>
           {% if slot.image_url %}
-            <img src="{{ slot.image_url }}" alt="Signature of {{ slot.signatory.name }}" loading="lazy" class="mt-3 h-16 w-48 max-w-full rounded-lg border border-line bg-white object-contain p-1">
+            <img src="{{ slot.image_url }}" alt="Signature of {{ slot.signatory.name }}" loading="lazy" class="mt-3 h-16 w-48 max-w-full rounded-lg border border-line bg-[#fbf6e9] object-contain p-1">
           {% endif %}
-          {% if slot.closed_reason %}
-            <p class="mt-3 text-sm text-slate-700">{{ slot.closed_reason }}</p>
-          {% elif signatures.can_edit %}
-            <form method="post" action="{{ slot.upload_url }}" enctype="multipart/form-data" novalidate class="mt-3 space-y-2" x-data="{ busy: false }" @submit="busy = true">
+
+          {% if slot.inactive %}
+            <div class="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+              {% include "components/icon.html" with name="triangle-alert" class="size-4 text-amber-700" %}
+              {% if slot.newer %}
+                <span class="min-w-0 flex-1">{{ slot.signatory.name }} on this activity is an older, inactive version. The current version is {{ slot.newer.name }} · {{ slot.newer.position }}.</span>
+                {% if signatures.can_choose %}
+                  <form method="post" action="{{ slot.current_version_url }}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-secondary btn-sm">Use the current version<span class="sr-only"> on the {{ slot.label|lower }}</span></button>
+                  </form>
+                {% endif %}
+              {% else %}
+                <span class="min-w-0 flex-1">{{ slot.signatory.name }} is inactive. Choose someone else{% if not signatures.can_choose %} (a member who creates activities or approves certificates does this){% endif %}.</span>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {% if signatures.can_choose %}
+            <form method="post" action="{{ slot.set_url }}" class="mt-3 space-y-2">
               {% csrf_token %}
-              <label for="signature-{{ slot.position }}" class="text-sm font-semibold text-ink">{% if slot.present %}Replace the {{ slot.label }}'s signature{% else %}Add the {{ slot.label }}'s signature{% endif %}</label>
-              <input id="signature-{{ slot.position }}" type="file" name="file" accept="image/png,image/jpeg" required aria-describedby="signature-{{ slot.position }}-help"
-                     class="block w-full max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-primary-soft file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-blue-100">
-              <p id="signature-{{ slot.position }}-help" class="field-help">PNG or JPG, up to {{ signatures.max_mb }} MB. A PNG with a transparent background prints cleanly.</p>
-              <button type="submit" class="btn btn-secondary btn-sm" :disabled="busy">
-                {% include "components/icon.html" with name="pen-line" class="size-4" %}{% if slot.present %}Replace signature{% else %}Add signature{% endif %}</button>
+              <div>
+                <label for="signatory-{{ slot.slot }}" class="text-sm font-semibold text-ink">Who signs on the {{ slot.label|lower }}</label>
+                <select id="signatory-{{ slot.slot }}" name="signatory" class="field-input field-select mt-1.5"{% if signatures.can_upload %}
+                        @change="if ($event.target.value === 'add') { $event.target.value = previous; document.getElementById('add-person-dialog-{{ slot.slot }}').showModal() } else { previous = $event.target.value }"{% endif %}>
+                  {% if not slot.signatory %}<option value="">Choose a person</option>{% endif %}
+                  {% if slot.inactive %}<option value="{{ slot.signatory.pk }}" selected>{{ slot.signatory.name }} · {{ slot.signatory.position }} (inactive)</option>{% endif %}
+                  {% for person in slot.choices %}
+                    <option value="{{ person.pk }}"{% if slot.signatory.pk == person.pk %} selected{% endif %}>{{ person.name }} · {{ person.position }}</option>
+                  {% endfor %}
+                  {% if signatures.can_upload %}<option value="add">Add a person…</option>{% endif %}
+                </select>
+              </div>
+              <div>
+                <label for="signatory-title-{{ slot.slot }}" class="text-sm font-semibold text-ink">Title on this certificate <span class="font-normal text-muted">(optional)</span></label>
+                <input id="signatory-title-{{ slot.slot }}" name="title" value="{{ slot.custom_title }}" maxlength="255" class="field-input mt-1.5"
+                       placeholder="{{ slot.signatory.position|default:'The person’s usual position' }}" aria-describedby="signatory-title-{{ slot.slot }}-help">
+                <p id="signatory-title-{{ slot.slot }}-help" class="field-help">Printed instead of the person's position on this activity's certificates only. Leave it empty to print the position.</p>
+              </div>
+              <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the {{ slot.label|lower }} signatory</span></button>
             </form>
-          {% elif not slot.present %}
-            <p class="mt-3 text-sm text-slate-700">A member with approval rights adds it.</p>
+          {% elif slot.signatory %}
+            <p class="mt-3 text-xs text-muted">Members who create activities or approve certificates choose who signs.</p>
+          {% endif %}
+
+          {% if signatures.can_upload %}
+            <div class="mt-3 flex flex-wrap gap-2">
+              {% if slot.signatory %}
+                {% with dialog_id="signature-dialog-"|add:slot.slot %}
+                  {% if slot.present %}
+                    {% include "components/modal.html" with id=dialog_id title="Replace signature?" body="certificates/_signature_form.html" trigger_label="Replace signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=slot.signatory.name %}
+                  {% else %}
+                    {% include "components/modal.html" with id=dialog_id title="Add signature" body="certificates/_signature_form.html" trigger_label="Add signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=slot.signatory.name %}
+                  {% endif %}
+                {% endwith %}
+              {% endif %}
+              {% with dialog_id="add-person-dialog-"|add:slot.slot %}
+                {% include "components/modal.html" with id=dialog_id title="Add a person" body="certificates/_add_person_form.html" trigger_label="Add a person" trigger_icon="user-plus" trigger_class="btn btn-ghost btn-sm" trigger_sr=slot.label %}
+              {% endwith %}
+            </div>
+          {% elif slot.signatory and not slot.present %}
+            <p class="mt-3 text-sm text-slate-700">A member with approval rights adds the signature.</p>
           {% endif %}
         </div>
       {% endfor %}
@@ -106,6 +192,13 @@ Every action redirects back to /activities/<id>/?tab=certificates.
                 {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve<span class="sr-only" x-text="' ' + items[i].number"></span></button>
             </form>
           {% endif %}
+          {% if can_approve %}
+            <form method="post" :action="items[i].reissue_url" action="{{ shown.reissue_url }}" x-show="items[i].can_reissue"{% if not shown.can_reissue %} style="display: none"{% endif %}>
+              {% csrf_token %}
+              <button type="submit" class="btn btn-primary btn-sm">
+                {% include "components/icon.html" with name="refresh-cw" class="size-4" %}Reissue with current signatures<span class="sr-only" x-text="' ' + items[i].number"></span></button>
+            </form>
+          {% endif %}
           <button type="button" class="btn btn-secondary btn-sm" @click="i--" :disabled="i === 0"{% if preview_start == 0 %} disabled{% endif %}>
             {% include "components/icon.html" with name="chevron-left" class="size-4" %}Previous</button>
           <button type="button" class="btn btn-secondary btn-sm" @click="i++" :disabled="i === items.length - 1"{% if preview_start|add:1 == previews|length %} disabled{% endif %}>
@@ -118,12 +211,14 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         <p id="preview-readiness" class="mb-3 flex items-start gap-2 text-sm text-slate-700" x-show="items[i].can_approve && !items[i].ready"{% if not shown.can_approve or shown.ready %} style="display: none"{% endif %}>
           {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}<span>Not ready for approval: <span x-text="items[i].readiness">{{ shown.readiness }}</span>.</span></p>
       {% endif %}
-      <p class="mb-3 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="note" x-show="items[i].issued_note"{% if not shown.issued_note %} style="display: none"{% endif %}>
+      <p class="mb-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm" role="note" x-show="items[i].issued_note"
+         :class="items[i].outdated ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'"
+         class="{% if shown.outdated %}bg-amber-50 text-amber-900{% else %}bg-emerald-50 text-emerald-900{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span x-text="items[i].issued_note">{{ shown.issued_note }}</span></p>
       <p class="mb-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note" x-show="!items[i].name_final"{% if shown.name_final %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-primary" %}<span>The final name comes from the evaluation.</span></p>
       <iframe :src="items[i].url" src="{{ shown.url }}" title="Certificate preview" class="h-[70vh] w-full rounded-xl border border-line bg-slate-50"></iframe>
-      <p class="mt-2 text-xs text-muted">Rendered from the same template as the final PDF. A small “PREVIEW” mark stays in the corner until the certificate is approved. Issued certificates show the copy that was sent or handed over.</p>
+      <p class="mt-2 text-xs text-muted">Rendered from the same template as the final PDF. A small “PREVIEW” mark stays in the corner until the certificate is approved. Issued certificates show the copy that was sent or handed over (until they are reissued).</p>
     </section>
   {% endif %}
 
@@ -189,6 +284,12 @@ Every action redirects back to /activities/<id>/?tab=certificates.
                 <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">
                   {% if row.sending.key == "sent" %}<time datetime="{{ certificate.sent_at|date:'c' }}">{{ certificate.sent_at|date:"M j, Y" }}</time>
                   {% elif row.sending.key == "failed" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}{% if can_act %}<button type="submit" form="resend-{{ certificate.pk }}" class="btn btn-ghost btn-sm ml-1">{% include "components/icon.html" with name="send" class="size-4" %}Resend<span class="sr-only"> {{ certificate.certificate_number }}</span></button>{% endif %}
+                  {% elif row.sending.key == "reprint" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}
+                  {% elif row.sending.key == "pdf_failed" %}
+                    <span class="inline-flex flex-wrap items-center gap-1">{% include "components/badge.html" with text="PDF failed" tone="danger" %}{% if row.can_retry %}<button type="submit" form="retry-{{ certificate.pk }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="refresh-cw" class="size-4" %}Retry<span class="sr-only"> the PDF of {{ certificate.certificate_number }}</span></button>{% endif %}</span>
+                    {% if row.sending.error %}<span class="mt-1 block max-w-64 text-xs whitespace-normal text-red-800">{{ row.sending.error }}</span>{% endif %}
+                  {% elif row.sending.key == "pdf_worker" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}
+                  {% elif row.sending.key == "pdf_pre_rule_waiting" or row.sending.key == "pdf_pre_rule_closed" %}<span class="block max-w-64 text-xs whitespace-normal text-muted">{{ row.sending.label }}</span>
                   {% else %}<span class="text-muted">{{ row.sending.label }}</span>{% endif %}
                 </td>
                 <td class="px-3 py-2.5">
@@ -209,6 +310,15 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           </tbody>
         </table>
       </div>
+      {% if can_approve %}{# "Retry" on a failed PDF (ASSUMPTIONS 368) #}
+        {% for row in rows %}
+          {% if row.can_retry %}
+            <form id="retry-{{ row.certificate.pk }}" method="post" action="{% url 'activities:certificates_action' activity.pk %}" hidden>
+              {% csrf_token %}<input type="hidden" name="action" value="retry_pdf"><input type="hidden" name="certificate_ids" value="{{ row.certificate.pk }}">
+            </form>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
       {% if can_act %}{# one small form per row action: the row's button posts it (form="...") #}
         {% for row in rows %}
           {% if row.sending.key == "failed" %}
@@ -224,7 +334,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         {% endfor %}
       {% endif %}
     {% elif activity.status.name == "Conducted" %}
-      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="They are created automatically for each attendee and resource person once the System Administrator has set up the certificate design and signatories." %}
+      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="They are created automatically for each attendee and resource person once there is an active certificate design and both signatories are chosen above." %}
     {% else %}
       {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Certificates are created automatically when the activity is Conducted." %}
     {% endif %}

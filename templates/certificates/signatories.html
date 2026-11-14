@@ -1,0 +1,119 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/certificates/signatories/ (certificates.page_views.signatories, can_approve_certificates; ASSUMPTIONS 363): the list of
+people who sign certificates, built by certificates.pages.signatories_page. Every change goes through
+certificates.services: add_signatory, edit_signatory (in place while no certificate uses the person, otherwise a new
+version), replace_signature (a replaced image is a new version; a white background is made transparent, with a preview),
+remove_signature_background ("Remove white background" for an existing image: a new version, ASSUMPTIONS 366),
+deactivate_signatory (refused for an active default),
+set_default_signatories. The Edit and Signature dialogs show the impact of a new version (services.version_impact_text).
+Nobody is ever deleted (there is no delete URL). Signature thumbnails come from certificates:signature_image.
+{% endcomment %}
+{% block content %}
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <p class="max-w-3xl text-sm text-slate-700">The people whose name, position and signature are printed on certificates. Each activity chooses two of them (left and right) on its Certificates tab. A person already printed on a certificate is never changed: a new signature image or a new name or position becomes a new version that every activity uses from then on, and issued certificates keep the old one until they are reissued.</p>
+  <a href="{% url 'certificates:list' %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Certificates</a>
+</div>
+
+<div class="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+  <section class="card p-6" aria-labelledby="people-title">
+    <div class="mb-4">
+      <h2 id="people-title" class="card-title">Signatories ({{ people|length }})</h2>
+      <p class="card-subtitle">Active people, offered in the activities' dropdowns.</p>
+    </div>
+    {% if people %}
+      <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+        {% for row in people %}{% with person=row.signatory %}
+          <li class="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap">
+            {% if row.image_url %}
+              <img src="{{ row.image_url }}" alt="Signature of {{ person.name }}" loading="lazy" class="h-12 w-28 shrink-0 rounded-lg border border-line bg-[#fbf6e9] object-contain p-1">
+            {% else %}
+              <span class="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-line bg-white px-1 text-center text-xs text-muted">No signature yet</span>
+            {% endif %}
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold break-words text-ink">{{ person.name }}</p>
+              <p class="text-sm break-words text-slate-700">{{ person.position }}</p>
+              <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                {% if row.default_label %}{% include "components/badge.html" with text=row.default_label tone="info" %}{% endif %}
+                <span>Used by {{ row.activities }} activit{{ row.activities|pluralize:"y,ies" }}</span>
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center justify-end gap-1">
+              {% include "components/modal.html" with id=row.edit_id title="Edit "|add:person.name body="certificates/_edit_person_form.html" trigger_label="Edit" trigger_icon="pencil" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
+              {% if person.signature_image_path %}
+                {% include "components/modal.html" with id=row.image_id title="Replace signature?" body="certificates/_person_image_form.html" trigger_label="Replace signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
+              {% else %}
+                {% include "components/modal.html" with id=row.image_id title="Add signature" body="certificates/_person_image_form.html" trigger_label="Add signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
+              {% endif %}
+              {% if row.background_removable %}
+                {% include "components/modal.html" with id=row.background_id title="Remove the white background?" body="certificates/_remove_background_form.html" trigger_label="Remove white background" trigger_icon="eraser" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
+              {% endif %}
+              {% if row.deactivate_reason %}
+                <button type="button" class="btn btn-ghost btn-sm" disabled title="{{ row.deactivate_reason }}" aria-describedby="deactivate-reason-{{ person.pk }}">Deactivate<span class="sr-only"> {{ person.name }}</span></button>
+                <span id="deactivate-reason-{{ person.pk }}" class="sr-only">{{ row.deactivate_reason }}</span>
+              {% else %}
+                <form method="post" action="{% url 'certificates:signatory_deactivate' person.pk %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ person.name }}</span></button>
+                </form>
+              {% endif %}
+            </div>
+          </li>
+        {% endwith %}{% endfor %}
+      </ul>
+    {% else %}
+      {% include "components/empty_state.html" with icon="users" title="No signatories yet" text="Add the people who sign certificates (for example the University President and the TBI Director)." %}
+    {% endif %}
+
+    {% if inactive %}
+      <details class="group mt-5 rounded-2xl border border-line">
+        <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+          <span>Inactive people and earlier versions ({{ inactive|length }})</span>
+          {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
+        </summary>
+        <ul class="divide-y divide-line border-t border-line">
+          {% for person in inactive %}
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2.5 text-sm">
+              <span class="font-semibold text-ink">{{ person.name }}</span><span class="text-slate-700">{{ person.position }}</span>
+              <span class="text-xs text-muted">added {{ person.created_at|date:"M j, Y" }}{% if not person.signature_image_path %} · no signature{% endif %}</span>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="border-t border-line px-4 py-2.5 text-xs text-muted">Kept for the certificates already printed with them. Never deleted.</p>
+      </details>
+    {% endif %}
+  </section>
+
+  <div class="space-y-5">
+    <section class="card p-6" aria-labelledby="defaults-title">
+      <h2 id="defaults-title" class="card-title">Default signatories</h2>
+      <p class="card-subtitle">A new activity starts with these two. Existing activities keep their own.</p>
+      {% if people|length >= 2 %}
+        <form method="post" action="{% url 'certificates:signatory_defaults' %}" class="mt-4 space-y-3">
+          {% csrf_token %}
+          {% for slot, label in slots %}
+            <div>
+              <label for="default-{{ slot }}" class="text-sm font-semibold text-ink">{{ label }}</label>
+              <select id="default-{{ slot }}" name="{{ slot }}" class="field-input field-select mt-1.5">
+                <option value="">Choose a person</option>
+                {% for row in people %}
+                  <option value="{{ row.signatory.pk }}"{% if row.signatory.default_slot == slot %} selected{% endif %}>{{ row.signatory.name }} · {{ row.signatory.position }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary">Save defaults</button>
+        </form>
+      {% else %}
+        <p class="mt-3 text-sm text-slate-700">Add at least two people first.</p>
+      {% endif %}
+    </section>
+
+    <section class="card p-6" aria-labelledby="add-title">
+      <h2 id="add-title" class="card-title">Add a person</h2>
+      <p class="card-subtitle mb-4">The signature image can also be added later.</p>
+      {% include "certificates/_add_person_form.html" with slot=None %}
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -21,7 +21,7 @@ through startups:portal_certificate_download, which checks again that the certif
           {% if certificate.file_path %}
             <a href="{% url 'startups:portal_certificate_download' certificate.pk %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download<span class="sr-only"> {{ certificate.certificate_number }} (PDF)</span></a>
           {% else %}
-            <span class="text-sm text-muted">The file is being prepared.</span>
+            <span class="text-sm text-muted">{% if certificate.reissued_at %}An updated copy is being prepared.{% else %}The file is being prepared.{% endif %}</span>
           {% endif %}
         </li>
       {% endfor %}

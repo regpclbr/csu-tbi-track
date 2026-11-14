@@ -19,7 +19,7 @@ from registrations import pages as registration_pages
 from registrations import services as registration_services
 
 from . import attention, pages, services, share
-from .forms import ActivityPageForm
+from .forms import ActivityPageFormWithSignatories as ActivityPageForm
 from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory, ResourcePerson
 
 
@@ -100,15 +100,17 @@ def _initial(activity: Activity) -> dict:
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
-    """The activity and its optional documents are saved by one service call, all or nothing
-    (documents.services.create_activity_with_documents, ASSUMPTIONS 327)."""
-    form = ActivityPageForm(request.POST or None)
+    """The activity, its signatories (pre-filled with the defaults, ASSUMPTIONS 365) and its optional documents are
+    saved by one service call, all or nothing (documents.services.create_activity_with_documents, ASSUMPTIONS 327)."""
+    form = ActivityPageForm(request.POST or None, **pages.signatory_form_options(request.user))
     rows = document_pages.new_document_rows(request) if request.method == "POST" else []
     if request.method == "POST":
         uploads = document_pages.new_documents_for_service(rows)
         if form.is_valid():
+            signatories = form.signatory_choices()
             try:
-                activity = document_services.create_activity_with_documents(request.user, form.cleaned_data, uploads)
+                activity = document_services.create_activity_with_documents(request.user, form.cleaned_data, uploads,
+                                                                            signatories=signatories)
             except document_services.NewActivityError as error:
                 if error.activity_error:
                     _put_errors_on_fields(form, error.activity_error)
@@ -126,7 +128,8 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             document_pages.put_row_errors(rows, document_services.check_new_documents(uploads))
         if any(row.errors for row in rows):
             form.add_error(None, "Please correct the documents marked below.")
-    context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows)}
+    context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows),
+               "signatories": pages.signatory_form_section(form, request.user)}
     return render(request, "activities/form.html", context)
 
 
@@ -135,10 +138,13 @@ def activity_create(request: HttpRequest) -> HttpResponse:
 def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
     """A Conducted activity is shown read-only (the service refuses edits; a POST gets its message)."""
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type"), pk=activity_id)
-    form = ActivityPageForm(request.POST or None, initial=_initial(activity), activity=activity)
+    form = ActivityPageForm(request.POST or None, initial=_initial(activity), activity=activity,
+                            **pages.signatory_form_options(request.user, activity))
     if request.method == "POST" and form.is_valid():
+        signatories = form.signatory_choices()
         try:
-            services.update_activity(request.user, activity, pages.keep_stored_minutes(form.cleaned_data, activity))
+            services.update_activity(request.user, activity, pages.keep_stored_minutes(form.cleaned_data, activity),
+                                     signatories=signatories)
         except ValidationError as error:
             _put_errors_on_fields(form, error)
         except services.ActivityError as error:
@@ -146,7 +152,8 @@ def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
         else:
             messages.success(request, "Changes saved.")
             return redirect(_detail_url(activity))
-    context = {"page_title": f"Edit {activity.title}", "form": form, "activity": activity}
+    context = {"page_title": f"Edit {activity.title}", "form": form, "activity": activity,
+               "signatories": pages.signatory_form_section(form, request.user)}
     if activity.status.name == ActivityStatus.CONDUCTED:
         context["detail_rows"] = pages.detail_rows(services.get_activity_detail(activity))
         return render(request, "activities/read_only.html", context)
@@ -181,7 +188,8 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
         "registration": pages.registration_summary(activity),
-        "attention": attention.activity_attention(activity),
+        "attention": (items := attention.activity_attention(activity)),
+        "attention_count": attention.warning_count(items),  # informational items not counted (ASSUMPTIONS 364)
         # The public address (SITE_URL), never the Host header of this request.
         "register_url": registration_services.registration_page_url(activity),
     }

@@ -1,0 +1,17 @@
+{% comment %}Inside the Signatures section's "Replace signature" / "Add signature" dialog (certificates/_tab_certificates.html,
+can_approve_certificates only; ASSUMPTIONS 363). `slot` comes from the loop. A replaced image is a new version of the
+person: slot.impact (services.version_impact_text) says how many activities and certificates it changes. POST to
+activities:certificates_signature (services.upload_signature checks everything again).{% endcomment %}
+<form method="post" action="{{ slot.upload_url }}" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ busy: false }" @submit="busy = true">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">{{ slot.signatory.name }} · {{ slot.signatory.position }}</p>
+  {% if slot.impact %}
+    <p class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="note">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>{{ slot.impact }}</span></p>
+  {% endif %}
+  {% with prefix="signature-"|add:slot.slot %}{% include "certificates/_signature_file_field.html" with required=True max_mb=signatures.max_mb %}{% endwith %}
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary" :disabled="busy">{% if slot.present %}Replace signature{% else %}Add signature{% endif %}</button>
+  </div>
+</form>

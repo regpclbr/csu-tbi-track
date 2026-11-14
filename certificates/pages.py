@@ -1,7 +1,7 @@
 """Display helpers for the Certificates pages (phase F4): the activity's Certificates tab, the Certificates page and the
 evidence modal, the preview page. Display only: every rule is in certificates.services (who may approve or act, the
 status moves, readiness, the missing signature reason). This module turns their results into what the templates show
-(ASSUMPTIONS 357-362).
+(ASSUMPTIONS 357-364). Also the Signatories page (/certificates/signatories/).
 """
 
 from dataclasses import dataclass, field
@@ -14,13 +14,13 @@ from django.urls import reverse
 
 from accounts.permissions import Permission, has_permission
 from activities.models import Activity
-from config.links import activity_tab_url
+from config.links import activity_tab_url, is_internal_path
 from config.mail import prints_emails
 from documents import pages as document_pages
 from registrations.models import EvaluationSubmission
 
 from . import services
-from .models import Certificate
+from .models import ActivitySignatory, Certificate, CertificateSignatory
 
 Status = Certificate.Status
 RecipientType = Certificate.RecipientType
@@ -34,6 +34,23 @@ PREPARING_LABEL = "Being prepared"  # Approved, the PDF not rendered yet (the ba
 ISSUED_NOTES = {
     DeliveryMethod.EMAIL: "Issued — this copy was already sent and is not changed.",
     DeliveryMethod.HARD_COPY: "Issued — this copy was already handed over and is not changed.",
+}
+REISSUED_NOTES = {
+    DeliveryMethod.EMAIL: "Issued — updated copy with the current signatures (reissued).",
+    DeliveryMethod.HARD_COPY: "Issued — updated copy with the current signatures (reissued).",
+}
+OUTDATED_LABEL = "Issued with an old signature"
+UPDATED_COPY_LABEL = "Updated copy being prepared"
+OUTDATED_NOTE = ("Issued with an old signature: this copy was printed with a signatory (or signature image) that this "
+                 "activity no longer uses.")
+REPRINT_LABEL = "Not handed over (updated copy to print)"
+# Why an Approved (or reissued) certificate has no PDF yet: services.pdf_state (ASSUMPTIONS 368).
+PDF_STATE_LABELS = {
+    services.PDF_PRE_RULE_WAITING: ("Approved before the evaluation rule — waiting for the evaluation", "neutral"),
+    services.PDF_PRE_RULE_CLOSED: ("Approved before the evaluation rule — evaluation closed without an answer", "neutral"),
+    services.PDF_FAILED: ("PDF failed — Retry", "danger"),
+    services.PDF_WORKER: ("Waiting for the background worker", "warning"),
+    services.PDF_PREPARING: ("PDF being prepared", "neutral"),
 }
 PROBLEMS_KEY = "certificate_problems:{}"  # session: a refused row action's list, shown once on the tab
 
@@ -74,9 +91,31 @@ def names(certificate: Certificate, printed: dict[int, str]) -> tuple[str, str]:
     return shown, registered if shown.strip().casefold() != registered.strip().casefold() else ""
 
 
-def sending(certificate: Certificate) -> dict:
-    """The "Sent" column: label and tone. Hard copy; sent (date); Send failed (Resend); waiting (why)."""
+class WorkerCheck:
+    """Whether qcluster is running, asked at most once per page (and only when a certificate waits for a PDF)."""
+
+    def __init__(self) -> None:
+        self._running: bool | None = None
+
+    def __call__(self) -> bool:
+        if self._running is None:
+            from accounts.system_status import OK, qcluster_status
+
+            self._running = qcluster_status().tone == OK
+        return self._running
+
+
+def sending(certificate: Certificate, pdf: str | None = None) -> dict:
+    """The "Sent" column: label and tone. While an Approved (or reissued) certificate has no PDF: the real reason
+    (services.pdf_state, ASSUMPTIONS 368: approved before the evaluation rule, PDF failed — Retry, waiting for the
+    background worker, PDF being prepared). Otherwise: hard copy (or a reissued one to print again); sent (date);
+    Send failed (Resend); waiting (why)."""
+    if pdf:
+        label, tone = PDF_STATE_LABELS[pdf]
+        return {"key": f"pdf_{pdf}", "label": label, "tone": tone, "error": certificate.render_error or ""}
     if certificate.delivery_method == DeliveryMethod.HARD_COPY:
+        if certificate.status == Status.ISSUED and services.awaiting_hand_over(certificate):
+            return {"key": "reprint", "label": REPRINT_LABEL, "tone": "warning"}
         return {"key": "hard_copy", "label": "Hard copy", "tone": "neutral"}
     if certificate.sent_at:
         return {"key": "sent", "label": "Sent", "tone": "success"}
@@ -84,25 +123,34 @@ def sending(certificate: Certificate) -> dict:
         return {"key": "failed", "label": "Send failed", "tone": "danger"}
     if certificate.status == Status.ISSUED:
         return {"key": "queued", "label": "Being emailed", "tone": "neutral"}
-    if certificate.status == Status.APPROVED:
-        return {"key": "evaluation", "label": "After the PDF is ready", "tone": "neutral"}
     return {"key": "approval", "label": "After approval", "tone": "neutral"}
 
 
-def state_label(certificate: Certificate, label: str | None) -> dict | None:
+def state_label(certificate: Certificate, label: str | None, outdated: bool = False, pdf: str | None = None) -> dict | None:
     """The small second badge beside the status: for one waiting for approval, "Ready for approval" or what it
-    waits for (services.readiness); for an Approved one without its PDF yet, "Being prepared"."""
+    waits for (services.readiness); for an Approved one whose PDF failed, "PDF failed", while it is rendered "Being
+    prepared"; for an Issued one, "Issued with an old signature" (services.outdated_q) or "Updated copy being prepared"
+    (reissued)."""
+    if outdated:
+        return {"label": OUTDATED_LABEL, "tone": "warning"}
+    if pdf == services.PDF_FAILED:
+        return {"label": "PDF failed", "tone": "danger"}
+    if services.updated_copy_pending(certificate):
+        return {"label": UPDATED_COPY_LABEL, "tone": "neutral"}
     if certificate.status == Status.GENERATED:
         return {"label": label, "tone": "neutral"} if label else {"label": READY_LABEL, "tone": "success"}
-    if certificate.status == Status.APPROVED and not certificate.file_path and not services._not_ready_reason(certificate):
+    if pdf in (services.PDF_PREPARING, services.PDF_WORKER):
         return {"label": PREPARING_LABEL, "tone": "neutral"}
     return None
 
 
 def certificate_row(certificate: Certificate, printed: dict[int, str] | None = None, label: str | None = None,
-                    can_act: bool = False) -> dict:
-    shown, registered_as = names(certificate, printed or {})
+                    can_act: bool = False, outdated: bool = False, worker: WorkerCheck | None = None,
+                    can_approve: bool = False) -> dict:
+    printed = printed or {}
+    shown, registered_as = names(certificate, printed)
     hard_copy = certificate.delivery_method == DeliveryMethod.HARD_COPY
+    pdf = services.pdf_state(certificate, evaluated=certificate.registration_id in printed, worker_running=worker or WorkerCheck())
     return {
         "certificate": certificate,
         "recipient": shown,
@@ -110,12 +158,15 @@ def certificate_row(certificate: Certificate, printed: dict[int, str] | None = N
         "kind": KIND_LABELS[certificate.recipient_type],
         "delivery": DELIVERY_LABELS[certificate.delivery_method],
         "status": {"label": certificate.get_status_display(), "tone": STATUS_TONES[certificate.status]},
-        "state": state_label(certificate, label),
-        "sending": sending(certificate),
+        "state": state_label(certificate, label, outdated, pdf),
+        "outdated": outdated,
+        "sending": sending(certificate, pdf),
+        "can_retry": can_approve and pdf == services.PDF_FAILED,  # "Retry" (ASSUMPTIONS 368)
         "pdf_ready": bool(certificate.file_path),
         "evidence_count": getattr(certificate, "evidence_count", 0),
-        # The row's "Mark handed over" (can_create_activity): an Approved hard copy whose PDF is ready.
-        "can_hand_over": can_act and hard_copy and certificate.status == Status.APPROVED and bool(certificate.file_path),
+        # The row's "Mark handed over" (can_create_activity): an Approved hard copy whose PDF is ready, or a reissued
+        # one (the updated copy, ASSUMPTIONS 364).
+        "can_hand_over": can_act and hard_copy and services.awaiting_hand_over(certificate) and bool(certificate.file_path),
     }
 
 
@@ -157,32 +208,83 @@ def approval_panel(member, activity: Activity, certificates: list[Certificate], 
     }
 
 
+def signature_image_url(signatory: CertificateSignatory | None, member) -> str:
+    """The thumbnail URL (signature images: can_manage_users or can_approve_certificates only), or ""."""
+    if signatory is None or not signatory.signature_image_path:
+        return ""
+    if has_permission(member, Permission.APPROVE_CERTIFICATES) or has_permission(member, Permission.MANAGE_USERS):
+        return reverse("certificates:signature_image", args=[signatory.pk])
+    return ""
+
+
 def signatures_panel(member, activity: Activity) -> dict:
-    """The Signatures section (ASSUMPTIONS 361): a VP and a Director slot with the signatory this activity's
-    certificates use (services.activity_signatories), whether the image is there, and the upload form for members
-    with can_approve_certificates (a thumbnail too: signature images are shown only to them and the Admin)."""
-    can_edit = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    """The Signatures section (ASSUMPTIONS 363, 365, 367): the left and right slot with the activity's signatory, the
+    title printed for them (services.printed_title: "Title on this certificate", else the position), "(inactive)",
+    whether the image is there; a dropdown of active people (+ "Add a person…" for approvers) and the title field for
+    can_create_activity / can_approve_certificates; for an inactive person an amber note with "Use the current
+    version" when a newer active version exists (services.inactive_slots); the image form (with the impact of a new
+    version, services.version_impact) and "Add a person" for can_approve_certificates. Admin Staff: view only."""
+    can_choose = services.can_choose_signatories(member)
+    can_upload = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    rows = services.activity_slots(activity)
+    inactive = services.inactive_slots(activity)
+    people = list(services.active_signatories()) if can_choose else []
     slots = []
-    for position, signatory in services.activity_signatories(activity).items():
+    for slot in services.SLOTS:
+        row = rows[slot]
+        signatory = row.signatory if row else None
         present = services.signature_present(signatory)
+        replaces = can_upload and signatory is not None and present
+        impact = services.version_impact(signatory) if replaces and services.signatory_in_use(signatory) else None
+        newer = inactive.get(slot)
         slots.append({
-            "position": position,
-            "label": services.SIGNATORY_LABELS[position],
+            "slot": slot,
+            "label": services.SLOT_LABELS[slot],
             "signatory": signatory,
+            "title": services.printed_title(row),
+            "custom_title": row.position_on_certificate or "" if row else "",
+            "inactive": slot in inactive,
+            "newer": newer,
+            "current_version_url": reverse("activities:certificates_signatory_current", args=[activity.pk, slot]),
             "present": present,
-            "image_url": reverse("certificates:signature_image", args=[signatory.pk]) if present and can_edit else "",
-            "closed_reason": services.no_signatory_reason(position) if signatory is None else "",
-            "upload_url": reverse("activities:certificates_signature", args=[activity.pk, position]),
+            "image_url": signature_image_url(signatory, member) if present else "",
+            "choices": people,
+            "set_url": reverse("activities:certificates_signatory", args=[activity.pk, slot]),
+            "upload_url": reverse("activities:certificates_signature", args=[activity.pk, slot]),
+            "impact": services.version_impact_text(impact) if impact else "",
         })
-    return {"slots": slots, "can_edit": can_edit, "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB}
+    return {
+        "slots": slots,
+        "can_choose": can_choose,
+        "can_upload": can_upload,
+        "can_edit": can_upload,
+        "missing_reason": services.missing_slots_reason({slot: row.signatory if row else None for slot, row in rows.items()}) or "",
+        "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
+        "add_url": reverse("certificates:signatory_add"),
+        "list_url": reverse("certificates:signatories"),
+    }
+
+
+def reissue_panel(member, activity: Activity, outdated: set[int]) -> dict | None:
+    """"Reissue all outdated certificates (N)" (can_approve_certificates only, ASSUMPTIONS 364): the counts for the
+    confirm dialog (emailed again / hard copies to reprint) and the reason it is closed. None for others or when
+    nothing is outdated."""
+    if not outdated or not has_permission(member, Permission.APPROVE_CERTIFICATES):
+        return None
+    counts = services.outdated_counts(activity)
+    return {**counts, "closed_reason": services.reissue_closed_reason(activity),
+            "label": f"Reissue all outdated certificates ({counts['total']})",
+            "url": reverse("activities:certificates_reissue_all", args=[activity.pk])}
 
 
 def preview_items(certificates: list[Certificate], printed: dict[int, str], labels: dict[int, str | None],
-                  can_approve: bool = False) -> list[dict]:
+                  can_approve: bool = False, outdated: set[int] | None = None) -> list[dict]:
     """The large preview with Previous / Next: exactly the list below it, in the same order (ASSUMPTIONS 362).
     Each item: the printed name (and "registered as"), the readiness (services.readiness: the Approve button is
     enabled only when ready; approvers only), the URLs with ?v= (services.preview_version: a changed certificate is
-    never shown from the browser's cache) and the Issued note."""
+    never shown from the browser's cache), the Issued note and "Issued with an old signature" with "Reissue with
+    current signatures" (approvers only, ASSUMPTIONS 364)."""
+    outdated = outdated or set()
     items = []
     for c in certificates:
         shown, registered_as = names(c, printed)
@@ -199,13 +301,27 @@ def preview_items(certificates: list[Certificate], printed: dict[int, str], labe
             "kind": KIND_LABELS[c.recipient_type],
             "status": c.get_status_display(),
             "name_final": c.recipient_type == RecipientType.RESOURCE_PERSON or evaluated,
-            "issued_note": ISSUED_NOTES[c.delivery_method] if services.shows_final_copy(c) else "",
+            "issued_note": issued_note(c, c.pk in outdated),
+            "outdated": c.pk in outdated,
+            "can_reissue": can_approve and c.pk in outdated,
+            "reissue_url": reverse("activities:certificates_reissue", args=[c.activity_id, c.pk]) if can_approve and c.pk in outdated else "",
             "can_approve": can_approve and waiting,
             "ready": waiting and labels.get(c.pk) is None,
             "readiness": labels.get(c.pk) or "" if waiting else "",
             "approve_url": reverse("activities:certificates_approve", args=[c.activity_id, c.pk]) if can_approve and waiting else "",
         })
     return items
+
+
+def issued_note(certificate: Certificate, outdated: bool) -> str:
+    """The note above an Issued certificate's preview."""
+    if outdated:
+        return OUTDATED_NOTE
+    if services.updated_copy_pending(certificate):
+        return "Issued — the updated copy is being prepared (shown here as it will look)."
+    if not services.shows_final_copy(certificate):
+        return ""
+    return REISSUED_NOTES[certificate.delivery_method] if certificate.reissued_at else ISSUED_NOTES[certificate.delivery_method]
 
 
 def preview_start(items: list[dict], raw: str | None) -> int:
@@ -249,6 +365,7 @@ def worker_notice(certificates: list[Certificate]) -> bool:
     worker (qcluster) is not running: the tab says so instead of leaving "Being prepared" unexplained."""
     waiting = any(
         (c.status == Status.APPROVED and not c.file_path and not services._not_ready_reason(c))
+        or services.updated_copy_pending(c)  # reissued (ASSUMPTIONS 364)
         or (c.status == Status.ISSUED and c.delivery_method == DeliveryMethod.EMAIL and not c.sent_at and not c.send_failed_at)
         for c in certificates
     )
@@ -269,24 +386,29 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
     (kept in the session for this one view)."""
     certificates = list(_with_evidence_count(
         Certificate.objects.filter(activity=activity)
-        .select_related("activity", "registration", "resource_person", "vp_signatory", "director_signatory")
+        .select_related("activity", "registration", "resource_person", "left_signatory", "right_signatory")
     ).order_by("certificate_number"))
     member = request.user
     can_act = has_permission(member, Permission.CREATE_ACTIVITY)
     can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
     labels = services.readiness_map(certificates)
     printed = printed_names(certificates)
-    previews = preview_items(certificates, printed, labels, can_approve)
+    outdated = services.outdated_ids(activity)
+    previews = preview_items(certificates, printed, labels, can_approve, outdated)
     start = preview_start(previews, request.GET.get("preview"))
     kept = request.session.pop(PROBLEMS_KEY.format(activity.pk), None) if hasattr(request, "session") else None
+    worker = WorkerCheck()
     return {
-        "rows": [certificate_row(c, printed, labels.get(c.pk), can_act) for c in certificates],
+        "rows": [certificate_row(c, printed, labels.get(c.pk), can_act, c.pk in outdated, worker, can_approve)
+                 for c in certificates],
         "counts": status_counts(services.certificate_status_counts({"activity": activity.pk})),
         "can_act": can_act,
         "can_approve": can_approve,
         "generation_reason": services.generation_closed_reason(activity),
         "approval": approval_panel(member, activity, certificates, labels),
         "signatures": signatures_panel(member, activity),
+        "reissue": reissue_panel(member, activity, outdated),
+        "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,  # the "Add a person" dialog
         "previews": previews,
         "preview_start": start,
         "shown": previews[start] if previews else None,  # the certificate the preview card shows first
@@ -307,7 +429,8 @@ def preview(certificate: Certificate, member=None) -> dict:
     printed = printed_names([certificate])
     labels = services.readiness_map([certificate])
     can_approve = member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES)
-    item = preview_items([certificate], printed, labels, can_approve)[0]
+    outdated = services.outdated_ids(certificate.activity) & {certificate.pk}
+    item = preview_items([certificate], printed, labels, can_approve, outdated)[0]
     return {
         "certificate": certificate,
         "item": item,
@@ -378,10 +501,13 @@ def certificate_list(filters: CertificateFilters) -> dict:
     counted = {c.pk: c.evidence_count for c in _with_evidence_count(Certificate.objects.filter(pk__in=ids))}
     labels = services.readiness_map(result.items)
     printed = printed_names(result.items)
+    outdated = set(Certificate.objects.filter(pk__in=ids).filter(services.outdated_q()).values_list("pk", flat=True))
+    worker = WorkerCheck()
     rows = []
     for certificate in result.items:
         certificate.evidence_count = counted.get(certificate.pk, 0)
-        rows.append(certificate_row(certificate, printed, labels.get(certificate.pk)))
+        rows.append(certificate_row(certificate, printed, labels.get(certificate.pk), outdated=certificate.pk in outdated,
+                                    worker=worker))
     without_status = {**filters.for_service(), "status": ""}
     return {
         "result": result,
@@ -412,4 +538,49 @@ def evidence(request: HttpRequest, certificate: Certificate, errors: dict | None
         "title": title,
         "limits": document_pages.upload_limits(),
         "back": tab_url(certificate.activity_id),
+    }
+
+
+# --- The Signatories page (/certificates/signatories/, can_approve_certificates; ASSUMPTIONS 363) ------------------
+
+
+def safe_next(request: HttpRequest, raw: str | None, default: str) -> str:
+    """Where a Signatories form goes back to: an internal path only (the activity's Certificates tab), else `default`."""
+    return raw if raw and is_internal_path(request, raw) else default
+
+
+def signatories_page(member, errors: dict | None = None, values: dict | None = None, open_form: str = "") -> dict:
+    """The defaults (two dropdowns), "Add a person", the active people (name, position, image, default, how many
+    activities use them, Edit / Signature with the impact of a new version, Deactivate) and the inactive ones."""
+    active = list(services.active_signatories())
+    usage = dict(ActivitySignatory.objects.filter(signatory__in=active).values("signatory").order_by()
+                 .annotate(n=Count("activity", distinct=True)).values_list("signatory", "n"))
+    in_use = (set(Certificate.objects.filter(left_signatory__in=active).values_list("left_signatory", flat=True))
+              | set(Certificate.objects.filter(right_signatory__in=active).values_list("right_signatory", flat=True)))
+    people = []
+    for person in active:
+        used = person.pk in in_use
+        impact = services.version_impact(person) if used else None
+        people.append({
+            "signatory": person,
+            "activities": usage.get(person.pk, 0),
+            "in_use": used,
+            "impact": services.version_impact_text(impact) if impact else "",
+            "image_url": signature_image_url(person, member),
+            "deactivate_reason": services.deactivate_closed_reason(person) or "",
+            "background_removable": services.white_background_removable(person),  # ASSUMPTIONS 366
+            "background_id": f"person-background-{person.pk}",
+            "default_label": f"Default {services.SLOT_LABELS[person.default_slot].lower()}" if person.default_slot else "",
+            "edit_id": f"edit-person-{person.pk}",
+            "image_id": f"person-image-{person.pk}",
+        })
+    return {
+        "people": people,
+        "inactive": CertificateSignatory.objects.filter(is_active=False).order_by("name", "-created_at"),
+        "defaults": services.default_signatories(),
+        "slots": [(slot, services.SLOT_LABELS[slot]) for slot in services.SLOTS],
+        "errors": errors or {},
+        "values": values or {},
+        "open_form": open_form,
+        "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
     }

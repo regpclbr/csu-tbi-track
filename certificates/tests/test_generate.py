@@ -38,7 +38,7 @@ def test_one_per_attendee_and_one_per_resource_person(conducted, design, directo
     assert appreciation.resource_person.name == "Dr. Maria Santos" and appreciation.delivery_method == "hard_copy"
 
     template, vp, head = design
-    assert all((c.certificate_template, c.vp_signatory, c.director_signatory) == (template, vp, head) for c in Certificate.objects.all())
+    assert all((c.certificate_template, c.right_signatory, c.left_signatory) == (template, vp, head) for c in Certificate.objects.all())
     numbers = sorted(Certificate.objects.values_list("certificate_number", flat=True))
     assert numbers == [f"TBI-{YEAR}-00001", f"TBI-{YEAR}-00002", f"TBI-{YEAR}-00003"]
 
@@ -62,23 +62,29 @@ def test_generating_again_adds_only_the_missing_ones(conducted, design, director
 @pytest.mark.parametrize(
     "remove, message",
     [
-        ("template", "no active certificate template"),
-        ("vp", "no active VP signatory"),
-        ("director", "no active Director signatory"),
+        ("template", "no active certificate design"),
+        ("left", "Choose the two signatories on the Certificates tab first."),
+        ("right", "Choose the two signatories on the Certificates tab first."),
     ],
 )
 def test_missing_template_or_signatory_is_refused(conducted, design, director, remove, message) -> None:
+    """ASSUMPTIONS 363: the active design and the activity's two signatories (an empty slot takes the default)."""
+    from certificates.models import ActivitySignatory
+
     template, vp, head = design
-    row = {"template": template, "vp": vp, "director": head}[remove]
-    type(row).objects.filter(pk=row.pk).update(is_active=False)
+    if remove == "template":
+        CertificateTemplate.objects.filter(pk=template.pk).update(is_active=False)
+    else:
+        ActivitySignatory.objects.filter(activity=conducted[0], slot=remove).delete()
+        CertificateSignatory.objects.filter(default_slot=remove).update(default_slot=None)
     with pytest.raises(services.CertificateError, match=message):
         services.generate_missing_certificates(conducted[0])
     assert not Certificate.objects.exists()
     assert services.auto_generate_certificates(conducted[0]) == 0  # the automatic callers never fail
 
 
-def test_all_missing_are_named(conducted, director) -> None:
-    with pytest.raises(services.CertificateError, match="no active certificate template, no active VP signatory, no active Director signatory"):
+def test_without_anything_the_design_is_named_first(conducted, director) -> None:
+    with pytest.raises(services.CertificateError, match="no active certificate design"):
         services.generate_missing_certificates(conducted[0])
 
 
@@ -88,7 +94,7 @@ def test_existing_certificates_keep_their_signatories(generated, admin_member) -
     from .conftest import upload
 
     services.add_signatory(admin_member, "New VP", "vp", upload("n.png", image_bytes()))
-    assert set(Certificate.objects.values_list("vp_signatory__name", flat=True)) == {"Dr. Vice Pres"}
+    assert set(Certificate.objects.values_list("right_signatory__name", flat=True)) == {"Dr. Vice Pres"}
 
 
 def test_unmarking_attendance_deletes_a_waiting_certificate(generated, director) -> None:
@@ -132,8 +138,10 @@ def test_numbers_are_unique_under_concurrency(director, valid_data, move_to) -> 
         move_to(activity, "Conducted")  # no design yet: nothing is created
         activities.append(activity)
     CertificateTemplate.objects.create(name="D", file_path=_stored("t.png", image_bytes()), uploaded_by=director, is_active=True)
-    for position in ("vp", "director"):
-        CertificateSignatory.objects.create(name=position, position=position, signature_image_path=_stored("s.png", image_bytes()))
+    for slot in ("left", "right"):  # the defaults: the activities' empty slots take them (ASSUMPTIONS 363)
+        CertificateSignatory.objects.create(name=slot, position=slot, default_slot=slot,
+                                            signature_image_path=_stored("s.png", image_bytes()))
+    services.fill_empty_slots_from_defaults()  # as when a member sets the defaults (ASSUMPTIONS 366)
 
     start = threading.Barrier(2)
     errors: list[Exception] = []

@@ -1,4 +1,5 @@
-"""Templates and signatories (Admin): image checks, activation, storage, never public."""
+"""Templates (Admin) and the signatory list (can_approve_certificates, ASSUMPTIONS 363): image checks, activation,
+storage, never public."""
 
 import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -75,14 +76,15 @@ def test_deactivate_template(admin_member) -> None:
 # --- Signatories ----------------------------------------------------------------------------
 
 
-def test_new_signatory_replaces_the_active_one_for_that_position(admin_member) -> None:
-    old = services.add_signatory(admin_member, "Old VP", "vp", upload("sig.png", image_bytes()))
-    director = services.add_signatory(admin_member, "Director", "director", upload("d.png", image_bytes()))
-    new = services.add_signatory(admin_member, "New VP", "vp", upload("sig2.png", image_bytes()))
-    old.refresh_from_db()
-    director.refresh_from_db()
-    assert new.is_active and not old.is_active and director.is_active
-    assert new.signature_image_path.name.startswith("signatures/vp-")
+def test_signatories_are_a_list_of_people_with_free_text_positions(director) -> None:
+    president = services.add_signatory(director, " Dr. Ana Reyes ", " University President ", upload("p.png", image_bytes()))
+    vp = services.add_signatory(director, "Dr. Ben Cruz", "Vice President for Research", None)
+    third = services.add_signatory(director, "Engr. Cy Lim", "Director, NAVIGATU", upload("d.jpg", image_bytes(kind="JPEG")))
+    assert (president.name, president.position) == ("Dr. Ana Reyes", "University President")
+    assert all(person.is_active for person in (president, vp, third))  # no "one active per position" any more
+    assert not vp.signature_image_path
+    assert president.signature_image_path.name.startswith("signatures/signature-")  # never the position or the upload
+    assert third.signature_image_path.name.endswith(".png")  # a JPG is stored as a transparent PNG (ASSUMPTIONS 366)
 
 
 @pytest.mark.parametrize(
@@ -94,20 +96,59 @@ def test_new_signatory_replaces_the_active_one_for_that_position(admin_member) -
         (upload("sig.png", b"GIF89a"), "not a valid PNG"),
     ],
 )
-def test_signature_must_be_a_real_png_or_jpg(admin_member, file, message) -> None:
+def test_signature_must_be_a_real_png_or_jpg(director, file, message) -> None:
     with pytest.raises(ValidationError, match=message):
-        services.add_signatory(admin_member, "VP", "vp", file)
+        services.add_signatory(director, "VP", "Vice President", file)
     assert not CertificateSignatory.objects.exists()
 
 
-def test_signatory_position_must_be_vp_or_director(admin_member) -> None:
-    with pytest.raises(ValidationError, match="vp or director"):
-        services.add_signatory(admin_member, "Dean", "dean", upload("s.png", image_bytes()))
+def test_signatory_needs_a_name_and_a_position(director) -> None:
+    with pytest.raises(ValidationError) as error:
+        services.add_signatory(director, "  ", "", None)
+    assert set(error.value.message_dict) == {"name", "position"}
 
 
-def test_only_admin_manages_signatories(director) -> None:
-    with pytest.raises(PermissionDenied):
-        services.add_signatory(director, "VP", "vp", upload("s.png", image_bytes()))
+def test_only_certificate_approvers_manage_signatories(make_member, director) -> None:
+    staff = make_member("Admin Staff", email="staff.sig@example.com")
+    person = services.add_signatory(director, "VP", "Vice President", None)
+    other = services.add_signatory(director, "P", "President", None)
+    for call in (
+        lambda: services.add_signatory(staff, "VP", "Vice President", None),
+        lambda: services.edit_signatory(staff, person, "X", "Y"),
+        lambda: services.replace_signature(staff, person, upload("s.png", image_bytes())),
+        lambda: services.deactivate_signatory(staff, person),
+        lambda: services.set_default_signatories(staff, person, other),
+    ):
+        with pytest.raises(PermissionDenied):
+            call()
+
+
+def test_defaults_two_different_active_people(director) -> None:
+    a = services.add_signatory(director, "A", "Director", None)
+    b = services.add_signatory(director, "B", "President", None)
+    c = services.add_signatory(director, "C", "VP", None)
+    services.set_default_signatories(director, a, b)
+    assert services.default_signatories() == {"left": a, "right": b}
+    services.set_default_signatories(director, b, c)  # swapping sides works in one step
+    assert services.default_signatories() == {"left": b, "right": c}
+    a.refresh_from_db()
+    assert a.default_slot is None
+    with pytest.raises(services.CertificateError, match="both sides"):
+        services.set_default_signatories(director, c, c)
+    services.deactivate_signatory(director, a)
+    with pytest.raises(services.CertificateError, match="inactive"):
+        services.set_default_signatories(director, a, c)
+
+
+def test_an_active_default_cannot_be_deactivated(director) -> None:
+    a = services.add_signatory(director, "A", "Director", None)
+    b = services.add_signatory(director, "B", "President", None)
+    services.set_default_signatories(director, a, b)
+    with pytest.raises(services.CertificateError, match="Choose another default first"):
+        services.deactivate_signatory(director, a)
+    c = services.add_signatory(director, "C", "VP", None)
+    services.set_default_signatories(director, c, b)
+    assert not services.deactivate_signatory(director, a).is_active
 
 
 # --- Images are served only through permission-checked views (item 65) -------------------------
@@ -116,7 +157,7 @@ def test_only_admin_manages_signatories(director) -> None:
 @pytest.fixture
 def stored(admin_member):
     template = services.upload_template(admin_member, "Design", template_upload(), activate=True)
-    signatory = services.add_signatory(admin_member, "VP", "vp", upload("sig.png", image_bytes()))
+    signatory = services.add_signatory(admin_member, "VP", "Vice President", upload("sig.png", image_bytes()))
     return template, signatory
 
 
@@ -146,12 +187,13 @@ def test_signature_images_are_never_public(client, director, make_member, stored
     assert client.get("/media/" + signatory.signature_image_path.name).status_code == 404
 
 
-def test_admin_console_api(client, admin_member, director) -> None:
+def test_admin_console_api(client, admin_member, director, make_member) -> None:
     client.force_login(admin_member)
     response = client.post(
-        reverse("certificates:api_signatories"), {"name": "VP", "position": "vp", "file": upload("s.png", image_bytes())}
+        reverse("certificates:api_signatories"), {"name": "VP", "position": "Vice President", "file": upload("s.png", image_bytes())}
     )
     assert response.status_code == 201 and response.json()["signatory"]["is_active"]
+    assert response.json()["signatory"]["position"] == "Vice President"
     response = client.post(reverse("certificates:api_templates"), {"name": "Design", "file": template_upload(), "activate": "true"})
     assert response.status_code == 201
     template_id = response.json()["template"]["certificate_template_id"]
@@ -160,25 +202,24 @@ def test_admin_console_api(client, admin_member, director) -> None:
     assert bad.status_code == 400 and "file" in bad.json()["errors"]
     client.force_login(director)
     assert client.get(reverse("certificates:api_templates")).status_code == 403
+    assert client.get(reverse("certificates:api_signatories")).status_code == 200  # approvers manage the list
+    client.force_login(make_member("Admin Staff", email="staff.api@example.com"))
+    assert client.get(reverse("certificates:api_signatories")).status_code == 403
 
 
 # --- Django admin ---------------------------------------------------------------------------------
 
 
-def test_django_admin_adds_signatory_through_the_service(client, admin_member) -> None:
-    client.force_login(admin_member)
-    services.add_signatory(admin_member, "Old VP", "vp", upload("s.png", image_bytes()))
-    response = client.post(
-        "/admin/certificates/certificatesignatory/add/",
-        {"name": "New VP", "position": "vp", "signature_image_path": upload("n.png", image_bytes())},
-    )
-    assert response.status_code == 302, response.content[:500]
-    assert list(CertificateSignatory.objects.filter(is_active=True).values_list("name", flat=True)) == ["New VP"]
-    bad = client.post(
-        "/admin/certificates/certificatesignatory/add/",
-        {"name": "X", "position": "vp", "signature_image_path": upload("n.png", image_bytes(kind="JPEG"))},
-    )
-    assert bad.status_code == 200 and b"not a valid PNG" in bad.content
+def test_django_admin_signatories_are_view_only(client, admin_member) -> None:
+    from django.contrib import admin
+
+    from certificates.models import ActivitySignatory
+
+    request = type("R", (), {"user": admin_member})()
+    for model in (CertificateSignatory, ActivitySignatory):
+        model_admin = admin.site._registry[model]
+        assert not model_admin.has_add_permission(request) and not model_admin.has_change_permission(request)
+        assert not model_admin.has_delete_permission(request)
 
 
 def test_django_admin_adds_template_through_the_service(client, admin_member) -> None:

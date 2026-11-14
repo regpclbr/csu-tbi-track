@@ -111,10 +111,17 @@ class Command(BaseCommand):
         folder = Path(folder)
         read = lambda name: SimpleUploadedFile(name, (folder / name).read_bytes())  # noqa: E731
         template = services.upload_template(self.member, "Walkthrough sample design", read("sample-template.png"), activate=True)
-        vp = services.add_signatory(self.member, "Dr. Sample Vice President", "vp", read("sample-signature-vp.png"))
-        director = services.add_signatory(self.member, "Engr. Sample Director", "director", read("sample-signature-director.png"))
+        # The signatory list and the defaults: a member who can approve certificates (ASSUMPTIONS 363).
+        approver = (self.member if self.member.role.can_approve_certificates
+                    else self.find_member(None, "approve"))
+        director = services.add_signatory(approver, "Engr. Sample Director", "Director, CSU Technology Business Incubator",
+                                          read("sample-signature-director.png"))
+        vp = services.add_signatory(approver, "Dr. Sample Vice President",
+                                    "Vice President for Research, Development and Extension", read("sample-signature-vp.png"))
+        services.set_default_signatories(approver, director, vp)
         self.say(f"Template {template.pk} '{template.name}' is the active design ({template.file_path.name}).")
-        self.say(f"Signatory {vp.pk}: {vp.name} (VP), active. Signatory {director.pk}: {director.name} (Director), active.")
+        self.say(f"Default signatories: left {director.pk} {director.name}, right {vp.pk} {vp.name}. New activities "
+                 "start with them.")
 
     def step_activity(self) -> None:
         """A Conducted activity ending today: 3 registrations (2 attended) and 1 resource person.

@@ -1,8 +1,9 @@
 """Django admin for certificates.
 
 - Certificates: view only, with a download link through the permission-checked view.
-- Templates and signatories: added through certificates.services (image checks, activation),
-  read-only afterwards (files never change), never deleted; (de)activated with list actions.
+- Templates: added through certificates.services (image checks, activation), read-only afterwards (files never
+  change), never deleted; (de)activated with list actions.
+- Signatories and the activities' signatories: view only (the Signatories page and the Certificates tab).
 """
 
 from django import forms
@@ -14,7 +15,7 @@ from django.utils.html import format_html
 from accounts.admin import NoDeleteAdminMixin, ReadOnlyAdminMixin
 
 from . import services
-from .models import Certificate, CertificateSignatory, CertificateTemplate
+from .models import ActivitySignatory, Certificate, CertificateSignatory, CertificateTemplate
 
 
 class TemplateAddForm(forms.ModelForm):
@@ -32,29 +33,6 @@ class TemplateAddForm(forms.ModelForm):
         except ValidationError as error:
             raise ValidationError(error.message_dict["file"]) from error
         return file
-
-
-class SignatoryAddForm(forms.ModelForm):
-    class Meta:
-        model = CertificateSignatory
-        fields = ("name", "position", "signature_image_path")
-        labels = {"signature_image_path": "Signature image (PNG or JPG, optional: it can be added later on an activity's Certificates tab)"}
-
-    def clean_signature_image_path(self):
-        file = self.cleaned_data.get("signature_image_path")
-        if not file:
-            return None
-        try:
-            services.validate_signature_image(file)
-        except ValidationError as error:
-            raise ValidationError(error.message_dict["file"]) from error
-        return file
-
-    def clean(self):
-        # The service deactivates the current signatory of that position; skip the model's
-        # "one active per position" check on this unsaved form instance.
-        self.instance.is_active = False
-        return super().clean()
 
 
 def _copy_saved(target, saved) -> None:
@@ -107,27 +85,15 @@ class CertificateTemplateAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(CertificateSignatory)
-class CertificateSignatoryAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "position", "is_active", "created_at", "signature")
-    list_filter = ("position", "is_active")
-    actions = ["deactivate_selected"]
+class CertificateSignatoryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """View only: people are added, edited (new versions), given images, made defaults and deactivated on the
+    Signatories page through certificates.services (ASSUMPTIONS 363)."""
 
-    def get_form(self, request, obj=None, **kwargs):
-        if obj is None:
-            kwargs["form"] = SignatoryAddForm
-        return super().get_form(request, obj, **kwargs)
-
-    def get_fields(self, request, obj=None):
-        return ("name", "position", "signature_image_path") if obj is None else ("name", "position", "signature", "is_active", "created_at")
-
-    def get_readonly_fields(self, request, obj=None):
-        return () if obj is None else ("name", "position", "signature", "is_active", "created_at")
-
-    def save_model(self, request, obj, form, change) -> None:
-        signatory = services.add_signatory(
-            request.user, form.cleaned_data["name"], form.cleaned_data["position"], form.cleaned_data["signature_image_path"]
-        )
-        _copy_saved(obj, signatory)
+    list_display = ("name", "position", "default_slot", "is_active", "created_at", "signature")
+    list_filter = ("is_active", "default_slot")
+    search_fields = ("name", "position")
+    exclude = ("signature_image_path",)
+    readonly_fields = ("signature",)
 
     @admin.display(description="Signature")
     def signature(self, obj: CertificateSignatory) -> str:
@@ -135,11 +101,14 @@ class CertificateSignatoryAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
             return "Not added yet"
         return format_html('<a href="{}">Download</a>', reverse("certificates:signature_image", args=[obj.pk]))
 
-    @admin.action(description="Deactivate selected signatories")
-    def deactivate_selected(self, request, queryset) -> None:
-        for signatory in queryset:
-            services.deactivate_signatory(request.user, signatory)
-        self.message_user(request, f"Deactivated {queryset.count()} signatory(ies).", messages.SUCCESS)
+
+@admin.register(ActivitySignatory)
+class ActivitySignatoryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """View only: changed on the activity's Certificates tab (certificates.services.set_activity_signatory)."""
+
+    list_display = ("activity", "slot", "signatory")
+    list_filter = ("slot",)
+    list_select_related = ("activity", "signatory")
 
 
 @admin.register(Certificate)

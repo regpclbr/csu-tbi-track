@@ -68,8 +68,10 @@ def design(director) -> tuple[CertificateTemplate, CertificateSignatory, Certifi
     template = CertificateTemplate.objects.create(
         name="TBI design", file_path=_stored("certificate_templates/design.png", image_bytes()), uploaded_by=director, is_active=True
     )
-    vp = CertificateSignatory.objects.create(name="Dr. Vice Pres", position="vp", signature_image_path=_stored("signatures/vp.png", image_bytes()))
-    head = CertificateSignatory.objects.create(name="Engr. Dee Rector", position="director", signature_image_path=_stored("signatures/dir.png", image_bytes()))
+    vp = CertificateSignatory.objects.create(name="Dr. Vice Pres", position="Vice President", default_slot="right", signature_image_path=_stored("signatures/vp.png", image_bytes()))
+    head = CertificateSignatory.objects.create(name="Engr. Dee Rector", position="Director", default_slot="left", signature_image_path=_stored("signatures/dir.png", image_bytes()))
+    # Activities created before these defaults existed get them, as when a member sets the defaults (ASSUMPTIONS 366).
+    services.fill_empty_slots_from_defaults()
     return template, vp, head
 
 

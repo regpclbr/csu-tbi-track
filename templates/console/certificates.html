@@ -1,10 +1,11 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/accounts/console/certificates/ (accounts.console_views.certificate_design): certificate designs and signatories through
-certificates.services (image checks; a new design or signature is a new row, files never change; one active design and
-one active VP and Director). Nothing here is ever deleted (there is no delete URL): rows are deactivated.
-Thumbnails come from the Admin-only views certificates:template_image / signature_image (never /media/).
-Errors of a refused upload appear under their fields (template_errors / signatory_errors), with that form open.
+/accounts/console/certificates/ (accounts.console_views.certificate_design): certificate designs through
+certificates.services (image checks; a new design is a new row, files never change; one active design). Nothing here is
+ever deleted (there is no delete URL): rows are deactivated. The default signatories are shown read only (ASSUMPTIONS
+363: the list and the defaults are managed on /certificates/signatories/ by members with can_approve_certificates).
+Thumbnails come from the Admin-only view certificates:template_image (never /media/).
+Errors of a refused upload appear under their fields (template_errors), with that form open.
 {% endcomment %}
 {% block content %}
 {% include "console/_tabs.html" %}
@@ -70,76 +71,25 @@ Errors of a refused upload appear under their fields (template_errors / signator
 
   <section class="card p-6" aria-labelledby="signatories-title">
     <div class="mb-4">
-      <h2 id="signatories-title" class="card-title">Signatories</h2>
-      <p class="card-subtitle">The VP and the Director whose signatures are printed. A new one replaces the active one of that position.</p>
+      <h2 id="signatories-title" class="card-title">Default signatories</h2>
+      <p class="card-subtitle">The two people a new activity starts with. Each activity can choose its own on its Certificates tab.</p>
     </div>
-
-    <details class="group mb-5 rounded-2xl border border-line" {% if signatory_errors %}open{% endif %} id="add-signatory">
-      <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
-        <span class="inline-flex items-center gap-2">{% include "components/icon.html" with name="pen-line" class="size-4" %}Add a signatory</span>
-        {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
-      </summary>
-      <form method="post" action="{% url 'accounts:console_signatory_add' %}" enctype="multipart/form-data" novalidate class="space-y-4 border-t border-line px-4 pt-4 pb-5"
-            x-data="{ busy: false }" @submit="busy = true">
-        {% csrf_token %}
-        <div>
-          <label for="signatory-name" class="text-sm font-semibold text-ink">Name as printed</label>
-          <input id="signatory-name" name="name" value="{{ signatory_values.name|default:'' }}" maxlength="255" class="field-input mt-1.5" placeholder="e.g. Dr. Maria Santos"{% if signatory_errors.name %} aria-invalid="true" aria-describedby="signatory-name-error" autofocus{% endif %}>
-          {% if signatory_errors.name %}<p id="signatory-name-error" class="field-error">{{ signatory_errors.name }}</p>{% endif %}
-        </div>
-        <fieldset{% if signatory_errors.position %} aria-describedby="signatory-position-error"{% endif %}>
-          <legend class="text-sm font-semibold text-ink">Position</legend>
-          <div class="mt-1.5 flex flex-wrap gap-4">
-            {% for value, label in position_choices %}
-              <label class="flex min-h-10 items-center gap-2 text-sm text-ink"><input type="radio" name="position" value="{{ value }}" class="size-4 accent-primary"{% if signatory_values.position == value %} checked{% endif %}{% if signatory_errors.position %} aria-invalid="true"{% endif %}>{{ label }}</label>
-            {% endfor %}
-          </div>
-          {% if signatory_errors.position %}<p id="signatory-position-error" class="field-error">{{ signatory_errors.position }}</p>{% endif %}
-        </fieldset>
-        {% include "console/_image_input.html" with id="signatory-file" accept="image/png,image/jpeg" help="Optional: PNG or JPG (a PNG with a transparent background prints cleanly). It can also be added later on an activity's Certificates tab." error=signatory_errors.file %}
-        <button type="submit" class="btn btn-primary" :disabled="busy">{% include "components/icon.html" with name="plus" class="size-4" %}Add signatory</button>
-      </form>
-    </details>
-
-    <div class="space-y-5">
-      {% for position in positions %}
-        <div>
-          <h3 class="text-sm font-semibold text-ink">{{ position.label }}</h3>
-          {% if not position.active %}
-            <p class="mt-2 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4" %}No active {{ position.label }}: certificates cannot be generated.</p>
-          {% endif %}
-          {% if position.signatories %}
-            <ul class="mt-2 divide-y divide-line overflow-hidden rounded-2xl border border-line">
-              {% for signatory in position.signatories %}
-                <li class="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap {% if signatory.is_active %}bg-blue-50/50{% endif %}">
-                  {% if signatory.signature_image_path %}
-                    <img src="{% url 'certificates:signature_image' signatory.pk %}" alt="Signature of {{ signatory.name }}" loading="lazy" class="h-12 w-28 shrink-0 rounded-lg border border-line bg-white object-contain p-1">
-                  {% else %}
-                    <span class="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-line bg-white px-1 text-center text-xs text-muted">No signature yet</span>
-                  {% endif %}
-                  <div class="min-w-0 flex-1">
-                    <p class="font-semibold break-words text-ink">{{ signatory.name }}</p>
-                    <p class="text-xs text-muted">Added {{ signatory.created_at|date:"M j, Y" }}</p>
-                  </div>
-                  {% if signatory.is_active %}
-                    {% include "components/badge.html" with text="Active" tone="success" %}
-                    <form method="post" action="{% url 'accounts:console_signatory_deactivate' signatory.pk %}">
-                      {% csrf_token %}
-                      <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ signatory.name }}</span></button>
-                    </form>
-                  {% else %}
-                    {% include "components/badge.html" with text="Inactive" tone="neutral" %}
-                  {% endif %}
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p class="mt-2 text-sm text-muted">None yet.</p>
-          {% endif %}
+    <dl class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+      {% for label, person in default_signatories %}
+        <div class="flex flex-wrap items-center gap-3 px-4 py-3">
+          <dt class="w-16 shrink-0 text-sm font-semibold text-ink">{{ label }}</dt>
+          <dd class="min-w-0 flex-1 text-sm text-slate-700">
+            {% if person %}<span class="font-semibold break-words text-ink">{{ person.name }}</span><span class="block text-xs text-muted">{{ person.position }}{% if not person.signature_image_path %} · no signature image yet{% endif %}</span>
+            {% else %}<span class="text-muted">Not set</span>{% endif %}
+          </dd>
         </div>
       {% endfor %}
-    </div>
-    <p class="mt-5 text-xs text-muted">Signatories are never deleted. To change a name or a signature, add a new signatory: the old one stays on the certificates already made.</p>
+    </dl>
+    {% if can_manage_signatories %}
+      <a href="{% url 'certificates:signatories' %}" class="btn btn-secondary btn-arrow mt-4">{% include "components/icon.html" with name="pen-line" class="size-4" %}Manage signatories{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+    {% else %}
+      <p class="mt-4 text-sm text-slate-700">Members who can approve certificates manage the signatory list and the defaults on the Signatories page.</p>
+    {% endif %}
   </section>
 </div>
 {% endblock %}

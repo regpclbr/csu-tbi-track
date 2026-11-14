@@ -1,0 +1,24 @@
+{% comment %}
+The signature image field of every upload dialog (ASSUMPTIONS 366): the file input, "Keep the background" and a preview
+of the image as it will be stored (white background removed) on a checkered background, before saving. Choosing a file
+or switching the checkbox posts the form to certificates:signature_preview (HTMX, nothing is saved). Without JavaScript
+the form still works (the image is cleaned when it is saved).
+{% include "certificates/_signature_file_field.html" with prefix="signature-left" required=True max_mb=5 %}
+optional=True: "(optional, can be added later)" in the label.
+{% endcomment %}
+<div>
+  <label for="{{ prefix }}-file" class="text-sm font-semibold text-ink">Signature image{% if optional %} <span class="font-normal text-muted">(optional, can be added later)</span>{% endif %}</label>
+  <input id="{{ prefix }}-file" type="file" name="file" accept="image/png,image/jpeg"{% if required %} required{% endif %} aria-describedby="{{ prefix }}-file-help"
+         hx-post="{% url 'certificates:signature_preview' %}" hx-trigger="change" hx-encoding="multipart/form-data"
+         hx-target="#{{ prefix }}-preview" hx-swap="innerHTML" hx-indicator="#{{ prefix }}-spinner"
+         class="mt-1.5 block w-full max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-primary-soft file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-blue-100">
+  <p id="{{ prefix }}-file-help" class="field-help">PNG or JPG, up to {{ max_mb }} MB. A white background is made transparent automatically; check the preview before saving.</p>
+  <label class="mt-2 flex items-start gap-2 text-sm text-slate-700">
+    <input type="checkbox" name="keep_background" value="true" class="mt-0.5 size-4 rounded border-line"
+           hx-post="{% url 'certificates:signature_preview' %}" hx-trigger="change" hx-encoding="multipart/form-data"
+           hx-target="#{{ prefix }}-preview" hx-swap="innerHTML" hx-indicator="#{{ prefix }}-spinner">
+    <span>Keep the background <span class="text-muted">(only for an image that really needs it)</span></span>
+  </label>
+  <div id="{{ prefix }}-spinner" class="htmx-indicator mt-2 text-xs text-muted" aria-hidden="true">Preparing the preview…</div>
+  <div id="{{ prefix }}-preview" class="mt-2" aria-live="polite"></div>
+</div>

@@ -3,9 +3,11 @@
 - Any active staff member: list, detail, download the PDF, preview, list/download evidence, upload
   evidence (Step 6 rule).
 - can_create_activity: regenerate (Apply the current design), hand over, resend. can_approve_certificates (the
-  Director, both Project Heads, the System Administrator): approve ready certificates (ASSUMPTIONS 362). Certificates
-  are created by the System (no generate endpoint). Evidence review: can_approve_documents (the Step 6 rules).
-- can_manage_users (Admin Console): templates and signatories, and their images.
+  Director, both Project Heads, the System Administrator): approve ready certificates (ASSUMPTIONS 362), reissue
+  outdated ones (364), the signatory list (363). Certificates are created by the System (no generate endpoint).
+  Evidence review: can_approve_documents (the Step 6 rules).
+- can_manage_users (Admin Console): templates and their images. Signature images: can_manage_users or
+  can_approve_certificates.
 Files are never served from /media/: only through these views, as attachments (inline only for the certificate
 preview: the rendered preview, or an Issued certificate's final PDF).
 """
@@ -126,8 +128,11 @@ def certificate_json(certificate: Certificate, detail: bool = False) -> dict:
                 "certificate_name": services.recipient_name(certificate),
                 "certificate_email": evaluation.certificate_email if evaluation else None,
                 "template": {"certificate_template_id": certificate.certificate_template_id, "name": certificate.certificate_template.name},
-                "director": {"signatory_id": certificate.director_signatory_id, "name": certificate.director_signatory.name},
-                "vp": {"signatory_id": certificate.vp_signatory_id, "name": certificate.vp_signatory.name},
+                "left_signatory": {"signatory_id": certificate.left_signatory_id, "name": certificate.left_signatory.name,
+                                   "position": certificate.left_signatory.position},
+                "right_signatory": {"signatory_id": certificate.right_signatory_id, "name": certificate.right_signatory.name,
+                                    "position": certificate.right_signatory.position},
+                "reissued_at": certificate.reissued_at,
                 "approved_by": {"member_id": certificate.approved_by_id, "name": certificate.approved_by.name} if certificate.approved_by else None,
                 "download_url": reverse("certificates:download", args=[certificate.pk]),
                 "preview_url": reverse("certificates:preview", args=[certificate.pk]),
@@ -159,7 +164,7 @@ def signatory_json(signatory: CertificateSignatory) -> dict:
         "signatory_id": signatory.pk,
         "name": signatory.name,
         "position": signatory.position,
-        "position_label": signatory.get_position_display(),
+        "default_slot": signatory.default_slot,
         "is_active": signatory.is_active,
         "created_at": signatory.created_at,
         "signature_url": reverse("certificates:signature_image", args=[signatory.pk]) if signatory.signature_image_path else None,
@@ -255,6 +260,7 @@ ACTIONS = {
     "regenerate": (services.regenerate_certificates, Permission.CREATE_ACTIVITY),
     "hand-over": (services.mark_handed_over, Permission.CREATE_ACTIVITY),
     "resend": (services.resend_certificates, Permission.CREATE_ACTIVITY),
+    "reissue": (services.reissue_certificates, Permission.APPROVE_CERTIFICATES),
 }
 
 
@@ -262,7 +268,7 @@ ACTIONS = {
 @require_POST
 @api_errors
 def action_api(request: HttpRequest, action: str) -> JsonResponse:
-    """POST /certificates/api/<approve|regenerate|hand-over|resend>/ with {"certificate_ids": [..]} or
+    """POST /certificates/api/<approve|regenerate|hand-over|resend|reissue>/ with {"certificate_ids": [..]} or
     {"activity_id": n}. Each service checks its own permission (403 without it)."""
     if action not in ACTIONS:
         raise Http404("Unknown action.")
@@ -320,7 +326,7 @@ def evidence_download(request: HttpRequest, document_id: int) -> FileResponse:
     return _file_response(document.file_path, document.file_name)
 
 
-# --- Admin Console: templates and signatories (can_manage_users) --------------------------------
+# --- Admin Console: templates (can_manage_users); signatories (can_approve_certificates) --------
 
 
 @permission_required(Permission.MANAGE_USERS)
@@ -350,19 +356,20 @@ def template_action_api(request: HttpRequest, template_id: int, action: str) -> 
     return JsonResponse({"template": template_json(template)})
 
 
-@permission_required(Permission.MANAGE_USERS)
+@permission_required(Permission.APPROVE_CERTIFICATES)
 @require_http_methods(["GET", "POST"])
 @api_errors
 def signatories_api(request: HttpRequest) -> JsonResponse:
-    """GET: every signatory. POST (multipart: name, position=vp|director, file): add one; they become
-    the active signatory for that position."""
+    """GET: every signatory (active first). POST (multipart: name, position (free text), file optional): add a
+    person to the list (ASSUMPTIONS 363)."""
     if request.method == "GET":
-        return JsonResponse({"signatories": [signatory_json(s) for s in CertificateSignatory.objects.order_by("position", "-created_at")]})
+        people = CertificateSignatory.objects.order_by("-is_active", "name", "-created_at")
+        return JsonResponse({"signatories": [signatory_json(s) for s in people]})
     signatory = services.add_signatory(request.user, request.POST.get("name", ""), request.POST.get("position", ""), request.FILES.get("file"))
     return JsonResponse({"signatory": signatory_json(signatory)}, status=201)
 
 
-@permission_required(Permission.MANAGE_USERS)
+@permission_required(Permission.APPROVE_CERTIFICATES)
 @require_POST
 @api_errors
 def signatory_deactivate_api(request: HttpRequest, signatory_id: int) -> JsonResponse:

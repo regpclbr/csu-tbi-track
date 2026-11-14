@@ -1,0 +1,28 @@
+{% comment %}
+"Add a person…" from the activity form (ASSUMPTIONS 365; can_approve_certificates). Posted with HTMX to
+certificates:signatory_add_inline, which adds the person (services.add_signatory) and sends the event
+"signatory-added": the activity form adds the option to both dropdowns and selects it in `values.slot`; the dialog
+closes. Errors come back here. The activity itself is saved only with the activity form.
+{% endcomment %}
+<form id="add-signatory-form" hx-post="{{ add_url }}" hx-encoding="multipart/form-data" hx-target="this" hx-swap="outerHTML"
+      method="post" action="{{ add_url }}" enctype="multipart/form-data" novalidate class="space-y-4">
+  {% csrf_token %}
+  <input type="hidden" id="add-signatory-slot" name="slot" value="{{ values.slot|default:'left' }}">
+  {% if added %}<p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="status">{{ added }} was added and chosen.</p>{% endif %}
+  {% if errors.file %}<p class="field-error" role="alert">{{ errors.file }}</p>{% endif %}
+  <div>
+    <label for="add-signatory-name" class="text-sm font-semibold text-ink">Name as printed</label>
+    <input id="add-signatory-name" name="name" value="{{ values.name|default:'' }}" maxlength="255" required class="field-input mt-1.5" placeholder="e.g. Dr. Maria Santos"{% if errors.name %} aria-invalid="true" aria-describedby="add-signatory-name-error"{% endif %}>
+    {% if errors.name %}<p id="add-signatory-name-error" class="field-error">{{ errors.name }}</p>{% endif %}
+  </div>
+  <div>
+    <label for="add-signatory-position" class="text-sm font-semibold text-ink">Position as printed</label>
+    <input id="add-signatory-position" name="position" value="{{ values.position|default:'' }}" maxlength="255" required class="field-input mt-1.5" placeholder="e.g. University President"{% if errors.position %} aria-invalid="true" aria-describedby="add-signatory-position-error"{% endif %}>
+    {% if errors.position %}<p id="add-signatory-position-error" class="field-error">{{ errors.position }}</p>{% endif %}
+  </div>
+  {% include "certificates/_signature_file_field.html" with prefix="add-signatory" optional=True %}
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+    <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="user-plus" class="size-4" %}Add and choose</button>
+  </div>
+</form>

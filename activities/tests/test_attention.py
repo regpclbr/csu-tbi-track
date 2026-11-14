@@ -31,6 +31,8 @@ def test_a_new_draft_needs_its_forms(new_activity) -> None:
     assert [(i.text, i.tab) for i in items] == [
         ("Registration form not built yet.", "forms"),
         ("Evaluation form not built yet.", "forms"),
+        # No default signatories in these tests: the slots stay empty (ASSUMPTIONS 366).
+        ("Choose who signs the certificates (left and right).", "certificates"),
     ]
 
 
@@ -115,7 +117,7 @@ def test_certificates_waiting_for_approval(activity, registration, make_certific
     assert not [text for text in texts(activity, now) if "approval" in text]
     CertificateSignatory.objects.filter(pk=signatories[1].pk).update(signature_image_path=None)
     items = texts(activity, now)
-    assert "Add the Director's signature first." in items
+    assert "Add the signature of Director (Director) first." in items  # ASSUMPTIONS 363: the person by name
 
 
 def test_failed_certificate_emails(activity, registration, make_certificate) -> None:
@@ -172,19 +174,19 @@ def test_list_counts_use_a_fixed_number_of_queries(director, valid_data, move_to
         attention.attention_counts(activities[:1], now)
     with CaptureQueriesContext(connection) as many:
         attention.attention_counts(activities, now)
-    assert len(one) == len(many) <= 6
+    assert len(one) == len(many) <= 7  # + the signatory slots (ASSUMPTIONS 365-367)
 
 
 def test_list_shows_the_warning_count(client, director, new_activity) -> None:
     client.force_login(director)
     html = client.get(reverse("activities:list")).content.decode()
-    assert 'aria-label="2 items need attention"' in html
+    assert 'aria-label="3 items need attention"' in html  # the forms + who signs (no defaults in this test)
 
 
 def test_activity_page_shows_the_box_or_all_set(client, director, new_activity, monkeypatch) -> None:
     client.force_login(director)
     url = reverse("activities:detail", args=[new_activity.pk])
     html = client.get(url).content.decode()
-    assert "Needs attention (2)" in html and "Registration form not built yet." in html and "?tab=forms" in html
+    assert "Needs attention (3)" in html and "Registration form not built yet." in html and "?tab=forms" in html
     monkeypatch.setattr(attention, "activity_attention", lambda activity, now=None: [])
     assert "All set" in client.get(url).content.decode()

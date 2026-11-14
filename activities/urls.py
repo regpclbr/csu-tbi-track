@@ -34,8 +34,16 @@ urlpatterns = [
     path("<int:activity_id>/certificates/apply-design/", certificate_page_views.apply_design,
          name="certificates_apply_design"),
     path("<int:activity_id>/certificates/action/", certificate_page_views.row_action, name="certificates_action"),
-    path("<int:activity_id>/certificates/signatures/<str:position>/", certificate_page_views.signature_upload,
+    path("<int:activity_id>/certificates/signatures/<str:slot>/", certificate_page_views.signature_upload,
          name="certificates_signature"),
+    path("<int:activity_id>/certificates/signatories/<str:slot>/", certificate_page_views.signatory_choose,
+         name="certificates_signatory"),
+    path("<int:activity_id>/certificates/signatories/<str:slot>/current-version/",
+         certificate_page_views.signatory_current_version, name="certificates_signatory_current"),
+    path("<int:activity_id>/certificates/<int:certificate_id>/reissue/", certificate_page_views.reissue_one,
+         name="certificates_reissue"),
+    path("<int:activity_id>/certificates/reissue-outdated/", certificate_page_views.reissue_all,
+         name="certificates_reissue_all"),
     # JSON API
     path("api/", views.activities_api, name="api_list"),  # GET list, POST create
     path("api/stats/", views.stats_api, name="api_stats"),

@@ -7,9 +7,11 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
+from accounts.permissions import Permission, has_permission
 from registrations import services as registration_services
 
 from . import attention, services
@@ -242,7 +244,7 @@ def list_rows(activities: list[Activity], now: datetime | None = None) -> list[d
         own = items.get(activity.pk, [])
         rows.append({
             "activity": activity,
-            "attention": len(own),
+            "attention": attention.warning_count(own),  # informational items are not counted (ASSUMPTIONS 364)
             "note": next((item.text for item in own if item.kind in ("draft", "attendance")), ""),
             "categories": sorted(category.name for category in activity.participant_categories.all()),
             "registered": activity.registered,
@@ -361,6 +363,58 @@ def history(activity: Activity, page) -> tuple[services.PageResult, list[dict]]:
     """The History tab: services.get_audit_log (newest first, 20 a page) with readable sentences."""
     result = services.get_audit_log(activity, page=page)
     return result, [{"entry": entry, "sentence": audit_sentence(entry)} for entry in result.items]
+
+
+def signatory_form_options(member, activity: Activity | None = None) -> dict:
+    """The activity form's "Who signs the certificates" (ASSUMPTIONS 365): who is shown first per slot (the activity's
+    saved person; on a new activity the active default, or nobody) and whether "Add a person…" is offered
+    (can_approve_certificates)."""
+    from certificates import services as certificate_services
+
+    if activity is not None:
+        current = certificate_services.activity_signatories(activity)
+    else:
+        current = {slot: person if person is not None and person.is_active else None
+                   for slot, person in certificate_services.default_signatories().items()}
+    return {"current_signatories": current, "can_add_person": has_permission(member, Permission.APPROVE_CERTIFICATES)}
+
+
+def signatory_form_section(form, member) -> dict:
+    """What the form template shows for "Who signs the certificates": per slot the bound select and title fields,
+    each option's usual position (the title's placeholder follows the chosen person) and the amber note for an
+    inactive person; the "Add a person…" dialog for can_approve_certificates."""
+    from certificates import services as certificate_services
+
+    slots = []
+    for slot in ("left", "right"):
+        field = form[f"signatory_{slot}"]
+        people = form.fields[f"signatory_{slot}"].allowed_people
+        selected = str(field.value() or "")
+        current = form.signatory_current.get(slot)
+        options = []
+        for value, label in form.fields[f"signatory_{slot}"].choices:
+            person = people.get(int(value)) if str(value).isdigit() else None
+            options.append({"value": str(value), "label": label, "position": person.position if person else "",
+                            "selected": str(value) == selected})
+        chosen = people.get(int(selected)) if selected.isdigit() else None
+        slots.append({
+            "slot": slot,
+            "label": "Left" if slot == "left" else "Right",
+            "field": field,
+            "title": form[f"title_{slot}"],
+            "options": options,
+            "placeholder": chosen.position if chosen else "The person's usual position",
+            "inactive": current is not None and not current.is_active,
+            "locked": current is not None,  # a chosen slot can be switched but never emptied
+        })
+    return {
+        "slots": slots,
+        "can_add": has_permission(member, Permission.APPROVE_CERTIFICATES),
+        "add_url": reverse("certificates:signatory_add_inline"),
+        "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
+        "no_defaults": all(slot["field"].value() in (None, "") for slot in slots),
+        "list_url": reverse("certificates:signatories"),
+    }
 
 
 def keep_stored_minutes(cleaned: dict, activity: Activity) -> dict:

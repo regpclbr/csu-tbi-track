@@ -297,13 +297,13 @@ def test_no_registrations_shows_empty_states(portal) -> None:
 def _certificate(registration, number: str, director, status=Certificate.Status.ISSUED) -> Certificate:
     template = CertificateTemplate.objects.first() or CertificateTemplate.objects.create(
         name="Design", file_path=_stored("certificate_templates/d.png", image_bytes()), uploaded_by=director, is_active=True)
-    vp = CertificateSignatory.objects.filter(position="vp").first() or CertificateSignatory.objects.create(
-        name="VP", position="vp", signature_image_path=_stored("signatures/vp.png", image_bytes()))
-    head = CertificateSignatory.objects.filter(position="director").first() or CertificateSignatory.objects.create(
-        name="Director", position="director", signature_image_path=_stored("signatures/d.png", image_bytes()))
+    vp = CertificateSignatory.objects.filter(position="Vice President", default_slot="right").first() or CertificateSignatory.objects.create(
+        name="VP", position="Vice President", default_slot="right", signature_image_path=_stored("signatures/vp.png", image_bytes()))
+    head = CertificateSignatory.objects.filter(position="Director", default_slot="left").first() or CertificateSignatory.objects.create(
+        name="Director", position="Director", default_slot="left", signature_image_path=_stored("signatures/d.png", image_bytes()))
     return Certificate.objects.create(
         certificate_template=template, certificate_number=number, recipient_type=Certificate.RecipientType.REGISTRATION,
-        registration=registration, activity=registration.activity, vp_signatory=vp, director_signatory=head,
+        registration=registration, activity=registration.activity, right_signatory=vp, left_signatory=head,
         delivery_method=Certificate.DeliveryMethod.EMAIL, status=status, issued_at=timezone.now(),
         file_path=_stored(f"certificates/{number}.pdf", b"%PDF-1.4 test"),
     )

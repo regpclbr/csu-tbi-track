@@ -1,5 +1,6 @@
 """What needs attention on an activity (ASSUMPTIONS 347): the amber box on the activity page and the warning count
-on the Activities list.
+on the Activities list. Informational items (AttentionItem.informational, e.g. "N issued certificates have an old
+signature", ASSUMPTIONS 364) are shown in the box but never counted (warning_count).
 
 No new rules here: every item reuses an existing one (document checklist and reminder rules, the review states,
 the automatic status rules, the evaluation window, the certificate statuses). The facts for many activities are
@@ -14,7 +15,7 @@ from django.conf import settings
 from django.db.models import Count, F, Q
 from django.utils import timezone
 
-from certificates.models import Certificate
+from certificates.models import ActivitySignatory, Certificate
 from documents import services as document_services
 from documents.models import Document, DocumentType
 from notifications.models import Notification
@@ -34,16 +35,20 @@ ENDED_NO_ATTENDANCE = "Activity ended but no attendance recorded. Mark attendanc
 NO_REGISTRATIONS = "No one registered. Mark as Conducted or change the status."
 ATTENDANCE_AFTER_EVALUATION = "Attendance was marked after the evaluation closed. These attendees can't evaluate."
 SET_TIMES = "Set the start and end time."
+CHOOSE_SIGNATORIES = "Choose who signs the certificates ({sides})."  # ASSUMPTIONS 365, 366
+INACTIVE_SIGNATORY = "A signatory on this activity is inactive."  # ASSUMPTIONS 367
 
 
 @dataclass(frozen=True)
 class AttentionItem:
     """One thing to do. `tab`: the activity page tab it links to ("edit" = the edit page). `kind`: what it is
-    about, for the Activities list's "Needs follow-up" cards ("draft", "attendance"; "" for the others)."""
+    about, for the Activities list's "Needs follow-up" cards ("draft", "attendance"; "" for the others).
+    `informational`: shown in the box, never counted (one image replacement must not light up every past activity)."""
 
     text: str
     tab: str
     kind: str = ""
+    informational: bool = False
 
 
 @dataclass
@@ -60,6 +65,7 @@ class _Facts:
     links_not_sent: int = 0
     signature_missing: str = ""  # certificates.services.missing_signature_reason for the waiting certificates
     certificates: dict[str, int] = field(default_factory=dict)
+    signatory_slots: dict[str, bool] = field(default_factory=dict)  # slot -> the person is active (ACTIVITY_SIGNATORY)
 
 
 def _plural(count: int, one: str, many: str) -> str:
@@ -71,7 +77,7 @@ _WAITING_TO_EVALUATE = Q(registrations__attendance_confirmed=True, registrations
 
 
 def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
-    """Everything the items need, for any number of activities, in six queries."""
+    """Everything the items need, for any number of activities, in seven queries."""
     facts = {activity.pk: _Facts(activity) for activity in activities}
     if not facts:
         return facts
@@ -118,27 +124,35 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
         Certificate.objects.filter(activity_id__in=ids).values("activity_id").order_by()
         .annotate(
             total=Count("pk"),
+            issued=Count("pk", filter=Q(status=Status.ISSUED)),
             # Only certificates READY for approval are a staff task (ASSUMPTIONS 362); the joins are one to one.
             ready=Count("pk", filter=certificate_services.ready_for_approval_q()),
             to_hand_over=Count("pk", filter=Q(status=Status.APPROVED, recipient_type=Certificate.RecipientType.RESOURCE_PERSON)),
+            to_reprint=Count("pk", filter=certificate_services.reprint_q()),
             send_failed=Count("pk", filter=unsent & Q(send_failed_at__isnull=False)),
             unsent=Count("pk", filter=unsent & Q(send_failed_at__isnull=True)),
+            outdated=Count("pk", filter=certificate_services.outdated_q()),  # ASSUMPTIONS 364 (informational)
         )
     )
     for row in certificates:
         facts[row.pop("activity_id")].certificates = row
 
-    # Signatures of the certificates waiting for approval (ASSUMPTIONS 361): one query (DISTINCT ON the signatory
+    # Who signs (ASSUMPTIONS 365-367): the saved slots and whether each person is active.
+    for activity_id, slot, active in ActivitySignatory.objects.filter(activity_id__in=ids).values_list(
+            "activity_id", "slot", "signatory__is_active"):
+        facts[activity_id].signatory_slots[slot] = active
+
+    # Signatures of the certificates waiting for approval (ASSUMPTIONS 361, 363): one query (DISTINCT ON the signatory
     # pair per activity), then certificates.services' own check (it reads the files, no queries).
     pairs = (
         Certificate.objects.filter(activity_id__in=ids, status=Status.GENERATED)
-        .select_related("vp_signatory", "director_signatory")
-        .order_by("activity_id", "vp_signatory_id", "director_signatory_id")
-        .distinct("activity_id", "vp_signatory_id", "director_signatory_id")
+        .select_related("left_signatory", "right_signatory")
+        .order_by("activity_id", "left_signatory_id", "right_signatory_id")
+        .distinct("activity_id", "left_signatory_id", "right_signatory_id")
     )
     signatories: dict[int, list] = {}
     for certificate in pairs:
-        signatories.setdefault(certificate.activity_id, []).extend([certificate.vp_signatory, certificate.director_signatory])
+        signatories.setdefault(certificate.activity_id, []).extend([certificate.left_signatory, certificate.right_signatory])
     for activity_id, people in signatories.items():
         facts[activity_id].signature_missing = certificate_services.missing_signature_reason(people) or ""
     return facts
@@ -194,6 +208,13 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
         items.append(AttentionItem(
             f"Conducted with {_plural(fact.attended, 'attendee', 'attendees')} but no certificates yet: they are created "
             "automatically once the certificate design and signatories are set up.", "certificates"))
+    # Who signs (ASSUMPTIONS 365-367): only while it still matters, i.e. no certificates yet or not all of them Issued.
+    if not certificates.get("total") or certificates.get("issued", 0) < certificates["total"]:
+        missing = [side for side in ("left", "right") if side not in fact.signatory_slots]
+        if missing:
+            items.append(AttentionItem(CHOOSE_SIGNATORIES.format(sides=" and ".join(missing)), "certificates"))
+        if not all(fact.signatory_slots.values()):
+            items.append(AttentionItem(INACTIVE_SIGNATORY, "certificates"))
     # Approval (ASSUMPTIONS 361, 362): one line. A missing signature first (it blocks every certificate); otherwise only
     # the certificates READY for approval. Waiting for an evaluation is not a staff task.
     if fact.signature_missing:
@@ -202,11 +223,17 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
         items.append(AttentionItem(f"{_plural(certificates['ready'], 'certificate', 'certificates')} ready for approval.", "certificates"))
     for key, text in (
         ("to_hand_over", "for resource persons approved but not handed over"),
+        ("to_reprint", "for resource persons reissued: updated copy to print and hand over"),
         ("send_failed", "could not be emailed. Resend on the Certificates tab"),
         ("unsent", "issued but their email not sent yet"),
     ):
         if count := certificates.get(key):
             items.append(AttentionItem(f"{_plural(count, 'certificate', 'certificates')} {text}.", "certificates"))
+    # Issued with an old signature (ASSUMPTIONS 364): informational, never counted on the list or the dashboard.
+    if count := certificates.get("outdated"):
+        items.append(AttentionItem(
+            f"{_plural(count, 'issued certificate has', 'issued certificates have')} an old signature.", "certificates",
+            informational=True))
 
     # Evaluation links: only while they can still be sent (Conducted, a form, the window open).
     if status == CONDUCTED and FormType.EVALUATION in fact.forms and opens <= now <= closes:
@@ -230,6 +257,12 @@ def attention_items(activities: list[Activity], now: datetime | None = None) -> 
     return {activity_id: _items(fact, now) for activity_id, fact in _load_facts(list(activities), now).items()}
 
 
+def warning_count(items: list[AttentionItem]) -> int:
+    """The number shown on the Activities list: informational items are not counted (ASSUMPTIONS 364)."""
+    return sum(1 for item in items if not item.informational)
+
+
 def attention_counts(activities: list[Activity], now: datetime | None = None) -> dict[int, int]:
-    """How many items each activity has (the Activities list), in a fixed number of queries."""
-    return {activity_id: len(items) for activity_id, items in attention_items(activities, now).items()}
+    """How many items each activity has (the Activities list; informational ones not counted), in a fixed number of
+    queries."""
+    return {activity_id: warning_count(items) for activity_id, items in attention_items(activities, now).items()}

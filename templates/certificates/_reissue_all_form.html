@@ -1,0 +1,16 @@
+{% comment %}Inside the "Reissue all outdated certificates (N)" confirm dialog (certificates/_tab_certificates.html,
+can_approve_certificates only; ASSUMPTIONS 364). POST to activities:certificates_reissue_all:
+services.reissue_certificates(activity=...) checks the permission, the current signatures and each certificate again.
+The counts come from certificates.pages.reissue_panel.{% endcomment %}
+<form method="post" action="{{ reissue.url }}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700"><strong class="font-semibold text-ink">{{ reissue.total }} issued certificate{{ reissue.total|pluralize }} will be reissued</strong> with the current signatories and design. The numbers stay the same.</p>
+  <ul class="list-disc space-y-1 pl-5 text-sm text-slate-700">
+    {% if reissue.by_email %}<li>{{ reissue.by_email }} will be emailed again to the participant{{ reissue.by_email|pluralize }} (“Updated copy”, it replaces the earlier copy).</li>{% endif %}
+    {% if reissue.by_hand %}<li>{{ reissue.by_hand }} hard cop{{ reissue.by_hand|pluralize:"y needs,ies need" }} reprinting and handing over again.</li>{% endif %}
+  </ul>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Reissue {{ reissue.total }}</button>
+  </div>
+</form>

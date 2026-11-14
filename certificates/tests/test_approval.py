@@ -19,8 +19,9 @@ from conftest import image_bytes
 
 pytestmark = pytest.mark.django_db
 
-MISSING_VP = "Add the VP's signature first."
-MISSING_DIRECTOR = "Add the Director's signature first."
+# The design fixture: right = Dr. Vice Pres (Vice President), left = Engr. Dee Rector (Director) (ASSUMPTIONS 363).
+MISSING_VP = "Add the signature of Dr. Vice Pres (Vice President) first."
+MISSING_DIRECTOR = "Add the signature of Engr. Dee Rector (Director) first."
 
 
 def ids(*certificates: Certificate) -> list[int]:
@@ -123,20 +124,20 @@ def test_a_file_that_is_not_a_png_or_jpg_counts_as_missing(generated, design, di
     assert services.approval_closed_reason(generated[0]) == MISSING_VP
 
 
-def test_new_signatory_plus_regenerate_unblocks_approval(evaluated, design, director, admin_member) -> None:
+def test_choosing_another_signatory_unblocks_approval(evaluated, design, director, admin_member) -> None:
     activity, _ = evaluated
     remove_signature_file(design[1])
-    new_vp = services.add_signatory(admin_member, "Dr. New Vice Pres", "vp", upload("vp.png", image_bytes()))
-    assert services.approval_closed_reason(activity) == MISSING_VP  # the certificates keep the old VP
-    assert services.regenerate_certificates(director, activity=activity) == 3
-    assert set(Certificate.objects.values_list("vp_signatory", flat=True)) == {new_vp.pk}
+    new_vp = services.add_signatory(admin_member, "Dr. New Vice Pres", "Vice President", upload("vp.png", image_bytes()))
+    assert services.approval_closed_reason(activity) == MISSING_VP  # adding a person changes no activity
+    services.set_activity_signatory(director, activity, "right", new_vp)  # the activity's choice (ASSUMPTIONS 363)
+    assert set(Certificate.objects.values_list("right_signatory", flat=True)) == {new_vp.pk}
     assert services.approve_certificates(director, activity=activity) == 3
 
 
 def test_replacing_a_lost_signature_on_the_tab_unblocks_approval(evaluated, design, director) -> None:
     activity, _ = evaluated
     remove_signature_file(design[1])
-    services.upload_signature(director, activity, "vp", upload("vp.png", image_bytes()))  # no regenerate needed
+    services.upload_signature(director, activity, "right", upload("vp.png", image_bytes()))  # no regenerate needed
     assert services.approval_closed_reason(activity) is None
     assert services.approve_certificates(director, activity=activity) == 3
 

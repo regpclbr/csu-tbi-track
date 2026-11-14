@@ -16,6 +16,15 @@ from django.template.loader import render_to_string
 from .models import Certificate
 
 
+class ImageUnreadable(Exception):
+    """An image the final PDF needs could not be read. The message is plain words, safe to store and show
+    (CERTIFICATE.render_error, ASSUMPTIONS 368)."""
+
+
+class NotAPdf(RuntimeError):
+    """The renderer returned something that is not a PDF."""
+
+
 class WeasyPrintRenderer:
     def render(self, html: str) -> bytes:
         import weasyprint  # imported here: a missing Pango only fails rendering, never Django startup
@@ -36,10 +45,17 @@ def _signature_uri(signatory, missing_ok: bool) -> str | None:
     failing; approval is refused in that case anyway (services.missing_signature_reason)."""
     try:
         return _data_uri(signatory.signature_image_path)
-    except (FileNotFoundError, OSError, ValueError):
+    except (FileNotFoundError, OSError, ValueError) as error:
         if missing_ok:
             return None
-        raise
+        raise ImageUnreadable(f"The signature image of {signatory.name} could not be read.") from error
+
+
+def _background_uri(template) -> str:
+    try:
+        return _data_uri(template.file_path)
+    except (FileNotFoundError, OSError, ValueError) as error:
+        raise ImageUnreadable("The certificate design image could not be read.") from error
 
 
 def _data_uri(field_file) -> str:
@@ -73,7 +89,6 @@ def certificate_html(certificate: Certificate, *, name: str, mark: bool = False,
     if not is_participant:
         link = activity.resource_person_links.filter(resource_person_id=certificate.resource_person_id).first()
         topic = link.topic if link else ""
-    director, vp = certificate.director_signatory, certificate.vp_signatory
     context = {
         "title": "Certificate of Participation" if is_participant else "Certificate of Appreciation",
         "is_participant": is_participant,
@@ -86,14 +101,18 @@ def certificate_html(certificate: Certificate, *, name: str, mark: bool = False,
         "given_on": long_date(activity.end_date),
         "organization": settings.CERTIFICATE_ORGANIZATION_NAME,
         "number": certificate.certificate_number,
-        "background": _data_uri(certificate.certificate_template.file_path),
+        "background": _background_uri(certificate.certificate_template),
         "signatories": [
             {
                 "name": person.name,
-                "position": person.get_position_display(),
+                # The title stored on the certificate: the activity's "Title on this certificate", else the person's
+                # position (ASSUMPTIONS 365). An Issued certificate keeps the one it was printed with.
+                "position": title or person.position,
                 "signature": _signature_uri(person, missing_signature_ok),
             }
-            for person in (director, vp)
+            # Printed left to right: the activity's signatories stored on the certificate (ASSUMPTIONS 363).
+            for person, title in ((certificate.left_signatory, certificate.left_signatory_title),
+                                  (certificate.right_signatory, certificate.right_signatory_title))
         ],
         "mark": mark,
     }
@@ -104,5 +123,5 @@ def render_certificate_pdf(certificate: Certificate, *, name: str, mark: bool = 
     html = certificate_html(certificate, name=name, mark=mark, missing_signature_ok=missing_signature_ok)
     pdf = get_renderer().render(html)
     if not pdf.startswith(b"%PDF-"):
-        raise RuntimeError("The PDF renderer returned something that is not a PDF.")
+        raise NotAPdf("The PDF renderer returned something that is not a PDF.")
     return pdf

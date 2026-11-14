@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from certificates import services as certificate_services
-from certificates.models import CertificateSignatory, CertificateTemplate
+from certificates.models import CertificateTemplate
 from config.mail import email_sent_message
 from config.parsing import parse_bool
 from documents.pages import safe_next
@@ -207,13 +207,13 @@ def role_certificate_approval(request: HttpRequest, role_id: int) -> HttpRespons
 
 def _design_page(request: HttpRequest, *, open_form: str = "", values: dict | None = None, errors: dict | None = None,
                  status: int = 200) -> HttpResponse:
-    """open_form: "template" or "signatory" (the refused form: open again, its values and errors under its fields)."""
+    """open_form: "template" (the refused form: open again, its values and errors under its fields)."""
     errors = dict(errors or {})
     if "__all__" in errors:  # a message about no field in particular: shown with the file
         errors["file"] = " ".join(filter(None, [errors.pop("__all__"), errors.get("file", "")]))
     width, height = certificate_services.MIN_TEMPLATE_SIZE
     context = {
-        **pages.certificate_design(),
+        **pages.certificate_design(request.user),
         f"{open_form}_values": values or {},
         f"{open_form}_errors": errors,
         "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
@@ -254,29 +254,6 @@ def template_action(request: HttpRequest, template_id: int, action: str) -> Http
         messages.warning(request, f"“{template.name}” was deactivated. Certificates cannot be generated until a design is active.")
     else:
         raise Http404("Unknown action.")
-    return redirect("accounts:console_certificates")
-
-
-@manage_users
-@require_POST
-def add_signatory(request: HttpRequest) -> HttpResponse:
-    """A new VP or Director (certificates.services.add_signatory: PNG or JPG, or no image yet; they replace the active
-    one). The image can also be added later on an activity's Certificates tab (ASSUMPTIONS 361)."""
-    values = {"name": request.POST.get("name", ""), "position": request.POST.get("position", "")}
-    try:
-        signatory = certificate_services.add_signatory(request.user, values["name"], values["position"], request.FILES.get("file"))
-    except ValidationError as error:
-        return _design_page(request, open_form="signatory", values=values, errors=flat_errors(error.message_dict), status=400)
-    messages.success(request, f"{signatory.name} is now the active {signatory.get_position_display()} signatory.")
-    return redirect("accounts:console_certificates")
-
-
-@manage_users
-@require_POST
-def deactivate_signatory(request: HttpRequest, signatory_id: int) -> HttpResponse:
-    signatory = get_object_or_404(CertificateSignatory, pk=signatory_id)
-    certificate_services.deactivate_signatory(request.user, signatory)
-    messages.warning(request, f"{signatory.name} was deactivated. Certificates cannot be generated until a {signatory.get_position_display()} is active.")
     return redirect("accounts:console_certificates")
 
 

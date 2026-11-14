@@ -1,0 +1,10 @@
+{% comment %}The upload dialog's preview (certificates.page_views.signature_preview, ASSUMPTIONS 366): the image as it will be
+stored, on a checkered background (transparent parts show the squares), and what was done. Nothing is saved.{% endcomment %}
+{% if preview %}
+  <div class="rounded-xl border border-line p-2" style="background: repeating-conic-gradient(#e2e8f0 0% 25%, #ffffff 0% 50%) 50% / 16px 16px;">
+    <img src="{{ preview.data_uri }}" alt="Preview of the signature as it will be stored" class="mx-auto max-h-32 max-w-full object-contain">
+  </div>
+  <p class="mt-1.5 text-xs text-slate-700">{{ preview.note }}</p>
+{% elif error %}
+  <p class="field-error" role="alert">{{ error }}</p>
+{% endif %}

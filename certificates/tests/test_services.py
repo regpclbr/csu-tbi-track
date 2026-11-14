@@ -109,7 +109,7 @@ def test_approval_needs_both_signature_images(certificate, signatories) -> None:
     from django.conf import settings
 
     (Path(settings.MEDIA_ROOT) / signatories[1].signature_image_path.name).unlink()
-    with pytest.raises(CertificateStatusError, match="Add the Director's signature first."):
+    with pytest.raises(CertificateStatusError, match=r"Add the signature of Director \(Director\) first\."):
         set_certificate_status(certificate, S.APPROVED)
     certificate.refresh_from_db()
     assert certificate.status == S.GENERATED
@@ -142,8 +142,8 @@ def test_resource_person_issued_without_evaluation(activity, certificate_templat
         recipient_type=Certificate.RecipientType.RESOURCE_PERSON,
         resource_person=ResourcePerson.objects.create(name="Dr. Reyes"),
         activity=activity,
-        vp_signatory=vp,
-        director_signatory=director,
+        right_signatory=vp,
+        left_signatory=director,
         delivery_method=Certificate.DeliveryMethod.HARD_COPY,
     )
     move_to(certificate, S.ISSUED)

@@ -6,7 +6,7 @@ with the counts per status for the other filters (services.certificate_status_co
 {% endcomment %}
 {% block content %}
 <section class="card p-6" aria-labelledby="certificates-title">
-  {% include "components/section_header.html" with id="certificates-title" title="Certificates" subtitle="All certificates of all activities. Generate them, preview them and (the Director) approve them on each activity's Certificates tab." %}
+  {% include "components/section_header.html" with id="certificates-title" title="Certificates" subtitle="All certificates of all activities. They are created automatically; preview, approve and reissue them on each activity's Certificates tab." link_url=signatories_link link_label="Signatories" %}
   <form id="certificate-filters" method="get" action="{% url 'certificates:list' %}" role="search" aria-label="Filter certificates"
         hx-get="{% url 'certificates:list' %}" hx-target="#certificate-results" hx-push-url="true" hx-trigger="change" hx-indicator="#certificate-results, #cert-loading"
         class="mb-5 flex flex-wrap items-center gap-2.5">

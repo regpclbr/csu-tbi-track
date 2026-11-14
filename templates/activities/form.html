@@ -4,6 +4,7 @@ Create / edit an activity (activities.page_views.activity_create / activity_edit
 in four sections. The rules are checked by activities.services; their messages appear under the right field, and
 the first field with an error gets the focus. Date-times are typed and shown in Manila time.
 New only: optional documents (activities/_new_documents.html), saved with the activity in one service call.
+"Who signs the certificates" (activities/_signatories_fields.html, ASSUMPTIONS 365): saved with the activity.
 {% endcomment %}
 {% block content %}
 <form method="post" novalidate{% if not activity %} enctype="multipart/form-data"{% endif %} class="mx-auto max-w-4xl space-y-5"
@@ -68,6 +69,8 @@ New only: optional documents (activities/_new_documents.html), saved with the ac
     </div>
   </section>
 
+  {% include "activities/_signatories_fields.html" %}
+
   {% if not activity %}{% include "activities/_new_documents.html" %}{% endif %}
 
   <div class="flex items-center justify-end gap-3">
@@ -75,4 +78,5 @@ New only: optional documents (activities/_new_documents.html), saved with the ac
     <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="check" class="size-4" %}{% if activity %}Save changes{% else %}Create activity{% endif %}</button>
   </div>
 </form>
+{% if signatories.can_add %}{% include "certificates/_add_person_inline_dialog.html" %}{% endif %}
 {% endblock %}

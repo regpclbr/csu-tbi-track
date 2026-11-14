@@ -1,0 +1,29 @@
+{% comment %}"Add a person" (can_approve_certificates; ASSUMPTIONS 363): adds a person to the signatory list. From the
+activity's Certificates tab (`slot` from the loop, `activity`) the new person also signs on that side; `next` brings the
+member back to the tab. On the Signatories page (no slot) it only adds them. POST to certificates:signatory_add.{% endcomment %}
+<form method="post" action="{% url 'certificates:signatory_add' %}" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ busy: false }" @submit="busy = true">
+  {% csrf_token %}
+  {% if slot %}
+    <input type="hidden" name="activity" value="{{ activity.pk }}">
+    <input type="hidden" name="slot" value="{{ slot.slot }}">
+    <input type="hidden" name="next" value="{{ activity_url }}?tab=certificates">
+  {% endif %}
+  {% with prefix=slot.slot|default:"page" %}
+  <div>
+    <label for="person-{{ prefix }}-name" class="text-sm font-semibold text-ink">Name as printed</label>
+    <input id="person-{{ prefix }}-name" name="name" value="{% if not slot %}{{ values.name|default:'' }}{% endif %}" maxlength="255" required class="field-input mt-1.5" placeholder="e.g. Dr. Maria Santos"{% if not slot and errors.name %} aria-invalid="true" aria-describedby="person-{{ prefix }}-name-error"{% endif %}>
+    {% if not slot and errors.name %}<p id="person-{{ prefix }}-name-error" class="field-error">{{ errors.name }}</p>{% endif %}
+  </div>
+  <div>
+    <label for="person-{{ prefix }}-position" class="text-sm font-semibold text-ink">Position as printed</label>
+    <input id="person-{{ prefix }}-position" name="position" value="{% if not slot %}{{ values.position|default:'' }}{% endif %}" maxlength="255" required class="field-input mt-1.5" placeholder="e.g. University President"{% if not slot and errors.position %} aria-invalid="true" aria-describedby="person-{{ prefix }}-position-error"{% endif %}>
+    {% if not slot and errors.position %}<p id="person-{{ prefix }}-position-error" class="field-error">{{ errors.position }}</p>{% endif %}
+  </div>
+  {% with field_prefix="person-"|add:prefix %}{% include "certificates/_signature_file_field.html" with prefix=field_prefix optional=True %}{% endwith %}
+  {% if not slot and errors.file %}<p class="field-error">{{ errors.file }}</p>{% endif %}
+  {% endwith %}
+  <div class="flex justify-end gap-2">
+    {% if slot %}<button type="button" class="btn btn-secondary" @click="close()">Cancel</button>{% endif %}
+    <button type="submit" class="btn btn-primary" :disabled="busy">{% include "components/icon.html" with name="user-plus" class="size-4" %}Add{% if slot %} and choose{% endif %}</button>
+  </div>
+</form>

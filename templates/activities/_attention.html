@@ -1,11 +1,12 @@
 {% comment %}
 Needs attention (activities.attention.activity_attention): each item links to its tab (or the edit page). Same amber style
-as the registration notice; a small green "All set" when nothing is left.
+as the registration notice; a small green "All set" when nothing is left. Informational items (e.g. issued certificates
+with an old signature, ASSUMPTIONS 364) are listed but not counted (attention_count = attention.warning_count).
 {% endcomment %}
 {% if attention %}
   <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="region" aria-labelledby="attention-title">
     <p id="attention-title" class="flex items-center gap-2 font-semibold">
-      {% include "components/icon.html" with name="triangle-alert" class="size-4.5 text-amber-700" %}Needs attention ({{ attention|length }})</p>
+      {% include "components/icon.html" with name="triangle-alert" class="size-4.5 text-amber-700" %}{% if attention_count %}Needs attention ({{ attention_count }}){% else %}For your information{% endif %}</p>
     <ul class="mt-1.5 list-disc space-y-1 pl-11">
       {% for item in attention %}
         <li>
@@ -14,6 +15,7 @@ as the registration notice; a small green "All set" when nothing is left.
           {% else %}
             <a href="{{ activity_url }}?tab={{ item.tab }}" hx-get="{{ activity_url }}?tab={{ item.tab }}" hx-target="#tab-area" hx-push-url="true" class="underline underline-offset-2 hover:no-underline">{{ item.text }}</a>
           {% endif %}
+          {% if item.informational %}<span class="text-xs text-amber-800">(for information)</span>{% endif %}
         </li>
       {% endfor %}
     </ul>

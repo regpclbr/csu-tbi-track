@@ -220,10 +220,10 @@ def certificate_template(member: TBIMember) -> CertificateTemplate:
 @pytest.fixture
 def signatories() -> tuple[CertificateSignatory, CertificateSignatory]:
     vp = CertificateSignatory.objects.create(
-        name="VP", position="vp", signature_image_path=_stored("signatures/vp.png", image_bytes())
+        name="VP", position="Vice President", default_slot="right", signature_image_path=_stored("signatures/vp.png", image_bytes())
     )
     director = CertificateSignatory.objects.create(
-        name="Director", position="director", signature_image_path=_stored("signatures/director.png", image_bytes())
+        name="Director", position="Director", default_slot="left", signature_image_path=_stored("signatures/director.png", image_bytes())
     )
     return vp, director
 
@@ -240,8 +240,8 @@ def make_certificate(certificate_template, signatories):
             recipient_type=Certificate.RecipientType.REGISTRATION,
             registration=registration,
             activity=registration.activity,
-            vp_signatory=vp,
-            director_signatory=director,
+            right_signatory=vp,
+            left_signatory=director,
             delivery_method=Certificate.DeliveryMethod.EMAIL,
         )
 

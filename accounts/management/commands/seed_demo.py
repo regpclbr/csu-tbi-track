@@ -36,7 +36,7 @@ from activities import services as activity_services
 from registrations import services as registration_services
 from certificates import services as certificate_services
 from certificates.management.commands.make_sample_certificate_images import draw_signature, draw_template
-from certificates.models import Certificate, CertificateSignatory, CertificateTemplate
+from certificates.models import Certificate, CertificateTemplate
 from activities.models import (
     Activity,
     ActivityParticipantCategory,
@@ -454,16 +454,18 @@ class Command(BaseCommand):
     # --- certificates (Step 10: so the certificate cards have numbers) -----------------
 
     def demo_design(self) -> bool:
-        """Use the active design; if there is none, add an invented one as the first active System Administrator."""
-        try:
-            certificate_services.active_design()
+        """Use the active design and the default signatories (ASSUMPTIONS 363); add invented ones only when missing:
+        the design as the first active System Administrator, two people and the defaults as the first active member
+        who can approve certificates."""
+        defaults = certificate_services.default_signatories()
+        if certificate_services.active_template() is not None and all(defaults.values()):
             return True
-        except certificate_services.CertificateError:
-            pass
         admin = TBIMember.objects.filter(role__can_manage_users=True, is_active=True).order_by("pk").first()
-        if admin is None:
+        approver = TBIMember.objects.filter(role__can_approve_certificates=True, is_active=True).order_by("pk").first()
+        if admin is None or approver is None:
             self.stdout.write(self.style.WARNING(
-                "  certificates skipped: no active design and no active System Administrator (run seed_data)."
+                "  certificates skipped: no active design or default signatories, and no active System Administrator "
+                "or certificate approver to add them (run seed_data)."
             ))
             return False
 
@@ -472,12 +474,16 @@ class Command(BaseCommand):
             draw(buffer, *args)
             return SimpleUploadedFile("demo.png", buffer.getvalue())
 
-        if not CertificateTemplate.objects.filter(is_active=True).exists():
+        if certificate_services.active_template() is None:
             certificate_services.upload_template(admin, "[DEMO] Sample design", png(draw_template), activate=True)
-        for position, name, seed in (("vp", "[DEMO] Dr. Vice President", 3), ("director", "[DEMO] TBI Director", 11)):
-            if not CertificateSignatory.objects.filter(position=position, is_active=True).exists():
-                certificate_services.add_signatory(admin, name, position, png(draw_signature, seed))
-        self.stdout.write("  certificate design: invented demo design and/or signatures added (none was active)")
+        if not all(defaults.values()):
+            left = defaults["left"] or certificate_services.add_signatory(
+                approver, "[DEMO] TBI Director", "Director, CSU Technology Business Incubator", png(draw_signature, 11))
+            right = defaults["right"] or certificate_services.add_signatory(
+                approver, "[DEMO] Dr. Vice President", "Vice President for Research, Development and Extension",
+                png(draw_signature, 3))
+            certificate_services.set_default_signatories(approver, left, right)
+        self.stdout.write("  certificate design: invented demo design and/or default signatories added (none was set)")
         return True
 
     def create_certificates(self) -> int:

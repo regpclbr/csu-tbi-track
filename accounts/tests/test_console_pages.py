@@ -26,8 +26,7 @@ CONSOLE_PAGES = ["accounts:console", "accounts:console_roles", "accounts:console
 CONSOLE_POSTS = [
     ("accounts:console_invite", []), ("accounts:console_member_role", [1]), ("accounts:console_member_deactivate", [1]),
     ("accounts:console_member_reactivate", [1]), ("accounts:console_member_reset", [1]), ("accounts:console_template_upload", []),
-    ("accounts:console_template_action", [1, "activate"]), ("accounts:console_signatory_add", []),
-    ("accounts:console_signatory_deactivate", [1]),
+    ("accounts:console_template_action", [1, "activate"]),
 ]
 SMTP_PASSWORD, SMTP_USER, GEMINI_KEY = "Sup3r-Secret-SMTP-pass", "smtp-login-secret", "AIza-very-secret-key-123"
 
@@ -212,26 +211,21 @@ def test_activate_and_deactivate_designs_but_never_delete(admin, admin_member) -
     assert "No design is active" in admin.get(reverse("accounts:console_certificates")).content.decode()
 
 
-def test_add_and_deactivate_signatories_but_never_delete(admin) -> None:
-    url = reverse("accounts:console_signatory_add")
-    gif = admin.post(url, {"name": "Dr. VP", "position": "vp", "file": upload("sig.gif", b"GIF89a")})
-    assert gif.status_code == 400 and "Only JPG or PNG images can be uploaded." in gif.content.decode()
-    assert 'open id="add-signatory"' in gif.content.decode()
-    assert not CertificateSignatory.objects.exists()
-    no_position = admin.post(url, {"name": "Dr. VP", "file": upload("sig.png", image_bytes())})
-    assert 'id="signatory-position-error"' in no_position.content.decode()
-    admin.post(url, {"name": "Dr. First VP", "position": "vp", "file": upload("a.png", image_bytes())})
-    response = admin.post(url, {"name": "Dr. Second VP", "position": "vp", "file": upload("b.png", image_bytes())})
-    assert "Dr. Second VP is now the active Vice President signatory." in toasts(admin, response)
-    first, second = CertificateSignatory.objects.order_by("pk")
-    assert not first.is_active and second.is_active
+def test_console_shows_the_default_signatories_read_only(admin) -> None:
+    """ASSUMPTIONS 363: the list and the defaults are managed on /certificates/signatories/ (can_approve_certificates);
+    the Admin Console only shows the defaults, with a link. Signatories are never deleted (no delete URL anywhere)."""
     html = admin.get(reverse("accounts:console_certificates")).content.decode()
-    assert f'src="{reverse("certificates:signature_image", args=[second.pk])}"' in html and "No active Director" in html
-    admin.post(reverse("accounts:console_signatory_deactivate", args=[second.pk]))
-    assert CertificateSignatory.objects.count() == 2 and not CertificateSignatory.objects.filter(is_active=True).exists()
-    assert admin.post(f"/accounts/console/certificates/signatories/{first.pk}/delete/").status_code == 404
-    with pytest.raises(NoReverseMatch):
-        reverse("accounts:console_signatory_delete", args=[first.pk])
+    assert "Default signatories" in html and "Not set" in html
+    assert reverse("certificates:signatories") in html  # the System Administrator approves certificates by default
+    left = CertificateSignatory.objects.create(name="Dr. Left", position="Director", default_slot="left")
+    CertificateSignatory.objects.create(name="Dr. Right", position="University President", default_slot="right")
+    html = admin.get(reverse("accounts:console_certificates")).content.decode()
+    assert "Dr. Left" in html and "University President" in html and "no signature image yet" in html
+    assert 'name="position"' not in html  # nothing to edit here
+    for name in ("accounts:console_signatory_add", "accounts:console_signatory_delete", "certificates:signatory_delete"):
+        with pytest.raises(NoReverseMatch):
+            reverse(name, args=[left.pk]) if "delete" in name else reverse(name)
+    assert admin.post(f"/certificates/signatories/{left.pk}/delete/").status_code == 404
     assert CertificateSignatory.objects.count() == 2
 
 

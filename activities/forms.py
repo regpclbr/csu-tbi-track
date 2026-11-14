@@ -108,3 +108,72 @@ class ActivityPageForm(ActivityDataForm):
             types = types | ActivityType.objects.filter(pk=activity.activity_type_id)
         self.fields["activity_type"].choices = [("", "Choose a type")] + [(t.pk, t.name) for t in types.order_by("name")]
         self.fields["participant_categories"].queryset = ParticipantCategory.objects.order_by("name")
+
+
+SIGNATORY_SLOTS = ("left", "right")  # certificates.models.Slot values, printed left to right
+ADD_PERSON = "add"  # the dropdown's "Add a person…" (opens a dialog; never saved as a choice)
+
+
+class SignatoriesFormMixin(forms.Form):
+    """"Who signs the certificates" on the activity form (ASSUMPTIONS 365): per slot a person (active people, plus the
+    activity's current person when inactive) and an optional "Title on this certificate". Conversion only: the rules
+    (active, never both sides, never emptied) are certificates.services.assign_default_signatories /
+    set_activity_signatories. `signatory_choices()` gives the service's {slot: (person or None, title)}."""
+
+    signatory_left = forms.ChoiceField(required=False, label="Left")
+    title_left = forms.CharField(required=False, max_length=255, label="Title on this certificate")
+    signatory_right = forms.ChoiceField(required=False, label="Right")
+    title_right = forms.CharField(required=False, max_length=255, label="Title on this certificate")
+
+    def setup_signatories(self, current: dict, can_add: bool) -> None:
+        """`current`: {slot: the person shown first (the activity's, or the default on a new activity) or None}."""
+        from certificates.models import CertificateSignatory
+
+        self.signatory_people = {p.pk: p for p in CertificateSignatory.objects.filter(is_active=True).order_by("name", "position", "pk")}
+        self.signatory_current = current
+        for slot in SIGNATORY_SLOTS:
+            person = current.get(slot)
+            people = dict(self.signatory_people)
+            if person is not None:
+                people.setdefault(person.pk, person)  # an inactive current person stays selectable (kept as it is)
+            choices = [("", "Not chosen yet")] if person is None else []
+            choices += [(str(pk), f"{p.name} · {p.position}") for pk, p in people.items()]
+            if can_add:
+                choices.append((ADD_PERSON, "Add a person…"))
+            field = self.fields[f"signatory_{slot}"]
+            field.choices = choices
+            field.initial = str(person.pk) if person is not None else ""
+            field.allowed_people = people
+
+    def _clean_person(self, slot: str):
+        raw = self.cleaned_data.get(f"signatory_{slot}") or ""
+        if raw == ADD_PERSON:
+            raise ValidationError("Choose a person from the list (add one first with “Add a person…”).")
+        if not raw:
+            return None
+        return self.fields[f"signatory_{slot}"].allowed_people.get(int(raw))
+
+    def clean_signatory_left(self):
+        return self._clean_person("left")
+
+    def clean_signatory_right(self):
+        return self._clean_person("right")
+
+    def signatory_choices(self) -> dict:
+        """{slot: (person or None, title text)} for the services; removes the four fields from cleaned_data (the
+        activity services reject unknown keys)."""
+        choices = {}
+        for slot in SIGNATORY_SLOTS:
+            person = self.cleaned_data.pop(f"signatory_{slot}", None)
+            title = self.cleaned_data.pop(f"title_{slot}", "")
+            choices[slot] = (person, title)
+        return choices
+
+
+class ActivityPageFormWithSignatories(SignatoriesFormMixin, ActivityPageForm):
+    """The create / edit page with "Who signs the certificates" (ASSUMPTIONS 365)."""
+
+    def __init__(self, *args, activity: Activity | None = None, current_signatories: dict | None = None,
+                 can_add_person: bool = False, **kwargs):
+        super().__init__(*args, activity=activity, **kwargs)
+        self.setup_signatories(current_signatories or {}, can_add_person)

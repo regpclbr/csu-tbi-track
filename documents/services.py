@@ -340,7 +340,8 @@ def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str
 
 
 def create_activity_with_documents(
-    member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None
+    member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None,
+    signatories: dict | None = None,
 ) -> Activity:
     """Create a Draft activity (activities.services.create_activity) and upload its optional documents
     (upload_document, the same rules as the Documents tab) in one transaction: all or nothing.
@@ -361,7 +362,7 @@ def create_activity_with_documents(
     try:
         with transaction.atomic():
             try:
-                activity = create_activity(member, data, now=now)
+                activity = create_activity(member, data, now=now, signatories=signatories)
             except ValidationError as error:
                 activity_error = error
                 raise _RollBack from error

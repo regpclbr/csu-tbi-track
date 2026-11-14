@@ -3,7 +3,8 @@ The certificate preview on a page of its own (certificates.page_views.preview_di
 ASSUMPTIONS 358, 362): what a row's Preview opens without JavaScript (with JavaScript it shows in the tab's preview card).
 Number, printed name (and "registered as"), status, Approve for approvers (enabled only when ready, otherwise the reason),
 Download PDF, then the PDF in an <iframe> of certificates:preview (?v=: never an old copy from the browser's cache). An
-Issued certificate shows its final PDF, the copy that was sent or handed over.
+Issued certificate shows its final PDF, the copy that was sent or handed over; an outdated one says "Issued with an
+old signature" and approvers get "Reissue with current signatures" (ASSUMPTIONS 364).
 standalone=True: its own page (Close becomes a link back to the Certificates tab).
 {% endcomment %}
 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -27,6 +28,12 @@ standalone=True: its own page (Close becomes a link back to the Certificates tab
         <button type="button" class="btn btn-primary btn-sm" disabled aria-describedby="preview-page-reason">{% include "components/icon.html" with name="circle-check" class="size-4" %}Approve</button>
       {% endif %}
     {% endif %}
+    {% if item.can_reissue %}
+      <form method="post" action="{{ item.reissue_url }}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="refresh-cw" class="size-4" %}Reissue with current signatures<span class="sr-only"> {{ certificate.certificate_number }}</span></button>
+      </form>
+    {% endif %}
     <a href="{{ download_url }}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download PDF<span class="sr-only"> of {{ certificate.certificate_number }}</span></a>
     {% if standalone %}
       <a href="{{ back }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="x" class="size-4" %}Close</a>
@@ -39,7 +46,7 @@ standalone=True: its own page (Close becomes a link back to the Certificates tab
   <p id="preview-page-reason" class="mt-3 text-sm text-slate-700">Not ready for approval: {{ item.readiness }}.</p>
 {% endif %}
 {% if item.issued_note %}
-  <p class="mt-3 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="note">
+  <p class="mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm {% if item.outdated %}bg-amber-50 text-amber-900{% else %}bg-emerald-50 text-emerald-900{% endif %}" role="note">
     {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span>{{ item.issued_note }}</span></p>
 {% elif not name_final %}
   <p class="mt-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note">
