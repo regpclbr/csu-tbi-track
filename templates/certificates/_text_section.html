@@ -1,0 +1,38 @@
+{% comment %}The Certificate text section of the Certificates tab (certificates.pages.text_panel, ASSUMPTIONS 370). can_create_activity
+or can_approve_certificates choose "Use the default text" or "Custom text for this activity" (POST
+activities:certificates_text: services.use_default_text / save_activity_text). Saving re-renders the certificates that are
+not issued and cancels the activity's approval. Admin Staff: the text, read only.{% endcomment %}
+<section class="card p-6" aria-labelledby="text-title" id="certificate-text" x-data="{ mode: '{% if text.custom %}custom{% else %}default{% endif %}' }">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h2 id="text-title" class="card-title">Certificate text</h2>
+      <p class="card-subtitle">The words printed on this activity's certificates. Saving a change updates the certificates that are not issued yet and cancels the activity's approval. Issued certificates keep the text they were sent with.</p>
+    </div>
+    {% if text.defaults_url %}
+      <a href="{{ text.defaults_url }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="file-text" class="size-4" %}Default text</a>
+    {% endif %}
+  </div>
+  {% if text.can_edit %}
+    <form method="post" action="{{ text.save_url }}" class="mt-4 space-y-4" novalidate>
+      {% csrf_token %}
+      <div class="flex flex-wrap gap-4" role="radiogroup" aria-label="Which text this activity uses">
+        <label class="flex items-center gap-2 text-sm text-ink"><input type="radio" name="mode" value="default" x-model="mode"{% if not text.custom %} checked{% endif %}> Use the default text</label>
+        <label class="flex items-center gap-2 text-sm text-ink"><input type="radio" name="mode" value="custom" x-model="mode"{% if text.custom %} checked{% endif %}> Custom text for this activity</label>
+      </div>
+      <div class="space-y-4" x-show="mode === 'custom'"{% if not text.custom %} style="display: none"{% endif %}>
+        {% for kind in text.types %}
+          {% include "certificates/_text_fields.html" with kind=kind preview_url=text.preview_url readonly=False %}
+        {% endfor %}
+      </div>
+      <p class="text-sm text-slate-700" x-show="mode === 'default'"{% if text.custom %} style="display: none"{% endif %}>The default text of each certificate type is printed (edited on the Certificate text page by members who approve certificates).</p>
+      <button type="submit" class="btn btn-secondary btn-sm">Save the certificate text</button>
+    </form>
+  {% else %}
+    <div class="mt-4 space-y-3">
+      <p class="text-sm text-slate-700">{% if text.custom %}This activity uses its own text.{% else %}This activity uses the default text.{% endif %} Members who create activities or approve certificates change it.</p>
+      {% for kind in text.types %}
+        <div><p class="text-sm font-semibold text-ink">{{ kind.label }}</p>{% include "certificates/_text_preview.html" with preview=kind.preview %}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>

@@ -35,6 +35,41 @@ def test_create_member_with_temporary_password(admin_member, roles) -> None:
 
 
 @pytest.mark.django_db
+def test_the_invitation_links_to_the_sign_in_page(admin_member, roles, settings) -> None:
+    settings.SITE_URL = "https://track.example.org"
+    services.create_member(admin_member, name="Ana Cruz", email="ana@example.com", role=roles["Director"])
+    assert "Sign in here: https://track.example.org/accounts/login/" in mail.outbox[-1].body
+
+
+@pytest.mark.django_db
+def test_an_invitation_that_cannot_be_emailed_adds_nobody(admin_member, roles, monkeypatch, caplog) -> None:
+    def broken(*args, **kwargs):
+        raise ConnectionRefusedError("mail server down")
+
+    monkeypatch.setattr(services, "send_invitation_email", broken)
+    with caplog.at_level(logging.WARNING, logger="accounts.audit"):
+        with pytest.raises(services.MemberManagementError, match="could not be emailed; the member was not added"):
+            services.create_member(admin_member, name="Ana Cruz", email="ana@example.com", role=roles["Director"])
+    assert not TBIMember.objects.filter(email="ana@example.com").exists()
+    assert "ConnectionRefusedError" in caplog.text and "ana@example.com" not in caplog.text
+
+
+@pytest.mark.django_db
+def test_the_console_shows_the_failed_invitation_instead_of_a_server_error(admin_member, roles, monkeypatch) -> None:
+    from django.test import Client
+    from django.urls import reverse
+
+    monkeypatch.setattr(services, "send_invitation_email", lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
+    client = Client()
+    client.force_login(admin_member)
+    response = client.post(reverse("accounts:console_invite"),
+                           {"name": "Ana Cruz", "email": "ana@example.com", "role": roles["Director"].pk})
+    assert response.status_code == 400
+    assert "The invitation could not be emailed; the member was not added. Try again." in response.content.decode()
+    assert not TBIMember.objects.filter(email="ana@example.com").exists()
+
+
+@pytest.mark.django_db
 def test_temporary_password_never_in_logs(admin_member, roles, caplog) -> None:
     with caplog.at_level(logging.DEBUG):  # capture every logger, every level
         services.create_member(admin_member, name="Ana Cruz", email="ana@example.com", role=roles["Director"])

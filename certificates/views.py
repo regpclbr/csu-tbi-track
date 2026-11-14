@@ -3,7 +3,7 @@
 - Any active staff member: list, detail, download the PDF, preview, list/download evidence, upload
   evidence (Step 6 rule).
 - can_create_activity: regenerate (Apply the current design), hand over, resend. can_approve_certificates (the
-  Director, both Project Heads, the System Administrator): approve ready certificates (ASSUMPTIONS 362), reissue
+  Director, both Project Heads, the System Administrator): approve an activity's certificates (ASSUMPTIONS 369), reissue
   outdated ones (364), the signatory list (363). Certificates are created by the System (no generate endpoint).
   Evidence review: can_approve_documents (the Step 6 rules).
 - can_manage_users (Admin Console): templates and their images. Signature images: can_manage_users or
@@ -254,9 +254,16 @@ def _target(data: dict) -> dict:
     return {"activity": get_object_or_404(Activity, pk=activity_id)}
 
 
+def _approve(member, *, activity=None, certificate_ids=None) -> int:
+    """Approval is per activity (ASSUMPTIONS 369): {"activity_id": n} only. Returns how many were approved now."""
+    if activity is None:
+        raise BadRequest("Certificates are approved per activity: send activity_id.")
+    return len(services.approve_activity_certificates(member, activity))
+
+
 # action -> (service, permission). The view checks the permission first (403); the service checks it again.
 ACTIONS = {
-    "approve": (services.approve_certificates, Permission.APPROVE_CERTIFICATES),
+    "approve": (_approve, Permission.APPROVE_CERTIFICATES),
     "regenerate": (services.regenerate_certificates, Permission.CREATE_ACTIVITY),
     "hand-over": (services.mark_handed_over, Permission.CREATE_ACTIVITY),
     "resend": (services.resend_certificates, Permission.CREATE_ACTIVITY),

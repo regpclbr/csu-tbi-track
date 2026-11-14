@@ -1,0 +1,36 @@
+{% comment %}The four wording fields of one certificate type with the placeholders and the live preview (ASSUMPTIONS 370).
+Used by the activity's Certificate text section and the Certificate text page. Expects `kind` (a pages type dict),
+`preview_url` and `readonly`. Typing posts the type's fields to preview_url (HTMX, 400 ms after the last key).{% endcomment %}
+<fieldset class="rounded-2xl border border-line p-4" id="text-{{ kind.type }}">
+  <legend class="px-1 text-sm font-semibold text-ink">{{ kind.label }}</legend>
+  <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div class="space-y-3"{% if not readonly %} hx-post="{{ preview_url }}" hx-trigger="input delay:400ms"
+         hx-target="#text-preview-{{ kind.type }}" hx-include="this" hx-vals='{"type": "{{ kind.type }}"}' hx-swap="innerHTML"{% endif %}>
+      {% for field in kind.fields %}
+        <div>
+          <label for="{{ field.name }}" class="text-sm font-semibold text-ink">{{ field.label }}{% if not field.required %} <span class="font-normal text-muted">(optional)</span>{% endif %}</label>
+          {% if field.field == "main_sentence" %}
+            <textarea id="{{ field.name }}" name="{{ field.name }}" rows="3" maxlength="{{ field.max }}" class="field-input mt-1.5"{% if readonly %} readonly{% endif %}{% if field.required %} required{% endif %}
+                      aria-describedby="{{ field.name }}-help{% if field.error %} {{ field.name }}-error{% endif %}"{% if field.error %} aria-invalid="true"{% endif %}>{{ field.value }}</textarea>
+          {% else %}
+            <input id="{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}" maxlength="{{ field.max }}" class="field-input mt-1.5"{% if readonly %} readonly{% endif %}{% if field.required %} required{% endif %}
+                   aria-describedby="{{ field.name }}-help{% if field.error %} {{ field.name }}-error{% endif %}"{% if field.error %} aria-invalid="true"{% endif %}>
+          {% endif %}
+          <p id="{{ field.name }}-help" class="field-help">At most {{ field.max }} characters.</p>
+          {% if field.error %}<p id="{{ field.name }}-error" class="field-error">{{ field.error }}</p>{% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div class="space-y-3">
+      <div>
+        <p class="text-sm font-semibold text-ink">Preview</p>
+        <div id="text-preview-{{ kind.type }}" class="mt-1.5" aria-live="polite">{% include "certificates/_text_preview.html" with preview=kind.preview %}</div>
+      </div>
+      <div class="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
+        <p class="font-semibold text-ink">Placeholders the system fills in</p>
+        <ul class="mt-1 space-y-0.5">{% for item in kind.placeholders %}<li><code class="font-semibold">{{ item.token }}</code> {{ item.meaning }}</li>{% endfor %}</ul>
+        <p class="mt-1.5">Text in square brackets prints only when every placeholder inside it has a value, e.g. <code>held on {date}[ at {venue}].</code> Plain text only.</p>
+      </div>
+    </div>
+  </div>
+</fieldset>

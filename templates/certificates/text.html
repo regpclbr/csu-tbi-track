@@ -1,0 +1,33 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/certificates/text/ (certificates.page_views.certificate_text, can_approve_certificates; ASSUMPTIONS 370): the DEFAULT
+wording of the Certificate of Participation and the Certificate of Appreciation (certificates.pages.default_text_page).
+Each type is saved on its own after a confirm dialog with the impact (services.default_text_impact_text): activities that
+use the default get it on their certificates that are not issued, and their approval is cancelled. Issued certificates
+keep their text. Activities can use their own text instead (their Certificates tab).
+{% endcomment %}
+{% block content %}
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <p class="max-w-3xl text-sm text-slate-700">The default words printed on certificates. Each activity uses them unless it has its own text (Certificates tab). Placeholders such as {activity} are filled in by the system; text is plain (no formatting).</p>
+  <a href="{{ signatories_url }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="users" class="size-4" %}Signatories</a>
+</div>
+<div class="space-y-5">
+  {% for kind in types %}
+    <section class="card p-6" aria-labelledby="text-title-{{ kind.type }}">
+      <div class="mb-4">
+        <h2 id="text-title-{{ kind.type }}" class="card-title">{{ kind.label }}</h2>
+        <p class="card-subtitle">Last saved by {{ kind.changed_by }} on {{ kind.changed_at|date:"M j, Y g:i A" }}.</p>
+      </div>
+      <form method="post" action="{{ kind.save_url }}" id="text-form-{{ kind.type }}" class="space-y-4" novalidate>
+        {% csrf_token %}
+        {% include "certificates/_text_fields.html" with kind=kind preview_url=preview_url readonly=False %}
+      </form>
+      <div class="mt-4">
+        {% with dialog_id="save-text-dialog-"|add:kind.type %}
+          {% include "components/modal.html" with id=dialog_id title="Save the default text?" body="certificates/_save_text_form.html" trigger_label="Save the default text" trigger_icon="check" trigger_class="btn btn-primary btn-sm" trigger_sr=kind.label %}
+        {% endwith %}
+      </div>
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

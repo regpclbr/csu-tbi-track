@@ -41,15 +41,12 @@
   <img class="background" src="{{ background }}" alt="">
 
   <div class="content">
-    <p class="title">{{ title }}</p>
-    <p class="presented">is presented to</p>
+    {# The wording (certificates.wording, ASSUMPTIONS 370): plain text, escaped here like every value. #}
+    <p class="title">{{ text.title }}</p>
+    {% if text.line_before_name %}<p class="presented">{{ text.line_before_name }}</p>{% endif %}
     <p class="name {{ name_size }}">{{ name }}</p>
-    {% if is_participant %}
-      <p class="body">for participating in &ldquo;{{ activity_title }}&rdquo; held on {{ dates }}{% if venue %} at {{ venue }}{% endif %}.</p>
-    {% else %}
-      <p class="body">in grateful recognition of their valuable contribution as resource person{% if topic %} on &ldquo;{{ topic }}&rdquo;{% endif %} during &ldquo;{{ activity_title }}&rdquo; held on {{ dates }}{% if venue %} at {{ venue }}{% endif %}.</p>
-    {% endif %}
-    <p class="given">Given on {{ given_on }} at {{ organization }}.</p>
+    <p class="body">{{ text.main_sentence }}</p>
+    {% if text.closing_line %}<p class="given">{{ text.closing_line }}</p>{% endif %}
   </div>
 
   <div class="signatures">

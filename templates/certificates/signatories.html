@@ -12,7 +12,10 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
 {% block content %}
 <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
   <p class="max-w-3xl text-sm text-slate-700">The people whose name, position and signature are printed on certificates. Each activity chooses two of them (left and right) on its Certificates tab. A person already printed on a certificate is never changed: a new signature image or a new name or position becomes a new version that every activity uses from then on, and issued certificates keep the old one until they are reissued.</p>
-  <a href="{% url 'certificates:list' %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Certificates</a>
+  <div class="flex flex-wrap gap-2">
+    <a href="{% url 'certificates:text' %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="file-text" class="size-4" %}Certificate text</a>
+    <a href="{% url 'certificates:list' %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Certificates</a>
+  </div>
 </div>
 
 <div class="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">

@@ -13,6 +13,7 @@ import mimetypes
 from django.conf import settings
 from django.template.loader import render_to_string
 
+from . import wording
 from .models import Certificate
 
 
@@ -83,23 +84,12 @@ def _name_size(name: str) -> str:
 def certificate_html(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False) -> str:
     """The certificate as print HTML: the same for the preview and the final PDF (ASSUMPTIONS 358). `mark` adds a small
     "PREVIEW" in a corner (a preview of a certificate still waiting for approval)."""
-    activity = certificate.activity
-    is_participant = certificate.recipient_type == Certificate.RecipientType.REGISTRATION
-    topic = ""
-    if not is_participant:
-        link = activity.resource_person_links.filter(resource_person_id=certificate.resource_person_id).first()
-        topic = link.topic if link else ""
+    # The wording stored on the certificate (ASSUMPTIONS 370): an Issued certificate keeps the text it was sent with.
+    text = wording.fill_all(certificate.certificate_text, placeholder_values(certificate, name))
     context = {
-        "title": "Certificate of Participation" if is_participant else "Certificate of Appreciation",
-        "is_participant": is_participant,
+        "text": text,
         "name": name,
         "name_size": _name_size(name),
-        "activity_title": activity.title,
-        "dates": _dates(activity.start_date, activity.end_date),
-        "venue": activity.venue,
-        "topic": topic,
-        "given_on": long_date(activity.end_date),
-        "organization": settings.CERTIFICATE_ORGANIZATION_NAME,
         "number": certificate.certificate_number,
         "background": _background_uri(certificate.certificate_template),
         "signatories": [
@@ -117,6 +107,25 @@ def certificate_html(certificate: Certificate, *, name: str, mark: bool = False,
         "mark": mark,
     }
     return render_to_string("certificates/certificate_pdf.html", context)
+
+
+def placeholder_values(certificate: Certificate, name: str, activity=None) -> dict[str, str]:
+    """What the placeholders of the wording are filled with (certificates.wording.PLACEHOLDERS). `activity`: an
+    unsaved activity for the wording preview (default: the certificate's)."""
+    activity = activity or certificate.activity
+    topic = ""
+    if certificate.recipient_type == Certificate.RecipientType.RESOURCE_PERSON and certificate.resource_person_id:
+        link = activity.resource_person_links.filter(resource_person_id=certificate.resource_person_id).first()
+        topic = link.topic if link else ""
+    return {
+        "name": name,
+        "activity": activity.title,
+        "date": _dates(activity.start_date, activity.end_date),
+        "venue": activity.venue or "",
+        "topic": topic,
+        "given_date": long_date(activity.end_date),
+        "organization": settings.CERTIFICATE_ORGANIZATION_NAME,
+    }
 
 
 def render_certificate_pdf(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False) -> bytes:

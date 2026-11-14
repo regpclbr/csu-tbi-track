@@ -1,7 +1,7 @@
 """The automatic certificate flow (ASSUMPTIONS 362): the System creates the certificates when the activity becomes
 Conducted (by hand, automatically, the 5-minute job, attendance marked later), undoing attendance deletes a waiting
-certificate, "ready for approval" (computed), approving on the preview and "Approve all ready certificates", and the
-counts (S5, Needs attention) that include only ready certificates."""
+certificate, "ready" (computed), the approval per activity (ASSUMPTIONS 369) and the counts (S5, Needs attention:
+activities that need approval)."""
 
 from datetime import date, timedelta
 
@@ -182,33 +182,22 @@ def test_readiness_map_matches_one_by_one(generated, evaluate, django_assert_max
     assert labels == {c.pk: services.readiness(c) for c in certificates}
 
 
-# --- B3: approve one / all ready ---------------------------------------------------------------------------------
+# --- B3: approval per activity (ASSUMPTIONS 369; more in test_activity_approval.py) -----------------------------------
 
 
-def test_approve_one_needs_it_to_be_ready(generated, director, evaluate) -> None:
-    activity, people = generated
-    with pytest.raises(services.CertificateError, match="Waiting for evaluation"):
-        services.approve_certificate(director, certificate_of(people[0]))
-    evaluate(people[0])
-    assert services.approve_certificate(director, certificate_of(people[0])).status == S.APPROVED
-
-
-def test_approve_all_ready_leaves_the_others_waiting(generated, director, evaluate) -> None:
+def test_approving_the_activity_leaves_the_not_ready_ones_waiting(generated, director, evaluate) -> None:
     activity, people = generated
     evaluate(people[0])
-    assert len(services.ready_certificates(activity)) == 2  # one participant + the resource person
-    assert services.approve_certificates(director, activity=activity) == 2
-    assert certificate_of(people[1]).status == S.GENERATED  # not evaluated: keeps waiting
-    with pytest.raises(services.CertificateError, match=services.NOTHING_READY):
-        services.approve_certificates(director, activity=activity)
+    assert len(services.approve_activity_certificates(director, activity)) == 2  # one participant + the resource person
+    assert certificate_of(people[1]).status == S.GENERATED  # not evaluated: waits, then goes by itself
 
 
-def test_approve_all_ready_names_the_missing_signature(generated, director, design) -> None:
+def test_approval_names_the_missing_signature(generated, director, design) -> None:
     activity, _ = generated
     without_image(design[1])
     assert services.approval_closed_reason(activity) == "Add the signature of Dr. Vice Pres (Vice President) first."
     with pytest.raises(services.CertificateError, match=r"Add the signature of Dr\. Vice Pres"):
-        services.approve_certificates(director, activity=activity)
+        services.approve_activity_certificates(director, activity)
 
 
 def test_admin_staff_cannot_approve(generated, admin_staff, evaluate) -> None:
@@ -217,7 +206,7 @@ def test_admin_staff_cannot_approve(generated, admin_staff, evaluate) -> None:
     activity, people = generated
     evaluate(people[0])
     with pytest.raises(PermissionDenied):
-        services.approve_certificate(admin_staff, certificate_of(people[0]))
+        services.approve_activity_certificates(admin_staff, activity)
 
 
 def test_approved_participant_is_issued_and_emailed(generated, director, evaluate, run_tasks, mailoutbox,
@@ -225,35 +214,30 @@ def test_approved_participant_is_issued_and_emailed(generated, director, evaluat
     activity, people = generated
     evaluate(people[0], email="zero@example.com")
     with django_capture_on_commit_callbacks(execute=True):
-        services.approve_certificate(director, certificate_of(people[0]))
+        services.approve_activity_certificates(director, activity)
     certificate = certificate_of(people[0])
     assert certificate.status == S.ISSUED and certificate.sent_at is not None
     assert len([m for m in mailoutbox if m.to == ["zero@example.com"]]) == 1  # sent once, to certificate_email
 
 
-# --- B5: counts include only ready certificates --------------------------------------------------------------------
+# --- B5: counts are activities that need approval ----------------------------------------------------------------
 
 
-def test_s5_and_attention_count_only_ready_certificates(generated, evaluate) -> None:
+def test_s5_and_attention_count_activities_that_need_approval(generated, evaluate) -> None:
     activity, people = generated
     counts = metrics.certificates_now(NOW_FILTERS)
-    assert (counts["waiting_activities"], counts["waiting_certificates"]) == (1, 1)  # the resource person only
-    texts = [item.text for item in attention.activity_attention(activity)]
-    assert "1 certificate ready for approval." in texts
-    evaluate(people[0])
-    counts = metrics.certificates_now(NOW_FILTERS)
-    assert counts["waiting_certificates"] == 2
+    assert (counts["waiting_activities"], counts["waiting_certificates"]) == (1, 3)
     assert metrics.certificates_waiting_by_activity(NOW_FILTERS) == [
-        {"activity_id": activity.pk, "title": activity.title, "count": 2}]
-    assert "2 certificates ready for approval." in [item.text for item in attention.activity_attention(activity)]
+        {"activity_id": activity.pk, "title": activity.title, "count": 3}]
+    assert "Certificates need approval." in [item.text for item in attention.activity_attention(activity)]
 
 
-def test_nothing_ready_is_not_a_staff_task(generated, director) -> None:
+def test_an_approved_activity_is_not_a_staff_task(generated, director) -> None:
     activity, people = generated
-    services.approve_certificate(director, appreciation_of(activity))  # only participants left, not evaluated
+    services.approve_activity_certificates(director, activity)  # participants left, not evaluated
     assert metrics.certificates_now(NOW_FILTERS)["waiting_certificates"] == 0
     texts = [item.text for item in attention.activity_attention(activity)]
-    assert not [text for text in texts if "ready for approval" in text or "waiting for approval" in text]
+    assert not [text for text in texts if "approval" in text]
 
 
 def test_attention_parity_with_the_list_count(generated, evaluate) -> None:
@@ -261,15 +245,3 @@ def test_attention_parity_with_the_list_count(generated, evaluate) -> None:
     evaluate(people[0])
     counts = attention.attention_counts([activity])
     assert counts[activity.pk] == len(attention.activity_attention(activity))
-
-
-def test_dashboard_says_ready_for_your_approval(generated, evaluate, director) -> None:
-    from django.test import Client
-
-    activity, people = generated
-    evaluate(people[0])
-    client = Client()
-    client.force_login(director)
-    page = client.get(reverse("home")).context["page"]
-    item = next(item for item in page.attention if "ready for" in item.title)
-    assert item.title == "1 activity (2 certificates) ready for your approval" and item.action_label == "Approve"

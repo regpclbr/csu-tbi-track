@@ -2,9 +2,12 @@
 Certificates tab of the activity page (certificates.pages.certificates_tab; ASSUMPTIONS 357-362).
 - Counts per status. Certificates are created by the System when the activity is Conducted (no Generate button); when
   they cannot be created yet, the reason (services.generation_closed_reason) is shown.
-- Approvers only (can_approve_certificates): "Approve all ready certificates" behind a confirm dialog with the counts
-  (pages.approval_panel), or the disabled button with the reason (services.approval_closed_reason). Members without
-  the flag see no approve button at all.
+- The approval state (pages.approval_panel, ASSUMPTIONS 369): "Approved by ... on ..." or "Needs approval", for
+  everyone. Approvers only (can_approve_certificates): the primary "Approve certificates for this activity" behind a
+  confirm dialog, or the disabled button with the reason (services.approval_closed_reason). Members without the flag
+  see no approve button at all. One approval per activity: no Approve per certificate.
+- Certificate text (pages.text_panel, ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
+  fields of both types with the placeholders and a live preview (HTMX, activities:certificates_text_preview).
 - Signatures (pages.signatures_panel, ASSUMPTIONS 363, 365, 367): the left and right slot; can_create_activity or
   can_approve_certificates choose the person (dropdown of active people, "Add a person…" for approvers) and the
   "Title on this certificate"; an inactive person gets an amber note ("Use the current version" when a newer active
@@ -14,13 +17,48 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
   "PDF failed — Retry" shows the error and, for approvers, Retry.
 - Reissue (approvers only, ASSUMPTIONS 364): "Reissue all outdated certificates (N)" with a confirm dialog
   (pages.reissue_panel); "Reissue with current signatures" on the preview of an outdated Issued certificate.
-- The preview card (pages.preview_items): exactly the list below, same order; starts at the first row (or ?preview=<id>
-  after an approval). Approve (approvers only) is enabled only when the certificate is ready, otherwise the reason.
-  A row's Preview shows that certificate here (without JavaScript it opens the preview page).
+- The preview card (pages.preview_items): exactly the list below, same order; starts at the first row (or ?preview=<id>).
+  The approver checks it with Previous / Next before approving the activity. A row's Preview shows that certificate
+  here (without JavaScript it opens the preview page).
 - The list: Preview, Mark handed over / Resend (can_create_activity), PDF, Evidence. No checkboxes.
 Every action redirects back to /activities/<id>/?tab=certificates.
 {% endcomment %}
 <div id="certificates-tab" class="space-y-5">
+  <section class="card flex flex-wrap items-center justify-between gap-4 p-5" aria-labelledby="approval-title">
+    <div class="flex min-w-0 items-start gap-3">
+      {% if approval.approved %}
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
+      {% else %}
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">{% include "components/icon.html" with name="award" class="size-5" %}</span>
+      {% endif %}
+      <div class="min-w-0">
+        <h2 id="approval-title" class="card-title">Certificate approval</h2>
+        <p class="text-sm font-semibold text-ink" data-testid="approval-state">{{ approval.text }}</p>
+        {% if approval.approved %}
+          <p class="text-sm text-slate-700">Each participant's certificate is emailed as soon as they submit their evaluation; resource persons' certificates are ready to print. A change to a signatory, a title, the design or the certificate text cancels this approval.</p>
+        {% elif approval.has_certificates %}
+          <p class="text-sm text-slate-700">Check the certificates in the preview below, then approve them once for the whole activity.</p>
+        {% else %}
+          <p class="text-sm text-slate-700">Certificates are created automatically when the activity is Conducted; then they are approved here once.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if approval.can_approve %}
+      {% if approval.closed_reason %}
+        <button type="button" class="btn btn-primary" disabled aria-describedby="approval-reason">
+          {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve certificates for this activity</button>
+      {% else %}
+        {% include "components/modal.html" with id="approve-activity-dialog" title="Approve the certificates of this activity?" body="certificates/_approve_activity_form.html" trigger_label="Approve certificates for this activity" trigger_icon="circle-check" trigger_class="btn btn-primary" %}
+      {% endif %}
+    {% endif %}
+    {% if approval.closed_reason and approval.has_certificates %}
+      <p id="approval-reason" class="flex w-full items-start gap-2 text-sm text-slate-700">
+        {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}{{ approval.closed_reason }}</p>
+    {% elif approval.closed_reason %}
+      <p id="approval-reason" class="sr-only">{{ approval.closed_reason }}</p>
+    {% endif %}
+  </section>
+
   <div class="flex flex-wrap items-center justify-between gap-3">
     <ul class="flex flex-wrap gap-2" aria-label="Certificates per status">
       {% for status in counts %}
@@ -30,14 +68,6 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       {% endfor %}
     </ul>
     <div class="flex flex-wrap items-center gap-2">
-      {% if approval %}
-        {% if approval.closed_reason %}
-          <button type="button" class="btn btn-secondary btn-sm" disabled aria-describedby="approval-reason">
-            {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve all ready certificates</button>
-        {% else %}
-          {% include "components/modal.html" with id="approve-ready-dialog" title="Approve all ready certificates?" body="certificates/_approve_ready_form.html" trigger_label="Approve all ready certificates" trigger_icon="circle-check" trigger_class="btn btn-secondary btn-sm" %}
-        {% endif %}
-      {% endif %}
       {% if reissue %}
         {% if reissue.closed_reason %}
           <button type="button" class="btn btn-secondary btn-sm" disabled aria-describedby="reissue-reason">
@@ -51,11 +81,6 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       {% endif %}
     </div>
   </div>
-  {% if approval.closed_reason %}
-    <p id="approval-reason" class="-mt-2 flex items-start gap-2 text-sm text-slate-700">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}{{ approval.closed_reason }}</p>
-  {% endif %}
-
   {% if reissue.closed_reason %}
     <p id="reissue-reason" class="-mt-2 flex items-start gap-2 text-sm text-slate-700">
       {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}Reissue: {{ reissue.closed_reason }}</p>
@@ -71,7 +96,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h2 id="signatures-title" class="card-title">Signatures</h2>
-        <p class="card-subtitle">The two people printed on every certificate of this activity. Changing one updates the certificates that are not issued yet (the preview shows it at once); approved ones wait for approval again. Issued certificates keep the copy that was sent and can be reissued.</p>
+        <p class="card-subtitle">The two people printed on every certificate of this activity. Changing one updates the certificates that are not issued yet (the preview shows it at once) and cancels the activity's approval. Issued certificates keep the copy that was sent and can be reissued.</p>
       </div>
       {% if signatures.can_upload %}
         <a href="{{ signatures.list_url }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="users" class="size-4" %}All signatories</a>
@@ -168,6 +193,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     </div>
   </section>
 
+  {% include "certificates/_text_section.html" %}
+
   {% if previews %}
     {{ previews|json_script:"certificate-previews" }}
     <section id="certificate-preview" class="card scroll-mt-4 p-6" aria-labelledby="preview-title"
@@ -186,13 +213,6 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         </div>
         <div class="flex flex-wrap items-center gap-2">
           {% if can_approve %}
-            <form method="post" :action="items[i].approve_url" action="{{ shown.approve_url }}" x-show="items[i].can_approve"{% if not shown.can_approve %} style="display: none"{% endif %}>
-              {% csrf_token %}
-              <button type="submit" class="btn btn-primary btn-sm" :disabled="!items[i].ready" :aria-describedby="items[i].ready ? null : 'preview-readiness'"{% if not shown.ready %} disabled{% endif %}>
-                {% include "components/icon.html" with name="circle-check" class="size-4" %}Approve<span class="sr-only" x-text="' ' + items[i].number"></span></button>
-            </form>
-          {% endif %}
-          {% if can_approve %}
             <form method="post" :action="items[i].reissue_url" action="{{ shown.reissue_url }}" x-show="items[i].can_reissue"{% if not shown.can_reissue %} style="display: none"{% endif %}>
               {% csrf_token %}
               <button type="submit" class="btn btn-primary btn-sm">
@@ -207,10 +227,6 @@ Every action redirects back to /activities/<id>/?tab=certificates.
             {% include "components/icon.html" with name="download" class="size-4" %}Download PDF</a>
         </div>
       </div>
-      {% if can_approve %}
-        <p id="preview-readiness" class="mb-3 flex items-start gap-2 text-sm text-slate-700" x-show="items[i].can_approve && !items[i].ready"{% if not shown.can_approve or shown.ready %} style="display: none"{% endif %}>
-          {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}<span>Not ready for approval: <span x-text="items[i].readiness">{{ shown.readiness }}</span>.</span></p>
-      {% endif %}
       <p class="mb-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm" role="note" x-show="items[i].issued_note"
          :class="items[i].outdated ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'"
          class="{% if shown.outdated %}bg-amber-50 text-amber-900{% else %}bg-emerald-50 text-emerald-900{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
@@ -225,7 +241,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   <section class="card p-6" aria-labelledby="certificates-title">
     <div class="mb-4">
       <h2 id="certificates-title" class="card-title">Certificates</h2>
-      <p class="card-subtitle">Created automatically when the activity is Conducted: one Certificate of Participation (by email) per attendee and one Certificate of Appreciation (hard copy) per resource person. A participant's certificate is ready after their evaluation and both signatures.</p>
+      <p class="card-subtitle">Created automatically when the activity is Conducted: one Certificate of Participation (by email) per attendee and one Certificate of Appreciation (hard copy) per resource person. Once the activity is approved, a participant's certificate is emailed as soon as they submit their evaluation.</p>
     </div>
 
     {% if generation_reason and activity.status.name == "Conducted" %}

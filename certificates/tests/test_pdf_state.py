@@ -72,7 +72,7 @@ def test_approved_before_the_evaluation_rule_after_the_evaluation_closed(generat
 def test_pdf_being_prepared_and_waiting_for_the_worker(generated, director, worker) -> None:
     activity, _ = generated
     speaker = appreciation_of(activity)
-    services.approve_certificate(director, speaker)  # its render is queued (not run: no qcluster in tests)
+    services.approve_activity_certificates(director, activity)  # only the resource person is ready  # its render is queued (not run: no qcluster in tests)
     assert "PDF being prepared" in sent_column(client_for(director), activity, speaker)
     worker(False)
     assert "Waiting for the background worker" in sent_column(client_for(director), activity, speaker)
@@ -84,7 +84,7 @@ def test_a_failed_render_is_recorded_in_plain_words_with_retry(generated, direct
     speaker = appreciation_of(activity)
     fake_pdf_renderer.fail = OSError("cannot load library 'libgobject-2.0-0': C:\\secret\\path")
     with django_capture_on_commit_callbacks(execute=True):
-        services.approve_certificate(director, speaker)
+        services.approve_activity_certificates(director, activity)  # only the resource person is ready
     speaker.refresh_from_db()
     assert speaker.render_failed_at is not None and "WeasyPrint" in speaker.render_error
     assert "secret" not in speaker.render_error  # never the raw error
@@ -103,7 +103,7 @@ def test_a_failed_render_is_recorded_in_plain_words_with_retry(generated, direct
 def test_an_unreadable_signature_is_named_in_the_error(generated, director) -> None:
     activity, _ = generated
     speaker = appreciation_of(activity)
-    services.approve_certificate(director, speaker)
+    services.approve_activity_certificates(director, activity)  # only the resource person is ready
     head = services.activity_signatories(activity)["left"]
     head.signature_image_path.storage.delete(head.signature_image_path.name)
     with pytest.raises(pdf.ImageUnreadable) as error:
@@ -116,7 +116,7 @@ def test_an_unreadable_signature_is_named_in_the_error(generated, director) -> N
 def test_retry_needs_the_approval_flag(generated, director, make_member, fake_pdf_renderer) -> None:
     activity, _ = generated
     speaker = appreciation_of(activity)
-    services.approve_certificate(director, speaker)
+    services.approve_activity_certificates(director, activity)  # only the resource person is ready
     services.record_render_failure(speaker.pk, RuntimeError("boom"))
     viewer = make_member("Admin Staff", email="viewer@example.com")
     response = client_for(viewer).post(reverse("activities:certificates_action", args=[activity.pk]),
@@ -129,7 +129,7 @@ def test_retry_needs_the_approval_flag(generated, director, make_member, fake_pd
 def test_the_daily_retry_picks_up_failed_and_never_queued_pdfs(generated, director, fake_pdf_renderer) -> None:
     activity, _ = generated
     speaker = appreciation_of(activity)
-    services.approve_certificate(director, speaker)
+    services.approve_activity_certificates(director, activity)  # only the resource person is ready
     services.record_render_failure(speaker.pk, RuntimeError("boom"))
     assert speaker.pk in set(services.pending_preparation().values_list("pk", flat=True))
     result = services.retry_pending_certificates()
@@ -140,7 +140,7 @@ def test_the_daily_retry_picks_up_failed_and_never_queued_pdfs(generated, direct
 def test_the_daily_retry_records_a_failure(generated, director, fake_pdf_renderer) -> None:
     activity, _ = generated
     speaker = appreciation_of(activity)
-    services.approve_certificate(director, speaker)
+    services.approve_activity_certificates(director, activity)  # only the resource person is ready
     fake_pdf_renderer.fail = RuntimeError("boom")
     assert services.retry_pending_certificates()["prepare_failed"] == 1
     speaker.refresh_from_db()
@@ -153,7 +153,7 @@ def test_the_five_minute_job_queues_a_stalled_render_after_ten_minutes(generated
     queued: list[int] = []
     monkeypatch.setattr(services, "queue_prepare", queued.append)
     now = timezone.now()
-    services.approve_certificate(director, speaker, now=now)
+    services.approve_activity_certificates(director, activity, now=now)  # only the resource person is ready
     assert services.queue_stalled_preparations(now + timedelta(minutes=5)) == 0
     assert services.queue_stalled_preparations(now + timedelta(minutes=11)) == 1 and queued == [speaker.pk]
     services.record_render_failure(speaker.pk, RuntimeError("boom"))

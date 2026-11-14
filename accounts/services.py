@@ -204,6 +204,9 @@ def save_new_member_with_invitation(member: TBIMember) -> TBIMember:
     return member
 
 
+INVITATION_NOT_SENT = "The invitation could not be emailed; the member was not added. Try again."
+
+
 @transaction.atomic
 def create_member(acting_member: TBIMember, *, name: str, email: str, role: Role) -> TBIMember:
     """Admin Console: create a staff member and email them a temporary password."""
@@ -218,7 +221,13 @@ def create_member(acting_member: TBIMember, *, name: str, email: str, role: Role
     if TBIMember.objects.filter(email__iexact=email).exists():
         raise MemberManagementError("A member with this email already exists.")
 
-    member = save_new_member_with_invitation(TBIMember(name=name.strip(), email=email, role=role))
+    try:
+        with transaction.atomic():  # the member is saved only when the invitation could be emailed
+            member = save_new_member_with_invitation(TBIMember(name=name.strip(), email=email, role=role))
+    except Exception as error:  # SMTP / email API failure: nothing is saved, the Admin tries again
+        audit_log.warning("Member invitation not emailed (%s): member not created, by %s", type(error).__name__,
+                          _who(acting_member))
+        raise MemberManagementError(INVITATION_NOT_SENT) from error
     audit_log.info("Member created: %s role=%r by %s", _who(member), role.role_name, _who(acting_member))
     return member
 

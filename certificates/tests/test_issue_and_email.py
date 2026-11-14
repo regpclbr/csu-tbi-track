@@ -70,9 +70,9 @@ def test_evaluation_before_approval_is_emailed_right_after_approval(generated, a
 
 def test_printed_name_is_the_evaluation_name_not_the_registration_name(generated, director, evaluate, run_tasks, fake_pdf_renderer, django_capture_on_commit_callbacks) -> None:
     activity, people = generated
+    services.approve_activity_certificates(director, activity)  # no capture: the resource person's render never runs
     with django_capture_on_commit_callbacks(execute=True):
-        evaluate(people[0], name="Juana Dela Cruz", email="juana@example.com")
-        services.approve_certificate(director, certificate_of(people[0]))  # only this one: the last PDF rendered
+        evaluate(people[0], name="Juana Dela Cruz", email="juana@example.com")  # approved by itself: the last PDF
     html = fake_pdf_renderer.last
     assert "Juana Dela Cruz" in html and "Ana Cruz" not in html
     assert html.count("data:image/png;base64,") == 3  # background + both signatures

@@ -49,9 +49,9 @@ def assert_every_tab_opens(client, activity) -> None:
 def certificate_posts(activity, people) -> list[tuple[str, dict]]:
     zero = certificate_of(people[0])
     return [
-        (reverse("activities:certificates_approve", args=[activity.pk, zero.pk]), {}),  # refused: not evaluated
-        (reverse("activities:certificates_approve", args=[activity.pk, appreciation_of(activity).pk]), {}),
-        (reverse("activities:certificates_approve_ready", args=[activity.pk]), {}),
+        (reverse("activities:certificates_approve_activity", args=[activity.pk]), {}),
+        (reverse("activities:certificates_approve_activity", args=[activity.pk]), {}),  # refused: already approved
+        (reverse("activities:certificates_text", args=[activity.pk]), {"mode": "default"}),
         (reverse("activities:certificates_apply_design", args=[activity.pk]), {}),
         (reverse("activities:certificates_action", args=[activity.pk]), {"action": "resend", "certificate_ids": [zero.pk]}),
         (reverse("activities:certificates_action", args=[activity.pk]), {"action": "hand_over", "certificate_ids": [zero.pk]}),
@@ -154,15 +154,6 @@ def test_preview_query_selects_the_certificate(generated, director) -> None:
     assert f'x-data="{{ i: {index},' in html
 
 
-def test_after_approving_the_preview_moves_to_the_next_waiting(generated, director, evaluate) -> None:
-    activity, people = generated
-    for person in people:
-        evaluate(person)
-    ordered = list(Certificate.objects.filter(activity=activity).order_by("certificate_number"))
-    response = client_for(director).post(reverse("activities:certificates_approve", args=[activity.pk, ordered[0].pk]))
-    assert response["Location"] == tab_url(activity.pk, preview=ordered[1].pk)
-
-
 # --- A2: versions, caching and the Issued copy ---------------------------------------------------------------------
 
 
@@ -189,7 +180,7 @@ def test_an_issued_certificate_shows_its_sent_copy(generated, director, evaluate
     activity, people = generated
     evaluate(people[0])
     with django_capture_on_commit_callbacks(execute=True):
-        services.approve_certificate(director, certificate_of(people[0]))
+        services.approve_activity_certificates(director, activity)
     certificate = certificate_of(people[0])
     assert certificate.status == S.ISSUED
     client = client_for(director)
@@ -207,44 +198,41 @@ def test_an_issued_certificate_shows_its_sent_copy(generated, director, evaluate
 
 def test_replace_sends_approved_back_to_waiting(generated, director, design) -> None:
     activity, _ = generated
-    services.approve_certificate(director, appreciation_of(activity))
+    services.approve_activity_certificates(director, activity)
     client_for(director).post(reverse("activities:certificates_signature", args=[activity.pk, "left"]),
                               {"file": upload("dir.png", image_bytes(40, 20))})
     assert appreciation_of(activity).status == S.GENERATED
 
 
-# --- Who sees which approve buttons ------------------------------------------------------------------------------
+# --- Who sees the approve button (ASSUMPTIONS 369: one per activity) ---------------------------------------------
 
 
 def test_admin_staff_see_no_approve_buttons_at_all(generated, make_member, evaluate) -> None:
     activity, people = generated
     evaluate(people[0])
     html = tab_html(client_for(make_member("Admin Staff")), activity)
-    assert "Approve all ready certificates" not in html
+    assert "Approve certificates for this activity" not in html and "Needs approval" in html
     assert 'name="certificate_ids"' not in html or "type=\"checkbox\"" not in html
+    assert 'Approve<span class="sr-only"' not in html
+
+
+def test_the_preview_has_no_approve_button(generated, director) -> None:
+    activity, _ = generated
+    html = tab_html(client_for(director), activity)
     assert 'Approve<span class="sr-only"' not in html and "Not ready for approval" not in html
-    assert all(not item["can_approve"] and not item["approve_url"] for item in preview_items(html))
+    assert all("approve_url" not in item and "can_approve" not in item for item in preview_items(html))
+    assert "Approve certificates for this activity" in html and 'id="approve-activity-dialog"' in html
 
 
-def test_approvers_see_the_disabled_button_with_the_reason(generated, make_member) -> None:
-    activity, people = generated
-    html = tab_html(client_for(make_member("Incubation Project Head")), activity)
-    items = {item["pk"]: item for item in preview_items(html)}
-    first = items[certificate_of(people[0]).pk]
-    assert first["can_approve"] and not first["ready"] and first["readiness"] == "Waiting for evaluation"
-    assert items[appreciation_of(activity).pk]["ready"]  # resource person: ready with both signatures
-    assert "Approve all ready certificates" in html and "1 certificate will be approved" in html
-
-
-def test_approve_all_ready_disabled_with_reason_for_approvers_only(generated, director, make_member, design) -> None:
+def test_the_approval_is_disabled_with_the_reason_for_approvers_only(generated, director, make_member, design) -> None:
     activity, _ = generated
     CertificateSignatory.objects.filter(pk=design[1].pk).update(signature_image_path=None)
     html = tab_html(client_for(director), activity)
-    assert 'disabled aria-describedby="approval-reason"' in html and "Approve all ready certificates" in html
-    assert 'id="approve-ready-dialog"' not in html  # no confirm dialog while closed
+    assert 'disabled aria-describedby="approval-reason"' in html and "Approve certificates for this activity" in html
+    assert 'id="approve-activity-dialog"' not in html  # no confirm dialog while closed
     assert "Add the signature of Dr. Vice Pres (Vice President) first." in html
     staff_html = tab_html(client_for(make_member("Admin Staff")), activity)
-    assert "Approve all ready certificates" not in staff_html
+    assert "Approve certificates for this activity" not in staff_html
 
 
 def test_list_has_no_checkboxes_or_approve_selected(generated, director) -> None:
@@ -259,24 +247,22 @@ def test_admin_staff_cannot_post_approvals(generated, make_member, evaluate) -> 
     activity, people = generated
     evaluate(people[0])
     client = client_for(make_member("Admin Staff"))
-    assert client.post(reverse("activities:certificates_approve", args=[activity.pk, certificate_of(people[0]).pk])).status_code == 403
-    assert client.post(reverse("activities:certificates_approve_ready", args=[activity.pk])).status_code == 403
+    assert client.post(reverse("activities:certificates_approve_activity", args=[activity.pk])).status_code == 403
     assert not Certificate.objects.filter(status=S.APPROVED).exists()
 
 
-def test_preview_page_without_javascript_has_approve_for_approvers_only(generated, director, make_member) -> None:
+def test_preview_page_without_javascript_has_no_approve(generated, director) -> None:
     activity, _ = generated
     url = reverse("certificates:preview_dialog", args=[appreciation_of(activity).pk])
-    approve = 'Approve<span class="sr-only">'
-    assert approve in client_for(director).get(url).content.decode()
-    assert approve not in client_for(make_member("Admin Staff")).get(url).content.decode()
+    html = client_for(director).get(url).content.decode()
+    assert 'Approve<span class="sr-only">' not in html and "Download PDF" in html
 
 
 def test_worker_notice_when_qcluster_is_not_running(generated, director, monkeypatch) -> None:
     from accounts import system_status
 
     activity, _ = generated
-    services.approve_certificate(director, appreciation_of(activity))  # Approved, its PDF not rendered yet
+    services.approve_activity_certificates(director, activity)  # Approved, its PDF not rendered yet
     monkeypatch.setattr(system_status, "qcluster_status", lambda: system_status.StatusItem("q", "q", system_status.WARNING, ""))
     html = tab_html(client_for(director), activity)
     assert "Certificates are waiting for the background worker." in html and "Being prepared" in html

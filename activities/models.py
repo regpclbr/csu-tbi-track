@@ -101,6 +101,14 @@ class Activity(models.Model):
     registration_deadline = models.DateTimeField()
     evaluation_deadline = models.DateTimeField()
     budget_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # The approval of the activity's certificates (ASSUMPTIONS 369): who (can_approve_certificates) and when. Empty =
+    # "Needs approval". Set and cleared ONLY by certificates.services (approve_activity_certificates,
+    # cancel_certificate_approval); never by the activity form or update_activity.
+    certificates_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="approved_activity_certificates",
+    )
+    certificates_approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

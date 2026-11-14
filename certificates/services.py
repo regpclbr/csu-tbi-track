@@ -8,10 +8,15 @@ The life of a certificate (status rules in set_certificate_status; ASSUMPTIONS 3
 
 - The System creates the certificates when the activity becomes Conducted (generate_missing_certificates: one per
   attendee, one per resource person; also attendees marked later; the 5-minute job catches up). No Generate button.
-- "Ready for approval" is computed (readiness()): both signature images, and for a participant the submitted
-  evaluation. Approve (one certificate, on the preview) and "Approve all ready certificates": can_approve_certificates
-  (the Director, both Project Heads and the System Administrator). Apply the current design, hand over, resend:
-  can_create_activity.
+- Approval is per ACTIVITY (ASSUMPTIONS 369): a member with can_approve_certificates checks the preview and approves
+  the activity once (approve_activity_certificates: ACTIVITY.certificates_approved_by / _at). From then on every
+  certificate of the activity that is ready (readiness(): both signature images; a participant's evaluation) is
+  approved by the System in the approver's name (approve_ready_certificates): now, at each later evaluation, and for
+  certificates created later. A change to what is printed (signatory, title, a new version of a person, "Apply the
+  current design", the certificate text) cancels the approval (cancel_certificate_approval): not-Issued certificates
+  wait again. Apply the current design, hand over, resend: can_create_activity.
+- The wording (ASSUMPTIONS 370): CERTIFICATE_TEXT rows (a default per type, optional custom text per activity),
+  versioned; each certificate keeps the row it was printed with (certificates.wording fills the placeholders).
 - Signatories (ASSUMPTIONS 363): a list of people (CERTIFICATE_SIGNATORY) managed by can_approve_certificates; each
   activity chooses a left and a right one (ACTIVITY_SIGNATORY; a new activity starts with the defaults). A row that a
   certificate uses never changes: a new image or a name/position edit is a new version (new row) that every activity
@@ -60,8 +65,8 @@ from documents import services as document_services
 from documents.models import Document, DocumentType
 from registrations.models import EvaluationSubmission, Registration
 
-from . import emails, imaging, pdf
-from .models import ActivitySignatory, Certificate, CertificateSignatory, CertificateTemplate, Slot
+from . import emails, imaging, pdf, wording
+from .models import ActivitySignatory, Certificate, CertificateSignatory, CertificateTemplate, CertificateText, Slot
 
 logger = logging.getLogger("certificates")
 audit_logger = logging.getLogger("certificates.audit")  # signatory changes and reissues (IDs only)
@@ -71,6 +76,8 @@ RecipientType = Certificate.RecipientType
 DeliveryMethod = Certificate.DeliveryMethod
 
 DEFAULT_PAGE_SIZE = 20
+TEXT_PARTICIPATION = CertificateText.CertificateType.PARTICIPATION
+TEXT_APPRECIATION = CertificateText.CertificateType.APPRECIATION
 
 # The only status moves allowed. Forward one step at a time, plus one backward move:
 # Approved -> Generated when the certificate is regenerated (it must be approved again).
@@ -437,6 +444,9 @@ def _new_version(member: TBIMember, old: CertificateSignatory, *, name: str, pos
     ActivitySignatory.objects.filter(pk__in=[row.pk for row in moved]).update(signatory=new)
 
     activities = {row.activity_id: row.activity for row in moved}
+    cancelled = 0
+    for activity in activities.values():  # what is printed changes: the approval is cancelled (ASSUMPTIONS 369)
+        cancelled += cancel_certificate_approval(activity, member, now, f"new version of {name}")
     updated = sum(_sync_certificates(activity, member, now) for activity in activities.values())
     uses = Q(left_signatory_id__in=versions) | Q(right_signatory_id__in=versions)
     outdated = Certificate.objects.filter(uses).filter(outdated_q())
@@ -445,6 +455,7 @@ def _new_version(member: TBIMember, old: CertificateSignatory, *, name: str, pos
         "updated": updated,
         "outdated": outdated.count(),
         "outdated_activities": outdated.values("activity").distinct().count(),
+        "cancelled": cancelled,
     }
 
 
@@ -738,6 +749,11 @@ def _apply_slots(member: TBIMember, activity: Activity, wanted: dict[str, tuple[
                         f"signatory_{slot}")
     if not changed:
         return {"changed": False, "updated": 0, "outdated": outdated_certificates(activity).count()}
+    reasons = []
+    for slot, (old_person, _old_title) in changed.items():
+        same = old_person is not None and old_person.pk == final[slot][0].pk
+        reasons.append(f"{SLOT_LABELS[slot].lower()} {'title' if same else 'signatory'} changed")
+    cancelled = cancel_certificate_approval(activity, member, now, ", ".join(reasons))  # ASSUMPTIONS 369
     # Delete first, then create: a swap (left <-> right) would otherwise break unique (activity, signatory).
     ActivitySignatory.objects.filter(activity=activity, slot__in=list(changed)).delete()
     for slot, (old_person, old_title) in changed.items():
@@ -748,7 +764,8 @@ def _apply_slots(member: TBIMember, activity: Activity, wanted: dict[str, tuple[
     updated = _sync_certificates(activity, member, now)
     audit_logger.info("Activity signatories: activity_id=%s slots=%s certificates_updated=%s by member_id=%s",
                       activity.pk, ",".join(f"{slot}={final[slot][0].pk}" for slot in changed), updated, member.pk)
-    return {"changed": True, "updated": updated, "outdated": outdated_certificates(activity).count()}
+    return {"changed": True, "updated": updated, "outdated": outdated_certificates(activity).count(),
+            "cancelled": int(cancelled)}
 
 
 _KEEP = object()  # set_activity_signatory: keep the title when the person stays the same
@@ -845,6 +862,229 @@ def active_design(activity: Activity) -> tuple[CertificateTemplate, CertificateS
     return fields["certificate_template"], fields["left_signatory"], fields["right_signatory"]
 
 
+# --- The certificate text (CERTIFICATE_TEXT; ASSUMPTIONS 370) ---------------------------------------------------------
+
+TEXT_HISTORY_LABEL = "Certificate text"
+TEXT_TYPES = (TEXT_PARTICIPATION, TEXT_APPRECIATION)
+TEXT_TYPE_LABELS = {TEXT_PARTICIPATION: "Participation", TEXT_APPRECIATION: "Appreciation"}
+RECIPIENT_FOR_TEXT = {TEXT_PARTICIPATION: RecipientType.REGISTRATION, TEXT_APPRECIATION: RecipientType.RESOURCE_PERSON}
+SAMPLE_NAMES = {TEXT_PARTICIPATION: "Juan Dela Cruz", TEXT_APPRECIATION: "Dr. Maria Santos"}
+SAMPLE_TOPIC = "Building a Startup Pitch"
+
+
+def text_values(row) -> dict[str, str]:
+    """The four fields of a CERTIFICATE_TEXT row as a dict."""
+    return {field: getattr(row, field) or "" for field in wording.FIELDS}
+
+
+def current_texts(activity: Activity | None = None) -> dict[str, CertificateText]:
+    """{type: the wording new certificates get}: the activity's custom text, else the default (activity None: the
+    defaults)."""
+    return {kind: wording.current_text_for(activity.pk if activity else None, kind) for kind in TEXT_TYPES}
+
+
+def uses_custom_text(activity: Activity) -> bool:
+    """True when the activity has its own current text for at least one type ("Custom text for this activity")."""
+    return CertificateText.objects.filter(activity=activity, is_current=True).exists()
+
+
+def can_edit_activity_text(member: TBIMember) -> bool:
+    """Who may choose an activity's wording: can_create_activity or can_approve_certificates (Admin Staff: view only)."""
+    return can_choose_signatories(member)
+
+
+def _check_type(certificate_type: str) -> None:
+    if certificate_type not in TEXT_TYPES:
+        raise ValidationError({"certificate_type": ["Choose Participation or Appreciation."]})
+
+
+def clean_texts(texts: dict[str, dict]) -> dict[str, dict]:
+    """The posted wording per type, checked (certificates.wording.clean). Refused as ValidationError with one message per
+    field, keyed "<type>-<field>" (e.g. "participation-main_sentence") so the form shows it under the field."""
+    cleaned, errors = {}, {}
+    for kind, values in texts.items():
+        _check_type(kind)
+        cleaned[kind], problems = wording.clean(values, kind)
+        errors.update({f"{kind}-{field}": [message] for field, message in problems.items()})
+    if errors:
+        raise ValidationError(errors)
+    return cleaned
+
+
+def _sync_text(activity_id: int, certificate_type: str, row: CertificateText, member: TBIMember | None,
+               now: datetime | None) -> int:
+    """Put `row` on the activity's certificates of that type that are not Issued and use another wording
+    (_refresh_certificates: the PDF is rendered again). Returns how many."""
+    stale = list(Certificate.objects.select_for_update(of=("self",))
+                 .filter(activity_id=activity_id, recipient_type=RECIPIENT_FOR_TEXT[certificate_type])
+                 .exclude(status=Status.ISSUED).exclude(certificate_text=row).order_by("pk"))
+    _refresh_certificates(stale, member, now, certificate_text=row)
+    return len(stale)
+
+
+def _on_default(certificate_type: str):
+    """Activities that use the default wording of the type (no current custom text) and have a certificate of that
+    type that is not Issued: the ones a change of the default updates."""
+    custom = CertificateText.objects.filter(activity=OuterRef("pk"), certificate_type=certificate_type, is_current=True)
+    waiting = Certificate.objects.filter(activity=OuterRef("pk"), recipient_type=RECIPIENT_FOR_TEXT[certificate_type]
+                                         ).exclude(status=Status.ISSUED)
+    return Activity.objects.filter(Exists(waiting)).exclude(Exists(custom)).order_by("pk")
+
+
+def default_text_impact(certificate_type: str) -> dict[str, int]:
+    """What saving a new default wording changes (the confirm dialog): `activities` using the default with certificates
+    not Issued, `certificates` (rendered again) and `approved` activities whose approval is cancelled."""
+    _check_type(certificate_type)
+    activities = _on_default(certificate_type)
+    custom = CertificateText.objects.filter(activity=OuterRef("activity_id"), certificate_type=certificate_type,
+                                            is_current=True)
+    return {
+        "activities": activities.count(),
+        "certificates": (Certificate.objects.filter(recipient_type=RECIPIENT_FOR_TEXT[certificate_type])
+                         .exclude(status=Status.ISSUED).exclude(Exists(custom)).count()),
+        "approved": activities.filter(certificates_approved_at__isnull=False).count(),
+    }
+
+
+def default_text_impact_text(impact: dict[str, int]) -> str:
+    """ "This updates 2 activities: 14 certificates not issued yet are rendered again with the new text; the approval of
+    1 activity is cancelled. Issued certificates keep the text they were sent with." """
+    if not impact["activities"]:
+        return "No certificate waiting to be issued uses this text now; new certificates will use the new text."
+    text = (f"This updates {_plural(impact['activities'], 'activity', 'activities')}: "
+            f"{_plural(impact['certificates'], 'certificate', 'certificates')} not issued yet "
+            f"{'is' if impact['certificates'] == 1 else 'are'} rendered again with the new text")
+    if impact["approved"]:
+        text += f"; the approval of {_plural(impact['approved'], 'activity', 'activities')} is cancelled"
+    return text + ". Issued certificates keep the text they were sent with."
+
+
+@transaction.atomic
+def save_default_text(member: TBIMember, certificate_type: str, values: dict, now: datetime | None = None) -> dict:
+    """The "Certificate text" page (can_approve_certificates): a new default wording for one type. Unchanged text saves
+    nothing. Otherwise a new row (the old one is no longer current) and every activity that uses the default and has
+    certificates of that type not Issued gets it: its approval is cancelled (cancel_certificate_approval, History) and
+    those certificates are rendered again; one History row "Certificate text" per activity. Issued certificates keep
+    their row. Returns {"changed", "activities", "updated", "cancelled"}."""
+    from activities.services import write_certificate_text_history
+
+    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    _check_type(certificate_type)
+    cleaned = clean_texts({certificate_type: values})[certificate_type]
+    current = wording.default_text(certificate_type)
+    current = CertificateText.objects.select_for_update().get(pk=current.pk)
+    if text_values(current) == cleaned:
+        return {"changed": False, "activities": 0, "updated": 0, "cancelled": 0}
+    CertificateText.objects.filter(pk=current.pk).update(is_current=False)
+    new = CertificateText.objects.create(certificate_type=certificate_type, created_by=member, **cleaned)
+    label = TEXT_TYPE_LABELS[certificate_type]
+    activities = list(_on_default(certificate_type).select_for_update(of=("self",)))
+    updated = cancelled = 0
+    for activity in activities:
+        cancelled += cancel_certificate_approval(activity, member, now, f"default {label} text changed")
+        updated += _sync_text(activity.pk, certificate_type, new, member, now)
+        write_certificate_text_history(activity, member, f"Default text ({label})", f"Default text ({label}), changed")
+    audit_logger.info("Default certificate text: type=%s text_id=%s -> %s activities=%s certificates_updated=%s "
+                      "by member_id=%s", certificate_type, current.pk, new.pk, len(activities), updated, member.pk)
+    return {"changed": True, "activities": len(activities), "updated": updated, "cancelled": cancelled}
+
+
+@transaction.atomic
+def save_activity_text(member: TBIMember, activity: Activity, texts: dict[str, dict], now: datetime | None = None) -> dict:
+    """The Certificates tab's "Custom text for this activity" (can_create_activity or can_approve_certificates):
+    {type: {field: text}} for one or both types. A type whose text is the same as what the activity prints now is left
+    alone; a changed one gets a new row for the activity. Then the approval is cancelled (History) and the
+    certificates of the changed types that are not Issued are rendered again; one History row "Certificate text".
+    Refused (ValidationError, fields "<type>-<field>") with the wording's own checks.
+    Returns {"changed", "updated", "cancelled"}."""
+    from activities.services import write_certificate_text_history
+
+    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
+    cleaned = clean_texts(texts)
+    was_custom = uses_custom_text(locked)
+    changed = []
+    for kind in TEXT_TYPES:
+        if kind not in cleaned:
+            continue
+        current = wording.current_text_for(locked.pk, kind)
+        if text_values(current) == cleaned[kind]:
+            continue  # the same words: nothing to do (the default stays the default)
+        CertificateText.objects.filter(activity=locked, certificate_type=kind, is_current=True).update(is_current=False)
+        CertificateText.objects.create(certificate_type=kind, activity=locked, created_by=member, **cleaned[kind])
+        changed.append(kind)
+    if not changed:
+        return {"changed": False, "updated": 0, "cancelled": 0}
+    cancelled = cancel_certificate_approval(locked, member, now, "certificate text changed")
+    updated = sum(_sync_text(locked.pk, kind, wording.current_text_for(locked.pk, kind), member, now) for kind in changed)
+    labels = ", ".join(TEXT_TYPE_LABELS[kind] for kind in changed)
+    write_certificate_text_history(locked, member, "Custom text" if was_custom else "Default text",
+                                   f"Custom text ({labels})")
+    audit_logger.info("Activity certificate text: activity_id=%s types=%s certificates_updated=%s by member_id=%s",
+                      locked.pk, ",".join(changed), updated, member.pk)
+    return {"changed": True, "updated": updated, "cancelled": cancelled}
+
+
+@transaction.atomic
+def use_default_text(member: TBIMember, activity: Activity, now: datetime | None = None) -> dict:
+    """The Certificates tab's "Use the default text": the activity's custom text is no longer current, its certificates
+    that are not Issued get the default again (rendered again) and the approval is cancelled; one History row. Nothing
+    happens when the activity already uses the default. Returns {"changed", "updated", "cancelled"}."""
+    from activities.services import write_certificate_text_history
+
+    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
+    custom = CertificateText.objects.filter(activity=locked, is_current=True)
+    kinds = sorted(set(custom.values_list("certificate_type", flat=True)), key=TEXT_TYPES.index)
+    if not kinds:
+        return {"changed": False, "updated": 0, "cancelled": 0}
+    custom.update(is_current=False)
+    cancelled = cancel_certificate_approval(locked, member, now, "certificate text changed")
+    updated = sum(_sync_text(locked.pk, kind, wording.default_text(kind), member, now) for kind in kinds)
+    write_certificate_text_history(locked, member, "Custom text", "Default text")
+    audit_logger.info("Activity certificate text: activity_id=%s back to the default, certificates_updated=%s by "
+                      "member_id=%s", locked.pk, updated, member.pk)
+    return {"changed": True, "updated": updated, "cancelled": cancelled}
+
+
+def preview_values(activity: Activity | None, certificate_type: str) -> tuple[dict[str, str], str]:
+    """(placeholder values, where they come from) for the live preview of the wording: the activity's first certificate
+    of that type (its printed name), else sample names with the activity's own details; no activity (the default text
+    page): an invented sample activity."""
+    _check_type(certificate_type)
+    if activity is None:
+        today = timezone.localdate()
+        sample = Activity(title="Design Thinking Workshop", start_date=today, end_date=today, venue="CSU Main Campus")
+        values = pdf.placeholder_values(Certificate(recipient_type=RECIPIENT_FOR_TEXT[certificate_type]),
+                                        SAMPLE_NAMES[certificate_type], activity=sample)
+        values["topic"] = SAMPLE_TOPIC if certificate_type == TEXT_APPRECIATION else ""
+        return values, "Sample values (an invented activity)."
+    certificate = (Certificate.objects.filter(activity=activity, recipient_type=RECIPIENT_FOR_TEXT[certificate_type])
+                   .select_related("activity", "registration", "resource_person").order_by("certificate_number").first())
+    if certificate is not None:
+        name, _final = preview_name(certificate)
+        return (pdf.placeholder_values(certificate, name),
+                f"Filled in for {certificate.certificate_number} ({name}).")
+    probe = Certificate(activity=activity, recipient_type=RECIPIENT_FOR_TEXT[certificate_type])
+    name = SAMPLE_NAMES[certificate_type]
+    if certificate_type == TEXT_APPRECIATION:
+        link = activity.resource_person_links.select_related("resource_person").order_by("pk").first()
+        if link is not None:
+            probe.resource_person = link.resource_person
+            name = link.resource_person.name
+    return pdf.placeholder_values(probe, name), "Filled in with this activity's details and a sample name."
+
+
+def wording_preview(activity: Activity | None, certificate_type: str, values: dict) -> dict:
+    """The live preview of typed wording (nothing is saved): {"text": the four filled lines or None, "errors":
+    {field: message}, "source": where the values come from}. The errors are the ones saving would give."""
+    _check_type(certificate_type)
+    cleaned, errors = wording.clean(values, certificate_type)
+    filled, source = preview_values(activity, certificate_type)
+    text = None if errors else wording.fill_all(cleaned, filled)
+    return {"text": text, "errors": errors, "source": source}
+
+
 # --- Certificate numbers ------------------------------------------------------------------------
 
 
@@ -927,19 +1167,23 @@ def generate_missing_certificates(activity: Activity, *, registration_ids: list[
     if registrations or links:
         numbers = _certificate_numbers(now)
         common = {"activity": locked, **design_fields(locked)}
+        texts = {kind: wording.current_text_for(locked.pk, kind) for kind in CertificateText.CertificateType.values}
         for registration in registrations:
             Certificate.objects.create(
                 certificate_number=next(numbers), recipient_type=RecipientType.REGISTRATION, registration=registration,
-                delivery_method=DeliveryMethod.EMAIL, **common,
+                delivery_method=DeliveryMethod.EMAIL, certificate_text=texts[TEXT_PARTICIPATION], **common,
             )
             participation += 1
         for link in links:
             Certificate.objects.create(
                 certificate_number=next(numbers), recipient_type=RecipientType.RESOURCE_PERSON,
-                resource_person=link.resource_person, delivery_method=DeliveryMethod.HARD_COPY, **common,
+                resource_person=link.resource_person, delivery_method=DeliveryMethod.HARD_COPY,
+                certificate_text=texts[TEXT_APPRECIATION], **common,
             )
             appreciation += 1
         write_certificate_history(locked, None, "", created_text(participation, appreciation))
+        # An approved activity: the new ones follow the same rule (ASSUMPTIONS 369), e.g. attendance marked later.
+        approve_ready_certificates(locked, now=now)
     return {
         "participation_created": participation,
         "appreciation_created": appreciation,
@@ -1032,8 +1276,6 @@ WAITING_FOR_EVALUATION = "Waiting for evaluation"
 WAITING_FOR_SIGNATURES = "Waiting for signatures"
 # Until the TBI answers (TBI_QUESTIONS): no certificate is sent, and it is not a staff task.
 EVALUATION_CLOSED = "Evaluation closed without an answer"
-NOTHING_WAITING = "No certificates of this activity are waiting for approval."
-NOTHING_READY = "No certificates of this activity are ready for approval yet."
 
 
 def ready_for_approval_q(prefix: str = "") -> Q:
@@ -1106,25 +1348,136 @@ def _waiting(activity: Activity):
             .select_related("activity", "left_signatory", "right_signatory").order_by("certificate_number"))
 
 
-def ready_certificates(activity: Activity, now: datetime | None = None) -> list[Certificate]:
-    """The activity's certificates that are ready for approval, in number order (the confirm dialog's count and
-    "Approve all ready certificates")."""
-    waiting = list(_waiting(activity))
-    labels = readiness_map(waiting, now)
-    return [c for c in waiting if labels[c.pk] is None]
+# --- Approval per activity (ASSUMPTIONS 369) -----------------------------------------------------------------------
+
+APPROVAL_HISTORY_LABEL = "Certificate approval"
+NEEDS_APPROVAL = "Needs approval"
+ALREADY_APPROVED = "The certificates of this activity are already approved."
+NOTHING_TO_APPROVE = "There are no certificates to approve yet: they are created when the activity is Conducted."
+ALL_ISSUED = "Every certificate of this activity is already issued."
+
+
+def is_approved(activity: Activity) -> bool:
+    """True when the activity's certificates are approved (ACTIVITY.certificates_approved_at is set)."""
+    return activity.certificates_approved_at is not None
+
+
+def approved_text(activity: Activity) -> str:
+    """ "Approved by Ana Cruz on November 14, 2026, 3:05 PM" (Manila), or NEEDS_APPROVAL."""
+    if not is_approved(activity):
+        return NEEDS_APPROVAL
+    at = timezone.localtime(activity.certificates_approved_at)
+    who = activity.certificates_approved_by.name if activity.certificates_approved_by_id else "a member"
+    return f"Approved by {who} on {pdf.long_date(at)}, {at.hour % 12 or 12}:{at:%M %p}"
+
+
+def needs_approval_q(prefix: str = "") -> Q:
+    """Certificates that make their activity "need certificate approval": waiting for approval and the activity is not
+    approved. `prefix` e.g. "certificates__". The dashboard (S5), Needs attention and the counts all use it."""
+    return Q(**{f"{prefix}status": Status.GENERATED}) & Q(**{f"{prefix}activity__certificates_approved_at__isnull": True})
 
 
 def approval_closed_reason(activity: Activity, now: datetime | None = None) -> str | None:
-    """Why "Approve all ready certificates" cannot be used now, or None (at least one is ready). Read only: the
-    Certificates tab shows it on the disabled button (approvers only), and approve_certificates refuses with it.
-    Nothing waiting; a missing signature ("Add the signature of ... first."); otherwise nothing is ready yet."""
-    waiting = list(_waiting(activity))
-    if not waiting:
-        return NOTHING_WAITING
-    labels = readiness_map(waiting, now)
-    if any(label is None for label in labels.values()):
-        return None
-    return missing_signature_reason(_certificate_signatories(waiting)) or NOTHING_READY
+    """Why "Approve certificates for this activity" cannot be used now, or None. Read only: the Certificates tab shows
+    it on the disabled button (approvers only) and approve_activity_certificates refuses with it. Already approved; no
+    certificates yet; every certificate Issued; the design incomplete (no active design, a slot empty); a signature
+    image missing ("Add the signature of ... first.": certificates are emailed without another click)."""
+    if is_approved(activity):
+        return ALREADY_APPROVED
+    statuses = set(Certificate.objects.filter(activity=activity).values_list("status", flat=True))
+    if not statuses:
+        return NOTHING_TO_APPROVE
+    if statuses == {Status.ISSUED}:
+        return ALL_ISSUED
+    try:
+        fields = design_fields(activity)
+    except CertificateError as error:
+        return str(error)
+    return missing_signature_reason([fields["left_signatory"], fields["right_signatory"]])
+
+
+@transaction.atomic
+def approve_activity_certificates(member: TBIMember, activity: Activity, now: datetime | None = None) -> list[Certificate]:
+    """"Approve certificates for this activity" (can_approve_certificates, after checking the preview): the approval is
+    stored on the activity (who and when; one History row) and every certificate that is ready now is approved
+    (approve_ready_certificates); the others are approved by the System as soon as they are ready (a later
+    evaluation, a certificate created later). Refused with approval_closed_reason. Returns the certificates approved
+    now."""
+    from activities.services import write_certificate_approval_history
+
+    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    now = now or timezone.now()
+    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    if reason := approval_closed_reason(locked, now):
+        raise CertificateError(reason)
+    Activity.objects.filter(pk=locked.pk).update(certificates_approved_by=member, certificates_approved_at=now)
+    locked.certificates_approved_by, locked.certificates_approved_at = member, now
+    write_certificate_approval_history(locked, member, NEEDS_APPROVAL, f"Approved by {member.name}")
+    approved = approve_ready_certificates(locked, now=now)
+    audit_logger.info("Activity certificates approved: activity_id=%s certificates_approved_now=%s by member_id=%s",
+                      locked.pk, len(approved), member.pk)
+    return approved
+
+
+def approve_ready_certificates(activity: Activity, *, certificate_ids: list[int] | None = None,
+                               now: datetime | None = None) -> list[Certificate]:
+    """By the System, for an APPROVED activity only: every certificate waiting for approval that is ready (readiness)
+    becomes Approved in the approver's name (approved_by = the activity's approver, approved_at = now); after the
+    commit its PDF is rendered (a participant's is then issued and emailed; a resource person's waits for the
+    hand-over). `certificate_ids`: only these. Nothing happens for an activity that is not approved. Safe to run any
+    number of times (the activity and the certificates are locked). Returns the certificates approved."""
+    with transaction.atomic():
+        locked = (Activity.objects.select_for_update(of=("self",)).select_related("certificates_approved_by")
+                  .get(pk=activity.pk))
+        if not is_approved(locked):
+            return []
+        waiting = _waiting(locked).select_for_update(of=("self",))
+        if certificate_ids is not None:
+            waiting = waiting.filter(pk__in=certificate_ids)
+        waiting = list(waiting)
+        labels = readiness_map(waiting, now)
+        ready = [c for c in waiting if labels[c.pk] is None]
+        for certificate in ready:
+            set_certificate_status(certificate, Status.APPROVED, member=locked.certificates_approved_by, now=now)
+            if _not_ready_reason(certificate) is None:
+                # robust=True: a problem queueing never undoes the approval (the 5-minute job catches it up).
+                transaction.on_commit(lambda certificate_id=certificate.pk: queue_prepare(certificate_id), robust=True)
+    if ready:
+        logger.info("Certificates %s approved for approved activity %s.", ", ".join(str(c.pk) for c in ready), locked.pk)
+    return ready
+
+
+def approve_pending_certificates(now: datetime | None = None) -> int:
+    """The 5-minute job's catch-up: approve the ready certificates of every approved activity (an evaluation whose
+    after-commit call was lost, a signature image added back). Returns how many were approved."""
+    activities = (Activity.objects.filter(certificates_approved_at__isnull=False)
+                  .filter(Exists(Certificate.objects.filter(ready_for_approval_q(), activity=OuterRef("pk"))))
+                  .order_by("pk"))
+    return sum(len(approve_ready_certificates(activity, now=now)) for activity in activities)
+
+
+def cancel_certificate_approval(activity: Activity, member: TBIMember | None, now: datetime | None, reason: str) -> bool:
+    """Something printed on the activity's certificates changed after the approval (a signatory, a title, a new version
+    of a person, "Apply the current design", the certificate text): the approval is cancelled (the activity "Needs
+    approval" again; one History row by the member who made the change) and its Approved certificates go back to
+    waiting (_refresh_certificates: the PDF is removed). Issued certificates never change. Must run inside the
+    caller's transaction. Returns True when an approval was cancelled."""
+    from activities.services import write_certificate_approval_history
+
+    locked = (Activity.objects.select_for_update(of=("self",)).select_related("certificates_approved_by")
+              .get(pk=activity.pk))
+    if not is_approved(locked):
+        return False
+    old = f"Approved by {locked.certificates_approved_by.name if locked.certificates_approved_by_id else 'a member'}"
+    Activity.objects.filter(pk=locked.pk).update(certificates_approved_by=None, certificates_approved_at=None)
+    activity.certificates_approved_by, activity.certificates_approved_at = None, None
+    write_certificate_approval_history(locked, member, old, f"{NEEDS_APPROVAL} (cancelled: {reason})")
+    approved = list(Certificate.objects.select_for_update(of=("self",)).filter(activity=locked, status=Status.APPROVED)
+                    .order_by("pk"))
+    _refresh_certificates(approved, member, now)
+    audit_logger.info("Activity certificate approval cancelled: activity_id=%s certificates_back=%s by member_id=%s",
+                      locked.pk, len(approved), member.pk if member else None)
+    return True
 
 
 def set_certificate_status(
@@ -1391,14 +1744,15 @@ def reissue_certificates(member: TBIMember, *, certificate_ids: list[int] | None
             transaction.on_commit(lambda name=old_file: storage.delete(name), robust=True)
         for name, value in design.items():
             setattr(certificate, name, value)
+        certificate.certificate_text = wording.current_text_for(target.pk, certificate.text_type)  # ASSUMPTIONS 370
         certificate.file_path = None
         certificate.sent_at = None
         certificate.send_failed_at = None
         certificate.render_failed_at = None
         certificate.render_error = None
         certificate.reissued_at = now
-        certificate.save(update_fields=[*design, "file_path", "sent_at", "send_failed_at", "render_failed_at",
-                                        "render_error", "reissued_at"])
+        certificate.save(update_fields=[*design, "certificate_text", "file_path", "sent_at", "send_failed_at",
+                                        "render_failed_at", "render_error", "reissued_at"])
 
     _apply_all(certificates, reissue)
     write_certificate_history(target, member, "", reissue_text([c.certificate_number for c in certificates]))
@@ -1457,52 +1811,6 @@ def _apply_all(certificates: list[Certificate], action) -> None:
 
 
 @transaction.atomic
-def approve_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None,
-                         now: datetime | None = None) -> int:
-    """Waiting for approval -> Approved (can_approve_certificates: the Director, both Project Heads, the System
-    Administrator; ASSUMPTIONS 362). Only certificates that are ready (readiness()) are approved.
-
-    - certificate_ids (the preview's Approve, the API): all or nothing; a certificate that is not ready is refused
-      with its label ("Waiting for evaluation", ...).
-    - activity ("Approve all ready certificates", after the confirm dialog): every ready certificate of the
-      activity; the ones that are not ready stay waiting. Refused (approval_closed_reason) when none is ready.
-
-    After the commit a background task renders the PDF of each approved certificate: a participant's is then issued
-    and emailed, a resource person's waits for the hand-over.
-    """
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
-    now = now or timezone.now()
-    if activity is not None:
-        if reason := approval_closed_reason(activity, now):
-            raise CertificateError(reason)
-        ready_ids = [c.pk for c in ready_certificates(activity, now)]
-        certificates = _select_for_action(ready_ids, None, Status.GENERATED)
-    else:
-        certificates = _select_for_action(certificate_ids, None, Status.GENERATED)
-    labels = readiness_map([c for c in certificates if c.status == Status.GENERATED], now)
-
-    def approve(certificate: Certificate) -> None:
-        if label := labels.get(certificate.pk):
-            raise CertificateError(f"not ready for approval ({label}).")
-        set_certificate_status(certificate, Status.APPROVED, member=member, now=now)
-
-    _apply_all(certificates, approve)
-    logger.info("Member %s approved certificates %s.", member.pk, ", ".join(str(c.pk) for c in certificates))
-    for certificate in certificates:
-        if _not_ready_reason(certificate) is None:
-            # robust=True: a problem queueing never undoes the approval (the daily retry catches it).
-            transaction.on_commit(lambda certificate_id=certificate.pk: queue_prepare(certificate_id), robust=True)
-    return len(certificates)
-
-
-def approve_certificate(member: TBIMember, certificate: Certificate, now: datetime | None = None) -> Certificate:
-    """The preview card's Approve: one certificate, refused unless it is ready (approve_certificates)."""
-    approve_certificates(member, certificate_ids=[certificate.pk], now=now)
-    certificate.refresh_from_db()
-    return certificate
-
-
-@transaction.atomic
 def regenerate_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None, now: datetime | None = None) -> int:
     """Apply the active design and the activity's current signatories to certificates that are not Issued, remove
     their rendered PDF and send them back to "Waiting for approval" (they are approved again). The number stays.
@@ -1511,13 +1819,20 @@ def regenerate_certificates(member: TBIMember, *, certificate_ids: list[int] | N
     certificates = _select_for_action(certificate_ids, activity, [Status.GENERATED, Status.APPROVED],
                                       empty="This activity has no certificates to regenerate (Issued certificates are final).")
     designs = {}
+    # What is printed changes: the approval of each activity is cancelled first (ASSUMPTIONS 369); its Approved
+    # certificates are then already back to waiting, so the rows are read again.
+    for activity_id in sorted({c.activity_id for c in certificates}):
+        cancel_certificate_approval(Activity(pk=activity_id), member, now, "current design applied")
+    for certificate in certificates:
+        certificate.refresh_from_db()
 
     def regenerate(certificate: Certificate) -> None:
         if certificate.status == Status.ISSUED:
             raise CertificateError("Issued certificates are final and cannot be regenerated.")
         if certificate.activity_id not in designs:
             designs[certificate.activity_id] = design_fields(certificate.activity)
-        _refresh_certificates([certificate], member, now, **designs[certificate.activity_id])
+        text = wording.current_text_for(certificate.activity_id, certificate.text_type)
+        _refresh_certificates([certificate], member, now, **designs[certificate.activity_id], certificate_text=text)
 
     _apply_all(certificates, regenerate)
     logger.info("Member %s regenerated certificates %s.", member.pk, ", ".join(str(c.pk) for c in certificates))
@@ -1606,7 +1921,8 @@ def _not_ready_reason(certificate: Certificate) -> str | None:
 
 def _design(certificate: Certificate) -> tuple:
     return (certificate.certificate_template_id, certificate.left_signatory_id, certificate.right_signatory_id,
-            certificate.left_signatory_title, certificate.right_signatory_title, certificate.reissued_at)
+            certificate.left_signatory_title, certificate.right_signatory_title, certificate.certificate_text_id,
+            certificate.reissued_at)
 
 
 def final_pdf_name(certificate: Certificate) -> str:
@@ -1767,10 +2083,16 @@ def queue_stalled_preparations(now: datetime | None = None) -> int:
     return len(ids)
 
 
-def evaluation_submitted(registration_id: int) -> None:
-    """Called after an evaluation is committed: queue the certificate if it is already Approved."""
-    certificate = Certificate.objects.filter(registration_id=registration_id).first()
-    if certificate is not None and _not_ready_reason(certificate) is None:
+def evaluation_submitted(registration_id: int, now: datetime | None = None) -> None:
+    """Called after an evaluation is committed: a certificate waiting for approval is approved when its activity is
+    approved (approve_ready_certificates, ASSUMPTIONS 369: then rendered, issued and emailed, no click); one already
+    Approved (before the evaluation rule) is queued."""
+    certificate = Certificate.objects.filter(registration_id=registration_id).select_related("activity").first()
+    if certificate is None:
+        return
+    if certificate.status == Status.GENERATED:
+        approve_ready_certificates(certificate.activity, certificate_ids=[certificate.pk], now=now)
+    elif _not_ready_reason(certificate) is None:
         queue_prepare(certificate.pk)
 
 

@@ -502,8 +502,8 @@ class Command(BaseCommand):
         for activity, target in todo:
             created += certificate_services.generate_missing_certificates(activity)["total"]
             if target == "approved":
-                try:  # only the ready ones (ASSUMPTIONS 362); none ready is fine for a demo
-                    certificate_services.approve_certificates(self.staff["Director"], activity=activity)
+                try:  # one approval per activity (ASSUMPTIONS 369); the ready ones are approved at once
+                    certificate_services.approve_activity_certificates(self.staff["Director"], activity)
                 except certificate_services.CertificateError:
                     pass
             self.stdout.write(f"  certificates ({target}): {activity.title}")

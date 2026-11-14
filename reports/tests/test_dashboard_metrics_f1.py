@@ -4,8 +4,9 @@ document rows (same rules as S3 and the "due soon" reminders) and the sign-off l
 from datetime import timedelta
 
 import pytest
+from django.utils import timezone
 
-from activities.models import ActivityStatus, ActivityType
+from activities.models import Activity, ActivityStatus, ActivityType
 from certificates.models import Certificate
 from documents.models import DocumentStatus, DocumentType
 from documents.services import send_document_reminders
@@ -130,7 +131,8 @@ def test_inactive_required_types_are_left_out(document_cases) -> None:
 
 
 def test_certificates_waiting_by_activity(make_activity, register, make_certificate_row, evaluate) -> None:
-    """Only certificates READY for approval (ASSUMPTIONS 362): here every participant has evaluated, except U."""
+    """Certificates waiting while their ACTIVITY is not approved (ASSUMPTIONS 369), evaluated or not (U); an approved
+    activity is not counted."""
     big = make_activity("Big")
     small = make_activity("Small")
     for i in range(3):
@@ -140,10 +142,13 @@ def test_certificates_waiting_by_activity(make_activity, register, make_certific
     registration = register(small, "S")
     make_certificate_row(activity=small, registration=registration, status=Certificate.Status.GENERATED)
     evaluate(registration, {})
-    make_certificate_row(activity=small, registration=register(small, "U"), status=Certificate.Status.GENERATED)  # not ready
+    make_certificate_row(activity=small, registration=register(small, "U"), status=Certificate.Status.GENERATED)  # counted
     make_certificate_row(activity=small, registration=register(small, "T"), status=Certificate.Status.APPROVED)  # not S5
+    approved = make_activity("Approved")
+    make_certificate_row(activity=approved, registration=register(approved, "A"), status=Certificate.Status.GENERATED)
+    Activity.objects.filter(pk=approved.pk).update(certificates_approved_at=timezone.now())  # approved: not a task
     rows = metrics.certificates_waiting_by_activity(YEAR_2026)
-    assert [(row["title"], row["count"]) for row in rows] == [("Big", 3), ("Small", 1)]
+    assert [(row["title"], row["count"]) for row in rows] == [("Big", 3), ("Small", 2)]
     now = metrics.certificates_now(YEAR_2026)
-    assert sum(row["count"] for row in rows) == now["waiting_certificates"] == 4
+    assert sum(row["count"] for row in rows) == now["waiting_certificates"] == 5
     assert len(rows) == now["waiting_activities"] == 2

@@ -83,7 +83,7 @@ def invite(request: HttpRequest) -> HttpResponse:
             member = services.create_member(request.user, name=values["name"], email=values["email"], role=role)
         except services.MemberManagementError as error:
             message = str(error)
-            errors["name" if "name" in message else "email"] = message
+            errors["name" if "name" in message and message != services.INVITATION_NOT_SENT else "email"] = message
         else:
             messages.success(request, email_sent_message(
                 f"The invitation with a temporary password was emailed to {member.email}.", before=f"{member.name} was added. "

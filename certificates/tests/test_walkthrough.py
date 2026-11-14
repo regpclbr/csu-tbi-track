@@ -44,11 +44,8 @@ def test_whole_flow(admin_member, director, defaults, settings, tmp_path, run_ta
     sent = [m for m in mail.outbox if m.subject.startswith("Your Certificate")]
     assert [m.to for m in sent] == [["ben.personal@example.com"]]  # sent right after approval
 
-    with django_capture_on_commit_callbacks(execute=True):
-        run("evaluate", str(ana.pk), name="Ana Maria Walkthrough", email="ana.personal@example.com")  # now ready
-    assert len([m for m in mail.outbox if m.subject.startswith("Your Certificate")]) == 1  # still waiting for approval
-    with django_capture_on_commit_callbacks(execute=True):
-        run("approve", str(activity_id))
+    with django_capture_on_commit_callbacks(execute=True):  # the activity is approved: sent with no other click (369)
+        run("evaluate", str(ana.pk), name="Ana Maria Walkthrough", email="ana.personal@example.com")
     sent = [m for m in mail.outbox if m.subject.startswith("Your Certificate")]
     assert [m.to for m in sent] == [["ben.personal@example.com"], ["ana.personal@example.com"]]
     assert not Certificate.objects.filter(registration=carla).exists()  # did not attend

@@ -95,8 +95,8 @@ def test_kpi_cards_show_the_metric_numbers(director, login, data) -> None:
     shown = kpis(response.content.decode())
     cards = page.cards
     assert shown["Upcoming activities"] == str(cards["upcoming_activities"]["within_30_days"]) == "1"
-    assert shown["Certificates ready for approval"] == str(cards["certificates_waiting_for_approval"]["value"]) == "1"
-    assert "1 certificate" in response.content.decode() and "activity · ready for your approval" in response.content.decode()
+    assert shown["Certificate approval"] == str(cards["certificates_waiting_for_approval"]["value"]) == "1"
+    assert "activity · need your approval" in response.content.decode()  # ASSUMPTIONS 369: counted as activities
     assert shown["Registrations"] == str(cards["registrations"]["value"]) == "4"
     assert "75% attended" in response.content.decode()
     assert shown["Open for registration"] == "0"  # no registration forms in this data set
@@ -230,7 +230,7 @@ def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, 
     titles = " | ".join(item.title for item in page.attention)
     assert "Soon Seminar needs the Invitation Letter" in titles
     assert "1 document is waiting for your review" in titles
-    assert "1 activity (1 certificate) ready for your approval" in titles
+    assert "1 activity needs certificate approval" in titles
     assert tones.index("danger") < tones.index("warning") < tones.index("primary")
     html = login(head).get(URL).content.decode()
     assert "btn-danger" in html and "btn-warning" in html
@@ -252,7 +252,7 @@ def test_needs_attention_links_go_to_the_right_place(make_member, login, data, a
     overdue = [item.action_url for item in page.attention if item.tone == "danger"]
     assert overdue and all(f"/activities/{data['conducted'].pk}/?tab=documents&type=" in url for url in overdue)
     assert by_title["1 document is waiting for your review"] == reverse("documents:review")
-    assert (by_title["1 activity (1 certificate) ready for your approval"]
+    assert (by_title["1 activity needs certificate approval"]
             == f"{reverse('activities:detail', args=[data['conducted'].pk])}?tab=certificates")
 
 
@@ -262,11 +262,11 @@ def test_certificates_of_several_activities_link_to_the_certificates_page(direct
     for name in ("Q1", "Q2", "Q3"):
         registration = register(other, name, attended=True)
         make_certificate_row(activity=other, registration=registration, status=Certificate.Status.GENERATED)
-        if name != "Q3":  # Q3 has not evaluated: not ready, not counted (ASSUMPTIONS 362)
+        if name != "Q3":  # Q3 has not evaluated: its activity still needs approval (ASSUMPTIONS 369)
             evaluate(registration, {})
     page = login(director).get(URL).context["page"]
-    item = next(item for item in page.attention if "ready for" in item.title)
-    assert item.title == "2 activities (3 certificates) ready for your approval"  # activities, not certificates
+    item = next(item for item in page.attention if "certificate approval" in item.title)
+    assert item.title == "2 activities need certificate approval"  # activities, not certificates
     assert item.detail.startswith("Certificates · ") and item.action_label == "Approve"
     assert item.action_url == f"{reverse('certificates:list')}?status=generated"
 
@@ -275,13 +275,12 @@ def test_certificates_of_several_activities_link_to_the_certificates_page(direct
                                                      ("System Administrator", True)])
 def test_approvers_and_others_see_their_wording(make_member, login, data, role_name, approves) -> None:
     response = login(make_member(role_name)).get(URL)
-    item = next(item for item in response.context["page"].attention if "ready for" in item.title)
-    if approves:  # can_approve_certificates (ASSUMPTIONS 361, 362)
-        assert item.title.endswith("ready for your approval") and item.action_label == "Approve"
-        assert "activity · ready for your approval" in response.content.decode()
+    item = next(item for item in response.context["page"].attention if "certificate approval" in item.title)
+    assert item.title == "1 activity needs certificate approval"  # the same title for everyone (ASSUMPTIONS 369)
+    if approves:  # can_approve_certificates (ASSUMPTIONS 361, 369)
+        assert item.action_label == "Approve" and "activity · need your approval" in response.content.decode()
     else:
-        assert item.title.endswith(") ready for approval") and item.action_label == "Open"
-        assert "activity · ready for approval" in response.content.decode()
+        assert item.action_label == "Open" and "activity · need approval" in response.content.decode()
 
 
 def test_needs_attention_empty_state(director, login) -> None:

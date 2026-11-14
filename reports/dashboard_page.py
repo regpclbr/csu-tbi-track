@@ -127,8 +127,8 @@ class DashboardPage:
 
     @property
     def certificates_note(self) -> str:
-        """Under S5's number (which counts activities): who it waits for."""
-        who = "ready for your approval" if self.can_approve_certificates else "ready for approval"
+        """Under S5's number (which counts activities, ASSUMPTIONS 369): who it waits for."""
+        who = "need your approval" if self.can_approve_certificates else "need approval"
         count = self.cards["certificates_waiting_for_approval"]["value"]
         return f"{'activity' if count == 1 else 'activities'} · {who}"
 
@@ -263,16 +263,15 @@ def documents_tab_url(row: dict) -> str:
 
 def certificates_url(by_activity: list[dict]) -> str:
     """One activity: its Certificates tab (the approval screen). Several: the Certificates page, narrowed to the
-    certificates waiting for approval (the ready ones show "Ready for approval" there)."""
+    certificates waiting for approval."""
     if len(by_activity) == 1:
         return reverse("activities:detail", args=[by_activity[0]["activity_id"]]) + "?tab=certificates"
     return f"{reverse('certificates:list')}?status={Certificate.Status.GENERATED}"
 
 
 def certificates_waiting_text(card: dict) -> str:
-    """"3 activities (100 certificates)" from S5 (ASSUMPTIONS 357)."""
-    activities = f"{card['value']} {'activity' if card['value'] == 1 else 'activities'}"
-    return f"{activities} ({card['certificates']} {'certificate' if card['certificates'] == 1 else 'certificates'})"
+    """"2 activities need certificate approval" from S5 (ASSUMPTIONS 369: counted as activities)."""
+    return f"{card['value']} {'activity needs' if card['value'] == 1 else 'activities need'} certificate approval"
 
 
 def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_approve_certificates: bool,
@@ -315,10 +314,9 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_ap
         detail = ", ".join(row["title"] for row in by_activity[:ATTENTION_TITLES_SHOWN])
         if waiting["value"] > ATTENTION_TITLES_SHOWN:
             detail += " and more"
-        # "2 activities (45 certificates) ready for your approval" (ASSUMPTIONS 362: ready ones only)
-        who = "ready for your approval" if can_approve_certificates else "ready for approval"
+        # "2 activities need certificate approval" (ASSUMPTIONS 369: one approval per activity)
         items.append(AttentionItem(
-            "primary", f"{certificates_waiting_text(waiting)} {who}", f"Certificates · {detail}",
+            "primary", certificates_waiting_text(waiting), f"Certificates · {detail}",
             "Approve" if can_approve_certificates else "Open", certificates_url(by_activity),
         ))
     return items

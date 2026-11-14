@@ -23,13 +23,17 @@ urlpatterns = [
     path("signatories/<int:signatory_id>/remove-background/", page_views.signatory_remove_background,
          name="signatory_remove_background"),
     path("signatories/<int:signatory_id>/deactivate/", page_views.signatory_deactivate, name="signatory_deactivate"),
+    # The default certificate wording (can_approve_certificates, ASSUMPTIONS 370)
+    path("text/", page_views.certificate_text, name="text"),
+    path("text/preview/", page_views.certificate_text_preview, name="text_preview"),
+    path("text/<str:certificate_type>/", page_views.certificate_text_save, name="text_save"),
     # Staff: reading and files
     path("api/", views.list_api, name="api_list"),
     path("api/<int:certificate_id>/", views.detail_api, name="api_detail"),
     path("<int:certificate_id>/download/", views.download_certificate, name="download"),
     path("<int:certificate_id>/preview/", views.preview_certificate, name="preview"),
-    # Staff: actions (approve: can_approve_certificates; the others: can_create_activity). No generate: the System
-    # creates certificates when the activity is Conducted (ASSUMPTIONS 362).
+    # Staff: actions (approve: can_approve_certificates, per activity (ASSUMPTIONS 369); the others:
+    # can_create_activity). No generate: the System creates certificates when the activity is Conducted.
     path("api/<str:action>/", views.action_api, name="api_action"),  # approve, regenerate, hand-over, resend, reissue
     # Evidence documents (DOCUMENT.related_certificate)
     path("api/<int:certificate_id>/evidence/", views.evidence_api, name="api_evidence"),

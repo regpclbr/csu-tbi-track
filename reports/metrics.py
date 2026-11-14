@@ -602,15 +602,14 @@ def document_attention(filters: ReportFilters, now: datetime | None = None, type
 
 
 def certificates_now(filters: ReportFilters) -> dict:
-    """S5: certificates READY for approval (certificates.services.ready_for_approval_q: waiting for approval, both
-    signature images, and the evaluation for participants), counted as ACTIVITIES (waiting_activities, distinct) with
-    the number of certificates (waiting_certificates) (ASSUMPTIONS 357, 362: certificates that are not ready are not a
-    staff task); S6: Approved but not Issued yet. One query on CERTIFICATE (every join is one to one: activity,
-    signatories, the registration's evaluation, so nothing multiplies)."""
-    from certificates.services import ready_for_approval_q
+    """S5: ACTIVITIES that need certificate approval (certificates.services.needs_approval_q: a certificate waiting for
+    approval and the activity not approved; ASSUMPTIONS 369), counted distinct (waiting_activities), with the number
+    of those certificates (waiting_certificates); S6: Approved but not Issued yet. One query on CERTIFICATE (the only
+    join is the activity, one to one, so nothing multiplies)."""
+    from certificates.services import needs_approval_q
 
     status = Certificate.Status
-    waiting = ready_for_approval_q()
+    waiting = needs_approval_q()
     return _of_type(Certificate.objects.all(), filters, "activity__activity_type_id").aggregate(
         waiting_activities=Count("activity", filter=waiting, distinct=True),
         waiting_certificates=Count("pk", filter=waiting),
@@ -619,12 +618,12 @@ def certificates_now(filters: ReportFilters) -> dict:
 
 
 def certificates_waiting_by_activity(filters: ReportFilters, limit: int = 3) -> list[dict]:
-    """The activities of S5 (certificates ready for approval), most certificates first:
+    """The activities of S5 (they need certificate approval), most certificates first:
     activity_id, title, count. Respects the activity type filter, like S5."""
-    from certificates.services import ready_for_approval_q
+    from certificates.services import needs_approval_q
 
     rows = (
-        _of_type(Certificate.objects.filter(ready_for_approval_q()), filters, "activity__activity_type_id")
+        _of_type(Certificate.objects.filter(needs_approval_q()), filters, "activity__activity_type_id")
         .order_by()
         .values("activity_id", "activity__title")
         .annotate(count=Count("pk"))
@@ -667,7 +666,7 @@ def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
         _card("documents_overdue", "Required documents overdue", NOW, documents["overdue"]),
         _card("documents_waiting_for_review", "Documents waiting for a reviewer", NOW, documents["waiting_for_review"],
               returned=documents["returned"]),
-        _card("certificates_waiting_for_approval", "Activities with certificates ready for approval", NOW,
+        _card("certificates_waiting_for_approval", "Activities that need certificate approval", NOW,
               certificates["waiting_activities"], certificates=certificates["waiting_certificates"],
               approved_not_issued=certificates["approved_not_issued"]),
         _card("certificates_issued", "Certificates issued", PERIOD, summary["certificates_issued"],

@@ -119,6 +119,59 @@ class ActivitySignatory(models.Model):
         return f"{self.activity_id} {self.slot}: {self.signatory_id}"
 
 
+class CertificateText(models.Model):
+    """The wording printed on a certificate (ASSUMPTIONS 370): the title, the line before the name, the main sentence
+    and the closing line, with placeholders ({name}, {activity}, ... : certificates.wording). One per certificate type.
+    activity empty = the default wording; set = that activity's custom text.
+
+    Versioned like the signatories: a row a certificate uses never changes. Saving new text creates a NEW row (the
+    old one gets is_current = False) and the certificates that are not Issued move to it; Issued certificates keep
+    the row they were printed with. Changed only through certificates.services (save_default_text,
+    save_activity_text, use_default_text)."""
+
+    class CertificateType(models.TextChoices):
+        PARTICIPATION = "participation", "Certificate of Participation"
+        APPRECIATION = "appreciation", "Certificate of Appreciation"
+
+    certificate_text_id = models.BigAutoField(primary_key=True)
+    certificate_type = models.CharField(max_length=20, choices=CertificateType.choices)
+    activity = models.ForeignKey(
+        "activities.Activity", on_delete=models.PROTECT, null=True, blank=True, related_name="certificate_texts"
+    )
+    title = models.CharField(max_length=60)
+    line_before_name = models.CharField(max_length=100, blank=True)
+    main_sentence = models.CharField(max_length=400)
+    closing_line = models.CharField(max_length=200, blank=True)
+    is_current = models.BooleanField(default=True)
+    # Empty = the System (the seeded default wording).
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="certificate_texts"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "certificate_text"
+        constraints = [
+            # One current default per type (activity empty: a separate partial index, NULLs are never equal).
+            models.UniqueConstraint(
+                fields=["certificate_type"], condition=Q(is_current=True, activity__isnull=True),
+                name="one_current_default_certificate_text",
+            ),
+            # One current custom text per activity and type.
+            models.UniqueConstraint(
+                fields=["activity", "certificate_type"], condition=Q(is_current=True, activity__isnull=False),
+                name="one_current_activity_certificate_text",
+            ),
+            models.CheckConstraint(
+                condition=Q(certificate_type__in=["participation", "appreciation"]), name="certificate_text_type_valid"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        whose = f"activity {self.activity_id}" if self.activity_id else "default"
+        return f"{self.get_certificate_type_display()} ({whose}, #{self.pk})"
+
+
 class Certificate(models.Model):
     """A Certificate of Participation (registration, by email) or of Appreciation
     (resource person, hard copy)."""
@@ -188,7 +241,10 @@ class Certificate(models.Model):
     # the person's position. Kept with the certificate, so an Issued one keeps the title it was printed with.
     left_signatory_title = models.CharField(max_length=255)
     right_signatory_title = models.CharField(max_length=255)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.GENERATED)
+    # The wording it is printed with (ASSUMPTIONS 370): the activity's custom text or the default, for its type. An
+    # Issued certificate keeps the row it was printed with.
+    certificate_text = models.ForeignKey(CertificateText, on_delete=models.PROTECT, related_name="certificates")
+    status =models.CharField(max_length=20, choices=Status.choices, default=Status.GENERATED)
     # Null until the background job renders the final PDF (certificates/<year>/<number>.pdf).
     file_path = models.FileField(upload_to="certificates/", max_length=255, null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -235,7 +291,21 @@ class Certificate(models.Model):
                 update_fields = kwargs.get("update_fields")
                 if update_fields is not None:
                     kwargs["update_fields"] = {*update_fields, f"{side}_signatory_title"}
+        if not self.certificate_text_id:  # the same safety net: the current wording of the activity (or the default)
+            from .wording import current_text_for
+
+            self.certificate_text = current_text_for(self.activity_id, self.text_type)
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                kwargs["update_fields"] = {*update_fields, "certificate_text"}
         super().save(*args, **kwargs)
+
+    @property
+    def text_type(self) -> str:
+        """The CERTIFICATE_TEXT type that matches the recipient: participation (registration) or appreciation."""
+        if self.recipient_type == self.RecipientType.RESOURCE_PERSON:
+            return CertificateText.CertificateType.APPRECIATION
+        return CertificateText.CertificateType.PARTICIPATION
 
     def __str__(self) -> str:
         return self.certificate_number

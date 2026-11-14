@@ -290,6 +290,21 @@ def write_certificate_history(activity: Activity, member: TBIMember | None, old:
     _write_audit(activity, member, [(CERTIFICATES_LABEL, old, new)])
 
 
+def write_certificate_approval_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
+    """One History row about the approval of the activity's certificates (certificates.services, ASSUMPTIONS 369):
+    "Certificate approval": "Needs approval" -> "Approved by Ana Cruz", or the approval cancelled by a change."""
+    from certificates.services import APPROVAL_HISTORY_LABEL
+
+    _write_audit(activity, member, [(APPROVAL_HISTORY_LABEL, old, new)])
+
+
+def write_certificate_text_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
+    """One History row about the activity's certificate wording (ASSUMPTIONS 370): "Default text" -> "Custom text"."""
+    from certificates.services import TEXT_HISTORY_LABEL
+
+    _write_audit(activity, member, [(TEXT_HISTORY_LABEL, old, new)])
+
+
 def write_signatory_history(activity: Activity, member: TBIMember | None, label: str, old: str, new: str) -> None:
     """One History row about the activity's certificate signatories (certificates.services, ASSUMPTIONS 363):
     "Certificate signatory (left)": "<name> (<position>)" -> "<name> (<position>)"."""

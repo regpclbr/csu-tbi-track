@@ -67,13 +67,21 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - ACTIVITY_AUDIT_LOG.changed_by empty = System (automatic status change, certificates created automatically); show it
   with `formatting.changed_by_name()`. Certificate rows in History use the label "Certificates"
   (`activities.services.write_certificate_history`).
-- Certificate status: created by the System → Generated ("Waiting for approval") → Approved (can_approve_certificates, only
-  when ready) → Issued; Approved → Generated only when the current design is applied again, the activity's signatory
-  changes or a new version of a signatory is saved; Issued stays Issued (a reissue keeps the status, ASSUMPTIONS 364).
+- Certificate status: created by the System → Generated ("Waiting for approval") → Approved (by the System, in the name of
+  the member who approved the ACTIVITY, once ready; ASSUMPTIONS 369) → Issued; Approved → Generated only when the
+  activity's approval is cancelled or its design / signatory / text changes; Issued stays Issued (a reissue keeps the
+  status, ASSUMPTIONS 364).
   Change it only through `certificates.services.set_certificate_status()`, which enforces the rules (ASSUMPTIONS 357).
   CERTIFICATE has `approved_by` / `approved_at` / `send_failed_at` / `reissued_at`, `left_signatory` / `right_signatory`,
   `left_signatory_title` / `right_signatory_title` (the titles printed, ASSUMPTIONS 365), `render_failed_at` /
-  `render_error` (plain words, ASSUMPTIONS 368) (no review, sign-off, VP or Director columns).
+  `render_error` (plain words, ASSUMPTIONS 368), `certificate_text` (the wording printed, ASSUMPTIONS 370) (no review,
+  sign-off, VP or Director columns).
+- ACTIVITY has `certificates_approved_by` / `certificates_approved_at` (ASSUMPTIONS 369): the one approval of the activity's
+  certificates. Set / cleared ONLY by `certificates.services.approve_activity_certificates` / `cancel_certificate_approval`
+  (never `update_activity`, the form or the admin).
+- CERTIFICATE_TEXT (ASSUMPTIONS 370): the wording (title, line before the name, main sentence, closing line) per type
+  (participation / appreciation); `activity` empty = the default; versioned (`is_current`; a row a certificate uses never
+  changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 31 tables.
 - ROLE.can_approve_certificates (ASSUMPTIONS 357, 361): approve certificates and add/replace signatures. Migration
   accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and System Administrator (not
   Admin Staff); seed only on create, roles screen switch `set_role_certificate_approval`, no last-approver guard, allowed
@@ -88,7 +96,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   certificate"; one per slot, never the same person twice, never emptied) is changed only through
   `set_activity_signatory` / `set_activity_signatories` / `use_current_version` (can_create_activity or
   can_approve_certificates) and `assign_default_signatories` / `fill_empty_slots_from_defaults` (System).
-  Approval is refused until both images are there. 30 tables.
+  Approval is refused until both images are there.
 - File path columns use `max_length=255`.
 
 ## Login and permissions
@@ -99,7 +107,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `Permission.APPROVE_CERTIFICATES` (approve and reissue certificates, the signatory list and its images and defaults).
   Either of several flags: `has_any_permission` / `require_any_permission`.
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
-  active Admin, never delete). Never log passwords; temporary passwords live only in the email.
+  active Admin, never delete). Never log passwords; temporary passwords live only in the email. The invitation links to
+  `SITE_URL` + `/accounts/login/`; if it cannot be emailed the member is not created (`INVITATION_NOT_SENT`, ASSUMPTIONS 371).
 - A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
 - `/api/` URLs (`config.json.is_api_path`) answer in JSON: 401 `{"error": "Login required."}` (never a
   redirect), 403 during the first-sign-in password change, 404/500 via `config.views` handlers.
@@ -286,13 +295,25 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `prepare_certificate` (same file name: the old PDF is replaced only when the new one is written), participants emailed
   "Updated copy", resource persons "Not handed over (updated copy to print)" until Mark handed over (new `issued_at`).
   The Needs attention line is `informational` (never counted: `attention.warning_count`) (ASSUMPTIONS 364).
-- "Ready for approval" is computed only by `services.readiness()` / `readiness_map()` (both signature images; participants
-  also the evaluation; labels "Waiting for signatures", "Waiting for evaluation", "Evaluation closed without an answer")
-  and, for counts, `ready_for_approval_q()`. Never store it.
-- `approve_certificates` (can_approve_certificates): IDs = all or nothing, each must be ready (`approve_certificate` = one,
-  the preview's Approve); activity = only the ready ones ("Approve all ready certificates"), refused with
-  `approval_closed_reason`. With can_create_activity: `regenerate_certificates` ("Apply the current design": not-Issued
-  ones, back to waiting), `mark_handed_over`, `resend_certificates` (row actions).
+- "Ready" is computed only by `services.readiness()` / `readiness_map()` (both signature images; participants also the
+  evaluation; labels "Waiting for signatures", "Waiting for evaluation", "Evaluation closed without an answer") and
+  `ready_for_approval_q()` (the 5-minute catch-up). "Needs certificate approval" (counts: S5, Needs attention, the
+  dashboard) is only `services.needs_approval_q()` (waiting + the activity not approved). Never store either.
+- Approval is per ACTIVITY (ASSUMPTIONS 369): `approve_activity_certificates` (can_approve_certificates, "Approve
+  certificates for this activity" + confirm dialog; refused with `approval_closed_reason`) stores who/when on the activity
+  and History; then `approve_ready_certificates` (System) approves each certificate when it is ready: at the approval,
+  after each evaluation (`evaluation_submitted`), for certificates created later and in the 5-minute job
+  (`approve_pending_certificates`). `cancel_certificate_approval` (History, Approved → waiting, Issued untouched) runs on
+  a signatory or title change (`_apply_slots`), a new version of a person (`_new_version`), `regenerate_certificates` and
+  any text change. There is NO per-certificate approve (no service, URL or button). With can_create_activity:
+  `regenerate_certificates` ("Apply the current design": not-Issued ones, back to waiting), `mark_handed_over`,
+  `resend_certificates` (row actions).
+- Wording (ASSUMPTIONS 370): `certificates/wording.py` (placeholders {name} {activity} {date} {venue} {topic}
+  {given_date} {organization}, `[ … ]` optional parts, limits 60/100/400/200, `check_field`, `fill`), filled in
+  `pdf.certificate_html` from the certificate's own `certificate_text`; plain text, escaped by the template. Default text:
+  `/certificates/text/` (can_approve_certificates, impact dialog). Per activity: the tab's "Certificate text"
+  (can_create_activity or can_approve_certificates), live preview `wording_preview`. A change re-renders not-Issued
+  certificates and cancels the approval; it never makes an Issued one outdated.
 - Preview (`preview_pdf`): the same template as the final PDF with both signatures, a small "PREVIEW" corner mark only
   while waiting for approval (ASSUMPTIONS 358). An Issued certificate's preview is its stored final PDF
   (`shows_final_copy`, "Issued — this copy was already sent and is not changed."). `certificates:preview` is the second
@@ -414,15 +435,15 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents page (ASSUMPTIONS 352): default "By activity" (`documents.services.overview_activities` +
   `activity_document_overview` = `document_checklist()`'s rule for many activities, parity test; `document_state_counts`
   for the summary cards), "All documents" = the flat list. Filters in the URL; no rules in `documents/_activity_card.html`.
-- Certificates tab (ASSUMPTIONS 357–362): "Approve all ready certificates" (secondary, confirm dialog with the counts,
-  `pages.approval_panel`) and the preview's Approve exist ONLY for can_approve_certificates (others see no approve button,
-  not even disabled); "Apply the current design" for can_create_activity; Signatures (`pages.signatures_panel`); the
-  preview (`pages.preview_items`: exactly the list's certificates in the same order, printed name + "registered as", starts at
-  the first row or `?preview=<id>`, after an approval `pages.next_to_approve`; Approve enabled only when ready, otherwise
-  "Not ready for approval: <label>."); the list (no checkboxes): Preview, Mark handed over, Resend, PDF, Evidence. S5 and the
-  dashboard count ACTIVITIES with certificates READY for approval ("2 activities (45 certificates) ready for your
-  approval"); Needs attention: the signature reason or "N certificates ready for approval.". Not-ready certificates are
-  not a staff task. When approved work waits and qcluster is down, the tab says so (`pages.worker_notice`).
+- Certificates tab (ASSUMPTIONS 357–370): the "Certificate approval" card (`pages.approval_panel`: "Approved by … on …" /
+  "Needs approval" for everyone; the primary "Approve certificates for this activity" + confirm dialog ONLY for
+  can_approve_certificates, disabled with the reason when refused); "Apply the current design" for can_create_activity;
+  Signatures (`pages.signatures_panel`); Certificate text (`pages.text_panel`, `certificates/_text_section.html`); the
+  preview (`pages.preview_items`: exactly the list's certificates in the same order, printed name + "registered as", starts
+  at the first row or `?preview=<id>`; no Approve button); the list (no checkboxes): Preview, Mark handed over, Resend,
+  Retry, PDF, Evidence. S5 and the dashboard count ACTIVITIES that need certificate approval ("2 activities need
+  certificate approval"); Needs attention: the signature reason or "Certificates need approval.". When approved work
+  waits and qcluster is down, the tab says so (`pages.worker_notice`).
 - Activity page links (ASSUMPTIONS 362): every tab link, pager and in-tab link starts with `activity_url` (never `?tab=`
   alone). POST-only actions under `/activities/<id>/…` use `config.links.post_only_or_tab(tab)` instead of `require_POST`
   (a GET goes to that tab); every action ends on `/activities/<id>/?tab=<tab>` (`config.links.activity_tab_url`).
@@ -544,6 +565,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Who signs + titles (2026-11-14): "Who signs the certificates" on the activity form, "Title on this certificate"
   (stored on each certificate), the system sticks to the defaults, white backgrounds removed with a preview, linked
   versions + "Use the current version", the real reason an Approved certificate has no PDF + Retry (365–368).
+- Approval per activity + certificate text (2026-11-14): one approval per activity stored on ACTIVITY, automatic approval
+  and email after each later evaluation, cancelled by any change to what is printed; editable wording (CERTIFICATE_TEXT,
+  placeholders, default + per activity, live preview); invitation link and failed-invitation message (369–371).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

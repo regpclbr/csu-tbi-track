@@ -1,6 +1,6 @@
-"""Certificate approval (ASSUMPTIONS 357, 361, 362): who may approve, approve one or all ready certificates of an
-activity, the missing signature image, apply the current design (approve again), hand-over, failed send and resend. More
-in test_signatures.py and test_automatic_flow.py. Participants are approved only after their evaluation (ready)."""
+"""Certificate approval per activity (ASSUMPTIONS 357, 361, 369): who may approve, the approval stored on the activity
+(who, when, History), the missing signature image, apply the current design (approval cancelled), hand-over, failed
+send and resend. Automatic approval after later evaluations and cancelling: test_activity_approval.py."""
 
 import logging
 from pathlib import Path
@@ -9,6 +9,7 @@ import pytest
 from django.conf import settings
 from django.core import mail
 from django.core.exceptions import PermissionDenied
+from django.utils import timezone
 
 from accounts.models import Role
 from certificates import emails, services, tasks
@@ -39,14 +40,19 @@ def test_admin_staff_cannot_approve(generated, make_member) -> None:
     activity, _ = generated
     member = make_member("Admin Staff")
     with pytest.raises(PermissionDenied, match="approve certificates"):
-        services.approve_certificates(member, activity=activity)
-    with pytest.raises(PermissionDenied):
-        services.approve_certificates(member, certificate_ids=list(Certificate.objects.values_list("pk", flat=True)))
+        services.approve_activity_certificates(member, activity)
+    activity.refresh_from_db()
+    assert not services.is_approved(activity)
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
 def test_admin_staff_alone_lacks_the_flag(roles) -> None:
     assert {name for name, role in roles.items() if not role.can_approve_certificates} == {"Admin Staff"}
+
+
+def test_the_per_certificate_approval_is_gone() -> None:
+    """ASSUMPTIONS 369: one approval per activity; no service approves one certificate any more."""
+    assert not hasattr(services, "approve_certificate") and not hasattr(services, "approve_certificates")
 
 
 @pytest.mark.parametrize("role_name", ["Admin Staff", Role.SYSTEM_ADMINISTRATOR, "Incubation Project Head"])
@@ -61,47 +67,61 @@ def test_regenerate_hand_over_and_resend_need_can_create_activity(generated, mak
             action(member, activity=activity)
 
 
-# --- Approve all for this activity ---------------------------------------------------------------------
+# --- Approve the activity --------------------------------------------------------------------------------
 
 
 @pytest.fixture
 def evaluated(generated, evaluate):
-    """Both participants evaluated: every certificate is ready for approval."""
+    """Both participants evaluated: every certificate is ready."""
     activity, people = generated
     for n, person in enumerate(people):
         evaluate(person, name=f"Person {n}", email=f"person{n}.cert@example.com")
     return activity, people
 
 
-def test_approve_all_for_the_activity(evaluated, director, caplog) -> None:
+def test_approving_the_activity_approves_every_ready_certificate(evaluated, director, caplog) -> None:
     activity, _ = evaluated
+    now = timezone.now()
     assert services.approval_closed_reason(activity) is None
-    with caplog.at_level(logging.INFO, logger="certificates"):
-        assert services.approve_certificates(director, activity=activity) == 3
-    assert f"Member {director.pk} approved certificates" in caplog.text
+    with caplog.at_level(logging.INFO, logger="certificates.audit"):
+        approved = services.approve_activity_certificates(director, activity, now=now)
+    assert len(approved) == 3
+    assert f"activity_id={activity.pk} certificates_approved_now=3 by member_id={director.pk}" in caplog.text
+    activity.refresh_from_db()
+    assert activity.certificates_approved_by == director and activity.certificates_approved_at == now
     for certificate in Certificate.objects.all():
         assert certificate.status == S.APPROVED and certificate.approved_by == director and certificate.approved_at
-    with pytest.raises(services.CertificateError, match="No certificates of this activity are waiting for approval"):
-        services.approve_certificates(director, activity=activity)
-    assert services.approval_closed_reason(activity) == "No certificates of this activity are waiting for approval."
+    with pytest.raises(services.CertificateError, match="already approved"):
+        services.approve_activity_certificates(director, activity)
+    assert services.approval_closed_reason(activity) == services.ALREADY_APPROVED
 
 
-def test_approve_one_then_the_rest(evaluated, director) -> None:
-    activity, people = evaluated
-    assert services.approve_certificates(director, certificate_ids=ids(certificate_of(people[0]))) == 1
-    assert Certificate.objects.filter(status=S.GENERATED).count() == 2
-    assert services.approve_certificates(director, activity=activity) == 2  # only the ones still waiting
+def test_the_approval_is_stored_on_the_activity_and_in_history(generated, director) -> None:
+    from activities.models import ActivityAuditLog
+
+    activity, _ = generated
+    services.approve_activity_certificates(director, activity)
+    row = ActivityAuditLog.objects.filter(activity=activity, field_changed="Certificate approval").get()
+    assert (row.old_value, row.new_value, row.changed_by) == ("Needs approval", f"Approved by {director.name}", director)
+    activity.refresh_from_db()
+    assert services.approved_text(activity).startswith(f"Approved by {director.name} on ")
 
 
-def test_approving_a_selection_is_all_or_nothing(evaluated, director) -> None:
-    _, people = evaluated
-    first, second = certificate_of(people[0]), certificate_of(people[1])
-    services.approve_certificates(director, certificate_ids=ids(first))
-    with pytest.raises(services.CertificateError) as error:
-        services.approve_certificates(director, certificate_ids=ids(first, second))
-    assert error.value.problems == [f"{first.certificate_number}: Cannot move a certificate from Approved to Approved."]
-    second.refresh_from_db()
-    assert second.status == S.GENERATED and second.approved_by is None
+def test_approval_before_anyone_evaluated_approves_only_the_resource_person(generated, director) -> None:
+    activity, people = generated
+    approved = services.approve_activity_certificates(director, activity)
+    assert [c.recipient_type for c in approved] == [Certificate.RecipientType.RESOURCE_PERSON]
+    assert certificate_of(people[0]).status == S.GENERATED  # waits for the evaluation, then goes by itself
+
+
+def test_no_certificates_or_all_issued_cannot_be_approved(conducted, design, director) -> None:
+    activity, _ = conducted
+    assert services.approval_closed_reason(activity) == services.NOTHING_TO_APPROVE
+    with pytest.raises(services.CertificateError, match="no certificates to approve"):
+        services.approve_activity_certificates(director, activity)
+    services.generate_missing_certificates(activity)
+    Certificate.objects.update(status=S.ISSUED)
+    assert services.approval_closed_reason(activity) == services.ALL_ISSUED
 
 
 @pytest.mark.parametrize(("position", "message"), [("vp", MISSING_VP), ("director", MISSING_DIRECTOR)])
@@ -111,10 +131,10 @@ def test_a_missing_signature_image_blocks_approval(generated, design, director, 
     remove_signature_file(vp if position == "vp" else head)
     assert services.approval_closed_reason(activity) == message
     with pytest.raises(services.CertificateError) as error:
-        services.approve_certificates(director, activity=activity)
+        services.approve_activity_certificates(director, activity)
     assert str(error.value) == message
-    with pytest.raises(services.CertificateError, match="Waiting for signatures"):
-        services.approve_certificates(director, certificate_ids=[Certificate.objects.first().pk])
+    activity.refresh_from_db()
+    assert not services.is_approved(activity)
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
@@ -131,7 +151,7 @@ def test_choosing_another_signatory_unblocks_approval(evaluated, design, directo
     assert services.approval_closed_reason(activity) == MISSING_VP  # adding a person changes no activity
     services.set_activity_signatory(director, activity, "right", new_vp)  # the activity's choice (ASSUMPTIONS 363)
     assert set(Certificate.objects.values_list("right_signatory", flat=True)) == {new_vp.pk}
-    assert services.approve_certificates(director, activity=activity) == 3
+    assert len(services.approve_activity_certificates(director, activity)) == 3
 
 
 def test_replacing_a_lost_signature_on_the_tab_unblocks_approval(evaluated, design, director) -> None:
@@ -139,17 +159,17 @@ def test_replacing_a_lost_signature_on_the_tab_unblocks_approval(evaluated, desi
     remove_signature_file(design[1])
     services.upload_signature(director, activity, "right", upload("vp.png", image_bytes()))  # no regenerate needed
     assert services.approval_closed_reason(activity) is None
-    assert services.approve_certificates(director, activity=activity) == 3
+    assert len(services.approve_activity_certificates(director, activity)) == 3
 
 
-# --- Regenerating sends a certificate back to "Waiting for approval" ---------------------------------------
+# --- Regenerating cancels the approval ----------------------------------------------------------------------
 
 
 def test_regenerating_after_approval_needs_approval_again(generated, design, director, admin_member, run_tasks,
                                                           django_capture_on_commit_callbacks) -> None:
     activity, _ = generated
     with django_capture_on_commit_callbacks(execute=True):
-        assert services.approve_certificates(director, activity=activity) == 1  # the resource person: ready
+        assert len(services.approve_activity_certificates(director, activity)) == 1  # the resource person: ready
     speaker = appreciation_of(activity)
     assert speaker.file_path  # resource persons are rendered on approval
     old_pdf = Path(settings.MEDIA_ROOT) / speaker.file_path.name
@@ -163,7 +183,9 @@ def test_regenerating_after_approval_needs_approval_again(generated, design, dir
         assert certificate.approved_by is None and certificate.approved_at is None
         assert certificate.certificate_template == new_template and not certificate.file_path
     assert not old_pdf.exists()  # the old rendered PDF is removed after the commit
-    assert services.approve_certificates(director, activity=activity) == 1
+    activity.refresh_from_db()
+    assert not services.is_approved(activity)  # ASSUMPTIONS 369: "Apply the current design" cancels the approval
+    assert len(services.approve_activity_certificates(director, activity)) == 1
 
 
 def test_regenerate_keeps_the_number_and_refuses_issued(generated, director, approve_all, evaluate, run_tasks,

@@ -27,10 +27,12 @@ urlpatterns = [
     # (an upload error, a refused bulk action) keeps "Activities" active in the sidebar; the views live in their apps.
     path("<int:activity_id>/documents/upload/", document_page_views.upload, name="document_upload"),
     # Certificates are created by the System (ASSUMPTIONS 362): no Generate. Each action redirects to the tab.
-    path("<int:activity_id>/certificates/<int:certificate_id>/approve/", certificate_page_views.approve_one,
-         name="certificates_approve"),
-    path("<int:activity_id>/certificates/approve-ready/", certificate_page_views.approve_ready,
-         name="certificates_approve_ready"),
+    # One approval per activity (ASSUMPTIONS 369); the wording of its certificates (ASSUMPTIONS 370).
+    path("<int:activity_id>/certificates/approve/", certificate_page_views.approve_activity,
+         name="certificates_approve_activity"),
+    path("<int:activity_id>/certificates/text/", certificate_page_views.text_save, name="certificates_text"),
+    path("<int:activity_id>/certificates/text/preview/", certificate_page_views.text_preview,
+         name="certificates_text_preview"),
     path("<int:activity_id>/certificates/apply-design/", certificate_page_views.apply_design,
          name="certificates_apply_design"),
     path("<int:activity_id>/certificates/action/", certificate_page_views.row_action, name="certificates_action"),

@@ -174,9 +174,9 @@ class Command(BaseCommand):
         self.say(f"Preview of {certificate.certificate_number} written to {Path(output).resolve()}")
 
     def step_approve(self, activity_id) -> None:
-        changed = services.approve_certificates(self.member, activity=self.activity(activity_id))
-        self.say(f"Approved {changed} ready certificate(s) (both signatures; participants after their evaluation). "
-                 "qcluster now renders them, issues and emails the participants'.")
+        approved = services.approve_activity_certificates(self.member, self.activity(activity_id))
+        self.say(f"Approved the activity's certificates ({len(approved)} ready now; ASSUMPTIONS 369). Each later "
+                 "evaluation is approved and emailed automatically; qcluster renders, issues and emails them.")
 
     def step_regenerate(self, activity_id) -> None:
         changed = services.regenerate_certificates(self.member, activity=self.activity(activity_id))

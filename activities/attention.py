@@ -37,6 +37,7 @@ ATTENDANCE_AFTER_EVALUATION = "Attendance was marked after the evaluation closed
 SET_TIMES = "Set the start and end time."
 CHOOSE_SIGNATORIES = "Choose who signs the certificates ({sides})."  # ASSUMPTIONS 365, 366
 INACTIVE_SIGNATORY = "A signatory on this activity is inactive."  # ASSUMPTIONS 367
+NEEDS_CERTIFICATE_APPROVAL = "Certificates need approval."  # ASSUMPTIONS 369
 
 
 @dataclass(frozen=True)
@@ -125,8 +126,8 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
         .annotate(
             total=Count("pk"),
             issued=Count("pk", filter=Q(status=Status.ISSUED)),
-            # Only certificates READY for approval are a staff task (ASSUMPTIONS 362); the joins are one to one.
-            ready=Count("pk", filter=certificate_services.ready_for_approval_q()),
+            # Waiting for approval while the activity is not approved (ASSUMPTIONS 369); the join is one to one.
+            needs_approval=Count("pk", filter=certificate_services.needs_approval_q()),
             to_hand_over=Count("pk", filter=Q(status=Status.APPROVED, recipient_type=Certificate.RecipientType.RESOURCE_PERSON)),
             to_reprint=Count("pk", filter=certificate_services.reprint_q()),
             send_failed=Count("pk", filter=unsent & Q(send_failed_at__isnull=False)),
@@ -215,12 +216,12 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
             items.append(AttentionItem(CHOOSE_SIGNATORIES.format(sides=" and ".join(missing)), "certificates"))
         if not all(fact.signatory_slots.values()):
             items.append(AttentionItem(INACTIVE_SIGNATORY, "certificates"))
-    # Approval (ASSUMPTIONS 361, 362): one line. A missing signature first (it blocks every certificate); otherwise only
-    # the certificates READY for approval. Waiting for an evaluation is not a staff task.
+    # Approval (ASSUMPTIONS 361, 369): one line. A missing signature first (it blocks the approval); otherwise the
+    # activity needs certificate approval (one approval per activity).
     if fact.signature_missing:
         items.append(AttentionItem(fact.signature_missing, "certificates"))
-    elif certificates.get("ready"):
-        items.append(AttentionItem(f"{_plural(certificates['ready'], 'certificate', 'certificates')} ready for approval.", "certificates"))
+    elif certificates.get("needs_approval"):
+        items.append(AttentionItem(NEEDS_CERTIFICATE_APPROVAL, "certificates"))
     for key, text in (
         ("to_hand_over", "for resource persons approved but not handed over"),
         ("to_reprint", "for resource persons reissued: updated copy to print and hand over"),

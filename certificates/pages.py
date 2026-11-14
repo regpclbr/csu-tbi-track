@@ -19,7 +19,7 @@ from config.mail import prints_emails
 from documents import pages as document_pages
 from registrations.models import EvaluationSubmission
 
-from . import services
+from . import services, wording
 from .models import ActivitySignatory, Certificate, CertificateSignatory
 
 Status = Certificate.Status
@@ -29,7 +29,6 @@ DeliveryMethod = Certificate.DeliveryMethod
 STATUS_TONES = {Status.GENERATED: "warning", Status.APPROVED: "info", Status.ISSUED: "success"}
 KIND_LABELS = {RecipientType.REGISTRATION: "Participation", RecipientType.RESOURCE_PERSON: "Appreciation"}
 DELIVERY_LABELS = {DeliveryMethod.EMAIL: "Email", DeliveryMethod.HARD_COPY: "Hard copy"}
-READY_LABEL = "Ready for approval"
 PREPARING_LABEL = "Being prepared"  # Approved, the PDF not rendered yet (the background worker does it)
 ISSUED_NOTES = {
     DeliveryMethod.EMAIL: "Issued — this copy was already sent and is not changed.",
@@ -123,14 +122,16 @@ def sending(certificate: Certificate, pdf: str | None = None) -> dict:
         return {"key": "failed", "label": "Send failed", "tone": "danger"}
     if certificate.status == Status.ISSUED:
         return {"key": "queued", "label": "Being emailed", "tone": "neutral"}
+    if services.is_approved(certificate.activity):  # approved activity: sent by itself after the evaluation (369)
+        return {"key": "approval", "label": "Sent automatically after the evaluation", "tone": "neutral"}
     return {"key": "approval", "label": "After approval", "tone": "neutral"}
 
 
 def state_label(certificate: Certificate, label: str | None, outdated: bool = False, pdf: str | None = None) -> dict | None:
-    """The small second badge beside the status: for one waiting for approval, "Ready for approval" or what it
-    waits for (services.readiness); for an Approved one whose PDF failed, "PDF failed", while it is rendered "Being
-    prepared"; for an Issued one, "Issued with an old signature" (services.outdated_q) or "Updated copy being prepared"
-    (reissued)."""
+    """The small second badge beside the status: for one waiting for approval, what it waits for besides the
+    activity's approval (services.readiness: the evaluation, the signatures; ASSUMPTIONS 369); for an Approved one
+    whose PDF failed, "PDF failed", while it is rendered "Being prepared"; for an Issued one, "Issued with an old
+    signature" (services.outdated_q) or "Updated copy being prepared" (reissued)."""
     if outdated:
         return {"label": OUTDATED_LABEL, "tone": "warning"}
     if pdf == services.PDF_FAILED:
@@ -138,7 +139,7 @@ def state_label(certificate: Certificate, label: str | None, outdated: bool = Fa
     if services.updated_copy_pending(certificate):
         return {"label": UPDATED_COPY_LABEL, "tone": "neutral"}
     if certificate.status == Status.GENERATED:
-        return {"label": label, "tone": "neutral"} if label else {"label": READY_LABEL, "tone": "success"}
+        return {"label": label, "tone": "neutral"} if label else None
     if pdf in (services.PDF_PREPARING, services.PDF_WORKER):
         return {"label": PREPARING_LABEL, "tone": "neutral"}
     return None
@@ -174,37 +175,59 @@ def _plural(count: int, one: str, many: str) -> str:
     return f"{count} {one if count == 1 else many}"
 
 
-def approval_summary(certificates: list[Certificate]) -> str:
-    """"26 certificates · 24 participants by email · 2 resource persons by hard copy"."""
-    by_email = sum(1 for c in certificates if c.delivery_method == DeliveryMethod.EMAIL)
-    by_hand = len(certificates) - by_email
-    parts = [_plural(len(certificates), "certificate", "certificates")]
-    if by_email:
-        parts.append(f"{_plural(by_email, 'participant', 'participants')} by email")
-    if by_hand:
-        parts.append(f"{_plural(by_hand, 'resource person', 'resource persons')} by hard copy")
-    return " · ".join(parts)
-
-
-def approval_panel(member, activity: Activity, certificates: list[Certificate], labels: dict[int, str | None]) -> dict | None:
-    """"Approve all ready certificates" (approvers only, ASSUMPTIONS 362): how many are ready (the confirm dialog's
-    text: how many are approved, emailed and printed) and the reason it is closed (services.approval_closed_reason).
-    None for members without can_approve_certificates (nothing is shown) or when nothing waits for approval."""
-    if not has_permission(member, Permission.APPROVE_CERTIFICATES):
-        return None
-    waiting = [c for c in certificates if c.status == Status.GENERATED]
-    if not waiting:
-        return None
-    ready = [c for c in waiting if labels.get(c.pk) is None]
-    by_email = sum(1 for c in ready if c.delivery_method == DeliveryMethod.EMAIL)
+def approval_panel(member, activity: Activity, certificates: list[Certificate]) -> dict:
+    """The approval state at the top of the tab (ASSUMPTIONS 369), for everyone: "Approved by ... on ..." or "Needs
+    approval". For can_approve_certificates only: "Approve certificates for this activity" (with the confirm dialog's
+    counts) or the reason it is closed (services.approval_closed_reason). Admin Staff: the state only."""
+    approved = services.is_approved(activity)
+    can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    not_issued = [c for c in certificates if c.status != Status.ISSUED]
+    by_email = sum(1 for c in not_issued if c.delivery_method == DeliveryMethod.EMAIL)
     return {
-        "ready": len(ready),
-        "waiting": len(waiting),
-        "not_ready": len(waiting) - len(ready),
+        "approved": approved,
+        "text": services.approved_text(activity),
+        "has_certificates": bool(certificates),
+        "can_approve": can_approve and not approved,
+        "closed_reason": services.approval_closed_reason(activity) if can_approve and not approved else "",
         "by_email": by_email,
-        "by_hand": len(ready) - by_email,
-        "summary": approval_summary(ready) if ready else "",
-        "closed_reason": services.approval_closed_reason(activity),
+        "by_hand": len(not_issued) - by_email,
+        "url": reverse("activities:certificates_approve_activity", args=[activity.pk]),
+    }
+
+
+def text_panel(member, activity: Activity, values: dict | None = None, errors: dict | None = None,
+               mode: str | None = None) -> dict:
+    """The Certificate text section (ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
+    fields per type (the activity's current text; after a refused save, what was typed and the errors), the
+    placeholders, the limits and a first live preview (services.wording_preview). can_create_activity or
+    can_approve_certificates edit it; Admin Staff see the text only."""
+    custom = services.uses_custom_text(activity)
+    current = services.current_texts(activity)
+    defaults = services.current_texts(None)
+    errors = errors or {}
+    types = []
+    for kind in services.TEXT_TYPES:
+        shown = {field: (values or {}).get(f"{kind}-{field}", value)
+                 for field, value in services.text_values(current[kind]).items()}
+        preview = services.wording_preview(activity, kind, shown)
+        types.append({
+            "type": kind,
+            "label": f"Certificate of {services.TEXT_TYPE_LABELS[kind]}",
+            "fields": [{"name": f"{kind}-{field}", "field": field, "label": wording.FIELD_LABELS[field],
+                        "value": shown[field], "max": wording.MAX_LENGTHS[field],
+                        "required": field in wording.REQUIRED, "error": " ".join(errors.get(f"{kind}-{field}", [])),
+                        "default": getattr(defaults[kind], field)} for field in wording.FIELDS],
+            "custom": current[kind].activity_id is not None,
+            "placeholders": wording.placeholder_list(kind),
+            "preview": preview,
+        })
+    return {
+        "custom": custom if mode is None else mode == "custom",
+        "can_edit": services.can_edit_activity_text(member),
+        "types": types,
+        "save_url": reverse("activities:certificates_text", args=[activity.pk]),
+        "preview_url": reverse("activities:certificates_text_preview", args=[activity.pk]),
+        "defaults_url": reverse("certificates:text") if has_permission(member, Permission.APPROVE_CERTIFICATES) else "",
     }
 
 
@@ -279,18 +302,17 @@ def reissue_panel(member, activity: Activity, outdated: set[int]) -> dict | None
 
 def preview_items(certificates: list[Certificate], printed: dict[int, str], labels: dict[int, str | None],
                   can_approve: bool = False, outdated: set[int] | None = None) -> list[dict]:
-    """The large preview with Previous / Next: exactly the list below it, in the same order (ASSUMPTIONS 362).
-    Each item: the printed name (and "registered as"), the readiness (services.readiness: the Approve button is
-    enabled only when ready; approvers only), the URLs with ?v= (services.preview_version: a changed certificate is
-    never shown from the browser's cache), the Issued note and "Issued with an old signature" with "Reissue with
-    current signatures" (approvers only, ASSUMPTIONS 364)."""
+    """The large preview with Previous / Next: exactly the list below it, in the same order (ASSUMPTIONS 362). The
+    approver checks it before "Approve certificates for this activity" (ASSUMPTIONS 369: no Approve per certificate).
+    Each item: the printed name (and "registered as"), the URLs with ?v= (services.preview_version: a changed
+    certificate is never shown from the browser's cache), the Issued note and "Issued with an old signature" with
+    "Reissue with current signatures" (approvers only, ASSUMPTIONS 364)."""
     outdated = outdated or set()
     items = []
     for c in certificates:
         shown, registered_as = names(c, printed)
         evaluated = c.registration_id in printed
         version = services.preview_version(c, evaluated)
-        waiting = c.status == Status.GENERATED
         items.append({
             "pk": c.pk,
             "url": f"{reverse('certificates:preview', args=[c.pk])}?v={version}",
@@ -305,10 +327,6 @@ def preview_items(certificates: list[Certificate], printed: dict[int, str], labe
             "outdated": c.pk in outdated,
             "can_reissue": can_approve and c.pk in outdated,
             "reissue_url": reverse("activities:certificates_reissue", args=[c.activity_id, c.pk]) if can_approve and c.pk in outdated else "",
-            "can_approve": can_approve and waiting,
-            "ready": waiting and labels.get(c.pk) is None,
-            "readiness": labels.get(c.pk) or "" if waiting else "",
-            "approve_url": reverse("activities:certificates_approve", args=[c.activity_id, c.pk]) if can_approve and waiting else "",
         })
     return items
 
@@ -331,21 +349,6 @@ def preview_start(items: list[dict], raw: str | None) -> int:
             if item["pk"] == int(raw):
                 return index
     return 0
-
-
-def next_to_approve(activity: Activity, current: Certificate) -> int | None:
-    """After an approval: the next certificate in the list (number order) that is waiting for approval, a ready one
-    first; from the top when none follows. None: nothing waits (the preview starts at the first row)."""
-    waiting = list(services._waiting(activity))
-    labels = services.readiness_map(waiting)
-    after = [c for c in waiting if c.certificate_number > current.certificate_number]
-    before = [c for c in waiting if c.certificate_number < current.certificate_number]
-    for group in (after, before):
-        ready = [c for c in group if labels[c.pk] is None]
-        if ready:
-            return ready[0].pk
-    rest = after or before
-    return rest[0].pk if rest else None
 
 
 def _with_evidence_count(queryset):
@@ -379,11 +382,13 @@ def worker_notice(certificates: list[Certificate]) -> bool:
 # --- The activity's Certificates tab -----------------------------------------------------------------------------
 
 
-def certificates_tab(request: HttpRequest, activity: Activity, problems: list[str] | None = None) -> dict:
-    """The tab (ASSUMPTIONS 362): counts per status, why certificates are not created yet (generation_closed_reason;
-    they are created by the System), "Approve all ready certificates" (approvers only), Signatures, the preview with
-    Approve, and the list (Preview, Mark handed over, Resend, PDF, Evidence). `problems`: a refused row action's list
-    (kept in the session for this one view)."""
+def certificates_tab(request: HttpRequest, activity: Activity, problems: list[str] | None = None,
+                     text_form: dict | None = None) -> dict:
+    """The tab (ASSUMPTIONS 362, 369, 370): the approval state and "Approve certificates for this activity"
+    (approvers only), counts per status, why certificates are not created yet (generation_closed_reason; they are
+    created by the System), Signatures, Certificate text, the preview, and the list (Preview, Mark handed over,
+    Resend, PDF, Evidence). `problems`: a refused row action's list (kept in the session for this one view).
+    `text_form`: a refused Certificate text save ({"values", "errors", "mode"})."""
     certificates = list(_with_evidence_count(
         Certificate.objects.filter(activity=activity)
         .select_related("activity", "registration", "resource_person", "left_signatory", "right_signatory")
@@ -405,8 +410,9 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
         "can_act": can_act,
         "can_approve": can_approve,
         "generation_reason": services.generation_closed_reason(activity),
-        "approval": approval_panel(member, activity, certificates, labels),
+        "approval": approval_panel(member, activity, certificates),
         "signatures": signatures_panel(member, activity),
+        "text": text_panel(member, activity, **(text_form or {})),
         "reissue": reissue_panel(member, activity, outdated),
         "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,  # the "Add a person" dialog
         "previews": previews,
@@ -420,12 +426,40 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
     }
 
 
+def default_text_page(values: dict | None = None, errors: dict | None = None) -> dict:
+    """The Certificate text page (can_approve_certificates, ASSUMPTIONS 370): the default wording of both types, the
+    placeholders, the limits, a first preview with sample values, and the impact of saving (the confirm dialog:
+    services.default_text_impact)."""
+    defaults = services.current_texts(None)
+    errors = errors or {}
+    types = []
+    for kind in services.TEXT_TYPES:
+        shown = {field: (values or {}).get(f"{kind}-{field}", value)
+                 for field, value in services.text_values(defaults[kind]).items()}
+        types.append({
+            "type": kind,
+            "label": f"Certificate of {services.TEXT_TYPE_LABELS[kind]}",
+            "fields": [{"name": f"{kind}-{field}", "field": field, "label": wording.FIELD_LABELS[field],
+                        "value": shown[field], "max": wording.MAX_LENGTHS[field],
+                        "required": field in wording.REQUIRED, "error": " ".join(errors.get(f"{kind}-{field}", []))}
+                       for field in wording.FIELDS],
+            "placeholders": wording.placeholder_list(kind),
+            "preview": services.wording_preview(None, kind, shown),
+            "impact": services.default_text_impact_text(services.default_text_impact(kind)),
+            "save_url": reverse("certificates:text_save", args=[kind]),
+            "changed_by": defaults[kind].created_by.name if defaults[kind].created_by_id else "System (the original text)",
+            "changed_at": defaults[kind].created_at,
+        })
+    return {"types": types, "preview_url": reverse("certificates:text_preview"),
+            "signatories_url": reverse("certificates:signatories")}
+
+
 # --- The preview page (without JavaScript) --------------------------------------------------------------------
 
 
 def preview(certificate: Certificate, member=None) -> dict:
     """The preview page: the PDF (certificates:preview in an <iframe>, ?v=), Download PDF, the printed name and
-    whether it is final, the Issued note, and Approve for approvers (enabled only when ready)."""
+    whether it is final, and the Issued note (approval is per activity, on the tab: ASSUMPTIONS 369)."""
     printed = printed_names([certificate])
     labels = services.readiness_map([certificate])
     can_approve = member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES)

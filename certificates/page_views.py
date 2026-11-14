@@ -1,6 +1,6 @@
 """The Certificates pages (phase F4; ASSUMPTIONS 362): the Certificates page (/certificates/), the actions of the
-activity's Certificates tab (Approve on the preview, "Approve all ready certificates", Apply the current design, Mark
-handed over, Resend, signatures), the preview page and the evidence modal. Thin views: every rule is in
+activity's Certificates tab ("Approve certificates for this activity", Apply the current design, Mark handed over,
+Resend, signatures, the certificate text), the Certificate text page, the preview page and the evidence modal. Thin views: every rule is in
 certificates.services (and documents.services for evidence); certificates/pages.py prepares what the templates show.
 
 Viewing, previews, downloads and evidence uploads: any active staff member. Apply the current design, hand over and
@@ -71,17 +71,22 @@ def _certificates(n: int) -> str:
 
 
 def approved_message(certificates: list[Certificate]) -> str:
-    """"Approved 3 certificates. 2 are emailed once the PDF is ready; 1 is ready for printing (...)." Development
-    mode adds the "printed in the terminal" note (ASSUMPTIONS 342)."""
+    """After "Approve certificates for this activity" (ASSUMPTIONS 369): what happens now and later. Development mode
+    adds the "printed in the terminal" note (ASSUMPTIONS 342)."""
     by_email = sum(1 for c in certificates if c.delivery_method == Certificate.DeliveryMethod.EMAIL)
     by_hand = len(certificates) - by_email
     parts = []
     if by_email:
-        parts.append(f"{by_email} {'is' if by_email == 1 else 'are'} emailed once the PDF is ready")
+        parts.append(f"{by_email} participant{'' if by_email == 1 else 's'} who already evaluated "
+                     f"{'is' if by_email == 1 else 'are'} emailed once the PDF is ready")
     if by_hand:
-        parts.append(f"{by_hand} {'is' if by_hand == 1 else 'are'} ready for printing (Mark handed over afterwards)")
-    text = f"Approved {_certificates(len(certificates))}. {'; '.join(parts)}."
-    return email_sent_message("", before=text + " ").strip() if by_email else text
+        parts.append(f"{by_hand} resource person certificate{'' if by_hand == 1 else 's'} "
+                     f"{'is' if by_hand == 1 else 'are'} ready to print (Mark handed over afterwards)")
+    text = "Approved the certificates of this activity. "
+    if parts:
+        text += "; ".join(parts).capitalize() + ". "
+    text += "Everyone else's certificate is emailed automatically as soon as they submit their evaluation."
+    return email_sent_message("", before=text + " ").strip()
 
 
 # --- The Certificates page --------------------------------------------------------------------------------------
@@ -101,40 +106,88 @@ def certificate_list(request: HttpRequest) -> HttpResponse:
     return render(request, "certificates/list.html", context)
 
 
-# --- Approval (can_approve_certificates) --------------------------------------------------------------------------
+# --- Approval per activity (can_approve_certificates, ASSUMPTIONS 369) ------------------------------------------------
 
 
 @permission_required(Permission.APPROVE_CERTIFICATES)
 @post_only_or_tab("certificates")
-def approve_one(request: HttpRequest, activity_id: int, certificate_id: int) -> HttpResponse:
-    """The preview card's Approve: this certificate only (refused unless it is ready). Afterwards the preview shows
-    the next certificate waiting for approval."""
+def approve_activity(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """"Approve certificates for this activity" (after the confirm dialog): services.approve_activity_certificates. A
+    refusal (already approved, a missing signature, no certificates) is one message."""
     activity = _activity(activity_id)
-    certificate = get_object_or_404(Certificate, pk=certificate_id, activity=activity)
     try:
-        services.approve_certificate(request.user, certificate)
+        approved = services.approve_activity_certificates(request.user, activity)
     except services.CertificateError as error:
-        reason = error.problems[0] if error.problems else str(error)
-        messages.error(request, f"Not approved: {reason}")
-        return redirect(pages.tab_url(activity.pk, preview=certificate.pk))
-    messages.success(request, approved_message([certificate]))
-    return redirect(pages.tab_url(activity.pk, preview=pages.next_to_approve(activity, certificate)))
-
-
-@permission_required(Permission.APPROVE_CERTIFICATES)
-@post_only_or_tab("certificates")
-def approve_ready(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """"Approve all ready certificates" (after the confirm dialog): every ready certificate of the activity; the
-    others keep waiting. A refusal (none ready, a missing signature) is one message."""
-    activity = _activity(activity_id)
-    ready = services.ready_certificates(activity)
-    try:
-        services.approve_certificates(request.user, activity=activity)
-    except services.CertificateError as error:
-        messages.error(request, str(error))
+        messages.error(request, f"Not approved: {error}")
     else:
-        messages.success(request, approved_message(ready))
+        messages.success(request, approved_message(approved))
     return redirect(pages.tab_url(activity.pk))
+
+
+# --- Certificate text of the activity (ASSUMPTIONS 370) -------------------------------------------------------------
+
+
+def _posted_texts(request: HttpRequest) -> dict[str, dict]:
+    """{type: {field: text}} from the posted "<type>-<field>" values (both types)."""
+    from . import wording
+
+    return {kind: {field: request.POST.get(f"{kind}-{field}", "") for field in wording.FIELDS}
+            for kind in services.TEXT_TYPES}
+
+
+def text_saved_message(result: dict, what: str) -> str:
+    text = what
+    if result.get("updated"):
+        text += f" {_certificates(result['updated'])} not issued yet now use it (the preview shows it)."
+    if result.get("cancelled"):
+        text += " The approval of the activity's certificates was cancelled: check the preview and approve again."
+    return text
+
+
+@staff_login_required
+@post_only_or_tab("certificates")
+def text_save(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """POST mode (default | custom) and the fields "<type>-<field>": "Use the default text" (services.use_default_text)
+    or "Custom text for this activity" (services.save_activity_text). can_create_activity or can_approve_certificates.
+    Refused text: the page again with what was typed and the errors under the fields (status 400)."""
+    from activities.page_views import render_activity_page
+
+    require_any_permission(request.user, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    activity = _activity(activity_id)
+    mode = request.POST.get("mode", "")
+    if mode not in ("default", "custom"):
+        messages.error(request, "Choose the default text or custom text for this activity.")
+        return redirect(pages.tab_url(activity.pk))
+    try:
+        if mode == "default":
+            result = services.use_default_text(request.user, activity)
+        else:
+            result = services.save_activity_text(request.user, activity, _posted_texts(request))
+    except ValidationError as error:
+        form = {"values": request.POST, "errors": error.message_dict, "mode": mode}
+        return render_activity_page(request, activity, "certificates", {"text_form": form}, status=400)
+    if not result["changed"]:
+        messages.info(request, "Nothing was changed.")
+    elif mode == "default":
+        messages.success(request, text_saved_message(result, "This activity now uses the default certificate text."))
+    else:
+        messages.success(request, text_saved_message(result, "Saved the certificate text for this activity."))
+    return redirect(pages.tab_url(activity.pk))
+
+
+@staff_login_required
+@require_POST
+def text_preview(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """HTMX, while typing: the filled wording of one type (services.wording_preview) or the errors saving would give.
+    Nothing is saved. Any active staff member may see it (it only shows the activity's own details)."""
+    activity = _activity(activity_id)
+    kind = request.POST.get("type", "")
+    if kind not in services.TEXT_TYPES:
+        return HttpResponse(status=400)
+    from . import wording
+
+    values = {field: request.POST.get(f"{kind}-{field}", "") for field in wording.FIELDS}
+    return render(request, "certificates/_text_preview.html", {"preview": services.wording_preview(activity, kind, values)})
 
 
 # --- Apply the current design, hand over, resend (can_create_activity) --------------------------------------------
@@ -194,8 +247,11 @@ def changed_text(result: dict, *, what: str) -> str:
     """The message after a signatory change: what changed, the certificates updated, and the outdated notice."""
     text = what
     if result.get("updated"):
-        text += (f" {_certificates(result['updated'])} not issued yet now use it (the preview shows it); approved ones "
-                 "wait for approval again.")
+        text += f" {_certificates(result['updated'])} not issued yet now use it (the preview shows it)."
+    if result.get("cancelled"):  # ASSUMPTIONS 369
+        many = result["cancelled"] > 1
+        text += (f" The certificate approval of {result['cancelled']} activities was cancelled: they need approval again."
+                 if many else " The certificate approval was cancelled: check the preview and approve again.")
     notice = services.outdated_notice(result.get("outdated", 0), result.get("outdated_activities", 1) or 1)
     return f"{text} {notice}".strip()
 
@@ -316,6 +372,64 @@ def reissue_all(request: HttpRequest, activity_id: int) -> HttpResponse:
     else:
         messages.success(request, reissued_message(targets))
     return redirect(pages.tab_url(activity.pk))
+
+
+# --- The Certificate text page: the default wording (can_approve_certificates, ASSUMPTIONS 370) ----------------------
+
+
+def _text_page(request: HttpRequest, *, values: dict | None = None, errors: dict | None = None,
+               status: int = 200) -> HttpResponse:
+    context = {"page_title": "Certificate text", **pages.default_text_page(values, errors)}
+    return render(request, "certificates/text.html", context, status=status)
+
+
+@permission_required(Permission.APPROVE_CERTIFICATES)
+@require_GET
+def certificate_text(request: HttpRequest) -> HttpResponse:
+    return _text_page(request)
+
+
+@permission_required(Permission.APPROVE_CERTIFICATES)
+@require_POST
+def certificate_text_save(request: HttpRequest, certificate_type: str) -> HttpResponse:
+    """POST the fields "<type>-<field>" of one type (after the impact dialog): services.save_default_text."""
+    from . import wording
+
+    if certificate_type not in services.TEXT_TYPES:
+        return redirect("certificates:text")
+    values = {field: request.POST.get(f"{certificate_type}-{field}", "") for field in wording.FIELDS}
+    try:
+        result = services.save_default_text(request.user, certificate_type, values)
+    except ValidationError as error:
+        errors = {(key if key.startswith(certificate_type) else f"{certificate_type}-{key}"): value
+                  for key, value in error.message_dict.items()}
+        return _text_page(request, values=request.POST, errors=errors, status=400)
+    label = services.TEXT_TYPE_LABELS[certificate_type]
+    if not result["changed"]:
+        messages.info(request, "Nothing was changed.")
+    else:
+        text = f"Saved the default text of the Certificate of {label}."
+        if result["activities"]:
+            text += (f" {_certificates(result['updated'])} of {result['activities']} "
+                     f"activit{'y' if result['activities'] == 1 else 'ies'} now use it.")
+        if result["cancelled"]:
+            text += (f" The certificate approval of {result['cancelled']} "
+                     f"activit{'y was' if result['cancelled'] == 1 else 'ies was'} cancelled.")
+        messages.success(request, text)
+    return redirect("certificates:text")
+
+
+@permission_required(Permission.APPROVE_CERTIFICATES)
+@require_POST
+def certificate_text_preview(request: HttpRequest) -> HttpResponse:
+    """HTMX, while typing on the Certificate text page: the default wording filled with sample values."""
+    from . import wording
+
+    kind = request.POST.get("type", "")
+    if kind not in services.TEXT_TYPES:
+        return HttpResponse(status=400)
+    values = {field: request.POST.get(f"{kind}-{field}", "") for field in wording.FIELDS}
+    return render(request, "certificates/_text_preview.html", {"preview": services.wording_preview(None, kind, values)})
 
 
 # --- The Signatories page (can_approve_certificates, ASSUMPTIONS 363) ---------------------------------------------

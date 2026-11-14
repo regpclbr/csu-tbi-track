@@ -15,7 +15,7 @@ from django.utils.html import format_html
 from accounts.admin import NoDeleteAdminMixin, ReadOnlyAdminMixin
 
 from . import services
-from .models import ActivitySignatory, Certificate, CertificateSignatory, CertificateTemplate
+from .models import ActivitySignatory, Certificate, CertificateSignatory, CertificateTemplate, CertificateText
 
 
 class TemplateAddForm(forms.ModelForm):
@@ -126,3 +126,13 @@ class CertificateAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
         if not obj.file_path:
             return "-"
         return format_html('<a href="{}">Download</a>', reverse("certificates:download", args=[obj.pk]))
+
+
+@admin.register(CertificateText)
+class CertificateTextAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """View only: the wording is edited on the Certificate text page and the Certificates tab through
+    certificates.services (versioned rows, ASSUMPTIONS 370)."""
+
+    list_display = ("certificate_type", "activity", "title", "is_current", "created_by", "created_at")
+    list_filter = ("certificate_type", "is_current")
+    search_fields = ("title", "main_sentence")

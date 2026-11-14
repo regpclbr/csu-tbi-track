@@ -121,10 +121,17 @@ def run_tasks(monkeypatch):
 
 @pytest.fixture
 def approve_all(director):
-    """The Director approves every certificate of an activity waiting for approval ("Approve all")."""
+    """The Director approves the activity's certificates ("Approve certificates for this activity", ASSUMPTIONS 369):
+    the ready ones are approved now, the others when they become ready. Already approved: the ready ones only."""
 
     def run(activity: Activity) -> None:
-        services.approve_certificates(director, activity=activity)
+        activity.refresh_from_db()
+        if services.is_approved(activity):
+            services.approve_ready_certificates(activity)
+        else:
+            services.approve_activity_certificates(director, activity)
+
+    return run
 
     return run
 

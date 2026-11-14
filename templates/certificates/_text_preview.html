@@ -1,0 +1,17 @@
+{% comment %}The live preview of certificate wording (certificates.services.wording_preview, ASSUMPTIONS 370): the four lines
+filled in (plain text, escaped here) or the errors saving would give. Nothing is saved.{% endcomment %}
+{% if preview.errors %}
+  <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="status">
+    <p class="font-semibold">Not saved like this:</p>
+    <ul class="mt-1 list-disc space-y-0.5 pl-5">{% for field, message in preview.errors.items %}<li>{{ message }}</li>{% endfor %}</ul>
+  </div>
+{% else %}
+  <div class="rounded-xl border border-line bg-[#fbf6e9] px-4 py-5 text-center font-serif text-slate-800" role="status" aria-label="Preview of the wording">
+    <p class="text-base font-semibold tracking-[0.2em] uppercase">{{ preview.text.title }}</p>
+    {% if preview.text.line_before_name %}<p class="mt-1 text-sm italic">{{ preview.text.line_before_name }}</p>{% endif %}
+    <p class="mt-1 text-lg font-bold">[the name]</p>
+    <p class="mt-2 text-sm leading-relaxed">{{ preview.text.main_sentence }}</p>
+    {% if preview.text.closing_line %}<p class="mt-2 text-xs">{{ preview.text.closing_line }}</p>{% endif %}
+  </div>
+{% endif %}
+<p class="mt-1 text-xs text-muted">{{ preview.source }}</p>

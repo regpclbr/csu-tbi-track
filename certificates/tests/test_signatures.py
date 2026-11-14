@@ -117,7 +117,7 @@ def test_the_seeded_approver_roles_have_the_flag(roles) -> None:
 def test_approvers_approve_all_for_the_activity(evaluated, make_member, role_name) -> None:
     activity, _ = evaluated
     member = make_member(role_name, email=f"approver.{role_name.split()[0].lower()}@example.com")
-    assert services.approve_certificates(member, activity=activity) == 3
+    assert len(services.approve_activity_certificates(member, activity)) == 3
     assert set(Certificate.objects.values_list("status", "approved_by")) == {(S.APPROVED, member.pk)}
 
 
@@ -125,19 +125,19 @@ def test_admin_staff_only_views(generated, admin_staff, design) -> None:
     activity, _ = generated
     _, vp, head = design
     with pytest.raises(PermissionDenied):
-        services.approve_certificates(admin_staff, activity=activity)
+        services.approve_activity_certificates(admin_staff, activity)
     with pytest.raises(PermissionDenied):
         services.upload_signature(admin_staff, activity, "right", png())
     with pytest.raises(PermissionDenied):
         services.set_activity_signatory(admin_staff, activity, "left", vp)
     client = client_for(admin_staff)
-    assert client.post(reverse("activities:certificates_approve_ready", args=[activity.pk])).status_code == 403
+    assert client.post(reverse("activities:certificates_approve_activity", args=[activity.pk])).status_code == 403
     assert client.post(signature_url(activity, "right"), {"file": png()}).status_code == 403
     assert client.post(choose_url(activity, "left"), {"signatory": vp.pk}).status_code == 403
     assert client.get(reverse("certificates:signatories")).status_code == 403
     html = client.get(tab_url(activity.pk)).content.decode()
     signatures = html.split('id="signatures-title"')[1].split("certificate-preview")[0]
-    assert "Waiting for approval" in html and "Approve all ready certificates" not in html
+    assert "Waiting for approval" in html and "Approve certificates for this activity" not in html
     assert head.name in signatures and "Director" in signatures and vp.name in signatures
     assert 'name="file"' not in signatures and 'name="signatory"' not in signatures and "Add a person" not in signatures
 
@@ -224,7 +224,7 @@ def test_changing_a_slot_refreshes_not_issued_certificates_and_writes_history(is
     president = person(director, "Dr. Ana Reyes", "University President")
     waiting = certificate_of(people[1])
     result = services.set_activity_signatory(director, activity, "right", president)
-    assert result == {"changed": True, "updated": 1, "outdated": 2}  # the issued participant + the issued speaker
+    assert result == {"changed": True, "updated": 1, "outdated": 2, "cancelled": 1}  # outdated: the issued participant + speaker; the approval cancelled (369)
     waiting.refresh_from_db()
     assert waiting.right_signatory == president and waiting.status == S.GENERATED
     row = ActivityAuditLog.objects.filter(activity=activity, field_changed="Certificate signatory (right)",
@@ -278,7 +278,7 @@ def test_the_tab_choose_flow(generated, design, director) -> None:
     response = client.post(choose_url(activity, "right"), {"signatory": president.pk}, follow=True)
     assert [str(m) for m in response.context["messages"]] == [
         "Dr. Pres (University President) now signs on the right for this activity. 3 certificates not issued yet now "
-        "use it (the preview shows it); approved ones wait for approval again."]
+        "use it (the preview shows it)."]
     assert client.get(choose_url(activity, "right"))["Location"] == tab_url(activity.pk)  # a GET goes to the tab
 
 
@@ -307,7 +307,7 @@ def test_approval_is_blocked_without_a_signature(generated, design, director, sl
     without_image(vp if slot == "right" else head)
     assert services.approval_closed_reason(activity) == message
     with pytest.raises(services.CertificateError, match=message.replace("(", r"\(").replace(")", r"\)")):
-        services.approve_certificates(director, activity=activity)
+        services.approve_activity_certificates(director, activity)
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
     assert services.readiness(appreciation_of(activity)) == services.WAITING_FOR_SIGNATURES
     html = client_for(director).get(tab_url(activity.pk)).content.decode()
@@ -352,7 +352,7 @@ def test_adding_a_missing_signature_fills_the_same_row_and_unblocks_approval(eva
     assert f"Signature added: signatory_id={vp.pk} -> {vp.pk}" in caplog.text
     assert f"by member_id={director.pk}" in caplog.text and "@" not in caplog.text  # no email or name
     assert services.approval_closed_reason(activity) is None
-    assert services.approve_certificates(director, activity=activity) == 3
+    assert len(services.approve_activity_certificates(director, activity)) == 3
 
 
 def test_replacing_an_image_is_a_new_version_for_every_activity(
@@ -453,7 +453,7 @@ def test_upload_page_flow(generated, design, director) -> None:
     response = client.post(signature_url(activity, "left"), {"file": png()}, follow=True)
     messages = [str(m) for m in response.context["messages"]]
     assert messages == ["Replaced the signature of Engr. Dee Rector (Director). 3 certificates not issued yet now use "
-                        "it (the preview shows it); approved ones wait for approval again."]
+                        "it (the preview shows it)."]
     response = client.post(signature_url(activity, "right"), {"file": upload("x.png", b"nope")}, follow=True)
     assert "not a valid PNG image" in " ".join(str(m) for m in response.context["messages"])
     assert client.get(signature_url(activity, "right"))["Location"] == tab_url(activity.pk)  # a GET goes to the tab
@@ -547,9 +547,9 @@ def test_preview_is_marked_until_approved(generated, director, approve_all, eval
 def test_needs_attention_has_one_certificate_line(generated, design, director) -> None:
     activity, _ = generated
     texts = [item.text for item in attention.activity_attention(activity)]
-    assert "1 certificate ready for approval." in texts  # the resource person; participants wait for the evaluation
+    assert "Certificates need approval." in texts  # one approval per activity (ASSUMPTIONS 369)
     without_image(design[1])
     texts = [item.text for item in attention.activity_attention(activity)]
     assert "Add the signature of Dr. Vice Pres (Vice President) first." in texts
-    assert "1 certificate ready for approval." not in texts
+    assert "Certificates need approval." not in texts
     assert attention.attention_counts([activity])[activity.pk] == len(texts)

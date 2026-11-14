@@ -208,7 +208,8 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     elif tab == "documents":
         context.update(document_pages.documents_tab(request, activity, (extra or {}).get("upload")))
     elif tab == "certificates":
-        context.update(certificate_pages.certificates_tab(request, activity, (extra or {}).get("problems")))
+        context.update(certificate_pages.certificates_tab(request, activity, (extra or {}).get("problems"),
+                                                          (extra or {}).get("text_form")))
     if is_htmx(request):
         return render(request, "activities/_tab.html", context, status=status)
     if request.path != context["activity_url"]:  # re-shown after a POST (form errors): fix the address bar

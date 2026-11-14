@@ -174,7 +174,7 @@ def test_changing_the_title_on_the_tab_follows_the_refresh_rules(generated, dire
                                                                   django_capture_on_commit_callbacks) -> None:
     activity, people = generated
     with django_capture_on_commit_callbacks(execute=True):
-        services.approve_certificate(director, appreciation_of(activity))  # Approved hard copy, PDF rendered
+        services.approve_activity_certificates(director, activity)  # Approved hard copy, PDF rendered
     speaker = appreciation_of(activity)
     assert speaker.status == S.APPROVED and speaker.file_path
     issued = certificate_of(people[0])

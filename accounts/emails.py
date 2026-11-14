@@ -5,8 +5,14 @@ they are never stored in plain text and never written to the log.
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.urls import reverse
 
 from .models import TBIMember
+
+
+def login_url() -> str:
+    """The staff sign-in page on the public address (SITE_URL, never the request's Host)."""
+    return settings.SITE_URL + reverse("accounts:login")
 
 
 def send_invitation_email(member: TBIMember, temporary_password: str) -> None:
@@ -20,6 +26,7 @@ def send_invitation_email(member: TBIMember, temporary_password: str) -> None:
         message=(
             f"Hello {member.name},\n\n"
             "An account has been created for you in CSU-TBI Track.\n\n"
+            f"Sign in here: {login_url()}\n"
             f"Email: {member.email}\n"
             f"Temporary password: {temporary_password}\n\n"
             "You will be asked to choose a new password the first time you sign in.\n"

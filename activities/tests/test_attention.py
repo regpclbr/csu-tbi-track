@@ -107,17 +107,22 @@ def test_conducted_with_attendees_but_no_certificates(new_activity, move_to, reg
 
 
 def test_certificates_waiting_for_approval(activity, registration, make_certificate, signatories) -> None:
-    """One line, the same for everyone (ASSUMPTIONS 361, 362): the missing signature first, otherwise only certificates
-    READY for approval (this participant has not evaluated: not a staff task; the ready count is tested in
-    certificates/tests/test_automatic_flow.py)."""
+    """One line, the same for everyone (ASSUMPTIONS 361, 369): the missing signature first, otherwise "Certificates need
+    approval." while the activity is not approved (evaluated or not); nothing once it is approved."""
+    from activities.models import Activity
     from certificates.models import CertificateSignatory
+    from django.utils import timezone
 
     make_certificate(registration)
     now = manila(activity.start_date - timedelta(days=20), 9)
-    assert not [text for text in texts(activity, now) if "approval" in text]
+    assert "Certificates need approval." in texts(activity, now)
     CertificateSignatory.objects.filter(pk=signatories[1].pk).update(signature_image_path=None)
     items = texts(activity, now)
     assert "Add the signature of Director (Director) first." in items  # ASSUMPTIONS 363: the person by name
+    assert "Certificates need approval." not in items
+    Activity.objects.filter(pk=activity.pk).update(certificates_approved_at=timezone.now())
+    activity.refresh_from_db()
+    assert not [text for text in texts(activity, now) if "approval" in text]
 
 
 def test_failed_certificate_emails(activity, registration, make_certificate) -> None:

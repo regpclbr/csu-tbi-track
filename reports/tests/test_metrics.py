@@ -253,8 +253,9 @@ def test_n17_emailed_counts_by_manila_date_of_sent_at(make_activity, register, m
 
 
 def test_s5_s6_certificates_now(make_activity, register, make_certificate_row, evaluate) -> None:
-    """S5 counts ACTIVITIES with certificates READY for approval (ASSUMPTIONS 357, 362), plus the certificates; a join
-    never multiplies them. Waiting for the evaluation or a signature = not counted."""
+    """S5 counts ACTIVITIES that need certificate approval (ASSUMPTIONS 369: a certificate waiting and the activity not
+    approved, evaluated or not), plus those certificates; a join never multiplies them. An approved activity is not
+    counted."""
     first = make_activity("First", start=date(2024, 5, 1))  # outside the range: "now" ignores it
     second = make_activity("Second", start=date(2024, 6, 1))
     statuses = [(first, Certificate.Status.GENERATED), (first, Certificate.Status.GENERATED),
@@ -264,11 +265,12 @@ def test_s5_s6_certificates_now(make_activity, register, make_certificate_row, e
         registration = register(activity, f"P{number}", attended=True)
         make_certificate_row(activity=activity, registration=registration, status=status)
         evaluate(registration, {})
-    unevaluated = register(second, "Not yet", attended=True)  # waiting for the evaluation: not counted
+    unevaluated = register(second, "Not yet", attended=True)  # waiting for the evaluation: its activity still needs approval
     make_certificate_row(activity=second, registration=unevaluated, status=Certificate.Status.GENERATED)
-    assert metrics.certificates_now(YEAR_2026) == {"waiting_activities": 2, "waiting_certificates": 3, "approved_not_issued": 1}
-    CertificateSignatory.objects.filter(position="Vice President", default_slot="right").update(signature_image_path=None)  # no VP signature: none ready
-    assert metrics.certificates_now(YEAR_2026)["waiting_certificates"] == 0
+    assert metrics.certificates_now(YEAR_2026) == {"waiting_activities": 2, "waiting_certificates": 4, "approved_not_issued": 1}
+    Activity.objects.filter(pk=second.pk).update(certificates_approved_at=timezone.now())  # approved: not a staff task
+    assert metrics.certificates_now(YEAR_2026)["waiting_activities"] == 1
+    assert metrics.certificates_now(YEAR_2026)["waiting_certificates"] == 2
 
 
 # --- N18: startups engaged ---------------------------------------------------------------------------
