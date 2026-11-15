@@ -1,0 +1,49 @@
+{% comment %}
+The Certificates page's table (certificates.pages.certificate_row rows). show_activity: the Activity column ("All
+certificates" only; in an activity group the header shows it). Type with the delivery under it, Issued with the sent
+date under it, and the status cell wraps (the readiness / PDF label under the status badge), so nothing is cut off and
+a laptop screen (1280 px and wider) never scrolls sideways; narrower screens scroll the table inside its card.
+flush: inside a group card.
+{% endcomment %}
+<div class="relative overflow-x-auto{% if not flush %} rounded-2xl border border-line{% endif %}">
+  <table class="w-full text-left text-sm">
+    <caption class="sr-only">{{ caption }}</caption>
+    <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+      <tr>
+        <th scope="col" class="px-3 py-2.5">Number</th>
+        {% if show_activity %}<th scope="col" class="px-3 py-2.5">Activity</th>{% endif %}
+        <th scope="col" class="px-3 py-2.5">Recipient</th>
+        <th scope="col" class="px-3 py-2.5">Type</th>
+        <th scope="col" class="px-3 py-2.5">Status</th>
+        <th scope="col" class="px-3 py-2.5">Issued</th>
+        <th scope="col" class="px-3 py-2.5"><span class="sr-only">Files</span></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-line">
+      {% for row in rows %}{% with certificate=row.certificate %}
+        <tr class="align-top hover:bg-slate-50">
+          <th scope="row" class="px-3 py-2.5 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
+          {% if show_activity %}<td class="min-w-36 px-3 py-2.5"><a href="{% url 'activities:detail' certificate.activity_id %}?tab=certificates" class="cert-link rounded-md text-slate-700 hover:text-primary hover:underline">{{ certificate.activity.title }}</a></td>{% endif %}
+          <td class="min-w-32 px-3 py-2.5 [overflow-wrap:anywhere] text-slate-700">{{ row.recipient }}{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</td>
+          <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.kind }}<span class="block text-xs text-muted">{{ row.delivery }}</span></td>
+          <td class="min-w-40 px-3 py-2.5">
+            <div class="flex flex-wrap items-start gap-1">
+              {% include "components/badge.html" with text=row.status.label tone=row.status.tone %}
+              {% if row.state %}<span class="badge badge-{{ row.state.tone|default:'neutral' }} whitespace-normal">{{ row.state.label }}</span>{% endif %}
+            </div>
+          </td>
+          <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">
+            {% if certificate.issued_at %}{{ certificate.issued_at|date:"M j, Y" }}{% else %}<span class="text-muted">–</span>{% endif %}
+            {% if certificate.sent_at %}<span class="block text-xs text-muted">sent {{ certificate.sent_at|date:"M j, Y" }}</span>{% endif %}
+          </td>
+          <td class="px-3 py-2.5">
+            <div class="flex items-center justify-end gap-1">
+              <a href="{% url 'certificates:preview' certificate.pk %}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Preview<span class="sr-only"> {{ certificate.certificate_number }} (opens in a new tab)</span></a>
+              {% if row.pdf_ready %}<a href="{% url 'certificates:download' certificate.pk %}" class="btn btn-ghost btn-sm">PDF<span class="sr-only"> of {{ certificate.certificate_number }}</span></a>{% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endwith %}{% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -95,12 +95,12 @@ def approved_message(certificates: list[Certificate]) -> str:
 @staff_login_required
 @require_GET
 def certificate_list(request: HttpRequest) -> HttpResponse:
-    """GET activity, status, recipient_type, delivery_method, page. An HTMX request gets only the results."""
+    """GET q, activity, status, recipient_type, delivery_method, view (activity | all), page (ASSUMPTIONS 372). View only
+    for any active staff member. An HTMX request gets only the results (the filters are inside them)."""
     filters = pages.parse_filters(request.GET)
-    context = {"page_title": "Certificates", "filters": filters, **pages.certificate_list(filters)}
+    context = {"page_title": "Certificates", "filters": filters, **pages.certificate_list(filters), **pages.filter_choices()}
     if is_htmx(request):
         return render(request, "certificates/_results.html", context)
-    context.update(pages.filter_choices())
     if has_permission(request.user, Permission.APPROVE_CERTIFICATES):  # the Signatories page (ASSUMPTIONS 363)
         context["signatories_link"] = reverse("certificates:signatories")
     return render(request, "certificates/list.html", context)

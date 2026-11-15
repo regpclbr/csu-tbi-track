@@ -1,8 +1,52 @@
 {% comment %}
-The Certificates page's counts and table (swapped by the filters and the pager). A count is a link that filters by
-its status (the other filters stay). The table scrolls sideways inside the card on narrow screens.
+The Certificates page below the title (swapped by the search, the filters, the counts, the view switch and the pager):
+filters, status counts (a count is a link that filters by its status, the other filters stay), the view switch, then
+the activity groups (certificates/_activity_group.html) or the flat table (certificates/_table.html).
 {% endcomment %}
 <div id="certificate-results" class="htmx-dim">
+  <form id="certificate-filters" method="get" action="{% url 'certificates:list' %}" role="search" aria-label="Filter certificates"
+        hx-get="{% url 'certificates:list' %}" hx-target="#certificate-results" hx-push-url="true"
+        hx-trigger="change, keyup changed delay:400ms from:#cert-q, search from:#cert-q" hx-indicator="#certificate-results, #cert-loading"
+        class="mb-4 flex flex-wrap items-center gap-2.5">
+    {% if filters.view != "activity" %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
+    <div class="relative min-w-72 flex-1">
+      <label for="cert-q" class="sr-only">Search by number, name, email or activity</label>
+      <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4" %}</span>
+      <input id="cert-q" type="search" name="q" value="{{ filters.q }}" maxlength="100" placeholder="Number, name, email or activity…" class="field-input pill-select py-2 pl-10">
+    </div>
+    <div>
+      <label for="cert-activity" class="sr-only">Activity</label>
+      <select id="cert-activity" name="activity" class="field-input field-select pill-select w-auto max-w-64 pl-4">
+        <option value="">All activities</option>
+        {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity.pk == filters.activity %} selected{% endif %}>{{ activity.title|truncatechars:45 }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="cert-status" class="sr-only">Status</label>
+      <select id="cert-status" name="status" class="field-input field-select pill-select w-auto pl-4">
+        <option value="">Any status</option>
+        {% for value, label in statuses %}<option value="{{ value }}"{% if value == filters.status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="cert-type" class="sr-only">Recipient type</label>
+      <select id="cert-type" name="recipient_type" class="field-input field-select pill-select w-auto pl-4">
+        <option value="">Participation and Appreciation</option>
+        {% for value, label in recipient_types %}<option value="{{ value }}"{% if value == filters.recipient_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="cert-delivery" class="sr-only">Delivery</label>
+      <select id="cert-delivery" name="delivery_method" class="field-input field-select pill-select w-auto pl-4">
+        <option value="">Any delivery</option>
+        {% for value, label in delivery_methods %}<option value="{{ value }}"{% if value == filters.delivery_method %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if filters.any_set %}<a href="?{{ filters.clear_query }}" hx-get="?{{ filters.clear_query }}" hx-target="#certificate-results" hx-push-url="true" class="btn btn-ghost btn-sm">Clear</a>{% endif %}
+    <span id="cert-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
+    <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
+  </form>
+
   {% if filters.ignored %}
     <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
       {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
@@ -10,58 +54,37 @@ its status (the other filters stay). The table scrolls sideways inside the card 
   <ul class="mb-4 flex flex-wrap gap-2" aria-label="Certificates per status">
     {% for status in counts %}
       <li>
-        <a href="?{{ filters.base_query }}{% if filters.base_query %}&amp;{% endif %}status={{ status.value }}"{% if status.value == filters.status %} aria-current="true"{% endif %}
-           class="flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm shadow-card hover:border-primary {% if status.value == filters.status %}border-primary bg-primary-soft/40{% else %}border-line bg-white{% endif %}">
+        <a href="?{{ filters.base_query }}{% if filters.base_query %}&amp;{% endif %}status={{ status.value }}" hx-get="?{{ filters.base_query }}{% if filters.base_query %}&amp;{% endif %}status={{ status.value }}" hx-target="#certificate-results" hx-push-url="true"{% if status.value == filters.status %} aria-current="true"{% endif %}
+           class="cert-link flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm shadow-card hover:border-primary {% if status.value == filters.status %}border-primary bg-primary-soft/40{% else %}border-line bg-white{% endif %}">
           {% include "components/badge.html" with text=status.label tone=status.tone %}<span class="font-semibold text-ink">{{ status.count }}</span><span class="sr-only"> certificates</span></a>
       </li>
     {% endfor %}
   </ul>
-  <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} certificate{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
 
-  {% if rows %}
-    <div class="relative overflow-x-auto rounded-2xl border border-line">
-      <table class="w-full text-left text-sm">
-        <caption class="sr-only">Certificates</caption>
-        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
-          <tr>
-            <th scope="col" class="px-3 py-2.5">Number</th>
-            <th scope="col" class="px-3 py-2.5">Activity</th>
-            <th scope="col" class="px-3 py-2.5">Recipient</th>
-            <th scope="col" class="px-3 py-2.5">Type</th>
-            <th scope="col" class="px-3 py-2.5">Delivery</th>
-            <th scope="col" class="px-3 py-2.5">Status</th>
-            <th scope="col" class="px-3 py-2.5">Issued</th>
-            <th scope="col" class="px-3 py-2.5">Sent</th>
-            <th scope="col" class="px-3 py-2.5"><span class="sr-only">Files</span></th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-line">
-          {% for row in rows %}{% with certificate=row.certificate %}
-            <tr class="hover:bg-slate-50">
-              <th scope="row" class="px-3 py-2.5 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
-              <td class="min-w-44 px-3 py-2.5"><a href="{% url 'activities:detail' certificate.activity_id %}?tab=certificates" class="text-slate-700 hover:text-primary hover:underline">{{ certificate.activity.title }}</a></td>
-              <td class="min-w-36 px-3 py-2.5 text-slate-700">{{ row.recipient }}</td>
-              <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.kind }}</td>
-              <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.delivery }}</td>
-              <td class="px-3 py-2.5 whitespace-nowrap">{% include "components/badge.html" with text=row.status.label tone=row.status.tone %}{% if row.state %} {% include "components/badge.html" with text=row.state.label tone=row.state.tone %}{% endif %}</td>
-              <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{% if certificate.issued_at %}{{ certificate.issued_at|date:"M j, Y" }}{% else %}<span class="text-muted">–</span>{% endif %}</td>
-              <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{% if certificate.sent_at %}{{ certificate.sent_at|date:"M j, Y" }}{% else %}<span class="text-muted">–</span>{% endif %}</td>
-              <td class="px-3 py-2.5">
-                <div class="flex items-center justify-end gap-1">
-                  <a href="{% url 'certificates:preview' certificate.pk %}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Preview<span class="sr-only"> {{ certificate.certificate_number }} (opens in a new tab)</span></a>
-                  {% if row.pdf_ready %}<a href="{% url 'certificates:download' certificate.pk %}" class="btn btn-ghost btn-sm">PDF<span class="sr-only"> of {{ certificate.certificate_number }}</span></a>{% endif %}
-                </div>
-              </td>
-            </tr>
-          {% endwith %}{% endfor %}
-        </tbody>
-      </table>
-    </div>
+  <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <nav class="inline-flex max-w-full flex-wrap rounded-full border border-line bg-slate-50 p-1" aria-label="How to show the certificates">
+      {% for link in view_links %}
+        <a href="{{ link.url }}" hx-get="{{ link.url }}" hx-target="#certificate-results" hx-push-url="true"{% if link.selected %} aria-current="true"{% endif %}
+           class="cert-link inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold whitespace-nowrap {% if link.selected %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
+          {% include "components/icon.html" with name=link.icon class="size-4" %}{{ link.label }}</a>
+      {% endfor %}
+    </nav>
+    <p class="text-sm text-muted" role="status">
+      {% if filters.view == "all" %}{{ result.total }} certificate{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %} · newest first{% else %}{{ result.total }} activit{{ result.total|pluralize:"y,ies" }} · {{ certificates_total }} certificate{{ certificates_total|pluralize }}{% if filters.any_set %} matching the filters{% endif %} · most recent activity first{% endif %}</p>
+  </div>
+
+  {% if groups %}
+    <ul class="space-y-4" aria-label="Certificates by activity">
+      {% for group in groups %}{% include "certificates/_activity_group.html" with group=group %}{% endfor %}
+    </ul>
+    {% include "components/pagination.html" with result=result query=filters.query hx_target="#certificate-results" %}
+  {% elif rows %}
+    {% include "certificates/_table.html" with rows=rows show_activity=True caption="Certificates, newest first" %}
     {% include "components/pagination.html" with result=result query=filters.query hx_target="#certificate-results" %}
   {% elif filters.any_set %}
     {% url 'certificates:list' as list_url %}
-    {% include "components/empty_state.html" with icon="search" title="No certificates match the filters" text="Try another filter." action_url=list_url action_label="Clear filters" %}
+    {% include "components/empty_state.html" with icon="search" title="No certificates match the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
   {% else %}
-    {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="They are generated from a Conducted activity's Certificates tab." %}
+    {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="They are created automatically for a Conducted activity's participants and resource persons." %}
   {% endif %}
 </div>

@@ -2,9 +2,12 @@
 Certificates tab of the activity page (certificates.pages.certificates_tab; ASSUMPTIONS 357-362).
 - Counts per status. Certificates are created by the System when the activity is Conducted (no Generate button); when
   they cannot be created yet, the reason (services.generation_closed_reason) is shown.
-- The approval state (pages.approval_panel, ASSUMPTIONS 369): "Approved by ... on ..." or "Needs approval", for
-  everyone. Approvers only (can_approve_certificates): the primary "Approve certificates for this activity" behind a
-  confirm dialog, or the disabled button with the reason (services.approval_closed_reason). Members without the flag
+- The approval state (pages.approval_panel = services.approval_state, ASSUMPTIONS 369, 373), for everyone: "Approved by
+  ... on ...", "Needs approval" (certificates waiting), "All certificates issued (N)" + a short grey note, "Certificates
+  are created automatically when the activity is Conducted." or the grey "Not approved — ...". Approvers only
+  (can_approve_certificates) and only when the state offers approval: the primary "Approve certificates for this
+  activity" behind a confirm dialog, or the disabled button with the reason (services.approval_closed_reason). All
+  issued / no certificates: no button and no reason. Members without the flag
   see no approve button at all. One approval per activity: no Approve per certificate.
 - Certificate text (pages.text_panel, ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
   fields of both types with the placeholders and a live preview (HTMX, activities:certificates_text_preview).
@@ -26,20 +29,27 @@ Every action redirects back to /activities/<id>/?tab=certificates.
 <div id="certificates-tab" class="space-y-5">
   <section class="card flex flex-wrap items-center justify-between gap-4 p-5" aria-labelledby="approval-title">
     <div class="flex min-w-0 items-start gap-3">
-      {% if approval.approved %}
+      {# services.approval_state (ASSUMPTIONS 373): approved = green, needs_approval = orange, all_issued = the Issued badge's green, no_certificates / not_approved = grey #}
+      {% if approval.state == "approved" %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
-      {% else %}
+      {% elif approval.state == "all_issued" %}
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-800">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
+      {% elif approval.state == "needs_approval" %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">{% include "components/icon.html" with name="award" class="size-5" %}</span>
+      {% else %}
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">{% include "components/icon.html" with name="info" class="size-5" %}</span>
       {% endif %}
       <div class="min-w-0">
         <h2 id="approval-title" class="card-title">Certificate approval</h2>
-        <p class="text-sm font-semibold text-ink" data-testid="approval-state">{{ approval.text }}</p>
-        {% if approval.approved %}
+        <p class="text-sm {% if approval.state == 'not_approved' or approval.state == 'no_certificates' %}font-medium text-slate-600{% else %}font-semibold text-ink{% endif %}" data-testid="approval-state" data-approval-state="{{ approval.state }}">{{ approval.text }}</p>
+        {% if approval.note %}
+          <p class="text-sm text-slate-600">{{ approval.note }}</p>
+        {% elif approval.approved %}
           <p class="text-sm text-slate-700">Each participant's certificate is emailed as soon as they submit their evaluation; resource persons' certificates are ready to print. A change to a signatory, a title, the design or the certificate text cancels this approval.</p>
-        {% elif approval.has_certificates %}
+        {% elif approval.state == "not_approved" %}
+          <p class="text-sm text-slate-700">No certificate is waiting now. A certificate created later (for example attendance marked after the activity was Conducted) waits until the activity's certificates are approved.</p>
+        {% elif approval.state == "needs_approval" %}
           <p class="text-sm text-slate-700">Check the certificates in the preview below, then approve them once for the whole activity.</p>
-        {% else %}
-          <p class="text-sm text-slate-700">Certificates are created automatically when the activity is Conducted; then they are approved here once.</p>
         {% endif %}
       </div>
     </div>

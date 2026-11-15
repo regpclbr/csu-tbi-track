@@ -155,6 +155,19 @@
   .stat-card-link[aria-pressed="true"] .chip {
     @apply bg-primary text-white;
   }
+  /* Links on the Certificates page (ASSUMPTIONS 372): the activity title of a group, the status counts and the view
+     switch. Never an outline on click or tap; keyboard focus only, as a soft 2px blue ring that follows the corners. */
+  .cert-link {
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .cert-link:focus,
+  .cert-link:focus-visible {
+    outline: none;
+  }
+  .cert-link:focus-visible {
+    box-shadow: 0 0 0 2px rgb(37 99 235 / 0.45);
+  }
   .stat-cards-selected .stat-card-link[aria-pressed="false"] {
     @apply opacity-80 hover:opacity-100 focus-visible:opacity-100;
   }

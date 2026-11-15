@@ -4,6 +4,7 @@ status moves, readiness, the missing signature reason). This module turns their 
 (ASSUMPTIONS 357-364). Also the Signatories page (/certificates/signatories/).
 """
 
+from collections import Counter
 from dataclasses import dataclass, field
 from urllib.parse import urlencode
 
@@ -176,19 +177,26 @@ def _plural(count: int, one: str, many: str) -> str:
 
 
 def approval_panel(member, activity: Activity, certificates: list[Certificate]) -> dict:
-    """The approval state at the top of the tab (ASSUMPTIONS 369), for everyone: "Approved by ... on ..." or "Needs
-    approval". For can_approve_certificates only: "Approve certificates for this activity" (with the confirm dialog's
-    counts) or the reason it is closed (services.approval_closed_reason). Admin Staff: the state only."""
+    """The approval state at the top of the tab (ASSUMPTIONS 369, 373), for everyone: services.approval_state ("Approved
+    by ... on ...", "Needs approval" when certificates wait, "All certificates issued (N)", "Certificates are created
+    automatically ..." or the grey "Not approved — ..."). For can_approve_certificates only, and only when the state
+    offers approval: "Approve certificates for this activity" (with the confirm dialog's counts) or the reason it is
+    closed (services.approval_closed_reason). All issued / no certificates: no button and no reason at all. Admin
+    Staff: the state only. `certificates` = all of the activity's certificates."""
     approved = services.is_approved(activity)
     can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
     not_issued = [c for c in certificates if c.status != Status.ISSUED]
     by_email = sum(1 for c in not_issued if c.delivery_method == DeliveryMethod.EMAIL)
+    state = services.approval_state(activity, Counter(c.status for c in certificates))
+    offered = can_approve and not approved and state.offers_approval
     return {
         "approved": approved,
-        "text": services.approved_text(activity),
+        "state": state.kind,
+        "text": state.text,
+        "note": state.note,
         "has_certificates": bool(certificates),
-        "can_approve": can_approve and not approved,
-        "closed_reason": services.approval_closed_reason(activity) if can_approve and not approved else "",
+        "can_approve": offered,
+        "closed_reason": services.approval_closed_reason(activity) if offered else "",
         "by_email": by_email,
         "by_hand": len(not_issued) - by_email,
         "url": reverse("activities:certificates_approve_activity", args=[activity.pk]),
@@ -483,29 +491,45 @@ def preview(certificate: Certificate, member=None) -> dict:
 # --- The Certificates page --------------------------------------------------------------------------------------
 
 
+VIEW_BY_ACTIVITY, VIEW_ALL = "activity", "all"  # ?view= (ASSUMPTIONS 372); "activity" is the default
+VIEWS = [(VIEW_BY_ACTIVITY, "By activity (recommended)", "layout-grid"), (VIEW_ALL, "All certificates (newest first)", "list")]
+SEARCH_MAX_LENGTH = 100
+
+
 @dataclass
 class CertificateFilters:
-    """The Certificates page's filters. A value that cannot be read is ignored with a note (as the other lists)."""
+    """The Certificates page's filters, the search and the view, all in the URL. A value that cannot be read is ignored
+    with a note (as the other lists); an unknown view is the default one."""
 
     activity: int | None = None
     status: str = ""
     recipient_type: str = ""
     delivery_method: str = ""
+    q: str = ""
+    view: str = VIEW_BY_ACTIVITY
     page: str = "1"
     ignored: list[str] = field(default_factory=list)
 
     def for_service(self) -> dict:
         return {"activity": self.activity, "status": self.status, "recipient_type": self.recipient_type,
-                "delivery_method": self.delivery_method}
+                "delivery_method": self.delivery_method, "q": self.q}
 
     def query(self, **changes) -> str:
-        values = {**self.for_service(), **changes}
+        """The URL's query without the page (the pager adds it); the default view is left out."""
+        values = {**self.for_service(), "view": self.view, **changes}
+        if values["view"] == VIEW_BY_ACTIVITY:
+            values["view"] = ""
         return urlencode({key: value for key, value in values.items() if value not in (None, "")})
 
     @property
     def base_query(self) -> str:
         """The other filters, without the status (the status count links add their own)."""
         return self.query(status="")
+
+    @property
+    def clear_query(self) -> str:
+        """"Clear": no filter, the same view."""
+        return self.query(activity=None, status="", recipient_type="", delivery_method="", q="")
 
     @property
     def any_set(self) -> bool:
@@ -526,33 +550,84 @@ def parse_filters(query: QueryDict) -> CertificateFilters:
             ignored.append(key.replace("_", " "))
             value = ""
         values[key] = value
-    return CertificateFilters(activity=activity, page=query.get("page", "1"), ignored=ignored, **values)
+    view = query.get("view", "")
+    view = view if view in (VIEW_BY_ACTIVITY, VIEW_ALL) else VIEW_BY_ACTIVITY
+    q = " ".join(query.get("q", "").split())[:SEARCH_MAX_LENGTH]
+    return CertificateFilters(activity=activity, page=query.get("page", "1"), ignored=ignored, q=q, view=view, **values)
 
 
-def certificate_list(filters: CertificateFilters) -> dict:
-    result = services.list_certificates(filters.for_service(), page=filters.page)
-    ids = [certificate.pk for certificate in result.items]
-    counted = {c.pk: c.evidence_count for c in _with_evidence_count(Certificate.objects.filter(pk__in=ids))}
-    labels = services.readiness_map(result.items)
-    printed = printed_names(result.items)
-    outdated = set(Certificate.objects.filter(pk__in=ids).filter(services.outdated_q()).values_list("pk", flat=True))
+def view_links(filters: CertificateFilters) -> list[dict]:
+    """The "By activity / All certificates" switch: the filters and the search stay, the page goes back to 1."""
+    return [{"key": key, "label": label, "icon": icon, "selected": filters.view == key,
+             "url": f"{reverse('certificates:list')}?{filters.query(view=key)}".rstrip("?")}
+            for key, label, icon in VIEWS]
+
+
+def _rows(certificates: list[Certificate]) -> list[dict]:
+    """The list rows of one page, in a fixed number of queries whatever the number of certificates or activities:
+    evidence counts, readiness, printed names, outdated (one query each) and the worker check once."""
+    ids = [certificate.pk for certificate in certificates]
+    counted = {c.pk: c.evidence_count for c in _with_evidence_count(Certificate.objects.filter(pk__in=ids))} if ids else {}
+    labels = services.readiness_map(certificates)
+    printed = printed_names(certificates)
+    outdated = set(Certificate.objects.filter(pk__in=ids).filter(services.outdated_q()).values_list("pk", flat=True)) if ids else set()
     worker = WorkerCheck()
     rows = []
-    for certificate in result.items:
+    for certificate in certificates:
         certificate.evidence_count = counted.get(certificate.pk, 0)
         rows.append(certificate_row(certificate, printed, labels.get(certificate.pk), outdated=certificate.pk in outdated,
                                     worker=worker))
+    return rows
+
+
+def activity_groups(entries: list) -> list[dict]:
+    """services.certificates_by_activity()'s groups for the page: the header (title, link to the tab, the approval state
+    as on the tab: services.approval_state with ALL the activity's certificates, whatever the filters; counts
+    Waiting for approval / Approved / Issued) and the rows (built together, so the queries do not grow with the number
+    of activities: one query for every group's counts per status)."""
+    rows = iter(_rows([certificate for entry in entries for certificate in entry.certificates]))
+    every = services.approval_counts([entry.activity.pk for entry in entries])
+    groups = []
+    for entry in entries:
+        activity = entry.activity
+        state = services.approval_state(activity, every[activity.pk])
+        groups.append({
+            "activity": activity,
+            "url": tab_url(activity.pk),
+            "approved": state.kind == services.APPROVED_KIND,
+            "approval_state": state.kind,
+            "approval": state.text,
+            "approval_note": state.note,
+            "counts": status_counts(entry.counts),
+            "rows": [next(rows) for _ in entry.certificates],
+        })
+    return groups
+
+
+def certificate_list(filters: CertificateFilters) -> dict:
+    """The Certificates page (ASSUMPTIONS 299, 372): the status counts and either the activity groups ("By activity",
+    the default, 10 activities a page) or the flat list ("All certificates", newest number first, 20 a page)."""
     without_status = {**filters.for_service(), "status": ""}
-    return {
-        "result": result,
-        "rows": rows,
-        "counts": status_counts(services.certificate_status_counts(without_status)),
+    per_status = services.certificate_status_counts(without_status)
+    context = {
+        "counts": status_counts(per_status),
+        "view_links": view_links(filters),
+        # Certificates matching every filter (the counts leave out only the status): no extra query.
+        "certificates_total": per_status[filters.status] if filters.status else sum(per_status.values()),
     }
+    if filters.view == VIEW_ALL:
+        result = services.list_certificates_newest(filters.for_service(), page=filters.page)
+        context.update(result=result, rows=_rows(result.items), groups=[])
+    else:
+        result = services.certificates_by_activity(filters.for_service(), page=filters.page)
+        groups = activity_groups(result.items)
+        context.update(result=result, groups=groups, rows=[])
+    return context
 
 
 def filter_choices() -> dict:
     return {
-        "activities": Activity.objects.filter(certificates__isnull=False).distinct().order_by("-end_date", "title").only("pk", "title"),
+        "activities": Activity.objects.filter(pk__in=Certificate.objects.values("activity_id")).order_by(*services.NEWEST_ACTIVITY_FIRST).only("pk", "title"),
         "statuses": Status.choices,
         "recipient_types": [(value, KIND_LABELS[value]) for value in RecipientType.values],
         "delivery_methods": [(value, DELIVERY_LABELS[value]) for value in DeliveryMethod.values],

@@ -299,6 +299,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   evaluation; labels "Waiting for signatures", "Waiting for evaluation", "Evaluation closed without an answer") and
   `ready_for_approval_q()` (the 5-minute catch-up). "Needs certificate approval" (counts: S5, Needs attention, the
   dashboard) is only `services.needs_approval_q()` (waiting + the activity not approved). Never store either.
+  The state SHOWN (page header, tab card) is only `services.approval_state(activity, counts)` (ASSUMPTIONS 373; `counts`
+  = all the activity's certificates per status, `approval_counts`): "Approved by … on …" / "Needs approval" (orange, only
+  while certificates wait; agrees with `needs_approval_q`) / "All certificates issued (N)" (green + short note) /
+  "Certificates are created automatically when the activity is Conducted." / grey "Not approved — …" (old data).
+  `offers_approval` False (all issued, none yet) = no approve button at all and no reason line.
 - Approval is per ACTIVITY (ASSUMPTIONS 369): `approve_activity_certificates` (can_approve_certificates, "Approve
   certificates for this activity" + confirm dialog; refused with `approval_closed_reason`) stores who/when on the activity
   and History; then `approve_ready_certificates` (System) approves each certificate when it is ready: at the approval,
@@ -435,8 +440,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents page (ASSUMPTIONS 352): default "By activity" (`documents.services.overview_activities` +
   `activity_document_overview` = `document_checklist()`'s rule for many activities, parity test; `document_state_counts`
   for the summary cards), "All documents" = the flat list. Filters in the URL; no rules in `documents/_activity_card.html`.
-- Certificates tab (ASSUMPTIONS 357–370): the "Certificate approval" card (`pages.approval_panel`: "Approved by … on …" /
-  "Needs approval" for everyone; the primary "Approve certificates for this activity" + confirm dialog ONLY for
+- Certificates page (ASSUMPTIONS 372): default "By activity (recommended)" = `certificates.services.certificates_by_activity`
+  (newest activity first by END date then end time, `NEWEST_ACTIVITY_FIRST`; 10 ACTIVITIES a page, never split; counts per
+  group), "All certificates (newest first)" (`?view=all`) = `list_certificates_newest`; search `?q=` = `search_q` (number,
+  names, evaluation email, activity title). The API keeps `list_certificates`. View only. Rows built once per page
+  (`pages._rows`): the query count must not grow with the number of activities (tested).
+- Certificates tab (ASSUMPTIONS 357–370, 373): the "Certificate approval" card (`pages.approval_panel`: `approval_state`'s
+  states for everyone; the button only where the state offers approval; the primary "Approve certificates for this activity" + confirm dialog ONLY for
   can_approve_certificates, disabled with the reason when refused); "Apply the current design" for can_create_activity;
   Signatures (`pages.signatures_panel`); Certificate text (`pages.text_panel`, `certificates/_text_section.html`); the
   preview (`pages.preview_items`: exactly the list's certificates in the same order, printed name + "registered as", starts
@@ -568,6 +578,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Approval per activity + certificate text (2026-11-14): one approval per activity stored on ACTIVITY, automatic approval
   and email after each later evaluation, cancelled by any change to what is printed; editable wording (CERTIFICATE_TEXT,
   placeholders, default + per activity, live preview); invitation link and failed-invitation message (369–371).
+- Certificates page by activity (2026-11-14): newest activity first, groups with the approval state and counts, "All
+  certificates (newest first)", search box, no Activity column in a group, nothing cut off (372).
+- Approval state (2026-11-15): "Needs approval" only while certificates wait, otherwise a grey "Not approved — new
+  certificates will wait for approval"; counts unchanged; formula-like titles confirmed as plain text and Excel text (373).
+  Then "All certificates issued (N)" and "no certificates yet" states without any approve button (373 note).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

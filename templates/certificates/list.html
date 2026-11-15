@@ -1,46 +1,15 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/certificates/ (certificates.page_views.certificate_list): every certificate across activities (services.list_certificates)
-with the counts per status for the other filters (services.certificate_status_counts). The filters swap only
-#certificate-results (HTMX) and stay in the URL. Actions are on each activity's Certificates tab.
+/certificates/ (certificates.page_views.certificate_list, ASSUMPTIONS 299, 372): every certificate across activities,
+"By activity" (default: services.certificates_by_activity, newest activity first, 10 activities a page) or "All
+certificates" (?view=all: services.list_certificates_newest, newest number first), with the counts per status for the
+other filters (services.certificate_status_counts). The search, the filters, the counts, the view switch and the pager
+swap only #certificate-results (HTMX; the search box keeps its focus because its id stays) and stay in the URL. View
+only: actions are on each activity's Certificates tab.
 {% endcomment %}
 {% block content %}
 <section class="card p-6" aria-labelledby="certificates-title">
-  {% include "components/section_header.html" with id="certificates-title" title="Certificates" subtitle="All certificates of all activities. They are created automatically; preview, approve and reissue them on each activity's Certificates tab." link_url=signatories_link link_label="Signatories" %}
-  <form id="certificate-filters" method="get" action="{% url 'certificates:list' %}" role="search" aria-label="Filter certificates"
-        hx-get="{% url 'certificates:list' %}" hx-target="#certificate-results" hx-push-url="true" hx-trigger="change" hx-indicator="#certificate-results, #cert-loading"
-        class="mb-5 flex flex-wrap items-center gap-2.5">
-    <div>
-      <label for="cert-activity" class="sr-only">Activity</label>
-      <select id="cert-activity" name="activity" class="field-input field-select pill-select w-auto max-w-64 pl-4">
-        <option value="">All activities</option>
-        {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity.pk == filters.activity %} selected{% endif %}>{{ activity.title|truncatechars:45 }}</option>{% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="cert-status" class="sr-only">Status</label>
-      <select id="cert-status" name="status" class="field-input field-select pill-select w-auto pl-4">
-        <option value="">Any status</option>
-        {% for value, label in statuses %}<option value="{{ value }}"{% if value == filters.status %} selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="cert-type" class="sr-only">Recipient type</label>
-      <select id="cert-type" name="recipient_type" class="field-input field-select pill-select w-auto pl-4">
-        <option value="">Participation and Appreciation</option>
-        {% for value, label in recipient_types %}<option value="{{ value }}"{% if value == filters.recipient_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="cert-delivery" class="sr-only">Delivery</label>
-      <select id="cert-delivery" name="delivery_method" class="field-input field-select pill-select w-auto pl-4">
-        <option value="">Any delivery</option>
-        {% for value, label in delivery_methods %}<option value="{{ value }}"{% if value == filters.delivery_method %} selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </div>
-    <span id="cert-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
-    <noscript><button type="submit" class="btn btn-secondary btn-sm">Apply</button></noscript>
-  </form>
+  {% include "components/section_header.html" with id="certificates-title" title="Certificates" subtitle="All certificates of all activities, the most recent activity first. They are created automatically; approve, preview and reissue them on each activity's Certificates tab." link_url=signatories_link link_label="Signatories" %}
   {% include "certificates/_results.html" %}
 </section>
 {% endblock %}

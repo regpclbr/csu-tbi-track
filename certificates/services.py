@@ -35,6 +35,7 @@ The life of a certificate (status rules in set_certificate_status; ASSUMPTIONS 3
 """
 
 import base64
+from dataclasses import dataclass
 import hashlib
 import logging
 from datetime import datetime, timedelta
@@ -1371,6 +1372,59 @@ def approved_text(activity: Activity) -> str:
     return f"Approved by {who} on {pdf.long_date(at)}, {at.hour % 12 or 12}:{at:%M %p}"
 
 
+NOT_APPROVED_NOTHING_WAITING = "Not approved — new certificates will wait for approval"
+NO_CERTIFICATES_YET = "Certificates are created automatically when the activity is Conducted."
+ALL_ISSUED_TEXT = "All certificates issued ({count})"
+ALL_ISSUED_NOTE = ("Nothing to approve. A certificate added later (attendance marked after Conducted) will show here for "
+                   "approval.")
+
+
+@dataclass(frozen=True)
+class ApprovalState:
+    """What the approval means for the user (ASSUMPTIONS 373). `kind`: APPROVED_KIND ("Approved by … on …"),
+    NEEDS_APPROVAL_KIND (not approved and certificates waiting: a task, orange), NO_CERTIFICATES_KIND (none yet),
+    ALL_ISSUED_KIND (not approved, every certificate Issued: nothing to approve) or NOT_APPROVED_KIND (not approved,
+    nothing waiting, some not Issued: old data). Only NEEDS_APPROVAL_KIND is ever counted. `note`: the short grey line
+    under the text. `offers_approval`: False = no approve button at all (not even disabled), no reason line."""
+
+    kind: str
+    text: str
+    note: str = ""
+    offers_approval: bool = True
+
+
+APPROVED_KIND, NEEDS_APPROVAL_KIND, NOT_APPROVED_KIND = "approved", "needs_approval", "not_approved"
+NO_CERTIFICATES_KIND, ALL_ISSUED_KIND = "no_certificates", "all_issued"
+
+
+def approval_state(activity: Activity, counts: dict[str, int]) -> ApprovalState:
+    """The one rule for showing an activity's certificate approval (the Certificates page header and the tab's card).
+    `counts` = {status: n} of ALL the activity's certificates, never only the ones a filter shows (approval_counts).
+    In order: approved; certificates waiting (agrees with needs_approval_q: NEEDS_APPROVAL_KIND exactly when that rule
+    counts the activity); no certificates yet; every certificate Issued; otherwise the grey note."""
+    if is_approved(activity):
+        return ApprovalState(APPROVED_KIND, approved_text(activity))
+    if counts.get(Status.GENERATED, 0):
+        return ApprovalState(NEEDS_APPROVAL_KIND, NEEDS_APPROVAL)
+    total = sum(counts.values())
+    if not total:
+        return ApprovalState(NO_CERTIFICATES_KIND, NO_CERTIFICATES_YET, offers_approval=False)
+    if counts.get(Status.ISSUED, 0) == total:
+        return ApprovalState(ALL_ISSUED_KIND, ALL_ISSUED_TEXT.format(count=total), ALL_ISSUED_NOTE, offers_approval=False)
+    return ApprovalState(NOT_APPROVED_KIND, NOT_APPROVED_NOTHING_WAITING)
+
+
+def approval_counts(activity_ids: list[int]) -> dict[int, dict[str, int]]:
+    """{activity_id: {status: n}} of every certificate of each activity (0 for every status when none). One query."""
+    counts = {pk: dict.fromkeys(Status.values, 0) for pk in activity_ids}
+    if activity_ids:
+        rows = (Certificate.objects.filter(activity_id__in=activity_ids).order_by()
+                .values("activity_id", "status").annotate(n=Count("pk")))
+        for row in rows:
+            counts[row["activity_id"]][row["status"]] = row["n"]
+    return counts
+
+
 def needs_approval_q(prefix: str = "") -> Q:
     """Certificates that make their activity "need certificate approval": waiting for approval and the activity is not
     approved. `prefix` e.g. "certificates__". The dashboard (S5), Needs attention and the counts all use it."""
@@ -2250,13 +2304,74 @@ def _filtered_certificates(filters: dict, with_status: bool = True) -> QuerySet:
         if filters["delivery_method"] not in DeliveryMethod.values:
             raise CertificateError(f"delivery_method must be one of: {', '.join(DeliveryMethod.values)}.")
         queryset = queryset.filter(delivery_method=filters["delivery_method"])
+    if (filters.get("q") or "").strip():
+        queryset = queryset.filter(search_q(filters["q"]))
     return queryset
+
+
+def search_q(text: str) -> Q:
+    """The Certificates page's search (ASSUMPTIONS 372): every word must appear in the certificate number, the registered
+    name, the name or email typed in the evaluation, the resource person's name or the activity title (any case). No
+    join that multiplies rows (the evaluation is an EXISTS)."""
+    query = Q()
+    for word in text.split()[:10]:
+        typed = EvaluationSubmission.objects.filter(registration_id=OuterRef("registration_id")).filter(
+            Q(certificate_name__icontains=word) | Q(certificate_email__icontains=word))
+        query &= (Q(certificate_number__icontains=word) | Q(registration__name__icontains=word)
+                  | Q(resource_person__name__icontains=word) | Q(activity__title__icontains=word) | Exists(typed))
+    return query
 
 
 def list_certificates(filters: dict | None = None, page: int | str | None = 1, per_page: int = DEFAULT_PAGE_SIZE) -> PageResult:
     """Staff list. Filters (optional): activity (ID), status, recipient_type, delivery_method. By activity, then number."""
     queryset = _filtered_certificates(filters or {})
     return _paginate(queryset.order_by("activity_id", "certificate_number"), page, per_page)
+
+
+def list_certificates_newest(filters: dict | None = None, page: int | str | None = 1,
+                             per_page: int = DEFAULT_PAGE_SIZE) -> PageResult:
+    """The Certificates page's "All certificates (newest first)" view (ASSUMPTIONS 372): the newest number first."""
+    queryset = _filtered_certificates(filters or {})
+    return _paginate(queryset.order_by("-certificate_number", "-pk"), page, per_page)
+
+
+# Newest activity first by its END (ASSUMPTIONS 372): end date, then end time; an activity without times counts as the
+# whole day (it ends at midnight), so it comes before the timed ones of that day in this newest-first order.
+NEWEST_ACTIVITY_FIRST = (F("end_date").desc(), F("end_time").desc(nulls_first=True), F("pk").desc())
+ACTIVITIES_PER_PAGE = 10
+
+
+@dataclass
+class ActivityCertificates:
+    """One activity group of the Certificates page: the activity, its certificates matching every filter (newest number
+    first) and its counts per status (every filter except the status, as the page's status counts)."""
+
+    activity: Activity
+    certificates: list
+    counts: dict
+
+
+def certificates_by_activity(filters: dict | None = None, page: int | str | None = 1,
+                             per_page: int = ACTIVITIES_PER_PAGE) -> PageResult:
+    """The Certificates page's "By activity" view (ASSUMPTIONS 372). Pages count ACTIVITIES (never splits one); only
+    activities with at least one certificate matching the filters; NEWEST_ACTIVITY_FIRST. Three queries for the page
+    whatever its size (plus the pager's count): the activities, their certificates, their counts."""
+    filters = filters or {}
+    matching = _filtered_certificates(filters)
+    activities = (Activity.objects.filter(pk__in=matching.order_by().values("activity_id"))
+                  .select_related("certificates_approved_by").order_by(*NEWEST_ACTIVITY_FIRST))
+    result = _paginate(activities, page, per_page)
+    ids = [activity.pk for activity in result.items]
+    by_activity: dict[int, list] = {pk: [] for pk in ids}
+    for certificate in matching.filter(activity_id__in=ids).order_by("-certificate_number", "-pk"):
+        by_activity[certificate.activity_id].append(certificate)
+    counts = {pk: dict.fromkeys(Status.values, 0) for pk in ids}
+    rows = (_filtered_certificates({**filters, "status": ""}, with_status=False).filter(activity_id__in=ids).order_by()
+            .values("activity_id", "status").annotate(n=Count("pk")))
+    for row in rows:
+        counts[row["activity_id"]][row["status"]] = row["n"]
+    result.items = [ActivityCertificates(activity, by_activity[activity.pk], counts[activity.pk]) for activity in result.items]
+    return result
 
 
 def certificate_status_counts(filters: dict | None = None) -> dict[str, int]:
