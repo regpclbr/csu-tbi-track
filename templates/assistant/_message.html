@@ -2,7 +2,9 @@
 {% comment %}
 One chat message (assistant.pages.message_view). A question is escaped text with line breaks; an answer is item.html,
 already escaped by assistant.pages.answer_html (then only bold, italics, lists, <br> and our citation links are added,
-ASSUMPTIONS 376), with its "answered from" badge and its numbered sources linking to the document page.
+ASSUMPTIONS 376, and our own [activity:n] links, 381), with its "answered from" badge, then the file cards built from the
+database (item.file_groups, ASSUMPTIONS 382-383): the cited documents ("Sources", one card per document, [n] links to its
+card) or the files found ("Files", grouped by activity). Open = the document page, Download = the permission-checked view.
 {% endcomment %}
 {% with message=item.message %}
 {% if item.is_answer %}
@@ -15,20 +17,44 @@ ASSUMPTIONS 376), with its "answered from" badge and its numbered sources linkin
         {% include "components/badge.html" with text=item.badge.label tone=item.badge.tone %}
         <time class="text-xs text-muted" datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"M j, g:i A" }}</time>
       </div>
-      {% if item.sources %}
-        <ol class="mt-2 flex flex-wrap gap-2" aria-label="Sources">
-          {% for source in item.sources %}
-            <li>
-              <a href="{{ source.url }}" class="hover-lift inline-flex max-w-xs items-start gap-2 rounded-xl border border-line bg-slate-50 px-3 py-2 text-xs hover:border-primary">
-                <span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">{{ source.number }}</span>
-                <span class="min-w-0">
-                  <span class="block truncate font-semibold text-ink">{{ source.title }}</span>
-                  <span class="block truncate text-slate-700">{{ source.type }} · {{ source.activity }}</span>
-                </span>
-              </a>
-            </li>
+      {% if item.file_groups %}
+        <section class="mt-3" aria-label="{{ item.files_heading }}">
+          <h3 class="text-xs font-semibold tracking-wide text-slate-700 uppercase">{{ item.files_heading }}</h3>
+          {% for group in item.file_groups %}
+            {% if group.activity %}
+              <p class="mt-2 text-sm"><a href="{{ group.activity.url }}" class="font-semibold text-primary hover:underline">{{ group.activity.title }}</a>
+                <span class="text-xs text-muted">· {{ group.activity.dates }}</span></p>
+            {% endif %}
+            <ul class="mt-2 grid gap-2 sm:grid-cols-2">
+              {% for card in group.cards %}
+                <li id="{{ card.dom_id }}" class="scroll-mt-4 rounded-xl border border-line bg-slate-50 px-3 py-2.5 text-xs target:border-primary target:ring-2 target:ring-primary/30">
+                  {% if card.missing %}
+                    <p class="text-slate-700">This file is no longer available.</p>
+                  {% else %}
+                    <div class="flex items-start gap-2">
+                      {% for number in card.numbers %}<span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white" aria-label="Source {{ number }}">{{ number }}</span>{% endfor %}
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate font-semibold text-ink" title="{{ card.title }}">{{ card.title }}</p>
+                        <p class="truncate text-slate-700">{{ card.type }} · <a href="{{ card.activity_url }}" class="text-primary hover:underline">{{ card.activity }}</a></p>
+                        <p class="mt-1 flex flex-wrap items-center gap-2">
+                          {% include "components/badge.html" with text=card.badge.label tone=card.badge.tone %}
+                          <span class="text-muted">Uploaded {{ card.uploaded_on|date:"M j, Y" }}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div class="mt-2 flex gap-2">
+                      <a href="{{ card.open_url }}" class="btn btn-secondary btn-sm" aria-label="Open {{ card.title }}">{% include "components/icon.html" with name="external-link" class="size-3.5" %}Open</a>
+                      <a href="{{ card.download_url }}" class="btn btn-ghost btn-sm" aria-label="Download {{ card.title }}">{% include "components/icon.html" with name="download" class="size-3.5" %}Download</a>
+                    </div>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
           {% endfor %}
-        </ol>
+        </section>
+      {% endif %}
+      {% if item.after_html %}
+        <div class="mt-2 rounded-2xl border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink break-words [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline">{{ item.after_html }}</div>
       {% endif %}
     </div>
   </li>

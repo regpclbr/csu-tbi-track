@@ -321,6 +321,12 @@ def sleep(seconds: float) -> None:
 _override: GeminiGateway | None = None
 
 
+def is_configured() -> bool:
+    """Whether Gemini can be used: a gateway is injected (tests) or GEMINI_API_KEY is set. Never shows the key.
+    Without it the AI Assistant still answers activity and find-files questions (ASSUMPTIONS 381)."""
+    return _override is not None or bool((settings.GEMINI_API_KEY or "").strip())
+
+
 def get_gateway(max_attempts: int | None = None) -> GeminiGateway:
     """The gateway to use: the test fake if one is injected, else the real Google client.
     `max_attempts=1` turns retries off (check_gemini wants each call's own answer)."""

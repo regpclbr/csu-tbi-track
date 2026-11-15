@@ -252,6 +252,24 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `index_document()` replaces a document's chunks in one transaction; failures keep old chunks.
   Approval queues it on commit; `index_documents` (and the 7:30 schedule) backfills.
 - "Searchable" = has embeddings (`with_searchable()`), never stored.
+- Routing is OUR code (`assistant/routing.py`, ASSUMPTIONS 381, 383), in this order: missing/overdue/waiting/returned →
+  Gemini with the existing record tools only (`tools.STATUS_TOOL_SPECS`); says/summary/according to (+ a file word or
+  type) → `search_approved_documents` (`CONTENT_TOOL_SPECS`); file word or DOCUMENT_TYPE + activity/period/type →
+  find files; activity word + period/status/count/list → activities; else Gemini with every tool. Types are matched
+  against their tables (never a fixed list). Add a phrasing test in `assistant/tests/test_routing.py` for every change.
+- Activities and find-files answers are written by `assistant/listings.py` without Gemini (work without the key; the page
+  shows "The AI is turned off…" via `gemini.is_configured()`). Periods only through `assistant/periods.py` (Manila,
+  weeks Monday–Sunday, month without a year = this year unless clearly past/future); Gemini never computes dates (the
+  `list_activities_by_period` / `find_files` tools take the user's words; when only they ran, the reply is our text).
+  Activities = the list's rules (`activities.services.activities_in_range`, `activity_group`, `happening_now`), drafts
+  only when asked, max 20 + "N more". Files = `documents_for_listing()` (any review state; attendance sheets listed and
+  downloadable, their content never sent to Gemini), grouped by activity, max 20, empty → `document_checklist()` missing.
+- Links and file cards come from markers in the saved text (`[activity:<id>]`, `[file:<id>]`, `[activities-list:…]`,
+  `[documents-list:…]`): `assistant.pages` reads digits/dates only, builds URLs with `reverse()`, only for rows that exist;
+  staff titles go through `listings.safe_text`. Found files are NEVER saved as AI_MESSAGE_SOURCE (its document FK is
+  PROTECT and would block deleting a For Review file). Cited documents: one "Sources" card per document, `[n]` → the card,
+  Open = `documents:detail`, Download = `documents:download` (never `/media/`) (ASSUMPTIONS 382).
+- Log one line per answer: chat id, message id, path, tool names only (never question, answer or document text).
 - Answers: status/missing/overdue questions → record tools (`assistant/tools.py`, existing services,
   no participant data); content → `search_approved_documents` excerpts. Citations are renumbered
   and saved as AI_MESSAGE_SOURCE; no valid citation and no records → the NOT_FOUND reply.
@@ -600,6 +618,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - AI Assistant chat (2026-11-15): Enter to send, auto-scroll + "Jump to latest", a safe Markdown subset in answers (replaces 305),
   delete and rename chats, titles generated in the background (Django-Q2), "My chats" heading never cut off (374–379). Then the page
   fits the window: no page scroll from 1024×600, only the messages and the chat list scroll (380).
+- AI Assistant routing and files (2026-11-16): routing by our code, activities by period (Manila, Monday–Sunday weeks,
+  drafts only when asked), find files, source file cards with Open / Download, works without the Gemini key for these,
+  path log (381–383). No database or ERD change.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

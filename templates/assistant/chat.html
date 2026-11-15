@@ -79,7 +79,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
       <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
       <div class="min-w-0">
         <h2 id="chat-title" class="truncate font-semibold text-ink">{% if chat %}{{ chat.title }}{% else %}New chat{% endif %}</h2>
-        <p class="text-xs text-muted">Answers cite approved documents; questions about what is missing or overdue are answered from the records.</p>
+        <p class="text-xs text-muted">Answers cite approved documents with their files; activities, files and what is missing come from the records.</p>
       </div>
     </header>
 
@@ -133,6 +133,11 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
     <div id="title-refresh" hidden></div>
 
     <div class="border-t border-line px-6 pt-4 pb-5">
+      {% if ai_off %}
+        <p id="ai-off-note" class="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700" role="note">
+          {% include "components/icon.html" with name="info" class="mt-px size-4 shrink-0" %}
+          <span>The AI is turned off. You can still ask about activities and find files (for example: activities this month, files for the Bootcamp).</span></p>
+      {% endif %}
       <div id="ask-error">{% include "assistant/_ask_error.html" %}</div>
       <form id="ask-form" method="post" action="{% url 'assistant:ask' %}" novalidate
             hx-post="{% url 'assistant:ask' %}" hx-target="#messages" hx-swap="beforeend" hx-sync="this:drop">

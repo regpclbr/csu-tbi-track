@@ -58,6 +58,8 @@ all of them are to be validated with the TBI too.
 
 - **Item 165:** On the free tier of the Gemini API, Google may use the content sent to it (questions and document excerpts) to improve its products. May real TBI documents be sent to it, or is a paid tier required? Today these document types are never sent: Attendance Sheet. Should any other types be excluded?
 - **Item 151:** Some uploaded documents are scans or photos (no text inside). Is OCR (reading text from images) needed, so the assistant can search them too?
+- **Item 381:** When someone asks the assistant about "this week" or "next week", the system counts a week from Monday to Sunday. Is that how the TBI counts weeks? It also leaves Draft activities out of lists and counts unless the question asks for drafts. Is that right?
+- **Item 383:** The assistant can list and download the files of an activity in any review state (Waiting for review, Returned, Approved), including attendance sheets, as the Documents page already does for staff. Is that acceptable? (The content of an attendance sheet is still never sent to Gemini.)
 
 ## Certificates
 

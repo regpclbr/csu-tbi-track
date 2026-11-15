@@ -2,11 +2,17 @@
 
 Views stay thin and call the functions in this module.
 
-How a question is answered (Gemini function calling, run here step by step):
-- status / missing / overdue / pending questions → record tools (database, Step 6 checklist);
-- content questions → `search_approved_documents` → excerpts → an answer that cites [1], [2]…
-- every cited excerpt becomes an AI_MESSAGE_SOURCE row; an answer that cites nothing and used no
-  record tool becomes "not in the approved documents" (never a guess).
+How a question is answered: assistant.routing picks the path first (ASSUMPTIONS 381, 383).
+- activities (schedule, list, count, status of activities) -> assistant.listings writes the answer from the database,
+  dates worked out by our code in Manila time; no Gemini (works without the key);
+- find files (files / documents / copy / download + an activity, period or document type) -> assistant.listings lists
+  the files (shown as cards); no Gemini;
+- document status (missing / overdue / waiting / returned ...) -> Gemini with the existing record tools only;
+- document content -> Gemini with `search_approved_documents` -> excerpts -> an answer that cites [1], [2]...;
+- anything else -> Gemini with every tool.
+Every cited excerpt becomes an AI_MESSAGE_SOURCE row; an answer that cites nothing and used no record tool becomes
+"not in the approved documents" (never a guess). One log line per answer: chat id, message id, path and tool names
+(never the question, the answer or any document text).
 """
 
 import json
@@ -26,7 +32,8 @@ from accounts.models import TBIMember
 from accounts.permissions import require_staff_member
 from activities.models import Activity
 
-from . import gemini, tools
+from . import gemini, routing, tools
+from .listings import ActivityQuery, FileQuery, Listing, activities_answer, files_answer
 from .gemini import AssistantUnavailable, GeminiGateway, ModelReply, Turn, get_gateway
 from .models import AIChat, AIChatMessage, AIMessageSource
 
@@ -45,6 +52,7 @@ DOCUMENTS, RECORDS, BOTH, NOT_FOUND_KIND = "documents", "records", "both", "not_
 SYSTEM_INSTRUCTION = """You are the CSU-TBI Track assistant for staff of the CSU Technology Business Incubator.
 Answer only from (a) the system's records, returned by the record tools, and (b) excerpts from approved documents, returned by search_approved_documents.
 - Questions about missing, overdue, pending, returned or approved documents, due dates or document status: use the record tools (find the activity first with find_activities if you only have its name or a date). Never answer these from document excerpts.
+- Questions about which activities happen, happened or are planned in a period (schedule, list, count, status): use list_activities_by_period with the user's own words for the period. Questions asking for the files themselves (to open or download): use find_files. Never compute dates yourself.
 - Other questions: call search_approved_documents. Use only the excerpts it returns. Cite every factual statement taken from an excerpt with its number in square brackets, for example [1] or [2][3]. Never cite anything else, and never invent excerpt numbers.
 - When excerpts disagree, prefer the most recently approved document (approved_on) and mention that an older version says otherwise.
 - If the excerpts do not contain the answer, say that you could not find it in the approved documents. Never guess and never use outside knowledge.
@@ -192,11 +200,24 @@ class AskState:
     activity_id: int | None
     excerpts: list[tools.Excerpt] = field(default_factory=list)
     used_records: bool = False
+    question: str = ""
+    now: datetime | None = None
+    tools_run: list[str] = field(default_factory=list)  # names only, in order (for the log)
+    listing: Listing | None = None  # the last answer written by our code (activities / files tools)
 
 
 def _run_tool(gateway: GeminiGateway, name: str, args: dict, state: AskState) -> dict:
     """Run one tool call and return its result for the model (errors go back as messages)."""
+    state.tools_run.append(name)
     try:
+        if name in tools.LISTING_TOOLS:
+            state.used_records = True
+            if name == tools.ACTIVITIES_TOOL:
+                state.listing = tools.list_activities_by_period(args, state.question, state.now)
+            else:
+                state.listing = tools.find_files(args, state.question, state.now, state.activity_id)
+            # Titles, dates, statuses and review states only: never file content.
+            return {"answer": state.listing.text, "total": state.listing.total}
         if name in tools.RECORD_FUNCTIONS:
             state.used_records = True
             return tools.RECORD_FUNCTIONS[name](args)
@@ -248,6 +269,8 @@ def finalize_answer(text: str, state: AskState) -> tuple[str, list[tools.Excerpt
             cited.append(excerpt)
         return f"[{new_number[key]}]"
 
+    if state.listing is not None and state.tools_run and set(state.tools_run) <= tools.LISTING_TOOLS:
+        text = state.listing.text  # only our listing tools ran: the reply is our text (exact dates, nothing dropped)
     text = re.sub(r"[ \t]+([.,;:])", r"\1", _CITATION.sub(renumber, text)).strip()
     if not text or (not cited and not state.used_records):
         return NOT_FOUND, [], NOT_FOUND_KIND
@@ -289,13 +312,22 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
         if activity is None:
             raise ValidationError({"activity_id": ["Unknown activity."]})
 
+    now = now or timezone.now()
+    decided = routing.route(question, now)
+    state = AskState(activity_id=activity.pk if activity else None, question=question, now=now)
+    if decided.path in (routing.ACTIVITIES, routing.FIND_FILES):
+        # Answered by our code from the database: no Gemini, so it also works without the key.
+        listing = _listing_for(decided, state, now)
+        return _save_answer(chat, question, f"{listing.text}\n\n{RECORDS_NOTE}", [], RECORDS, decided.path, state)
+
     gateway = get_gateway()  # AssistantUnavailable when the key is missing
-    state = AskState(activity_id=activity.pk if activity else None)
+    offered = {routing.DOCUMENT_STATUS: tools.STATUS_TOOL_SPECS,
+               routing.DOCUMENT_CONTENT: tools.CONTENT_TOOL_SPECS}.get(decided.path, tools.TOOL_SPECS)
     prompt = question
     if activity:
         prompt += f"\n\n(Only search the documents of activity {activity.pk}: {activity.title}.)"
     turns = _history(chat) + [Turn("user", text=prompt)]
-    system_instruction = SYSTEM_INSTRUCTION.format(today=timezone.localdate(now or timezone.now()).isoformat())
+    system_instruction = SYSTEM_INSTRUCTION.format(today=timezone.localdate(now).isoformat())
 
     reply = ModelReply()
     # The whole question (every round, embedding and retry) gets ASSISTANT_QUESTION_TIMEOUT_SECONDS,
@@ -304,7 +336,7 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
         for round_number in range(settings.ASSISTANT_MAX_TOOL_ROUNDS + 1):
             gemini.check_time_left()
             last_round = round_number == settings.ASSISTANT_MAX_TOOL_ROUNDS
-            reply = gateway.generate(system_instruction=system_instruction, turns=turns, tools=[] if last_round else tools.TOOL_SPECS)
+            reply = gateway.generate(system_instruction=system_instruction, turns=turns, tools=[] if last_round else offered)
             if not reply.function_calls or last_round:
                 break
             turns.append(Turn("model", reply=reply))
@@ -313,6 +345,24 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
         gemini.check_time_left()  # the last reply came in too late
 
     content, cited, answered_from = finalize_answer(reply.text, state)
+    return _save_answer(chat, question, content, cited, answered_from, decided.path, state)
+
+
+def _listing_for(decided: routing.Route, state: AskState, now: datetime) -> Listing:
+    """The answer our code writes for the activities and find-files paths."""
+    if decided.path == routing.ACTIVITIES:
+        query = ActivityQuery(period=decided.period, status=decided.status, activity_type=decided.activity_type,
+                              include_drafts=decided.include_drafts, count=decided.count)
+        return activities_answer(query, now)
+    query = FileQuery(period=decided.period, uploaded=decided.uploaded, document_type=decided.document_type,
+                      activity_type=decided.activity_type, activity_ids=decided.activity_ids,
+                      name_words=decided.name_words)
+    return files_answer(query, now, state.activity_id)
+
+
+def _save_answer(chat: AIChat, question: str, content: str, cited: list[tools.Excerpt], answered_from: str,
+                 path: str, state: AskState) -> "Answer":
+    """Save the question and the answer together (with the cited sources) and queue the first answer's title."""
     with transaction.atomic():
         is_first = not chat.messages.exists()
         AIChatMessage.objects.create(chat=chat, role=AIChatMessage.Role.USER, content=question)
@@ -326,9 +376,10 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
             chat_id = chat.pk
             transaction.on_commit(lambda: queue_chat_title(chat_id))
         chat.save(update_fields=["title", "updated_at"])
+    # IDs, the path and tool names only: never the question, the answer or document text (ASSUMPTIONS 381).
     logger.info(
-        "Assistant answered in chat %s: %s, %d source(s), %d excerpt(s) retrieved.",
-        chat.pk, answered_from, len(cited), len(state.excerpts),
+        "Assistant answered in chat %s, message %s: path %s, tools %s, %s, %d source(s), %d excerpt(s) retrieved.",
+        chat.pk, answer.pk, path, ",".join(state.tools_run) or "none", answered_from, len(cited), len(state.excerpts),
     )
     return Answer(answer, answered_from, title_queued)
 

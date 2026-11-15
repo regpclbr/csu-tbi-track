@@ -122,6 +122,28 @@ def make_activity(roles, director):
 
 
 @pytest.fixture
+def make_event(roles, director):
+    """Factory for activity-list tests: make_event("Title", date(2026, 11, 3), end=None, status="Conducted",
+    type_name="Seminar", times=(time(8), time(11)), venue="CSU Hall")."""
+
+    def make(title: str, start: date, end: date | None = None, status: str = ActivityStatus.CONDUCTED,
+             type_name: str = "Workshop", times: tuple | None = (time(8, 0), time(17, 0)), venue: str = "CSU Hall") -> Activity:
+        end = end or start
+        activity = Activity.objects.create(
+            created_by=director, status=ActivityStatus.objects.get(name=status),
+            activity_type=ActivityType.objects.get(name=type_name), title=title, start_date=start, end_date=end,
+            start_time=times[0] if times else None, end_time=times[1] if times else None, venue=venue, max_slots=30,
+            registration_deadline=timezone.make_aware(datetime.combine(start - timedelta(days=2), time(17))),
+            evaluation_deadline=timezone.make_aware(datetime.combine(end + timedelta(days=8), time(17))),
+            budget_amount=Decimal("1000.00"),
+        )
+        activity.participant_categories.add(ParticipantCategory.objects.get(name="Incubatees"))
+        return activity
+
+    return make
+
+
+@pytest.fixture
 def activity(make_activity) -> Activity:
     return make_activity()
 

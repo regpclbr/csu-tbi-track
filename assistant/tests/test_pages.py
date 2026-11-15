@@ -82,8 +82,12 @@ def test_a_question_starts_a_chat_and_shows_the_cited_answer(director, login, bu
     html = response.content.decode()
     assert response.status_code == 200 and response["HX-Push-Url"] == reverse("assistant:conversation", args=[chat.pk])
     detail = reverse("documents:detail", args=[budget.pk])
-    assert f'<a href="{detail}" class="cite" aria-label="Source 1">[1]</a>' in html  # the marker links to the source
-    assert f'href="{detail}"' in html and "Design v2" in html and "Activity Design · Pitching Workshop" in html
+    answer = AIChatMessage.objects.get(chat=chat, role="assistant")
+    card = f"m{answer.pk}-d{budget.pk}"
+    # The marker links to the source card (ASSUMPTIONS 382); the card opens and downloads the document.
+    assert f'<a href="#{card}" class="cite" aria-label="Source 1">[1]</a>' in html and f'id="{card}"' in html
+    assert f'href="{detail}"' in html and "Design v2" in html and "Activity Design" in html and "Pitching Workshop" in html
+    assert f'href="{reverse("documents:download", args=[budget.pk])}"' in html
     assert "From approved documents" in html
     assert "What is the budget?" in html  # the question bubble
     assert 'id="chat-list" ' in html and 'hx-swap-oob="true"' in html and f'value="{chat.pk}"' in html

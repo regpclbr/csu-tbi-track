@@ -648,6 +648,20 @@ def list_activities(
     return _paginate(_filtered_activities(filters, now).order_by(*SORT_OPTIONS[sort]), page, per_page)
 
 
+def activities_in_range(
+    start: date | None, end: date | None, *, statuses: list[str] | None = None, activity_type: int | None = None
+) -> QuerySet:
+    """Activities that touch [start, end] (the Activities list's date filter, `_overlapping`), optionally only these
+    status names and this activity type, earliest first (the list's "start_date" sort). The AI Assistant's activity
+    answers use it (ASSUMPTIONS 381): the same rows the list shows for these dates."""
+    activities = Activity.objects.select_related("status", "activity_type")
+    if statuses is not None:
+        activities = activities.filter(status__name__in=statuses)
+    if activity_type:
+        activities = activities.filter(activity_type_id=activity_type)
+    return _overlapping(activities, start, end).order_by(*SORT_OPTIONS["start_date"])
+
+
 def _filtered_activities(filters: dict, now: datetime | None = None) -> QuerySet:
     """The list filters (list_activities and grouped_activities share them), with `.registered`, unordered."""
     activities = Activity.objects.all()

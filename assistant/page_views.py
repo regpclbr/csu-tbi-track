@@ -23,7 +23,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import is_htmx, staff_login_required
 
-from . import pages, services
+from . import gemini, pages, services
 from .gemini import AssistantUnavailable
 from .models import AIChat
 
@@ -48,6 +48,7 @@ def _context(request: HttpRequest, chat: AIChat | None, **extra) -> dict:
         "question_max": services.QUESTION_MAX_LENGTH,
         "title_max": services.TITLE_LENGTH,
         "timeout_seconds": _timeout_seconds(),
+        "ai_off": not gemini.is_configured(),  # the short "AI is turned off" note (ASSUMPTIONS 381)
         **extra,
     }
 

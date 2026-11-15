@@ -7,6 +7,7 @@ from django.core.management import CommandError, call_command
 
 from assistant import gemini
 from assistant.gemini import AssistantUnavailable, ModelInfo
+from assistant.tools import TOOL_SPECS
 
 
 @pytest.fixture
@@ -42,7 +43,7 @@ def test_all_checks_pass(key, dotenv, fake_gemini, capsys) -> None:
     assert 'generate          gemini-3.5-flash-lite        HTTP 200  OK - replied "OK"' in out
     assert "All checks passed." in out
     tools_sent = [len(call["tools"]) for call in fake_gemini.generate_calls]
-    assert tools_sent == [0, 5]  # without, then with the assistant's tool declarations
+    assert tools_sent == [0, len(TOOL_SPECS)]  # without, then with the assistant's tool declarations (7, item 381)
     assert fake_gemini.embed_calls[-1]["model"] == "gemini-embedding-001"
 
 

@@ -9,14 +9,21 @@ Everything else (HTML, links, images, tables) stays escaped text: the patterns b
 """
 
 import re
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from urllib.parse import urlencode
 
 from django.db.models import Prefetch
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.html import escape, format_html
 from django.utils.safestring import SafeString, mark_safe
 
 from activities.models import Activity
+from config.ui_tags import date_span
+from documents import pages as document_pages
+from documents import services as document_services
+from documents.models import Document
 from reports import metrics
 
 from . import services
@@ -44,7 +51,9 @@ ERROR_HINTS = {
 
 SOURCES = Prefetch(
     "sources",
-    queryset=AIMessageSource.objects.select_related("document__document_type", "document__activity").order_by("message_source_id"),
+    queryset=AIMessageSource.objects.select_related(
+        "document__document_type", "document__activity", "document__status"
+    ).order_by("message_source_id"),
 )
 
 
@@ -104,9 +113,65 @@ def _blocks(escaped: str) -> str:
     return "".join(html)
 
 
-def answer_html(content: str, links: dict[int, str]) -> SafeString:
+# --- Markers written by our code (assistant.listings, ASSUMPTIONS 381-383) -----------------------------------------
+# Only digits and dates are read from them; every URL is built here with reverse(), and only for rows that exist.
+ACTIVITY_MARKER = re.compile(r"\[activity:(\d{1,18})\]")
+FILE_MARKER = re.compile(r"\[file:(\d{1,18})\]")
+ACTIVITIES_LIST_MARKER = re.compile(r"\[activities-list:(\d{4}-\d{2}-\d{2}|-):(\d{4}-\d{2}-\d{2}|-):(\d{1,9}):(\d{1,9})\]")
+DOCUMENTS_LIST_MARKER = re.compile(r"\[documents-list:(\d{1,18}):(\d{1,9})\]")
+ANY_MARKER = re.compile("|".join(p.pattern for p in (ACTIVITY_MARKER, FILE_MARKER, ACTIVITIES_LIST_MARKER, DOCUMENTS_LIST_MARKER)))
+
+
+@dataclass
+class Lookup:
+    """The activities and documents the markers of some messages name (two queries for a whole conversation)."""
+
+    activities: dict[int, Activity] = field(default_factory=dict)
+    documents: dict[int, Document] = field(default_factory=dict)
+
+
+def lookup_for(messages) -> Lookup:
+    activity_ids, document_ids = set(), set()
+    for message in messages:
+        if message.role == AIChatMessage.Role.ASSISTANT:
+            activity_ids.update(int(n) for n in ACTIVITY_MARKER.findall(message.content))
+            document_ids.update(int(n) for n in FILE_MARKER.findall(message.content))
+    activities = Activity.objects.filter(pk__in=activity_ids).only("pk", "title", "start_date", "end_date") if activity_ids else []
+    # The Documents page's rows only (activity documents; never certificate evidence), whatever the review state.
+    documents = document_services.documents_for_listing().filter(pk__in=document_ids) if document_ids else []
+    return Lookup({a.pk: a for a in activities}, {d.pk: d for d in documents})
+
+
+def _activities_list_url(match: re.Match) -> str | None:
+    params = {}
+    for key, value in (("date_from", match.group(1)), ("date_to", match.group(2))):
+        if value != "-":
+            try:
+                params[key] = date.fromisoformat(value).isoformat()
+            except ValueError:
+                return None
+    if int(match.group(3)):
+        params["status"] = int(match.group(3))
+    if int(match.group(4)):
+        params["activity_type"] = int(match.group(4))
+    params["sort"] = "start_date"
+    return f"{reverse('activities:list')}?{urlencode(params)}"
+
+
+def _documents_list_url(match: re.Match) -> str:
+    params = {"view": "all"}
+    if int(match.group(1)):
+        params["activity"] = int(match.group(1))
+    if int(match.group(2)):
+        params["document_type"] = int(match.group(2))
+    return f"{reverse('documents:list')}?{urlencode(params)}"
+
+
+def answer_html(content: str, links: dict[int, str], lookup: Lookup | None = None) -> SafeString:
     """The model's text, escaped, with the small Markdown subset (_blocks) and with [n] linked to links[n] (the n-th
-    saved source). A marker without a saved source stays plain text."""
+    saved source). A marker without a saved source stays plain text. Our own markers (listings) become links only
+    for rows in `lookup`; anything else they name is dropped. [file:n] never becomes a link here (cards show files)."""
+    lookup = lookup or Lookup()
     escaped = escape(content)  # the model's text: nothing in it is ever treated as HTML
 
     def link(match: re.Match) -> str:
@@ -115,61 +180,150 @@ def answer_html(content: str, links: dict[int, str]) -> SafeString:
             return match.group(0)
         return format_html('<a href="{}" class="cite" aria-label="Source {}">[{}]</a>', links[number], number, number)
 
+    def activity_link(match: re.Match) -> str:
+        activity = lookup.activities.get(int(match.group(1)))
+        if activity is None:
+            return ""
+        return format_html('<a href="{}" class="cite" aria-label="Open the activity page: {}">(open)</a>',
+                           reverse("activities:detail", args=[activity.pk]), activity.title)
+
+    def activities_list_link(match: re.Match) -> str:
+        url = _activities_list_url(match)
+        return format_html('<a href="{}" class="cite">Open the Activities list</a>', url) if url else ""
+
+    def documents_list_link(match: re.Match) -> str:
+        return format_html('<a href="{}" class="cite">Open the Documents page</a>', _documents_list_url(match))
+
     # The escaped text has no "<"; _blocks adds only <strong>/<em>/<ul>/<ol>/<li>/<br>, then only our own links.
-    return mark_safe(CITATION.sub(link, _blocks(escaped)))
+    html = CITATION.sub(link, _blocks(escaped))
+    html = ACTIVITY_MARKER.sub(activity_link, html)
+    html = ACTIVITIES_LIST_MARKER.sub(activities_list_link, html)
+    html = DOCUMENTS_LIST_MARKER.sub(documents_list_link, html)
+    html = FILE_MARKER.sub("", html)
+    return mark_safe(html)
 
 
 def answer_text(content: str) -> str:
-    """The answer as plain text for the live region (screen readers): the Markdown marks removed, no HTML (the
-    template escapes it)."""
+    """The answer as plain text for the live region (screen readers): the Markdown marks and our markers removed, no
+    HTML (the template escapes it)."""
     lines = []
-    for line in content.splitlines():
+    for line in ANY_MARKER.sub("", content).splitlines():
         heading = HEADING.match(line)
         line = BULLET.sub(r"\1", heading.group(1) if heading else line)
         lines.append(_inline(line, plain=True))
     return "\n".join(lines)
 
 
-def source_chip(number: int, source: AIMessageSource) -> dict:
-    document = source.document
+def file_card(message: AIChatMessage, document: Document | None, document_id: int, numbers: list[int] | None = None) -> dict:
+    """One file card (ASSUMPTIONS 382, 383), built from the database only. Open = the document page; Download = the
+    permission-checked download view (never /media/). A file deleted since the answer: "no longer available"."""
+    dom_id = f"m{message.pk}-d{document_id}"
+    if document is None:
+        return {"dom_id": dom_id, "missing": True, "numbers": numbers or []}
+    activity = document.activity
     return {
-        "number": number,
+        "dom_id": dom_id,
+        "missing": False,
+        "numbers": numbers if numbers is not None else [],
         "title": document.title,
         "type": document.document_type.name,
-        "activity": document.activity.title,
-        "url": reverse("documents:detail", args=[document.pk]),
+        "activity": activity.title,
+        "activity_url": reverse("activities:detail", args=[activity.pk]),
+        "badge": document_pages.state_badge(document),
+        "uploaded_on": timezone.localtime(document.uploaded_at).date(),
+        "open_url": reverse("documents:detail", args=[document.pk]),
+        "download_url": reverse("documents:download", args=[document.pk]),
     }
 
 
-def message_view(message: AIChatMessage) -> dict:
-    """One saved message as the chat shows it. Sources must be prefetched (SOURCES)."""
+def source_cards(message: AIChatMessage) -> tuple[list[dict], dict[int, str]]:
+    """The cited documents of a document-based answer: one card per document (never one per excerpt), in citation
+    order, each with its citation numbers; and where each [n] links to (its card)."""
+    cards: dict[int, dict] = {}
+    links: dict[int, str] = {}
+    for number, source in enumerate(message.sources.all(), start=1):
+        document = source.document
+        if document.pk not in cards:
+            cards[document.pk] = file_card(message, document, document.pk, [])
+        cards[document.pk]["numbers"].append(number)
+        links[number] = f"#{cards[document.pk]['dom_id']}"
+    return list(cards.values()), links
+
+
+def _activity_heading(activity: Activity | None) -> dict | None:
+    if activity is None:
+        return None
+    return {"title": activity.title, "url": reverse("activities:detail", args=[activity.pk]), "dates": date_span(activity)}
+
+
+def file_groups(message: AIChatMessage, lookup: Lookup) -> tuple[str, list[dict], str]:
+    """A find-files answer split into (text before the files, groups of file cards by activity, text after). A line
+    with [file:n] becomes a card; a line with [activity:n] right before file lines becomes its group's heading (the
+    title and dates come from the database, not from the text)."""
+    lines = message.content.splitlines()
+    before, after, groups = [], [], []
+
+    def next_line_is_file(index: int) -> bool:
+        following = next((line for line in lines[index + 1:] if line.strip()), "")
+        return bool(FILE_MARKER.search(following))
+
+    for index, line in enumerate(lines):
+        file_ids = [int(n) for n in FILE_MARKER.findall(line)]
+        heading = ACTIVITY_MARKER.search(line)
+        if file_ids:
+            if not groups:
+                groups.append({"activity": None, "cards": []})
+            groups[-1]["cards"] += [file_card(message, lookup.documents.get(n), n) for n in file_ids]
+        elif heading and next_line_is_file(index):
+            groups.append({"activity": _activity_heading(lookup.activities.get(int(heading.group(1)))), "cards": []})
+        elif not line.strip() and groups and not after:
+            continue  # the blank lines between groups
+        else:
+            (after if groups else before).append(line)
+    return "\n".join(before).strip(), groups, "\n".join(after).strip()
+
+
+def message_view(message: AIChatMessage, lookup: Lookup | None = None) -> dict:
+    """One saved message as the chat shows it. Sources must be prefetched (SOURCES); `lookup` names the rows of our
+    markers (lookup_for)."""
     if message.role != AIChatMessage.Role.ASSISTANT:
         return {"message": message, "is_answer": False}
-    chips = [source_chip(number, source) for number, source in enumerate(message.sources.all(), start=1)]
+    lookup = lookup or lookup_for([message])
     kind = services.answered_from(message)
     label, tone = FROM_BADGES[kind]
+    cards, links = source_cards(message)
+    groups, after = [], ""
+    text = message.content
+    if cards:
+        groups = [{"activity": None, "cards": cards}]
+    elif FILE_MARKER.search(message.content):
+        text, groups, after = file_groups(message, lookup)
     return {
         "message": message,
         "is_answer": True,
-        "html": answer_html(message.content, {chip["number"]: chip["url"] for chip in chips}),
+        "html": answer_html(text, links, lookup),
+        "after_html": answer_html(after, links, lookup) if after else "",
         "text": answer_text(message.content),
-        "sources": chips,
+        "file_groups": groups,
+        "files_heading": "Sources" if cards else "Files",
         "badge": {"label": label, "tone": tone, "kind": kind},
     }
 
 
 def conversation(chat: AIChat) -> list[dict]:
-    messages = chat.messages.order_by("created_at", "message_id").prefetch_related(SOURCES)
-    return [message_view(message) for message in messages]
+    messages = list(chat.messages.order_by("created_at", "message_id").prefetch_related(SOURCES))
+    lookup = lookup_for(messages)
+    return [message_view(message, lookup) for message in messages]
 
 
 def exchange(answer: services.Answer) -> list[dict]:
     """The question and the answer that services.ask() just saved."""
-    messages = (
+    messages = list(
         AIChatMessage.objects.filter(chat=answer.message.chat_id, message_id__lte=answer.message.pk)
         .order_by("-message_id").prefetch_related(SOURCES)[:2]
     )
-    return [message_view(message) for message in reversed(messages)]
+    lookup = lookup_for(messages)
+    return [message_view(message, lookup) for message in reversed(messages)]
 
 
 def activity_choices() -> list[Activity]:

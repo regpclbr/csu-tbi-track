@@ -3,6 +3,8 @@
 Record tools answer from the database through existing services (never from documents) and
 return only activity and document information: no participant names, emails or contacts.
 `search_approved_documents` retrieves excerpts from approved documents.
+`list_activities_by_period` and `find_files` take the user's own words; assistant.listings works out the dates and
+writes the answer (ASSUMPTIONS 381, 383). Which tools are offered depends on the path (assistant.routing).
 """
 
 import html
@@ -15,17 +17,24 @@ from django.db import connection, transaction
 from django.utils import timezone
 from pgvector.django import CosineDistance
 
-from activities.models import Activity, ActivityStatus
+from activities.models import Activity, ActivityStatus, ActivityType
 from activities.services import list_activities
 from documents import services as document_services
-from documents.models import Document, DocumentStatus
+from documents.models import Document, DocumentStatus, DocumentType
 
+from . import routing
 from .gemini import QUERY_TASK, GeminiGateway, ToolSpec
 from .indexing import excluded_type_names
+from .listings import ActivityQuery, FileQuery, Listing, activities_answer, files_answer
 from .models import DocumentEmbedding
+from .periods import Period, parse_period
 
 RECORD_TOOLS = {"find_activities", "get_document_checklist", "list_activity_documents", "documents_needing_attention"}
 SEARCH_TOOL = "search_approved_documents"
+# Tools whose answer our code writes (assistant.listings, ASSUMPTIONS 381, 383). Gemini passes the user's own words;
+# our code works out the dates. When one of them is the only tool used, the reply is our text, not Gemini's.
+ACTIVITIES_TOOL, FILES_TOOL = "list_activities_by_period", "find_files"
+LISTING_TOOLS = {ACTIVITIES_TOOL, FILES_TOOL}
 
 
 TOOL_SPECS = [
@@ -61,6 +70,35 @@ TOOL_SPECS = [
         {"type": "object", "properties": {}},
     ),
     ToolSpec(
+        ACTIVITIES_TOOL,
+        "List TBI activities of a period from the system's records (schedule, counts, status). Pass the user's own "
+        "words for the period (for example \"November\", \"this week\", \"next month\", \"upcoming\", \"now\"); "
+        "the system works out the dates. Use it for questions about which activities happen, happened or are planned.",
+        {
+            "type": "object",
+            "properties": {
+                "period_text": {"type": "string", "description": "The period in the user's words. Never compute dates."},
+                "status": {"type": "string", "description": "Optional: Draft, Scheduled, Ongoing or Conducted."},
+                "activity_type": {"type": "string", "description": "Optional: an activity type, e.g. Training."},
+            },
+        },
+    ),
+    ToolSpec(
+        FILES_TOOL,
+        "Find uploaded files (documents) of activities from the system's records, to open or download them: by "
+        "activity title, period (the user's own words) and/or document type. Returns file titles, types and review "
+        "states, never file content. Use it when the user wants the files themselves, not what they say.",
+        {
+            "type": "object",
+            "properties": {
+                "activity_name": {"type": "string", "description": "Optional: part of the activity title."},
+                "period_text": {"type": "string", "description": "Optional: the period in the user's words."},
+                "document_type": {"type": "string", "description": "Optional: a document type, e.g. Attendance Sheet."},
+                "uploaded": {"type": "boolean", "description": "True when the period is the upload date."},
+            },
+        },
+    ),
+    ToolSpec(
         SEARCH_TOOL,
         "Search the text of APPROVED documents. Returns numbered excerpts to cite as [n]. Use it for questions "
         "about what documents say (content), not for document status.",
@@ -74,6 +112,14 @@ TOOL_SPECS = [
         },
     ),
 ]
+
+
+_SPECS = {spec.name: spec for spec in TOOL_SPECS}
+# The tools offered per path (assistant.routing): document status questions get only the existing record tools,
+# content questions the document search; anything else every tool.
+STATUS_TOOL_SPECS = [_SPECS[name] for name in ("find_activities", "get_document_checklist", "list_activity_documents",
+                                               "documents_needing_attention")]
+CONTENT_TOOL_SPECS = [_SPECS["find_activities"], _SPECS[SEARCH_TOOL]]
 
 
 class ToolError(Exception):
@@ -178,6 +224,50 @@ def documents_needing_attention(args: dict) -> dict:
         for d in document_services.documents_for_listing().filter(status__status_name=DocumentStatus.FOR_REVIEW).order_by("uploaded_at")[:50]
     ]
     return {"overdue_required_documents": overdue[:50], "documents_waiting_for_review_or_returned": waiting}
+
+
+def _period_from(args: dict, now) -> Period | None:
+    text = str(args.get("period_text") or "").strip()
+    if not text:
+        return None
+    period = parse_period(text, now)
+    if period is None:
+        raise ToolError("The period could not be read. Pass the user's own words, e.g. \"November\" or \"this week\".")
+    return period
+
+
+def _type_from(args: dict, key: str, model):
+    text = str(args.get(key) or "").strip()
+    if not text:
+        return None
+    found = routing.match_type(routing.normalize(text), model.objects.all())
+    if found is None:
+        names = ", ".join(model.objects.values_list("name", flat=True))
+        raise ToolError(f"Unknown {key.replace('_', ' ')}. Use one of: {names}.")
+    return found
+
+
+def list_activities_by_period(args: dict, question: str, now) -> Listing:
+    status = str(args.get("status") or "").strip().title() or None
+    if status and status not in (ActivityStatus.DRAFT, ActivityStatus.SCHEDULED, ActivityStatus.ONGOING, ActivityStatus.CONDUCTED):
+        raise ToolError("status must be Draft, Scheduled, Ongoing or Conducted.")
+    include_drafts = status == ActivityStatus.DRAFT or bool(routing.DRAFT_WORDS.search(routing.normalize(question)))
+    query = ActivityQuery(period=_period_from(args, now), status=status, include_drafts=include_drafts,
+                          activity_type=_type_from(args, "activity_type", ActivityType))
+    return activities_answer(query, now)
+
+
+def find_files(args: dict, question: str, now, scope_activity_id: int | None = None) -> Listing:
+    name = routing.normalize(str(args.get("activity_name") or ""))
+    activity_ids, words = None, []
+    if name:
+        words = routing.name_words(name, [], [])
+        activity_ids = routing.activities_named(words) if words else []
+        words = words or name.split()
+    query = FileQuery(period=_period_from(args, now), uploaded=args.get("uploaded") is True,
+                      document_type=_type_from(args, "document_type", DocumentType),
+                      activity_ids=activity_ids, name_words=words)
+    return files_answer(query, now, scope_activity_id)
 
 
 RECORD_FUNCTIONS = {
