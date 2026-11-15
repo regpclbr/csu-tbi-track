@@ -21,6 +21,11 @@
 @source "../../reports/dashboard_page.py";
 @source "../../config/frontend.py";
 
+/* Pages that fit the window (the AI Assistant, ASSUMPTIONS 380): from 1024 px wide AND 600 px high the page itself never
+   scrolls and only its inner areas do (fit-screen:); lower windows fall back to normal panel scrolling (short-screen:). */
+@custom-variant fit-screen (@media (min-width: 64rem) and (min-height: 37.5rem));
+@custom-variant short-screen (@media (min-width: 64rem) and (max-height: 37.49rem));
+
 @font-face {
   font-family: "Inter";
   font-style: normal;

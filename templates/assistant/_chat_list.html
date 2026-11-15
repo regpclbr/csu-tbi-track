@@ -1,15 +1,35 @@
 {% load ui %}
-{# My chats, newest first (assistant.services.my_chats). Replaced out of band when a new chat gets its first answer. #}
-<div id="chat-list" class="-mx-1 min-h-0 flex-1 overflow-y-auto"{% if oob %} hx-swap-oob="true"{% endif %}>
+{% comment %}
+My chats, newest first (assistant.services.my_chats). Replaced out of band when a new chat gets its first answer, and once
+more a few seconds later (assistant:chat_list) so the title generated in the background appears.
+Each row has a small menu (Rename, Delete). The menu only opens the page's shared dialogs (assistant/chat.html) with this
+row's URLs and title from data attributes; the rules are in assistant.services (rename_chat, delete_chat).
+{% endcomment %}
+<div id="chat-list" class="relative -mx-1 min-h-0 flex-1 overflow-y-auto"{% if oob %} hx-swap-oob="true"{% endif %}>
   {% if chats %}
     <ul class="space-y-1">
       {% for item in chats %}
-        <li>
+        <li class="relative" x-data="{ menu: false }" @keydown.escape="if (menu) { menu = false; $refs.menuButton.focus() }"
+            @click.outside="menu = false" data-title="{{ item.title }}"
+            data-rename-url="{% url 'assistant:rename' item.pk %}" data-delete-url="{% url 'assistant:delete' item.pk %}">
           <a href="{% url 'assistant:conversation' item.pk %}"{% if chat and item.pk == chat.pk %} aria-current="page"{% endif %}
-             class="block rounded-xl px-3 py-2 text-sm {% if chat and item.pk == chat.pk %}bg-blue-50 font-semibold text-primary{% else %}text-slate-700 hover:bg-slate-50 hover:text-ink{% endif %}">
+             class="block rounded-xl py-2 pr-9 pl-3 text-sm {% if chat and item.pk == chat.pk %}bg-blue-50 font-semibold text-primary{% else %}text-slate-700 hover:bg-slate-50 hover:text-ink{% endif %}">
             <span class="block truncate">{{ item.title }}</span>
             <span class="block text-xs font-normal text-muted">{{ item.updated_at|relative_time }}</span>
           </a>
+          <button type="button" x-cloak x-ref="menuButton" class="absolute top-1.5 right-1 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink"
+                  aria-label="Options for the chat {{ item.title }}" aria-haspopup="menu" aria-expanded="false"
+                  :aria-expanded="menu.toString()" @click="menu = !menu">
+            {% include "components/icon.html" with name="ellipsis" class="size-4" %}</button>
+          <div x-cloak x-show="menu" role="menu" aria-label="Chat options"
+               class="absolute top-9 right-1 z-20 w-36 rounded-xl border border-line bg-white py-1 text-sm shadow-card">
+            <button type="button" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-ink hover:bg-slate-50"
+                    @click="menu = false; $dispatch('chat-rename', { url: $root.dataset.renameUrl, title: $root.dataset.title, opener: $refs.menuButton })">
+              {% include "components/icon.html" with name="pencil" class="size-4" %}Rename</button>
+            <button type="button" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-danger hover:bg-red-50"
+                    @click="menu = false; $dispatch('chat-delete', { url: $root.dataset.deleteUrl, opener: $refs.menuButton })">
+              {% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
+          </div>
         </li>
       {% endfor %}
     </ul>

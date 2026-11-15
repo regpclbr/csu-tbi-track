@@ -5,12 +5,18 @@ else's chat is 404) and saves a question only together with its answer; assistan
 
 A new chat is created by its first question; if that question fails, the empty chat is removed again
 (services.discard_if_empty), so no empty "New chat" rows pile up (owner decision F5-1).
+
+My chats (ASSUMPTIONS 377-378): each row's menu renames (services.rename_chat) or deletes (services.delete_chat) one
+of my chats; both are POST forms that end on the chat that was open ("current"), or on a new chat when the open one
+was deleted. chat_list is the partial the page fetches once a few seconds after a new chat's first answer, so the
+title generated in the background appears by itself.
 """
 
 import json
 
 from django.core.exceptions import ValidationError
 from django.http import Http404, HttpRequest, HttpResponse
+from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
@@ -40,6 +46,7 @@ def _context(request: HttpRequest, chat: AIChat | None, **extra) -> dict:
         "error": None,
         "errors": {},
         "question_max": services.QUESTION_MAX_LENGTH,
+        "title_max": services.TITLE_LENGTH,
         "timeout_seconds": _timeout_seconds(),
         **extra,
     }
@@ -112,9 +119,51 @@ def ask(request: HttpRequest) -> HttpResponse:
         "is_new": is_new,
         "conversation": pages.exchange(answer),
         "chats": services.my_chats(request.user)[:100],
+        "title_queued": answer.title_queued,
     }
     response = render(request, "assistant/_exchange.html", context)
     response["HX-Trigger"] = json.dumps({"assistant-answered": chat.pk})  # clears the message box
     if is_new:
         response["HX-Push-Url"] = reverse("assistant:conversation", args=[chat.pk])
     return response
+
+
+def _back_to_current(request: HttpRequest, removed: int | None = None) -> HttpResponse:
+    """Back to the chat that was open (POST "current", only one of mine), else to a new chat."""
+    raw = request.POST.get("current", "").strip()
+    if raw.isdigit() and int(raw) != removed and services.my_chats(request.user).filter(pk=int(raw)).exists():
+        return redirect("assistant:conversation", chat_id=int(raw))
+    return redirect("assistant:chat")
+
+
+@staff_login_required
+@require_POST
+def delete_chat(request: HttpRequest, chat_id: int) -> HttpResponse:
+    """Delete one of my chats with its messages (someone else's: 404). The open chat deleted: a new chat."""
+    services.delete_chat(request.user, chat_id)
+    messages.success(request, "Chat deleted.")
+    return _back_to_current(request, removed=chat_id)
+
+
+@staff_login_required
+@require_POST
+def rename_chat(request: HttpRequest, chat_id: int) -> HttpResponse:
+    """POST title: rename one of my chats (someone else's: 404). A refused title is shown as a toast."""
+    try:
+        services.rename_chat(request.user, chat_id, request.POST.get("title", ""))
+    except ValidationError as exception:
+        messages.error(request, " ".join(exception.messages))
+    else:
+        messages.success(request, "Chat renamed.")
+    return _back_to_current(request)
+
+
+@staff_login_required
+@require_GET
+def chat_list(request: HttpRequest) -> HttpResponse:
+    """My chats as a partial (?chat=<open chat>), plus the open chat's title out of band. Fetched once after a new
+    chat's first answer so the generated title appears without reloading."""
+    raw = request.GET.get("chat", "").strip()
+    chat = services.my_chats(request.user).filter(pk=int(raw)).first() if raw.isdigit() else None
+    context = {"chats": services.my_chats(request.user)[:100], "chat": chat}
+    return render(request, "assistant/_chat_list_refresh.html", context)

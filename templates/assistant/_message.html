@@ -1,8 +1,8 @@
 {% load ui %}
 {% comment %}
 One chat message (assistant.pages.message_view). A question is escaped text with line breaks; an answer is item.html,
-already escaped by assistant.pages.answer_html (only our citation links and <br> are added), with its "answered from"
-badge and its numbered sources linking to the document page.
+already escaped by assistant.pages.answer_html (then only bold, italics, lists, <br> and our citation links are added,
+ASSUMPTIONS 376), with its "answered from" badge and its numbered sources linking to the document page.
 {% endcomment %}
 {% with message=item.message %}
 {% if item.is_answer %}
@@ -10,7 +10,7 @@ badge and its numbered sources linking to the document page.
     <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary" aria-hidden="true">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
     <div class="min-w-0 max-w-[85%]">
       <p class="sr-only">The assistant answered:</p>
-      <div class="rounded-2xl rounded-tl-md border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-card [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline">{{ item.html }}</div>
+      <div class="rounded-2xl rounded-tl-md border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-card break-words [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold">{{ item.html }}</div>
       <div class="mt-2 flex flex-wrap items-center gap-2">
         {% include "components/badge.html" with text=item.badge.label tone=item.badge.tone %}
         <time class="text-xs text-muted" datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"M j, g:i A" }}</time>

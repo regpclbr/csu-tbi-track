@@ -8,6 +8,8 @@ Block: content (the page itself).
 `layout` comes from config.frontend.staff_layout (nav items, counts, initials).
 From 1024 px (lg) the frame fills the screen and only the panel scrolls (the sidebar and the gradient stay put).
 Below 1024 px the sidebar slides in from the menu button and the window scrolls.
+Optional blocks for a page that fits the window instead (only the AI Assistant, ASSUMPTIONS 380): panel_scroll (default
+lg:overflow-y-auto: the panel scrolls) and main_class (default padding). Every other page keeps the defaults.
 {% endcomment %}
 {% block title %}{{ page_title }} · CSU-TBI Track{% endblock %}
 {% block body_class %}app-bg{% endblock %}
@@ -29,9 +31,9 @@ Below 1024 px the sidebar slides in from the menu button and the window scrolls.
   </aside>
 
   {# The content panel: floats on the gradient (16 px from the edges); the top bar stays at its top while the page scrolls. #}
-  <div id="content-panel" class="app-panel relative min-w-0 flex-1 bg-panel lg:my-4 lg:mr-4 lg:overflow-y-auto lg:rounded-[28px]">
+  <div id="content-panel" class="app-panel relative min-w-0 flex-1 bg-panel lg:my-4 lg:mr-4 lg:rounded-[28px] {% block panel_scroll %}lg:overflow-y-auto{% endblock %}">
     {% include "partials/topbar.html" %}
-    <main id="main" class="px-5 pt-5 pb-10 sm:px-6 xl:px-7" tabindex="-1">
+    <main id="main" class="{% block main_class %}px-5 pt-5 pb-10 sm:px-6 xl:px-7{% endblock %}" tabindex="-1">
       {% block content %}{% endblock %}
     </main>
   </div>

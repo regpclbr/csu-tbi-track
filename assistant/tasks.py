@@ -23,6 +23,18 @@ def run_index_document(document_id: int) -> dict:
         return {"document_id": document_id, "status": indexing.FAILED, "chunks": 0, "reason": type(error).__name__}
 
 
+def run_generate_chat_title(chat_id: int) -> str:
+    """Queued after a chat's first answer (services.queue_chat_title): a short generated title. Any failure keeps
+    the first question as the title."""
+    from . import services
+
+    try:
+        return services.generate_chat_title(chat_id)
+    except Exception as error:  # last safety net: the kind of error only, never the question or the answer
+        logger.error("Generating the title of chat %s crashed: %s.", chat_id, type(error).__name__)
+        return services.TITLE_FAILED
+
+
 def run_index_pending() -> dict:
     """Daily (7:30 AM Manila): retry every approved document that is not indexed yet."""
     try:

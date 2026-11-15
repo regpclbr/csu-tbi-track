@@ -258,6 +258,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Excerpt text is data: always build it with `tools.excerpt_block()` (escapes `<excerpt` tags).
 - `ask()` is synchronous but runs inside `gemini.time_limit(ASSISTANT_QUESTION_TIMEOUT_SECONDS)` (90 s
   for the whole question; past it: 503 kind "timeout"). Moving it to a background task is a future step.
+- Chats (ASSUMPTIONS 377–378): `delete_chat` / `rename_chat` (own chats only, 404 otherwise; rename 1–80 characters, keeps
+  `updated_at`). Title: the first question at once; after the FIRST answer `queue_chat_title` (on commit) → task
+  `run_generate_chat_title` → `generate_chat_title` (first question + answer start only, `TITLE_INSTRUCTION`, `clean_title`: ≤ 6
+  words) saved by compare-and-set only while the title is still the first question (no flag column, no ERD change). Any failure,
+  no key or a rename keeps the current title; the task never raises or logs text. The page refetches My chats once, 6 s later
+  (`assistant:chat_list`).
+- The answer instruction asks for short paragraphs and simple lists, no tables or headings; the `[n]` citation rule is unchanged.
 
 ## Certificates (Step 9)
 - All rules live in `certificates/services.py`; status changes only through `set_certificate_status()`.
@@ -469,9 +476,16 @@ owner is a student, so explain important decisions briefly and keep the code sim
   stops when ready/failed or after 15 min), `assistant/page_views.py` + `assistant/pages.py`, `startups/staff_views.py` + `startups/pages.py`
   (the public set-password page stays in `startups/page_views.py`), `notifications/views.py` (`/notifications/`), `config/search.py`
   (`/search/`, the top bar's box: the lists' own services, 5 per group). **Model answers are untrusted:** render them only through
-  `assistant.pages.answer_html()` (escapes everything, then adds our `[n]` links and `<br>`); never `|safe`, HTML or Markdown from the
-  model. A first question that fails removes its new chat (`services.discard_if_empty`).
-- AI Assistant: "My chats" is 240 px and can be hidden (Alpine + localStorage `tbi.assistant.chats`, default open, ASSUMPTIONS 326).
+  `assistant.pages.answer_html()` (escapes everything FIRST, then only bold, italics, `#`–`###` as a bold line, bullet/numbered
+  lists, `<br>` and our `[n]` links; ASSUMPTIONS 376); never `|safe`, raw HTML, links or images from the model. Widening the subset
+  needs an owner decision and attack tests. A first question that fails removes its new chat (`services.discard_if_empty`).
+- AI Assistant: "My chats" is 240 px and can be hidden (Alpine + localStorage `tbi.assistant.chats`, default open, ASSUMPTIONS 326);
+  its header holds only the heading and the hide button, "New chat" below (379). Enter sends, Shift + Enter new line, Send disabled
+  while empty/waiting (374); the chat follows new messages only while at the bottom, else "Jump to latest" (375). Only the keyboard
+  and scrolling are Alpine (opt-in browser test `assistant/tests/test_chat_browser.py`). Each row's "⋯" menu opens the page's shared
+  Rename / Delete dialogs (data attributes, never titles inside JS); both POST and end on the open chat (`current`) (377).
+  The page fits the window from 1024×600 (`fit-screen:` / `short-screen:` variants in `frontend/tailwind/app.css`; overrides
+  the `panel_scroll` and `main_class` blocks of `layouts/app.html`, which other pages leave at their defaults) (380).
 - Startup portal pages (F6, ASSUMPTIONS 312–319): `startups/portal_views.py` + `startups/portal_pages.py`, `templates/portal/` on
   `layouts/portal.html` (sidebar `config.frontend.PORTAL`, context `portal`). Every page uses `startups.decorators.portal_page_required`
   (staff: 403; nobody: portal login). Login through `authenticate_startup`; `next` only within `/startups/portal/`. Registering only through
@@ -583,6 +597,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Approval state (2026-11-15): "Needs approval" only while certificates wait, otherwise a grey "Not approved — new
   certificates will wait for approval"; counts unchanged; formula-like titles confirmed as plain text and Excel text (373).
   Then "All certificates issued (N)" and "no certificates yet" states without any approve button (373 note).
+- AI Assistant chat (2026-11-15): Enter to send, auto-scroll + "Jump to latest", a safe Markdown subset in answers (replaces 305),
+  delete and rename chats, titles generated in the background (Django-Q2), "My chats" heading never cut off (374–379). Then the page
+  fits the window: no page scroll from 1024×600, only the messages and the chat list scroll (380).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

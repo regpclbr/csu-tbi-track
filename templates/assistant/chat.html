@@ -5,13 +5,25 @@ the message box at the bottom. The form posts with HTMX: the saved question and 
 a refusal fills #ask-error. While waiting (up to the question time limit) the send button is disabled, the question is
 shown with a typing indicator, and "Stop waiting" aborts only the browser's request (the server may still finish; the
 answer then appears when the chat is opened again). Without JavaScript the form is a normal POST.
-Answers are escaped text with citation links only (assistant.pages.answer_html), never HTML from the model.
+Answers are escaped first, then only bold, italics, lists, line breaks and our citation links are added
+(assistant.pages.answer_html, ASSUMPTIONS 376), never HTML from the model.
+Keyboard and scrolling (ASSUMPTIONS 374-375, the only behaviour in Alpine): Enter sends, Shift + Enter is a new line,
+nothing is sent while the box is empty or an answer is pending (the service still refuses an empty question). The chat
+follows new messages while it is scrolled to the bottom; scrolled up on purpose, it stays put and shows "Jump to latest".
 My chats can be hidden (ASSUMPTIONS 326): open or closed is remembered per browser (localStorage, default open).
 When closed, the chat card spans both columns and its header shows "Chats" and a "New chat" button. Without
 JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
+Each chat's menu (assistant/_chat_list.html) opens the shared Rename / Delete dialogs at the bottom (ASSUMPTIONS 377).
 {% endcomment %}
+{% comment %}
+Fits the window (ASSUMPTIONS 380): from 1024 x 600 px the panel does not scroll; main fills the height under the top bar and
+the grid fills main, so both cards reach the bottom and only the messages and the chat list scroll inside them. The
+message box stays at the bottom of the chat card. Lower windows: the panel scrolls and the grid is 34rem high.
+{% endcomment %}
+{% block panel_scroll %}short-screen:overflow-y-auto fit-screen:flex fit-screen:flex-col fit-screen:overflow-hidden{% endblock %}
+{% block main_class %}px-5 pt-5 pb-10 sm:px-6 xl:px-7 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-5{% endblock %}
 {% block content %}
-<div class="grid gap-5 lg:h-[calc(100vh-9.5rem)] lg:min-h-[30rem] lg:grid-cols-[15rem_minmax(0,1fr)]"
+<div id="assistant-layout" class="grid gap-5 short-screen:h-[34rem] fit-screen:min-h-0 fit-screen:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]"
      x-data="{
        chatsOpen: true,
        init() { try { this.chatsOpen = localStorage.getItem('tbi.assistant.chats') !== 'closed' } catch (e) {} },
@@ -22,21 +34,40 @@ JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
        },
      }">
   <nav id="my-chats-panel" class="card flex min-h-0 flex-col p-3" aria-labelledby="my-chats-title" x-show="chatsOpen">
-    <div class="mb-3 flex items-center gap-1.5 px-1">
-      <h2 id="my-chats-title" class="card-title min-w-0 flex-1 truncate text-base">My chats</h2>
-      <a href="{% url 'assistant:chat' %}" class="btn btn-primary btn-sm px-3">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
-      <button type="button" id="chats-hide" x-cloak class="btn btn-ghost btn-sm px-2" aria-label="Hide my chats"
-              aria-controls="my-chats-panel" aria-expanded="true" :aria-expanded="chatsOpen.toString()" @click="setChats(false)">
-        {% include "components/icon.html" with name="panel-left-close" class="size-4" %}</button>
+    <div class="mb-3 px-1">
+      <div class="flex items-center gap-1.5">
+        <h2 id="my-chats-title" class="card-title min-w-0 flex-1 text-base">My chats</h2>
+        <button type="button" id="chats-hide" x-cloak class="btn btn-ghost btn-sm px-2" aria-label="Hide my chats"
+                aria-controls="my-chats-panel" aria-expanded="true" :aria-expanded="chatsOpen.toString()" @click="setChats(false)">
+          {% include "components/icon.html" with name="panel-left-close" class="size-4" %}</button>
+      </div>
+      <a href="{% url 'assistant:chat' %}" class="btn btn-primary btn-sm mt-2 w-full justify-center">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
     </div>
     {% include "assistant/_chat_list.html" %}
   </nav>
 
   <section class="card flex min-h-[32rem] flex-col p-0 lg:min-h-0" :class="{ 'lg:col-span-2': !chatsOpen }" aria-labelledby="chat-title"
-           x-data="{ busy: false, stopped: false, pending: '' }"
-           @htmx:before-request="if ($event.target.id === 'ask-form') { busy = true; stopped = false; pending = $refs.question.value }"
+           x-data="{
+             busy: false, stopped: false, pending: '', hasText: false, pinned: true, showJump: false,
+             nearBottom() { const el = this.$refs.scroll; return el.scrollHeight - el.scrollTop - el.clientHeight < 80 },
+             toBottom(smooth) {
+               const el = this.$refs.scroll;
+               const motion = smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+               el.scrollTo({ top: el.scrollHeight, behavior: motion ? 'smooth' : 'auto' });
+               this.pinned = true; this.showJump = false;
+             },
+             onScroll() { this.pinned = this.nearBottom(); if (this.pinned) this.showJump = false },
+             contentAdded() { if (this.pinned) this.$nextTick(() => this.toBottom(false)); else this.showJump = true },
+             checkText() { this.hasText = this.$refs.question.value.trim() !== '' },
+             enterKey(event) {
+               if (event.shiftKey || event.isComposing || event.keyCode === 229) return;
+               event.preventDefault();
+               if (!this.busy && this.hasText) event.target.form.requestSubmit();
+             },
+           }"
+           @htmx:before-request="if ($event.target.id === 'ask-form') { busy = true; stopped = false; pending = $refs.question.value; $nextTick(() => toBottom(false)) }"
            @htmx:after-request="if ($event.target.id === 'ask-form') { busy = false; pending = '' }"
-           @assistant-answered.window="$refs.question.value = ''; $refs.question.focus()">
+           @assistant-answered.window="$refs.question.value = ''; hasText = false; $refs.question.focus()">
     <header class="flex items-center gap-3 border-b border-line px-6 py-4">
       <div x-cloak x-show="!chatsOpen" class="flex shrink-0 items-center gap-2 border-r border-line pr-3">
         <button type="button" id="chats-show" class="btn btn-secondary btn-sm" aria-controls="my-chats-panel" aria-expanded="true"
@@ -52,45 +83,54 @@ JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
       </div>
     </header>
 
-    <div id="chat-scroll" class="min-h-0 flex-1 overflow-y-auto px-6 py-5"
-         x-init="$el.scrollTop = $el.scrollHeight" @htmx:after-settle="$el.scrollTop = $el.scrollHeight">
-      {% if suggestions %}
-        <div id="chat-empty" class="mx-auto max-w-xl py-6 text-center">
-          <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" %}</span>
-          <p class="font-semibold text-ink">Ask about your activities and documents</p>
-          <p class="mt-1 text-sm text-muted">For example, try one of these:</p>
-          <ul class="mt-4 space-y-2">
-            {% for suggestion in suggestions %}
-              <li><button type="button" class="hover-lift w-full rounded-2xl border border-line bg-white px-4 py-3 text-left text-sm text-ink shadow-card hover:border-primary"
-                          data-question="{{ suggestion }}" @click="$refs.question.value = $el.dataset.question; $refs.question.focus()">{{ suggestion }}</button></li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
+    <div class="relative flex min-h-0 flex-1 flex-col">
+      <div id="chat-scroll" x-ref="scroll" class="relative min-h-0 flex-1 overflow-y-auto px-6 py-5"
+           x-init="$nextTick(() => toBottom(false))" @scroll.passive="onScroll()"
+           @htmx:after-settle="if ($event.target.id === 'messages') contentAdded()">
+        {% if suggestions %}
+          <div id="chat-empty" class="mx-auto max-w-xl py-6 text-center">
+            <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" %}</span>
+            <p class="font-semibold text-ink">Ask about your activities and documents</p>
+            <p class="mt-1 text-sm text-muted">For example, try one of these:</p>
+            <ul class="mt-4 space-y-2">
+              {% for suggestion in suggestions %}
+                <li><button type="button" class="hover-lift w-full rounded-2xl border border-line bg-white px-4 py-3 text-left text-sm text-ink shadow-card hover:border-primary"
+                            data-question="{{ suggestion }}" @click="$refs.question.value = $el.dataset.question; checkText(); $refs.question.focus()">{{ suggestion }}</button></li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
 
-      <ol id="messages" class="space-y-5" aria-label="Conversation">
-        {% for item in conversation %}{% include "assistant/_message.html" %}{% endfor %}
-      </ol>
+        <ol id="messages" class="space-y-5" aria-label="Conversation">
+          {% for item in conversation %}{% include "assistant/_message.html" %}{% endfor %}
+        </ol>
 
-      {# The question being answered and the typing indicator (only while waiting). #}
-      <div x-cloak x-show="busy" class="mt-5 space-y-5">
-        <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm whitespace-pre-line text-white" x-text="pending"></p></div>
-        <div class="flex items-center gap-3" role="status">
-          <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
-          <span class="inline-flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3" aria-hidden="true">
-            <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce"></span>
-            <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:150ms]"></span>
-            <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:300ms]"></span>
-          </span>
-          <span class="text-sm text-muted">The assistant is answering… this can take up to {{ timeout_seconds }} seconds.</span>
+        {# The question being answered and the typing indicator (only while waiting). #}
+        <div x-cloak x-show="busy" class="mt-5 space-y-5">
+          <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm break-words whitespace-pre-line text-white" x-text="pending"></p></div>
+          <div class="flex items-center gap-3" role="status">
+            <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
+            <span class="inline-flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3" aria-hidden="true">
+              <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce"></span>
+              <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:150ms]"></span>
+              <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:300ms]"></span>
+            </span>
+            <span class="text-sm text-muted">The assistant is answering… this can take up to {{ timeout_seconds }} seconds.</span>
+          </div>
         </div>
+        <p x-cloak x-show="stopped" class="mt-5 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status">
+          Stopped waiting. If the assistant still finishes, its answer will be in this chat when you open it again.</p>
       </div>
-      <p x-cloak x-show="stopped" class="mt-5 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status">
-        Stopped waiting. If the assistant still finishes, its answer will be in this chat when you open it again.</p>
+      {# Shown only when a new message arrived while the reader was scrolled up on purpose. #}
+      <button type="button" id="jump-latest" x-cloak x-show="showJump" @click="toBottom(true)"
+              class="btn btn-secondary btn-sm absolute bottom-3 left-1/2 -translate-x-1/2 shadow-card">
+        {% include "components/icon.html" with name="arrow-down" class="size-4" %}Jump to latest</button>
     </div>
 
     {# Screen readers hear each new answer once (assistant/_exchange.html fills it). #}
     <div id="answer-live" class="sr-only" role="status" aria-live="polite"></div>
+    {# After a new chat's first answer, _exchange.html swaps in a one-time refresh of my chats here (the generated title). #}
+    <div id="title-refresh" hidden></div>
 
     <div class="border-t border-line px-6 pt-4 pb-5">
       <div id="ask-error">{% include "assistant/_ask_error.html" %}</div>
@@ -101,7 +141,7 @@ JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
         <label for="ask-question" class="sr-only">Your question</label>
         <textarea id="ask-question" name="question" rows="2" maxlength="{{ question_max }}" x-ref="question" :readonly="busy"
                   placeholder="Ask about an activity, a document or what is missing…"
-                  @keydown.enter.ctrl.prevent="$el.form.requestSubmit()" @keydown.enter.meta.prevent="$el.form.requestSubmit()"
+                  x-init="checkText()" @input="checkText()" @keydown.enter="enterKey($event)"
                   class="field-input resize-none rounded-2xl" aria-describedby="ask-help{% if errors.question %} ask-question-error{% endif %}"
                   {% if errors.question %}aria-invalid="true"{% endif %}>{{ question }}</textarea>
         <div class="mt-3 flex flex-wrap items-center gap-3">
@@ -111,17 +151,59 @@ JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
             <option value="">All activities</option>
             {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity_id == activity.pk|stringformat:"s" %} selected{% endif %}>{{ activity.title|truncatechars:48 }}</option>{% endfor %}
           </select>
-          <p id="ask-help" class="text-xs text-muted">Ctrl + Enter sends. At most {{ question_max }} characters.</p>
+          <p id="ask-help" class="text-xs text-muted">Enter to send, Shift + Enter for a new line. At most {{ question_max }} characters.</p>
           <div class="ml-auto flex items-center gap-2">
             <button type="button" x-cloak x-show="busy" class="btn btn-secondary btn-sm"
-                    @click="htmx.trigger('#ask-form', 'htmx:abort'); busy = false; stopped = true; pending = ''">
+                    @click="htmx.trigger('#ask-form', 'htmx:abort'); busy = false; stopped = true; pending = ''; contentAdded()">
               {% include "components/icon.html" with name="x" class="size-4" %}Stop waiting</button>
-            <button type="submit" class="btn btn-primary" :disabled="busy" :aria-busy="busy.toString()">
+            <button type="submit" id="ask-send" class="btn btn-primary" :disabled="busy || !hasText" :aria-busy="busy.toString()">
               {% include "components/icon.html" with name="send" class="size-4" %}Send</button>
           </div>
         </div>
       </form>
     </div>
   </section>
+</div>
+
+{# The shared Rename / Delete dialogs, opened from a chat's menu with that chat's URL (assistant/_chat_list.html). #}
+<div x-data="{
+       renameUrl: '', renameTitle: '', deleteUrl: '', opener: null,
+       openRename(detail) {
+         this.opener = detail.opener; this.renameUrl = detail.url; this.renameTitle = detail.title;
+         this.$refs.renameDialog.showModal(); this.$nextTick(() => this.$refs.renameInput.select());
+       },
+       openDelete(detail) { this.opener = detail.opener; this.deleteUrl = detail.url; this.$refs.deleteDialog.showModal() },
+       restoreFocus() { if (this.opener && this.opener.isConnected) this.opener.focus() },
+     }"
+     @chat-rename.window="openRename($event.detail)" @chat-delete.window="openDelete($event.detail)">
+  <dialog id="rename-chat" x-ref="renameDialog" class="modal max-w-md" aria-labelledby="rename-chat-title"
+          @close="restoreFocus()" @click.self="$el.close()">
+    <form method="post" :action="renameUrl" class="p-6">
+      {% include "components/modal_header.html" with id="rename-chat" title="Rename chat" %}
+      {% csrf_token %}
+      <input type="hidden" name="current" value="{% if chat %}{{ chat.pk }}{% endif %}">
+      <label for="rename-chat-input" class="field-label">Title</label>
+      <input type="text" id="rename-chat-input" name="title" x-ref="renameInput" x-model="renameTitle" maxlength="{{ title_max }}"
+             required class="field-input" aria-describedby="rename-chat-help">
+      <p id="rename-chat-help" class="mt-1 text-xs text-muted">At most {{ title_max }} characters. Only you see your chats.</p>
+      <div class="mt-5 flex justify-end gap-2">
+        <button type="button" class="btn btn-secondary" @click="$refs.renameDialog.close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="delete-chat" x-ref="deleteDialog" class="modal max-w-md" aria-labelledby="delete-chat-title"
+          aria-describedby="delete-chat-text" @close="restoreFocus()" @click.self="$el.close()">
+    <form method="post" :action="deleteUrl" class="p-6">
+      {% include "components/modal_header.html" with id="delete-chat" title="Delete chat" %}
+      {% csrf_token %}
+      <input type="hidden" name="current" value="{% if chat %}{{ chat.pk }}{% endif %}">
+      <p id="delete-chat-text" class="text-sm text-slate-700">Delete this chat? This can't be undone.</p>
+      <div class="mt-5 flex justify-end gap-2">
+        <button type="button" class="btn btn-secondary" autofocus @click="$refs.deleteDialog.close()">Cancel</button>
+        <button type="submit" class="btn btn-danger">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
+      </div>
+    </form>
+  </dialog>
 </div>
 {% endblock %}

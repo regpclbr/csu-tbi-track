@@ -1,0 +1,7 @@
+{% comment %}
+assistant.page_views.chat_list: fetched once a few seconds after a new chat's first answer (assistant/_exchange.html), so
+the title generated in the background (ASSUMPTIONS 378) appears without reloading. Replaces #chat-list and, out of
+band, the open chat's title.
+{% endcomment %}
+{% include "assistant/_chat_list.html" %}
+{% if chat %}<h2 id="chat-title" hx-swap-oob="true" class="truncate font-semibold text-ink">{{ chat.title }}</h2>{% endif %}

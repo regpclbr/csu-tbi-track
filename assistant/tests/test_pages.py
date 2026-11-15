@@ -125,10 +125,10 @@ def test_html_in_an_answer_is_shown_as_text(director, login, budget, fake_gemini
     assert saved.content == EVIL  # the service kept the citation, so the page must make it safe
     page_html = client.get(reverse("assistant:conversation", args=[chat.pk])).content.decode()
     for html in (answer_html, page_html):
-        assert "<script>alert" not in html and "<img src=x" not in html and "<strong>" not in html
+        assert "<script>alert" not in html and "<img src=x" not in html
         assert "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;" in html
         assert "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;" in html
-        assert "**bold**" in html  # no Markdown either
+        assert "<strong>bold</strong>" in html and "**bold**" not in html  # only the small Markdown subset (ASSUMPTIONS 376)
         assert 'class="cite" aria-label="Source 1">[1]</a>' in html  # only our own link
 
 

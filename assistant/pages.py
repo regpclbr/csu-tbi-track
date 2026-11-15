@@ -2,8 +2,10 @@
 from" are decided in assistant.services; this module turns saved messages into what the templates show.
 
 SECURITY: an answer is text written by the model, so it is untrusted. answer_html() escapes ALL of it first and only
-then adds two things of our own: links for the citation markers [n] that match a saved source, and <br> for line
-breaks. No HTML or Markdown from the model is ever rendered.
+then turns a small, fixed set of Markdown into our own tags (ASSUMPTIONS 376): bold, italics, "#" headings shown as a
+bold line, bullet and numbered lists, line breaks, and links for the citation markers [n] that match a saved source.
+Everything else (HTML, links, images, tables) stays escaped text: the patterns below only ever wrap escaped text in
+<strong>, <em>, <ul>, <ol>, <li>, <br> and our own <a class="cite">, so no attribute or URL from the model can appear.
 """
 
 import re
@@ -46,9 +48,65 @@ SOURCES = Prefetch(
 )
 
 
+# The Markdown subset (ASSUMPTIONS 376). Applied to ESCAPED text, one line at a time. Inline marks never contain "<"
+# or ">", so they never cross a tag we added.
+BULLET = re.compile(r"^\s*[*\-•]\s+(.+)$")  # "* item", "- item", "• item"
+NUMBERED = re.compile(r"^\s*(\d{1,3})[.)]\s+(.+)$")  # "1. item", "2) item"
+HEADING = re.compile(r"^\s{0,3}#{1,3}\s+(.+?)(?:\s+#+)?\s*$")  # "# x", "## x", "### x" -> a bold line
+BOLD_ITALIC = re.compile(r"\*\*\*(?=\S)([^<>*]+?)(?<=\S)\*\*\*")
+BOLD = re.compile(r"\*\*(?=\S)([^<>]+?)(?<=\S)\*\*")
+# Italics only around words: "2 * 3 * 4" and "a*b*c" stay as they are.
+ITALIC_STAR = re.compile(r"(?<![\w*])\*(?=[^\s*])([^<>*]+?)(?<=[^\s*])\*(?![\w*])")
+# Underscores only at word boundaries: certificate_text_id and file_name_v2.pdf stay as they are.
+ITALIC_UNDERSCORE = re.compile(r"(?<![\w_])_(?=[^\s_])([^<>_]+?)(?<=[^\s_])_(?![\w_])")
+
+
+def _inline(text: str, plain: bool = False) -> str:
+    """Bold and italics in one line. plain=True removes the marks instead (the screen-reader text)."""
+    text = BOLD_ITALIC.sub(r"\1" if plain else r"<strong><em>\1</em></strong>", text)
+    text = BOLD.sub(r"\1" if plain else r"<strong>\1</strong>", text)
+    text = ITALIC_STAR.sub(r"\1" if plain else r"<em>\1</em>", text)
+    return ITALIC_UNDERSCORE.sub(r"\1" if plain else r"<em>\1</em>", text)
+
+
+def _blocks(escaped: str) -> str:
+    """Escaped text -> lines joined with <br>, runs of list lines as <ul>/<ol>, headings as a bold line. Blank lines
+    next to a list are dropped (the list has its own spacing); other blank lines stay (a paragraph gap)."""
+    blocks: list[list] = []  # ["text", html] or ["ul" | "ol", [items], first number]
+    for line in escaped.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        bullet, numbered = BULLET.match(line), NUMBERED.match(line)
+        if bullet or numbered:
+            kind = "ul" if bullet else "ol"
+            item = bullet.group(1) if bullet else numbered.group(2)
+            while blocks and blocks[-1] == ["text", ""]:
+                blocks.pop()
+            if blocks and blocks[-1][0] == kind:
+                blocks[-1][1].append(item)
+            else:
+                blocks.append([kind, [item], 1 if bullet else int(numbered.group(1))])
+            continue
+        if not line.strip() and blocks and blocks[-1][0] != "text":
+            continue
+        heading = HEADING.match(line)
+        blocks.append(["text", f"<strong>{_inline(heading.group(1))}</strong>" if heading else _inline(line)])
+
+    html, previous = [], None
+    for block in blocks:
+        if block[0] == "text":
+            if previous == "text":
+                html.append("<br>")
+            html.append(block[1])
+        else:
+            items = "".join(f"<li>{_inline(item)}</li>" for item in block[1])
+            start = f' start="{block[2]}"' if block[0] == "ol" and block[2] != 1 else ""
+            html.append(f"<{block[0]}{start}>{items}</{block[0]}>")
+        previous = block[0]
+    return "".join(html)
+
+
 def answer_html(content: str, links: dict[int, str]) -> SafeString:
-    """The model's text, escaped, with line breaks and with [n] linked to links[n] (the n-th saved source). A marker
-    without a saved source stays plain text."""
+    """The model's text, escaped, with the small Markdown subset (_blocks) and with [n] linked to links[n] (the n-th
+    saved source). A marker without a saved source stays plain text."""
     escaped = escape(content)  # the model's text: nothing in it is ever treated as HTML
 
     def link(match: re.Match) -> str:
@@ -57,8 +115,19 @@ def answer_html(content: str, links: dict[int, str]) -> SafeString:
             return match.group(0)
         return format_html('<a href="{}" class="cite" aria-label="Source {}">[{}]</a>', links[number], number, number)
 
-    linked = CITATION.sub(link, escaped)  # escaped text has no "<", so only our own links are added
-    return mark_safe(linked.replace("\r\n", "\n").replace("\n", "<br>"))
+    # The escaped text has no "<"; _blocks adds only <strong>/<em>/<ul>/<ol>/<li>/<br>, then only our own links.
+    return mark_safe(CITATION.sub(link, _blocks(escaped)))
+
+
+def answer_text(content: str) -> str:
+    """The answer as plain text for the live region (screen readers): the Markdown marks removed, no HTML (the
+    template escapes it)."""
+    lines = []
+    for line in content.splitlines():
+        heading = HEADING.match(line)
+        line = BULLET.sub(r"\1", heading.group(1) if heading else line)
+        lines.append(_inline(line, plain=True))
+    return "\n".join(lines)
 
 
 def source_chip(number: int, source: AIMessageSource) -> dict:
@@ -83,6 +152,7 @@ def message_view(message: AIChatMessage) -> dict:
         "message": message,
         "is_answer": True,
         "html": answer_html(message.content, {chip["number"]: chip["url"] for chip in chips}),
+        "text": answer_text(message.content),
         "sources": chips,
         "badge": {"label": label, "tone": tone, "kind": kind},
     }
