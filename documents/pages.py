@@ -121,6 +121,11 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
     ]
     upload = upload or upload_form_from(request)
     focus = next((key for key in ("document_type", "title", "file") if key in upload.errors), None)
+    if focus is None and request.GET.get("focus") == "type":  # "Upload other document": straight to the dropdown
+        focus = "document_type"
+    upload_types = list(
+        DocumentType.objects.filter(is_active=True).exclude(name=_certificate_type_name()).order_by("name")
+    )
     return {
         "today": checklist["today"],
         "required": required,
@@ -128,7 +133,15 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
         "upload": upload,
         "upload_focus": focus,  # the first field with an error gets the focus (works without JavaScript)
         "upload_focus_file": focus == "file",
-        "upload_types": DocumentType.objects.filter(is_active=True).exclude(name=_certificate_type_name()).order_by("name"),
+        # The dropdown in two groups (ASSUMPTIONS 386): what the checklist requires, then everything else.
+        "upload_groups": [
+            {"label": label, "types": types}
+            for label, types in (("Required", [t for t in upload_types if t.is_required]),
+                                 ("Other documents", [t for t in upload_types if not t.is_required]))
+            if types
+        ],
+        "optional_type_names": [t.name for t in upload_types if not t.is_required],
+        "other_title_required": DocumentType.OTHER,
         "limits": upload_limits(),
         "back": f"{reverse('activities:detail', args=[activity.pk])}?tab=documents",
     }

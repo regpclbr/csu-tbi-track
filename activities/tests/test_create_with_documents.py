@@ -51,7 +51,7 @@ def create(director, valid_data):
 
 def test_only_types_that_make_sense_before_the_activity_are_offered(roles) -> None:
     names = set(document_services.types_allowed_at_creation().values_list("name", flat=True))
-    assert names == {"Activity Design", "Invitation Letter", "Pre-registration Form", "Request Letter"}
+    assert names == {"Activity Design", "Invitation Letter", "Pre-registration Form", "Request Letter", "Other"}
 
 
 def test_settings_and_deactivation_change_the_offer(roles, settings) -> None:
@@ -79,9 +79,10 @@ def test_one_document_is_uploaded_with_the_upload_rules(create, director) -> Non
     assert document.file_path.name.startswith("documents/") and document.file_path.storage.exists(document.file_path.name)
     assert activity.audit_logs.count() == 1
     assert not OrmQ.objects.exists()  # nothing is indexed before approval
-    checklist = document_services.document_checklist(activity)
-    item = next(item for item in checklist["required"] if item.document_type.name == "Invitation Letter")
-    assert item.documents == [document]
+    checklist = document_services.document_checklist(activity)  # optional since ASSUMPTIONS 386: an "other" document
+    entry = next(entry for entry in checklist["optional"] if entry["document_type"].name == "Invitation Letter")
+    assert entry["documents"] == [document]
+    assert "Invitation Letter" not in {item.document_type.name for item in checklist["required"]}
 
 
 def test_several_documents(create) -> None:
@@ -228,3 +229,13 @@ def test_field_errors_and_row_errors_show_together(browser, post_data) -> None:
     html = browser.post(CREATE, data).content.decode()
     assert "This field is required." in html and "cannot be uploaded when creating an activity" in html
     assert not Activity.objects.exists()
+
+
+def test_other_type_needs_a_title_at_creation_too(create, roles) -> None:
+    """The title rule of the Documents tab (services.title_error, ASSUMPTIONS 386) also applies on the New activity form."""
+    with pytest.raises(document_services.NewActivityError) as refused:
+        create([NewDocument(doc_type("Other"), pdf(), "   ")])
+    assert refused.value.row_errors == {0: {"title": document_services.OTHER_TITLE_REQUIRED}}
+    assert not Document.objects.exists() and not stored_files()
+    create([NewDocument(doc_type("Other"), pdf(), "MOA with ABC Corp.")])
+    assert Document.objects.get().title == "MOA with ABC Corp."

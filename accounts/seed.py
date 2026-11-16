@@ -44,15 +44,19 @@ START = DocumentType.DueReference.START_DATE
 END = DocumentType.DueReference.END_DATE
 
 # name: (is_required, due_reference, due_offset_days). Due dates are placeholders until the TBI confirms them.
+# Used only when a type is CREATED: later changes (Django admin) are never undone by a rerun (ASSUMPTIONS 386).
+# The Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386; migrations documents/0003 and
+# 0004 for databases seeded before).
 DOCUMENT_TYPES: dict[str, tuple[bool, str | None, int | None]] = {
-    "Invitation Letter": (True, START, -7),
+    "Invitation Letter": (False, None, None),
     "Activity Design": (True, START, -10),
     "Request Letter": (True, START, -5),
     "Attendance Sheet": (True, END, 0),
-    "Accomplishment Report": (True, END, 7),
+    "Accomplishment Report": (False, None, None),
     "Pre-registration Form": (False, None, None),
     "Evaluation Form": (False, None, None),
     "Certificate": (False, None, None),
+    DocumentType.OTHER: (False, None, None),  # the catch-all optional type (its documents need a title)
 }
 
 
@@ -106,7 +110,8 @@ def load_lookups() -> SeedResult:
 
     for name, (is_required, due_reference, due_offset_days) in DOCUMENT_TYPES.items():
         due_rule = {"is_required": is_required, "due_reference": due_reference, "due_offset_days": due_offset_days}
-        _, created = DocumentType.objects.update_or_create(name=name, defaults=due_rule, create_defaults=due_rule)
+        # Only when missing: whether a type is required and its due rule are the Admin's from then on (ASSUMPTIONS 386).
+        _, created = DocumentType.objects.get_or_create(name=name, defaults=due_rule)
         result.add(created)
 
     return result

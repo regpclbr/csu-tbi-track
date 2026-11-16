@@ -20,7 +20,7 @@ from the <template> (alpine=True) and build the same names from `key`. documents
       {% if not alpine and row.errors.file %}<p id="doc-{{ row.key }}-file-error" class="field-error">{{ row.errors.file }}</p>{% endif %}
     </div>
     <div>
-      <label class="field-label" {% if alpine %}:for="`doc-${key}-title`"{% else %}for="doc-{{ row.key }}-title"{% endif %}>Title <span class="font-normal text-muted">(optional)</span></label>
+      <label class="field-label" {% if alpine %}:for="`doc-${key}-title`"{% else %}for="doc-{{ row.key }}-title"{% endif %}>Title <span class="font-normal text-muted">(optional; required for “Other”)</span></label>
       <input type="text" maxlength="255" class="field-input" placeholder="The type's name"
              {% if alpine %}:id="`doc-${key}-title`" :name="`documents-${key}-title`"{% else %}id="doc-{{ row.key }}-title" name="documents-{{ row.key }}-title" value="{{ row.title }}"{% if row.errors.title %} aria-invalid="true" aria-describedby="doc-{{ row.key }}-title-error"{% endif %}{% endif %}>
       {% if not alpine and row.errors.title %}<p id="doc-{{ row.key }}-title-error" class="field-error">{{ row.errors.title }}</p>{% endif %}

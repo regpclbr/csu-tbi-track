@@ -221,9 +221,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 DOCUMENT_MAX_UPLOAD_MB = 10  # largest file a member can upload
 DOCUMENT_REMINDER_DAYS_BEFORE = 3  # "due soon" reminder: due within this many days
 DOCUMENT_REMINDER_HOUR = 8  # the daily reminder task runs at 8:00 AM Manila time
-# Types not offered on the New activity form (ASSUMPTIONS 327). Types due after the end date (Attendance Sheet,
-# Accomplishment Report) are left out anyway; these have no due rule but only make sense afterwards.
-DOCUMENT_TYPES_AFTER_ACTIVITY = ["Certificate", "Evaluation Form"]
+# Types not offered on the New activity form (ASSUMPTIONS 327). Types due after the end date (Attendance Sheet) are left
+# out anyway; these have no due rule but only make sense afterwards (the Accomplishment Report is optional since
+# ASSUMPTIONS 386, so it has no due rule any more).
+DOCUMENT_TYPES_AFTER_ACTIVITY = ["Accomplishment Report", "Certificate", "Evaluation Form"]
 
 
 # --- Activities: automatic statuses and evaluation links (ASSUMPTIONS 346, 348) -------------

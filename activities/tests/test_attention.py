@@ -51,10 +51,12 @@ def test_a_draft_close_to_its_start(new_activity) -> None:
 
 
 def test_documents_overdue_and_due_soon_use_the_reminder_rule(new_activity) -> None:
-    # Placeholders (ASSUMPTIONS 9): Activity Design 10 days before, Invitation Letter 7, Request Letter 5.
+    # Placeholders (ASSUMPTIONS 9): Activity Design 10 days before, Request Letter 5 (the Invitation Letter is optional,
+    # ASSUMPTIONS 386: never overdue or due soon).
     items = texts(new_activity, manila(new_activity.start_date - timedelta(days=5), 9))
-    assert "Overdue required documents: Activity Design, Invitation Letter." in items
+    assert "Overdue required documents: Activity Design." in items
     assert "Required documents due soon and not uploaded: Request Letter." in items
+    assert not any("Invitation Letter" in text for text in items)
 
 
 def test_ongoing_without_attendance_then_ended(new_activity, move_to, register) -> None:

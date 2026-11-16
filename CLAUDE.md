@@ -216,6 +216,16 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `types_allowed_at_creation()` (not due after the end date, not in `DOCUMENT_TYPES_AFTER_ACTIVITY`) (ASSUMPTIONS 327–328).
 - `document_checklist()` is the only "what is missing" check (Step 8 reuses it). Due dates are
   computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
+- "Required" is only `DOCUMENT_TYPE.is_required` (per type, never per activity); every count reads it (ASSUMPTIONS 386).
+  The Invitation Letter and the Accomplishment Report are OPTIONAL (data migrations documents/0003 and 0004, one row
+  each; uploaded ones stay, listed under Other documents). Still required: Activity Design, Request Letter, Attendance Sheet.
+  `seed_data` sets `is_required` / the due rule only when it creates a type (reruns never undo admin changes) and adds the
+  optional catch-all type `DocumentType.OTHER` ("Other"), whose documents need a title (`services.title_error`, the one
+  title rule, also on the New activity form). The assistant's routing never matches "Other" from a question.
+- Documents tab: "Upload other document" → `?tab=documents&focus=type#upload` (dropdown autofocus); dropdown grouped
+  Required / Other documents (`pages.documents_tab` `upload_groups`); `?type=<id>` pre-selects (required rows' Upload).
+  Document rows (`documents/_document_item.html`, ASSUMPTIONS 387): title block `min-w-0 grow basis-64`, badges + buttons
+  one `ml-auto flex-wrap` group; never `min-w-0 flex-1` alone in a wrapping row (it squeezes the title to letters).
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
@@ -646,6 +656,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   card: prompt box, example chips, summary card, "More settings"; multi-line `{# #}` fix + test. No database or ERD change.
 - Report PDF layout (2026-11-16): landscape A4, fixed column widths, one Date column, compact time, nothing cut off; opt-in
   real-WeasyPrint layout test with demo data (385). No database or ERD change.
+- Other documents (2026-11-16): Invitation Letter optional (data migration documents/0003, one DOCUMENT_TYPE row), "Other"
+  type with a required title, seed_data create-only rules, "Upload other document" + grouped dropdown (386). Then the
+  Accomplishment Report optional too (documents/0004) and document rows that never squeeze the title (387). No ERD change.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -692,6 +705,7 @@ pytest                                    # all tests, 2 workers in parallel (py
 pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Remove-Item Env:BROWSER_TESTS   # modals in Chromium
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_browser.py; Remove-Item Env:BROWSER_TESTS   # document rows: titles wrap by words
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time

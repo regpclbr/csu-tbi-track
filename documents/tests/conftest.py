@@ -112,8 +112,8 @@ def scheduled(make_activity) -> Activity:
 
 @pytest.fixture
 def doc_type(roles) -> DocumentType:
-    """Seeded required type: Invitation Letter, due start_date - 7."""
-    return DocumentType.objects.get(name="Invitation Letter")
+    """Seeded required type: Request Letter, due start_date - 5 (the Invitation Letter is optional, ASSUMPTIONS 386)."""
+    return DocumentType.objects.get(name="Request Letter")
 
 
 @pytest.fixture

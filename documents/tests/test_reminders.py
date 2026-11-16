@@ -18,7 +18,9 @@ from .conftest import at
 
 pytestmark = pytest.mark.django_db
 
-START = date(2026, 11, 10)  # Invitation Letter due Nov 3, Activity Design Oct 31, Request Letter Nov 5
+START = date(2026, 11, 10)  # Activity Design due Oct 31, Request Letter Nov 5 (Invitation Letter, Accomplishment
+# Report: optional, item 386)
+REQUIRED_TYPES = 3  # Activity Design, Request Letter, Attendance Sheet
 
 
 def reminders(kind: str | None = None):
@@ -39,13 +41,24 @@ def activity(make_activity):
 
 
 def test_due_soon_within_the_window(activity, director) -> None:
-    # Oct 31: Activity Design due today (0 days), Invitation Letter in 3 days, Request Letter in 5.
+    # Oct 31: Activity Design due today (0 days), Request Letter in 5 (outside the 3-day window).
     result = services.send_document_reminders(now=at(date(2026, 10, 31)))
-    assert types_of(Notification.DOCUMENT_DUE_SOON) == {"Activity Design", "Invitation Letter"}
-    assert result["due_soon"] == 2 and result["overdue"] == 0
-    reminder = reminders(Notification.DOCUMENT_DUE_SOON).get(document_type__name="Invitation Letter")
+    assert types_of(Notification.DOCUMENT_DUE_SOON) == {"Activity Design"}
+    assert result["due_soon"] == 1 and result["overdue"] == 0
+    # Nov 2: Request Letter in 3 days.
+    services.send_document_reminders(now=at(date(2026, 11, 2)))
+    reminder = reminders(Notification.DOCUMENT_DUE_SOON).get(document_type__name="Request Letter")
     assert reminder.member == director and reminder.activity == activity
-    assert "Nov 3, 2026" in reminder.message and not reminder.is_read
+    assert "Nov 5, 2026" in reminder.message and not reminder.is_read
+
+
+def test_optional_types_never_get_a_reminder(activity) -> None:
+    """Optional since ASSUMPTIONS 386: neither due soon nor overdue, at any moment (old rules: Invitation Letter due
+    Nov 3, Accomplishment Report Nov 18)."""
+    for day in (date(2026, 10, 31), date(2026, 11, 3), date(2026, 11, 16), date(2026, 11, 30)):
+        services.send_document_reminders(now=at(day))
+    names = set(reminders().values_list("document_type__name", flat=True))
+    assert names and not names & {"Invitation Letter", "Accomplishment Report"}
 
 
 def test_due_soon_window_comes_from_the_setting(activity, settings) -> None:
@@ -55,36 +68,36 @@ def test_due_soon_window_comes_from_the_setting(activity, settings) -> None:
 
 
 def test_no_due_soon_once_a_document_is_uploaded(activity, upload, director) -> None:
-    upload(director, activity)  # Invitation Letter, still For Review
-    services.send_document_reminders(now=at(date(2026, 10, 31)))
-    assert "Invitation Letter" not in types_of(Notification.DOCUMENT_DUE_SOON)
+    upload(director, activity)  # Request Letter, still For Review
+    services.send_document_reminders(now=at(date(2026, 11, 2)))
+    assert "Request Letter" not in types_of(Notification.DOCUMENT_DUE_SOON)
 
 
 # --- Overdue ----------------------------------------------------------------------------------------
 
 
 def test_overdue_when_past_due_and_not_approved(activity, upload, director, head) -> None:
-    upload(director, activity)  # Invitation Letter For Review: still overdue
+    upload(director, activity)  # Request Letter For Review: still overdue
     approved = upload(director, activity, document_type=DocumentType.objects.get(name="Activity Design"))
     services.approve_document(director, approved)
 
-    result = services.send_document_reminders(now=at(date(2026, 11, 4)))  # day after the invitation's due date
-    assert types_of(Notification.DOCUMENT_OVERDUE) == {"Invitation Letter"}
+    result = services.send_document_reminders(now=at(date(2026, 11, 6)))  # day after the request letter's due date
+    assert types_of(Notification.DOCUMENT_OVERDUE) == {"Request Letter"}
     assert result["overdue"] == 1
-    assert "was due on Nov 3, 2026" in reminders(Notification.DOCUMENT_OVERDUE).get().message
+    assert "was due on Nov 5, 2026" in reminders(Notification.DOCUMENT_OVERDUE).get().message
 
 
 def test_not_overdue_on_the_due_date_itself(activity) -> None:
-    services.send_document_reminders(now=at(date(2026, 11, 3), 23))
-    assert "Invitation Letter" not in types_of(Notification.DOCUMENT_OVERDUE)
-    assert "Invitation Letter" in types_of(Notification.DOCUMENT_DUE_SOON)
+    services.send_document_reminders(now=at(date(2026, 11, 5), 23))
+    assert "Request Letter" not in types_of(Notification.DOCUMENT_OVERDUE)
+    assert "Request Letter" in types_of(Notification.DOCUMENT_DUE_SOON)
 
 
 def test_due_soon_and_overdue_are_separate_reminders(activity) -> None:
-    services.send_document_reminders(now=at(date(2026, 11, 1)))
-    services.send_document_reminders(now=at(date(2026, 11, 4)))
-    invitation = reminders().filter(document_type__name="Invitation Letter")
-    assert sorted(invitation.values_list("type", flat=True)) == [Notification.DOCUMENT_DUE_SOON, Notification.DOCUMENT_OVERDUE]
+    services.send_document_reminders(now=at(date(2026, 11, 3)))
+    services.send_document_reminders(now=at(date(2026, 11, 6)))
+    request_letter = reminders().filter(document_type__name="Request Letter")
+    assert sorted(request_letter.values_list("type", flat=True)) == [Notification.DOCUMENT_DUE_SOON, Notification.DOCUMENT_OVERDUE]
 
 
 # --- Skips ----------------------------------------------------------------------------------------
@@ -100,14 +113,14 @@ def test_draft_activities_are_skipped(make_activity) -> None:
 def test_other_statuses_get_reminders(make_activity, status) -> None:
     make_activity(status=status, start=START)
     services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert reminders(Notification.DOCUMENT_OVERDUE).count() == 5
+    assert reminders(Notification.DOCUMENT_OVERDUE).count() == REQUIRED_TYPES
 
 
 def test_inactive_types_are_skipped(activity) -> None:
-    DocumentType.objects.filter(name="Invitation Letter").update(is_active=False)
+    DocumentType.objects.filter(name="Request Letter").update(is_active=False)
     services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert "Invitation Letter" not in types_of(Notification.DOCUMENT_OVERDUE)
-    assert len(types_of(Notification.DOCUMENT_OVERDUE)) == 4
+    assert "Request Letter" not in types_of(Notification.DOCUMENT_OVERDUE)
+    assert len(types_of(Notification.DOCUMENT_OVERDUE)) == REQUIRED_TYPES - 1
 
 
 def test_deactivated_creator_is_skipped_and_logged(activity, director, caplog) -> None:
@@ -116,7 +129,7 @@ def test_deactivated_creator_is_skipped_and_logged(activity, director, caplog) -
     with caplog.at_level(logging.WARNING, logger="documents.reminders"):
         result = services.send_document_reminders(now=at(date(2026, 11, 30)))
     assert not reminders().exists()
-    assert result["skipped_inactive_creator"] == 5
+    assert result["skipped_inactive_creator"] == REQUIRED_TYPES
     assert f"activity {activity.pk}" in caplog.text and "deactivated" in caplog.text
 
 
@@ -127,8 +140,8 @@ def test_running_twice_creates_nothing_new(activity) -> None:
     first = services.send_document_reminders(now=at(date(2026, 11, 30)))
     count = Notification.objects.count()
     second = services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert first["overdue"] == 5
-    assert second["overdue"] == 0 and second["due_soon"] == 0 and second["already_sent"] == 5
+    assert first["overdue"] == REQUIRED_TYPES
+    assert second["overdue"] == 0 and second["due_soon"] == 0 and second["already_sent"] == REQUIRED_TYPES
     assert Notification.objects.count() == count
 
 
@@ -150,7 +163,7 @@ def test_reminders_for_each_creator_separately(make_activity, head) -> None:
     make_activity(start=START)
     make_activity(start=START, created_by=head, title="Another")
     services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert reminders().filter(member=head).count() == 5 and reminders().count() == 10
+    assert reminders().filter(member=head).count() == REQUIRED_TYPES and reminders().count() == 2 * REQUIRED_TYPES
 
 
 # --- Commands, task and schedule --------------------------------------------------------------------
@@ -159,14 +172,14 @@ def test_reminders_for_each_creator_separately(make_activity, head) -> None:
 def test_send_document_reminders_command(make_activity, capsys) -> None:
     make_activity(start=timezone.localdate() - timedelta(days=30))  # everything overdue today
     call_command("send_document_reminders")
-    assert "overdue: 5 new" in capsys.readouterr().out
+    assert f"overdue: {REQUIRED_TYPES} new" in capsys.readouterr().out
     call_command("send_document_reminders")
-    assert "overdue: 0 new" in capsys.readouterr().out and reminders().count() == 5
+    assert "overdue: 0 new" in capsys.readouterr().out and reminders().count() == REQUIRED_TYPES
 
 
 def test_task_runs_the_service(make_activity) -> None:
     make_activity(start=timezone.localdate() - timedelta(days=30))
-    assert tasks.run_document_reminders()["overdue"] == 5
+    assert tasks.run_document_reminders()["overdue"] == REQUIRED_TYPES
 
 
 def test_setup_schedules_twice_creates_one_schedule() -> None:

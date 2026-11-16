@@ -230,10 +230,16 @@ def upload_document(
     require_staff_member(member)
     if not document_type.is_active:
         raise ValidationError({"document_type": ["This document type is not active."]})
-    extension = validate_upload(file)
+    problems = {}
+    if message := title_error(document_type, title):
+        problems["title"] = [message]
+    try:
+        extension = validate_upload(file)
+    except ValidationError as error:
+        problems["file"] = error.messages
+    if problems:  # the title and the file are reported together
+        raise ValidationError(problems)
     title = (title or "").strip() or document_type.name
-    if len(title) > 255:
-        raise ValidationError({"title": ["The title can be at most 255 characters."]})
 
     document = Document(
         activity=activity,
@@ -252,6 +258,20 @@ def upload_document(
         _delete_stored_file(document.file_path.name)  # don't leave an orphan file behind
         raise
     return document
+
+
+OTHER_TITLE_REQUIRED = "Give this document a title, for example: MOA with ABC Corp."
+
+
+def title_error(document_type: DocumentType | None, title: str) -> str | None:
+    """The one title rule (ASSUMPTIONS 386): at most 255 characters; required for the catch-all type "Other" (its
+    name says nothing about the file); optional for every other type (empty = the type's name)."""
+    title = (title or "").strip()
+    if len(title) > 255:
+        return "The title can be at most 255 characters."
+    if not title and document_type is not None and document_type.name == DocumentType.OTHER:
+        return OTHER_TITLE_REQUIRED
+    return None
 
 
 def notify_approvers(document: Document, actor: TBIMember) -> int:
@@ -332,8 +352,8 @@ def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str
             validate_upload(row.file)
         except ValidationError as error:
             row_errors["file"] = error.messages[0]
-        if len((row.title or "").strip()) > 255:
-            row_errors["title"] = "The title can be at most 255 characters."
+        if message := title_error(row.document_type, row.title):
+            row_errors["title"] = message
         if row_errors:
             errors[index] = row_errors
     return errors

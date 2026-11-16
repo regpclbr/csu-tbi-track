@@ -40,7 +40,7 @@ def test_seed_loads_every_lookup(admin_env) -> None:
         "Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum",
     }
     assert set(DocumentStatus.objects.values_list("status_name", flat=True)) == {"For Review", "Approved"}
-    assert DocumentType.objects.count() == 8
+    assert DocumentType.objects.count() == 9  # incl. "Other" (ASSUMPTIONS 386)
 
 
 @pytest.mark.django_db
@@ -72,15 +72,14 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
     required = {
         t.name: (t.due_reference, t.due_offset_days) for t in DocumentType.objects.filter(is_required=True)
     }
-    assert required == {
-        "Invitation Letter": ("start_date", -7),
+    assert required == {  # the Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386)
         "Activity Design": ("start_date", -10),
         "Request Letter": ("start_date", -5),
         "Attendance Sheet": ("end_date", 0),
-        "Accomplishment Report": ("end_date", 7),
     }
     optional = DocumentType.objects.filter(is_required=False)
-    assert set(optional.values_list("name", flat=True)) == {"Pre-registration Form", "Evaluation Form", "Certificate"}
+    assert set(optional.values_list("name", flat=True)) == {
+        "Invitation Letter", "Accomplishment Report", "Pre-registration Form", "Evaluation Form", "Certificate", "Other"}
     assert all(t.due_reference is None and t.due_offset_days is None for t in optional)
 
 
@@ -97,9 +96,8 @@ def test_admin_account_gets_admin_role(admin_env) -> None:
 @pytest.mark.django_db
 def test_rerun_keeps_admin_edits_but_resets_defined_fields(admin_env) -> None:
     seed()
-    # An admin edits fields the seed does not define, and one it does.
+    # An admin edits fields the seed does not define, and (roles) one it does.
     DocumentType.objects.filter(name="Certificate").update(is_active=False, description="Edited")
-    DocumentType.objects.filter(name="Invitation Letter").update(due_offset_days=-3)
     Role.objects.filter(role_name="Director").update(description="Edited role")
     admin = TBIMember.objects.get(email=ADMIN_EMAIL)
     admin.set_password("Changed-By-Admin-99!")
@@ -109,7 +107,6 @@ def test_rerun_keeps_admin_edits_but_resets_defined_fields(admin_env) -> None:
 
     certificate = DocumentType.objects.get(name="Certificate")
     assert (certificate.is_active, certificate.description) == (False, "Edited")  # kept
-    assert DocumentType.objects.get(name="Invitation Letter").due_offset_days == -7  # defined field reset
     assert Role.objects.get(role_name="Director").description == "Edited role"  # kept
     assert TBIMember.objects.get(email=ADMIN_EMAIL).check_password("Changed-By-Admin-99!")  # never reset
 
@@ -131,3 +128,29 @@ def test_weak_admin_password_is_refused(monkeypatch) -> None:
     with pytest.raises(CommandError, match="too weak"):
         seed()
     assert not TBIMember.objects.filter(email=ADMIN_EMAIL).exists()
+
+
+@pytest.mark.django_db
+def test_rerun_never_undoes_a_document_type_change(admin_env) -> None:
+    """Whether a type is required and its due rule are set only when seed_data creates the type (ASSUMPTIONS 386):
+    an Admin who marks the Invitation Letter required again, or moves a due date, keeps that after a rerun."""
+    seed()
+    DocumentType.objects.filter(name="Invitation Letter").update(is_required=True, due_reference="start_date",
+                                                                 due_offset_days=-7)
+    DocumentType.objects.filter(name="Request Letter").update(due_offset_days=-3)
+    DocumentType.objects.filter(name="Attendance Sheet").update(is_required=False, due_reference=None,
+                                                                due_offset_days=None)
+    seed()
+    rules = {t.name: (t.is_required, t.due_reference, t.due_offset_days) for t in DocumentType.objects.all()}
+    assert rules["Invitation Letter"] == (True, "start_date", -7)
+    assert rules["Request Letter"] == (True, "start_date", -3)
+    assert rules["Attendance Sheet"] == (False, None, None)
+
+
+@pytest.mark.django_db
+def test_other_type_is_created_only_if_missing(admin_env) -> None:
+    DocumentType.objects.create(name="Other", description="Our own description")
+    seed()
+    other = DocumentType.objects.get(name="Other")
+    assert other.description == "Our own description" and other.is_required is False
+    assert DocumentType.objects.filter(name="Other").count() == 1

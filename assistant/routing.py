@@ -153,7 +153,9 @@ def route(question: str, now: datetime) -> Route:
         return Route(DOCUMENT_STATUS)
 
     activity_types = list(ActivityType.objects.all())
-    document_types = list(DocumentType.objects.all())
+    # The catch-all type "Other" is never read from a question: "the other one", "other files" are plain English
+    # (ASSUMPTIONS 386). Its files are still found by activity and period.
+    document_types = list(DocumentType.objects.exclude(name=DocumentType.OTHER))
     document_type = match_type(text, document_types)
     without_doc_type = remove_type(text, document_type)
     activity_type = match_type(without_doc_type, activity_types)

@@ -92,6 +92,7 @@ OTHER_QUESTIONS = [
     "Hello",
     "Who is the resource person of the Bootcamp?",
     "and in December?",
+    "and the other one?",  # "other" is plain English, never the catch-all type "Other" (ASSUMPTIONS 386)
 ]
 
 
@@ -113,6 +114,20 @@ def test_missing_overdue_waiting_go_to_the_document_status_tools(calendar_2026, 
 @pytest.mark.parametrize("question", CONTENT_QUESTIONS)
 def test_what_documents_say_goes_to_rag(calendar_2026, question) -> None:
     assert routing.route(question, NOW).path == routing.DOCUMENT_CONTENT
+
+
+@pytest.mark.parametrize("question", [
+    "the other files for November's activities",
+    "other documents of the Pitching Competition",
+    "any other attachments uploaded last week",
+])
+def test_the_word_other_never_filters_by_the_other_type(calendar_2026, question) -> None:
+    """The catch-all document type "Other" (seed_data) is never read from a question (ASSUMPTIONS 386)."""
+    from documents.models import DocumentType
+
+    assert DocumentType.objects.filter(name=DocumentType.OTHER).exists()
+    found = routing.route(question, NOW)
+    assert found.path == routing.FIND_FILES and found.document_type is None
 
 
 @pytest.mark.parametrize("question", OTHER_QUESTIONS)

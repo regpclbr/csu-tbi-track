@@ -115,7 +115,7 @@ def test_pdf_panel_shows_an_iframe_with_title_type_state_and_download(client, pd
     client.force_login(director)
     html = client.get(preview_url(pdf), **HTMX).content.decode()
     assert f'<iframe src="{view_url(pdf)}" title="Preview of {pdf.title}"' in html
-    assert 'id="document-preview-title"' in html and pdf.title in html and "Invitation Letter" in html
+    assert 'id="document-preview-title"' in html and pdf.title in html and "Request Letter" in html
     assert "Waiting for review" in html and reverse("documents:download", args=[pdf.pk]) in html
     assert "this.closest('dialog').close()" in html and "autofocus" in html  # Close, and the focus moves into the dialog
     assert "<html" not in html  # a partial for the dialog

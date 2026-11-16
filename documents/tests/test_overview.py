@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 
 URL = reverse("documents:list")
 HTMX = {"HTTP_HX_REQUEST": "true"}
-REQUIRED = 5  # seeded required types (accounts/seed.py)
+REQUIRED = 3  # seeded required types (accounts/seed.py; Invitation Letter and Accomplishment Report optional, 386)
 
 
 @pytest.fixture
@@ -47,20 +47,21 @@ def cards_of(html: str) -> dict[str, str]:
 
 @pytest.fixture
 def world(director, head, make_activity, upload):
-    """Scheduled "Pitching Workshop": one approved, one waiting, one returned (3 of 5 types uploaded, 1 approved).
-    Ongoing "Market Training": nothing uploaded (5 missing). Draft "Idea Draft": nothing (never listed).
+    """Scheduled "Pitching Workshop": Activity Design approved, Request Letter returned (2 of the 3 required types
+    uploaded, 1 approved), an Invitation Letter waiting (optional: one of the other documents) and an Evaluation Form.
+    Ongoing "Market Training": nothing uploaded (3 missing). Draft "Idea Draft": nothing (never listed).
     Draft "Draft With Files": one waiting document (listed; its missing types are not counted)."""
     workshop = make_activity(title="Pitching Workshop")
     approved = upload(head, workshop, document_type=type_named("Activity Design"), title="Design final")
     services.approve_document(director, approved, now=TEST_NOW)
-    waiting = upload(head, workshop, title="Invitation draft")
+    waiting = upload(head, workshop, document_type=type_named("Invitation Letter"), title="Invitation draft")
     returned = upload(head, workshop, document_type=type_named("Request Letter"), title="Request v1")
     services.return_document(director, returned, "Wrong date.", now=TEST_NOW)
     extra = upload(head, workshop, document_type=type_named("Evaluation Form"), title="Evaluation form copy")
     ongoing = make_activity(ActivityStatus.ONGOING, title="Market Training")
     make_activity(ActivityStatus.DRAFT, title="Idea Draft")
     draft = make_activity(ActivityStatus.DRAFT, title="Draft With Files")
-    draft_doc = upload(head, draft, title="Early invitation")
+    draft_doc = upload(head, draft, document_type=type_named("Invitation Letter"), title="Early invitation")
     return {"workshop": workshop, "ongoing": ongoing, "draft": draft, "approved": approved, "waiting": waiting,
             "returned": returned, "extra": extra, "draft_doc": draft_doc}
 
@@ -77,8 +78,8 @@ def test_overview_matches_document_checklist(world) -> None:
         assert [(i.document_type.pk, i.due_date, i.state, i.is_overdue, [d.pk for d in i.documents])
                 for i in entry.required] == expected
     workshop = next(e for e in services.activity_document_overview(activities, TEST_NOW) if e.activity == world["workshop"])
-    assert (workshop.approved_count, workshop.missing_count, len(workshop.required)) == (1, 2, REQUIRED)
-    assert [d.title for d in workshop.other] == ["Evaluation form copy"]
+    assert (workshop.approved_count, workshop.missing_count, len(workshop.required)) == (1, 1, REQUIRED)
+    assert sorted(d.title for d in workshop.other) == ["Evaluation form copy", "Invitation draft"]
 
 
 def test_overview_lists_ongoing_first_and_skips_drafts_without_documents(world) -> None:
@@ -102,8 +103,8 @@ def test_overview_takes_a_fixed_number_of_queries(world, make_activity, upload, 
 def test_state_counts(world) -> None:
     overview = services.activity_document_overview(list(services.overview_activities()), TEST_NOW)
     counts = services.document_state_counts(overview)
-    # waiting: invitation draft, evaluation form copy, early invitation (Draft); missing: 2 + 5 (Draft not counted)
-    assert counts == {"waiting_for_review": 3, "returned": 1, "approved": 1, "missing": 7}
+    # waiting: invitation draft, evaluation form copy, early invitation (Draft); missing: 1 + 3 (Draft not counted)
+    assert counts == {"waiting_for_review": 3, "returned": 1, "approved": 1, "missing": 4}
     s4 = metrics.documents_now(metrics.ReportFilters(TEST_NOW.date(), TEST_NOW.date()), TEST_NOW)
     assert (counts["waiting_for_review"], counts["returned"]) == (s4["waiting_for_review"], s4["returned"])
 
@@ -113,7 +114,7 @@ def test_state_counts(world) -> None:
 
 def test_summary_cards_and_the_waiting_label_by_permission(world, director, admin_staff, login) -> None:
     html = login(director).get(URL).content.decode()
-    assert cards_of(html) == {"Waiting for approval": "3", "Returned": "1", "Missing": "7", "Approved": "1"}
+    assert cards_of(html) == {"Waiting for approval": "3", "Returned": "1", "Missing": "4", "Approved": "1"}
     html = login(admin_staff).get(URL).content.decode()
     assert "Waiting for the Director" in html and "Waiting for approval" not in html
 
@@ -123,11 +124,11 @@ def test_by_activity_is_the_default_with_progress_and_open_state(world, director
     html = response.content.decode()
     cards = {card["activity"].title: card for card in response.context["cards"]}
     assert list(cards) == ["Market Training", "Draft With Files", "Pitching Workshop"]  # ongoing, then newest (same date: title)
-    assert cards["Pitching Workshop"]["open"] and "1 of 5</span> approved" in html
-    assert cards["Pitching Workshop"]["missing"] == 2 and cards["Pitching Workshop"]["percent"] == 20
+    assert cards["Pitching Workshop"]["open"] and "1 of 3</span> approved" in html
+    assert cards["Pitching Workshop"]["missing"] == 1 and cards["Pitching Workshop"]["percent"] == 33
     # rows: required types in checklist (due-date) order, then the other documents
     types = [line["type_name"] for line in cards["Pitching Workshop"]["lines"]]
-    assert types[-1] == "Evaluation Form" and types[:5] == [i.document_type.name for i in
+    assert set(types[REQUIRED:]) == {"Evaluation Form", "Invitation Letter"} and types[:REQUIRED] == [i.document_type.name for i in
                                                            services.document_checklist(world["workshop"], TEST_NOW)["required"]]
 
 
@@ -145,8 +146,8 @@ def test_missing_rows_have_an_upload_link(world, director, login) -> None:
     response = login(director).get(URL, {"activity": world["ongoing"].pk})
     lines = response.context["cards"][0]["lines"]
     assert [line["kind"] for line in lines] == ["missing"] * REQUIRED
-    invitation = type_named("Invitation Letter").pk
-    assert f'{reverse("activities:detail", args=[world["ongoing"].pk])}?tab=documents&amp;type={invitation}#upload' in response.content.decode()
+    design = type_named("Activity Design").pk
+    assert f'{reverse("activities:detail", args=[world["ongoing"].pk])}?tab=documents&amp;type={design}#upload' in response.content.decode()
 
 
 def test_approve_and_return_only_for_approvers(world, director, admin_staff, login) -> None:
@@ -170,7 +171,7 @@ def test_missing_filter_counts_non_draft_only_and_switches_to_by_activity(world,
     assert response.context["filters"].view == "activity"
     cards = response.context["cards"]
     assert [c["activity"].title for c in cards] == ["Market Training", "Pitching Workshop"]
-    assert sum(len(c["lines"]) for c in cards) == 7
+    assert sum(len(c["lines"]) for c in cards) == 4
 
 
 def test_search_type_and_ai_search_filters(world, director, login) -> None:

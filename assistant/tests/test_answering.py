@@ -54,7 +54,7 @@ def test_whats_missing_uses_the_checklist_tool_and_saves_no_sources(director, ch
     fake_gemini.replies += [
         call("find_activities", name="Pitching"),
         call("get_document_checklist", activity_id=activity.pk),
-        say("These are missing: Invitation Letter, Request Letter, Attendance Sheet and Accomplishment Report."),
+        say("These are missing: Request Letter and Attendance Sheet."),
     ]
     answer = ask(director, chat, "What documents are missing for the Pitching Workshop?")
     assert answer.answered_from == "records"
@@ -64,7 +64,8 @@ def test_whats_missing_uses_the_checklist_tool_and_saves_no_sources(director, ch
     results = dict(fake_gemini.tool_results())
     assert results["find_activities"]["activities"][0]["activity_id"] == activity.pk
     checklist = results["get_document_checklist"]
-    assert {item["document_type"] for item in checklist["required"]} >= {"Invitation Letter", "Accomplishment Report"}
+    assert {item["document_type"] for item in checklist["required"]} >= {"Request Letter", "Attendance Sheet"}
+    assert not {item["document_type"] for item in checklist["required"]} & {"Invitation Letter", "Accomplishment Report"}
     assert all("state" in item and "is_overdue" in item for item in checklist["required"])
 
 

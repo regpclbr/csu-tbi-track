@@ -53,13 +53,13 @@ def test_the_dashboard_card_carries_within_30_days(make_activity) -> None:
 @pytest.fixture
 def document_cases(make_activity, add_document):
     """Activities around TEST_NOW (Oct 23, 2026) with the seeded placeholder due rules:
-    Invitation Letter start-7, Activity Design start-10, Request Letter start-5, Attendance Sheet end+0,
-    Accomplishment Report end+7."""
+    Activity Design start-10, Request Letter start-5, Attendance Sheet end+0, Accomplishment Report end+7 (the
+    Invitation Letter is optional, ASSUMPTIONS 386: never due soon or overdue)."""
     soon = make_activity("Starts Oct 31", ActivityStatus.SCHEDULED, start=TODAY + timedelta(days=8))
-    # Invitation due Oct 24 (due soon), Request due Oct 26 (due soon, the last day of the window),
+    # Request due Oct 26 (due soon, the last day of the window),
     # Activity Design due Oct 21 (overdue), Attendance/Accomplishment later (nothing).
     uploaded = make_activity("Uploaded already", ActivityStatus.SCHEDULED, start=TODAY + timedelta(days=8))
-    add_document(uploaded, "Invitation Letter", DocumentStatus.FOR_REVIEW)  # uploaded: not "due soon" any more
+    add_document(uploaded, "Invitation Letter", DocumentStatus.FOR_REVIEW)  # optional: never counted
     add_document(uploaded, "Activity Design", DocumentStatus.FOR_REVIEW)  # uploaded but not Approved: still overdue
     make_activity("Draft", ActivityStatus.DRAFT, start=TODAY + timedelta(days=8))  # Drafts never count
     ongoing = make_activity("Ends today", ActivityStatus.ONGOING, start=TODAY - timedelta(days=1), end=TODAY)
@@ -79,8 +79,9 @@ def test_due_soon_and_overdue_rows(document_cases) -> None:
     rows = metrics.document_attention(YEAR_2026, TEST_NOW)
     soon, uploaded, ongoing = document_cases["soon"].pk, document_cases["uploaded"].pk, document_cases["ongoing"].pk
     assert pairs(rows["due_soon"]) == {
-        (soon, "Invitation Letter"), (soon, "Request Letter"), (uploaded, "Request Letter"), (ongoing, "Attendance Sheet"),
+        (soon, "Request Letter"), (uploaded, "Request Letter"), (ongoing, "Attendance Sheet"),
     }
+    assert not any(row["document_type"] == "Invitation Letter" for row in rows["due_soon"] + rows["overdue"])
     overdue = {(row["activity_id"], row["document_type"]): row for row in rows["overdue"]}
     assert (soon, "Activity Design") in overdue and overdue[(soon, "Activity Design")]["state"] == metrics.MISSING
     assert overdue[(uploaded, "Activity Design")]["state"] == metrics.FOR_REVIEW
@@ -107,11 +108,11 @@ def test_rows_match_what_the_reminders_consider_due_soon_and_overdue(document_ca
 
 
 def test_the_due_soon_window_comes_from_the_setting(document_cases, settings) -> None:
-    settings.DOCUMENT_REMINDER_DAYS_BEFORE = 1
     soon = document_cases["soon"].pk
-    rows = metrics.document_attention(YEAR_2026, TEST_NOW)
-    assert (soon, "Invitation Letter") in pairs(rows["due_soon"])  # due tomorrow
-    assert (soon, "Request Letter") not in pairs(rows["due_soon"])  # due in 3 days
+    settings.DOCUMENT_REMINDER_DAYS_BEFORE = 3
+    assert (soon, "Request Letter") in pairs(metrics.document_attention(YEAR_2026, TEST_NOW)["due_soon"])  # in 3 days
+    settings.DOCUMENT_REMINDER_DAYS_BEFORE = 2
+    assert (soon, "Request Letter") not in pairs(metrics.document_attention(YEAR_2026, TEST_NOW)["due_soon"])
 
 
 def test_rows_respect_the_activity_type(document_cases, make_activity) -> None:

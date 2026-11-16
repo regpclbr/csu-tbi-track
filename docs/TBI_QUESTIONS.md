@@ -35,7 +35,8 @@ all of them are to be validated with the TBI too.
 
 ## Documents
 
-- **Item 9:** When is each required document due? (Current placeholders: Activity Design 10 days before the start date, Invitation Letter 7 days before, Request Letter 5 days before, Attendance Sheet on the end date, Accomplishment Report 7 days after the end date.)
+- **Item 9:** When is each required document due? (Current placeholders: Activity Design 10 days before the start date, Request Letter 5 days before, Attendance Sheet on the end date.)
+- **Item 386 (for NAVIGATU):** The Invitation Letter and the Accomplishment Report are now optional documents: they are no longer counted as missing or overdue, they are not in the document compliance report, and no reminders are sent for them (uploaded ones are kept and listed under "Other documents"). Can NAVIGATU confirm that neither the Invitation Letter nor the Accomplishment Report is required for every activity? Should any other document type be optional too, or should some activity types still require one of them? (Still required: Activity Design, Request Letter, Attendance Sheet.) (Staff can also upload files of the new type "Other", for example an MOA, with a title of their own.)
 - **Item 118 (upload):** Should any TBI staff member be allowed to upload a document for any activity, or only certain roles or the activity's organizer?
 - **Item 344 (review):** Only the Director approves or returns documents now (the System Administrator can give this to another role in the Admin Console). Is that right?
 - **Item 344 (stand-in):** If the Director is unavailable, who should approve documents?
@@ -105,7 +106,7 @@ all of them are to be validated with the TBI too.
 - **Item 6:** Do participants get a Certificate of Participation by email, and resource persons a Certificate of Appreciation in hard copy?
 - **Item 7:** Is one certificate design used for all activities, managed by the Admin?
 - **Item 8:** Must every uploaded document be reviewed and approved before it counts?
-- **Item 9:** Are these the required documents for every activity: invitation letter, activity design, request letter, attendance sheet, accomplishment report? (Due dates: see Documents above.)
+- **Item 9:** Are these the required documents for every activity: activity design, request letter, attendance sheet? (The invitation letter and the accomplishment report are optional now, item 386. Due dates: see Documents above.)
 - **Item 10:** Should missing-document reminders go to the person who created the activity, inside the app (not by email)?
 - **Item 11:** Is it right that startup data from Navigatu is read-only here and that startups are matched by their email address?
 - **Item 12:** Can every TBI staff member see every startup?

@@ -183,14 +183,19 @@ def test_n15_fully_compliant_needs_every_required_type_approved(make_activity, a
     complete, partial = make_activity("Complete"), make_activity("Partial")
     for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Accomplishment Report"):
         add_document(complete, name)
-        add_document(partial, name, DocumentStatus.APPROVED if name != "Accomplishment Report" else DocumentStatus.FOR_REVIEW)
+        add_document(partial, name, DocumentStatus.APPROVED if name != "Attendance Sheet" else DocumentStatus.FOR_REVIEW)
     assert summary()["fully_compliant_activities"] == 1
+    # Optional types never decide it (ASSUMPTIONS 386): only the 3 required ones approved is fully compliant.
+    only_required = make_activity("Only the required ones")
+    for name in ("Activity Design", "Request Letter", "Attendance Sheet"):
+        add_document(only_required, name)
+    assert summary()["fully_compliant_activities"] == 2
 
 
 def test_s3_overdue_now_ignores_the_range_and_skips_draft(make_activity, add_document) -> None:
-    # Ended Oct 10: Accomplishment Report due Oct 17 (overdue on Oct 23); everything else is due earlier.
+    # Ended Oct 10, 2025: only the Attendance Sheet is missing (overdue); the optional Accomplishment Report never counts.
     old = make_activity("Ended in 2025", start=date(2025, 10, 10))
-    for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet"):
+    for name in ("Activity Design", "Request Letter"):
         add_document(old, name)
     make_activity("Draft", DRAFT, start=date(2026, 1, 10))  # never counted
     numbers = metrics.documents_now(YEAR_2026, TEST_NOW)
@@ -209,8 +214,9 @@ def test_s3_due_date_itself_is_not_overdue_manila_midnight(make_activity) -> Non
 
     assert attendance_sheet(late_evening)["is_overdue"] is False
     assert attendance_sheet(just_after_midnight)["is_overdue"] is True
-    assert metrics.documents_now(YEAR_2026, late_evening)["overdue"] == 3  # the three letters due before Oct 23
-    assert metrics.documents_now(YEAR_2026, just_after_midnight)["overdue"] == 4
+    # Activity Design and Request Letter, due before Oct 23 (the Invitation Letter is optional, ASSUMPTIONS 386)
+    assert metrics.documents_now(YEAR_2026, late_evening)["overdue"] == 2
+    assert metrics.documents_now(YEAR_2026, just_after_midnight)["overdue"] == 3
 
 
 def test_s4_waiting_and_returned_exclude_certificate_evidence(make_activity, register, add_document, make_certificate_row) -> None:

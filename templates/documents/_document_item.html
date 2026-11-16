@@ -1,21 +1,24 @@
 {% comment %}
-One document in a list (Documents tab, certificate evidence): title (link to its page), who uploaded it and when, the
-state and searchable badges and the member's actions. row: documents.pages.document_row().
+One document in a list (Documents tab: Required and Other documents, certificate evidence): title (link to its page), who
+uploaded it and when, the state and searchable badges and the member's actions. row: documents.pages.document_row().
+Layout (ASSUMPTIONS 387): the title block starts at 16rem and takes the free width (basis-64 grow); the badges and the
+buttons are ONE group on the right that wraps under the title when there is no room. Never min-w-0 + flex-1 alone on the
+title: with flex-wrap it then shrinks to a few letters instead of wrapping the buttons.
 {% endcomment %}
 {% load ui %}
 {% with document=row.document %}
-<li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
-  <div class="min-w-0 flex-1">
+<li class="flex flex-wrap items-center gap-x-4 gap-y-2 py-3" data-document-row>
+  <div class="min-w-0 grow basis-64" data-document-title>
     <a href="{% url 'documents:detail' document.pk %}?next={{ request|here|urlencode:"" }}" class="font-semibold break-words text-ink hover:text-primary hover:underline">{{ document.title }}</a>
-    <p class="mt-0.5 text-xs text-muted">
+    <p class="mt-0.5 text-xs break-words text-muted">
       {{ document.file_extension|upper }} · {{ document.file_size_kb }} KB · uploaded by {{ document.uploaded_by.name }}
       <time datetime="{{ document.uploaded_at|date:'c' }}">{{ document.uploaded_at|date:"M j, Y g:i A" }}</time>
     </p>
   </div>
-  <div class="flex flex-wrap items-center gap-1.5">
+  <div class="ml-auto flex flex-wrap items-center justify-end gap-1.5" data-document-side>
     {% include "components/badge.html" with text=row.state.label tone=row.state.tone %}
     {% if row.searchable %}<span class="badge badge-neutral" title="The AI assistant can use this document">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}Searchable</span>{% endif %}
+    {% include "documents/_actions.html" with row=row next=next %}
   </div>
-  {% include "documents/_actions.html" with row=row next=next %}
 </li>
 {% endwith %}

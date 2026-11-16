@@ -3,7 +3,8 @@
 Documents tab of the activity page (documents.pages.documents_tab). Left: the checklist (documents.services.
 document_checklist: required types with due date, state and overdue flag; optional types with their documents), each
 document with the actions the member may take. Right: the upload form (any active staff member; ?type=<id>
-preselects the type). Uploads are normal POSTs: success comes back here with a toast, errors under their fields.
+preselects the type; ?focus=type, the "Upload other document" button, focuses the dropdown; the types grouped Required /
+Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back here with a toast, errors under their fields.
 {% endcomment %}
 <div id="documents-tab" class="grid gap-5 xl:grid-cols-3">
   <div class="space-y-5 xl:col-span-2">
@@ -40,12 +41,25 @@ preselects the type). Uploads are normal POSTs: success comes back here with a t
     </section>
 
     <section class="card p-6" aria-labelledby="optional-title">
-      {% include "components/section_header.html" with id="optional-title" title="Other documents" subtitle="Optional document types. They never become overdue." %}
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          {% include "components/section_header.html" with id="optional-title" title="Other documents" subtitle="Optional document types. They never become overdue." %}
+        </div>
+        {% if optional_type_names %}
+          <a href="{{ activity_url }}?tab=documents&amp;focus=type#upload" class="btn btn-secondary btn-sm shrink-0">{% include "components/icon.html" with name="upload" class="size-4" %}Upload other document</a>
+        {% endif %}
+      </div>
       {% for entry in optional %}
         <h3 class="mt-4 text-sm font-semibold text-ink first:mt-0">{{ entry.document_type.name }}</h3>
         <ul class="divide-y divide-line">{% for row in entry.rows %}{% include "documents/_document_item.html" with row=row next=back %}{% endfor %}</ul>
       {% empty %}
-        {% include "components/empty_state.html" with icon="folder" title="No other documents yet" text="Upload any optional document with the form." compact=True %}
+        {% if optional_type_names %}
+          {% with types=optional_type_names|join:", " %}
+            {% include "components/empty_state.html" with icon="folder" title="No other documents yet" text="Optional types: "|add:types|add:". Use “Upload other document” and choose the type." compact=True %}
+          {% endwith %}
+        {% else %}
+          {% include "components/empty_state.html" with icon="folder" title="No other documents yet" text="No optional document types are set up." compact=True %}
+        {% endif %}
       {% endfor %}
     </section>
   </div>
@@ -64,8 +78,12 @@ preselects the type). Uploads are normal POSTs: success comes back here with a t
         <label for="upload-type" class="text-sm font-semibold text-ink">Document type <span class="text-danger" aria-hidden="true">*</span></label>
         <select id="upload-type" name="document_type" required class="field-input field-select mt-1.5"{% if upload.errors.document_type %} aria-invalid="true" aria-describedby="upload-type-error"{% endif %}{% if upload_focus == "document_type" %} autofocus{% endif %}>
           <option value="">Choose a type…</option>
-          {% for document_type in upload_types %}
-            <option value="{{ document_type.pk }}"{% if document_type.pk == upload.document_type %} selected{% endif %}>{{ document_type.name }}{% if document_type.is_required %} (required){% endif %}</option>
+          {% for group in upload_groups %}
+            <optgroup label="{{ group.label }}">
+              {% for document_type in group.types %}
+                <option value="{{ document_type.pk }}"{% if document_type.pk == upload.document_type %} selected{% endif %}>{{ document_type.name }}</option>
+              {% endfor %}
+            </optgroup>
           {% endfor %}
         </select>
         {% if upload.errors.document_type %}<p id="upload-type-error" class="field-error">{{ upload.errors.document_type }}</p>{% endif %}
@@ -74,7 +92,7 @@ preselects the type). Uploads are normal POSTs: success comes back here with a t
         <label for="upload-title" class="text-sm font-semibold text-ink">Title <span class="font-normal text-muted">(optional)</span></label>
         <input id="upload-title" type="text" name="title" value="{{ upload.title }}" maxlength="255" class="field-input mt-1.5"
                aria-describedby="upload-title-help{% if upload.errors.title %} upload-title-error{% endif %}"{% if upload.errors.title %} aria-invalid="true"{% endif %}{% if upload_focus == "title" %} autofocus{% endif %}>
-        <p id="upload-title-help" class="field-help">Empty: the document type's name.</p>
+        <p id="upload-title-help" class="field-help">Empty: the document type's name. Required for “{{ other_title_required }}”.</p>
         {% if upload.errors.title %}<p id="upload-title-error" class="field-error">{{ upload.errors.title }}</p>{% endif %}
       </div>
       {% include "components/file_drop.html" with id="upload-file" name="file" limits=limits error=upload.errors.file label="File" autofocus=upload_focus_file %}

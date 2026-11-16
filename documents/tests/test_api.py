@@ -204,8 +204,9 @@ def test_checklist_api(client, admin_staff, make_activity) -> None:
     activity = make_activity(start=date(2026, 11, 10))
     client.force_login(admin_staff)
     data = client.get(api("api_checklist", activity.pk)).json()
-    invitation = next(row for row in data["required"] if row["document_type"] == "Invitation Letter")
-    assert invitation["due_date"] == "2026-11-03"
-    assert invitation["state"] == "Missing" and invitation["documents"] == []
-    assert isinstance(invitation["is_overdue"], bool)
-    assert {row["document_type"] for row in data["optional"]} == {"Pre-registration Form", "Evaluation Form", "Certificate"}
+    request_letter = next(row for row in data["required"] if row["document_type"] == "Request Letter")
+    assert request_letter["due_date"] == "2026-11-05"
+    assert request_letter["state"] == "Missing" and request_letter["documents"] == []
+    assert isinstance(request_letter["is_overdue"], bool)
+    assert {row["document_type"] for row in data["optional"]} == {
+        "Accomplishment Report", "Invitation Letter", "Pre-registration Form", "Evaluation Form", "Certificate", "Other"}

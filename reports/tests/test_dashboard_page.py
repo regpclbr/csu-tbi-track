@@ -226,9 +226,10 @@ def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, 
     page = login(head).get(URL).context["page"]
     tones = [item.tone for item in page.attention]
     assert "danger" in tones  # the conducted activity's missing documents are overdue
-    assert "warning" in tones  # "Soon Seminar" (starts in 8 days): Invitation Letter due in 1 day
+    assert "warning" in tones  # "Soon Seminar" (starts in 8 days): Request Letter due in 3 days
     titles = " | ".join(item.title for item in page.attention)
-    assert "Soon Seminar needs the Invitation Letter" in titles
+    assert "Soon Seminar needs the Request Letter" in titles
+    assert "Invitation Letter" not in titles  # optional since ASSUMPTIONS 386
     assert "1 document is waiting for your review" in titles
     assert "1 activity needs certificate approval" in titles
     assert tones.index("danger") < tones.index("warning") < tones.index("primary")
@@ -245,10 +246,10 @@ def test_needs_attention_links_go_to_the_right_place(make_member, login, data, a
     add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
     page = login(head).get(URL).context["page"]
     by_title = {item.title: item.action_url for item in page.attention}
-    soon = next(url for title, url in by_title.items() if title.startswith("Soon Seminar needs the Invitation Letter"))
+    soon = next(url for title, url in by_title.items() if title.startswith("Soon Seminar needs the Request Letter"))
     seminar = Activity.objects.get(title="Soon Seminar")
-    invitation = DocumentType.objects.get(name="Invitation Letter")
-    assert soon == f"{reverse('activities:detail', args=[seminar.pk])}?tab=documents&type={invitation.pk}"
+    request_letter = DocumentType.objects.get(name="Request Letter")
+    assert soon == f"{reverse('activities:detail', args=[seminar.pk])}?tab=documents&type={request_letter.pk}"
     overdue = [item.action_url for item in page.attention if item.tone == "danger"]
     assert overdue and all(f"/activities/{data['conducted'].pk}/?tab=documents&type=" in url for url in overdue)
     assert by_title["1 document is waiting for your review"] == reverse("documents:review")

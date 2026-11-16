@@ -29,6 +29,9 @@ class DocumentType(models.Model):
     Due date = activity.<due_reference> + due_offset_days (e.g. start_date - 7).
     """
 
+    # The catch-all optional type (seed_data): a document of this type needs its own title (ASSUMPTIONS 386).
+    OTHER = "Other"
+
     class DueReference(models.TextChoices):
         START_DATE = "start_date", "Start date"
         END_DATE = "end_date", "End date"

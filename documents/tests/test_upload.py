@@ -27,7 +27,7 @@ def test_upload_starts_for_review_with_file_columns(upload, director, scheduled)
     assert document.file_name == "My Invitation.PDF"
     assert document.file_extension == "pdf"
     assert document.file_size_kb == 1  # rounded up, at least 1
-    assert document.title == "Invitation Letter"  # defaults to the type name
+    assert document.title == "Request Letter"  # defaults to the type name
 
 
 def test_any_active_staff_member_can_upload(upload, admin_staff, scheduled) -> None:
@@ -126,7 +126,7 @@ def test_default_size_limit_is_10_mb() -> None:
 
 def test_fallback_pattern_is_used_and_the_uploaded_name_is_not(upload, director, scheduled) -> None:
     document = upload(director, scheduled, make_file("../../secret name.pdf"))
-    assert document.file_path.name == f"documents/activity-{scheduled.pk}/invitation-letter/20261020-invitation-letter.pdf"
+    assert document.file_path.name == f"documents/activity-{scheduled.pk}/request-letter/20261020-request-letter.pdf"
     assert "secret" not in document.file_path.name
     assert document.file_name == "secret name.pdf"  # only the base name is kept
 
@@ -142,7 +142,7 @@ def test_admin_naming_pattern_is_used(upload, director, scheduled, doc_type) -> 
     doc_type.naming_pattern = "{year}/{activity_slug}/{type}_{date}_{activity_id}"
     doc_type.save()
     document = upload(director, scheduled)
-    assert document.file_path.name == f"documents/2026/pitching-workshop/invitation-letter_20261020_{scheduled.pk}.pdf"
+    assert document.file_path.name == f"documents/2026/pitching-workshop/request-letter_20261020_{scheduled.pk}.pdf"
 
 
 def test_same_name_twice_gets_a_unique_path(upload, director, scheduled) -> None:

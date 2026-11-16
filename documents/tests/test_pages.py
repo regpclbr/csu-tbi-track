@@ -47,16 +47,19 @@ def action(name: str, document: Document) -> str:
 
 
 def test_tab_shows_the_checklist_with_states_and_due_dates(director, head, login, scheduled, upload) -> None:
-    waiting = upload(director, scheduled)  # Invitation Letter
+    waiting = upload(director, scheduled)  # Request Letter
     returned = upload(head, scheduled, document_type=DocumentType.objects.get(name="Activity Design"))
     services.return_document(director, returned, "Wrong date.")
-    approved = upload(director, scheduled, document_type=DocumentType.objects.get(name="Request Letter"))
+    approved = upload(director, scheduled, document_type=DocumentType.objects.get(name="Invitation Letter"))  # optional
     services.approve_document(director, approved)
     html = login(head).get(tab(scheduled)).content.decode()
     assert 'id="documents-tab"' in html and "coming in phase" not in html
-    for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Accomplishment Report"):
-        assert name in html
-    assert "Due <time datetime=\"2026-11-03\">Nov 3, 2026</time>" in html  # Invitation Letter: start - 7
+    required = html.split('id="required-title"')[1].split('id="optional-title"')[0]
+    for name in ("Activity Design", "Request Letter", "Attendance Sheet"):
+        assert f">{name}</h3>" in required
+    for name in ("Invitation Letter", "Accomplishment Report"):  # optional since ASSUMPTIONS 386
+        assert f">{name}</h3>" not in required
+    assert "Due <time datetime=\"2026-11-05\">Nov 5, 2026</time>" in html  # Request Letter: start - 5
     for label in ("Waiting for review", "Returned", "Approved", "Missing"):
         assert label in html
     assert waiting.title in html and "Other documents" in html
@@ -65,12 +68,12 @@ def test_tab_shows_the_checklist_with_states_and_due_dates(director, head, login
 def test_overdue_badge_after_the_due_date(director, login, make_activity) -> None:
     past = make_activity(start=date(2026, 1, 20))  # every required due date has passed and nothing is approved
     html = login(director).get(tab(past)).content.decode()
-    assert html.count('<span class="badge badge-danger">') == 5 and "Overdue" in html
+    assert html.count('<span class="badge badge-danger">') == 3 and "Overdue" in html  # the 3 required types
 
 
 def test_type_parameter_preselects_the_upload_type(director, login, scheduled, doc_type) -> None:
     html = login(director).get(tab(scheduled, type=doc_type.pk)).content.decode()
-    assert re.search(rf'<option value="{doc_type.pk}" selected>Invitation Letter', html)
+    assert re.search(rf'<option value="{doc_type.pk}" selected>Request Letter', html)
     assert "PDF, DOCX, XLSX, JPG, PNG" in html and "MB" in html
     certificate_type = DocumentType.objects.get(name="Certificate")
     assert f'<option value="{certificate_type.pk}"' not in html  # evidence has its own upload
@@ -80,9 +83,9 @@ def test_any_staff_member_can_upload(admin_staff, login, scheduled, doc_type) ->
     response = login(admin_staff).post(reverse("activities:document_upload", args=[scheduled.pk]),
                                        {"document_type": doc_type.pk, "title": "", "file": make_file()}, follow=True)
     document = Document.objects.get()
-    assert document.uploaded_by == admin_staff and document.title == "Invitation Letter"
+    assert document.uploaded_by == admin_staff and document.title == "Request Letter"
     assert response.redirect_chain[-1][0].endswith("?tab=documents")
-    assert '"Invitation Letter" was uploaded. It is waiting for review.' in messages_of(response)
+    assert '"Request Letter" was uploaded. It is waiting for review.' in messages_of(response)
 
 
 def test_upload_errors_are_shown_under_their_fields(director, login, scheduled, doc_type) -> None:
@@ -285,8 +288,8 @@ def test_downloads_need_a_staff_login(director, login, scheduled, upload, client
 def test_display_state_of_a_checklist_item(director, head, scheduled, upload) -> None:
     document = upload(head, scheduled)
     item = services.document_checklist(scheduled)["required"]
-    invitation = next(i for i in item if i.document_type.name == "Invitation Letter")
-    assert pages.checklist_state(invitation) == ("Waiting for review", "info")
+    request_letter = next(i for i in item if i.document_type.name == "Request Letter")
+    assert pages.checklist_state(request_letter) == ("Waiting for review", "info")
     services.return_document(director, document, "No.")
-    invitation = next(i for i in services.document_checklist(scheduled)["required"] if i.document_type.name == "Invitation Letter")
-    assert pages.checklist_state(invitation) == ("Returned", "warning")
+    request_letter = next(i for i in services.document_checklist(scheduled)["required"] if i.document_type.name == "Request Letter")
+    assert pages.checklist_state(request_letter) == ("Returned", "warning")
