@@ -57,7 +57,12 @@ def schedule_status() -> StatusItem:
     rows, missing, failed = [], 0, 0
     saved = {schedule.name: schedule for schedule in Schedule.objects.filter(name__in=[s.name for s in SCHEDULES])}
     last_tasks = {task.id: task for task in Task.objects.filter(id__in=[s.task for s in saved.values() if s.task])}
+    planned = [s for s in SCHEDULES if s.enabled]
     for daily in SCHEDULES:
+        if not daily.enabled:  # turned off on purpose (STARTUP_SYNC_ENABLED=False, ASSUMPTIONS 393): never "missing"
+            rows.append({"name": daily.name, "time": daily.when, "next_run": None,
+                         "last_result": f"Turned off ({daily.enabled_setting}=False)", "last_run": None})
+            continue
         schedule = saved.get(daily.name)
         task = last_tasks.get(schedule.task) if schedule and schedule.task else None
         if schedule is None:
@@ -79,12 +84,12 @@ def schedule_status() -> StatusItem:
         })
     label = "Scheduled tasks"
     if missing:
-        return StatusItem("schedules", label, WARNING, f"{missing} of {len(SCHEDULES)} scheduled tasks are not set up.",
+        return StatusItem("schedules", label, WARNING, f"{missing} of {len(planned)} scheduled tasks are not set up.",
                           fix="Run once: python manage.py setup_schedules", rows=rows)
     if failed:
         return StatusItem("schedules", label, WARNING, f"The last run of {failed} task{'s' if failed != 1 else ''} failed.",
                           fix="Open the failed task in the administration site (Django Q → Failed tasks) to see why.", rows=rows)
-    return StatusItem("schedules", label, OK, f"All {len(SCHEDULES)} scheduled tasks are set up.", rows=rows)
+    return StatusItem("schedules", label, OK, f"All {len(planned)} scheduled tasks are set up.", rows=rows)
 
 
 def email_status() -> StatusItem:

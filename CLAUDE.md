@@ -209,6 +209,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
   honeypot field `website`) before `register()`; the service itself is never rate limited.
 - An evaluation link that is submitted or past its window shows only the closed reason.
+- Privacy notice (ASSUMPTIONS 394): `/privacy/` + `public/_privacy_consent.html` (required checkbox `privacy_consent`) on the
+  public registration page, the portal registration page and the evaluation review step. The one rule is
+  `services.check_privacy_consent`, called by every public entry point (HTML, `/api/register/`, `/api/evaluate/`, portal page
+  and API) before `register()` / `submit_evaluation()`; the services themselves never ask. Nothing is stored (no column).
 - "Open for registration" lists use `open_activities()` + `public_activity_summary()` (public
   `/api/activities/open/`, portal `/startups/portal/api/activities/`); never a second rule.
 - Shared links start with `SITE_URL`, never the request's Host: `registration_page_url()`, `evaluation_request_url()`,
@@ -688,6 +692,24 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Delete activity + My profile (2026-11-16): can_delete_activities (System Administrator), refused with real records,
   ACTIVITY_DELETION record, certificate number sequence; My profile (name, position, password), POSITION table (389–390).
   Database: accounts 0007–0008, activities 0008, certificates 0015–0016; 34 tables.
+- Client review version (2026-11-16): Docker Compose on one Azure VM (Caddy HTTPS, gunicorn, qcluster, pgvector), release
+  step, deploy checks, token-free logs, noindex/robots, "Review version" label, privacy notice + required consent checkbox,
+  startup sync switch, create_first_admin / create_review_startup, Gelasio font, backups, docs/DEPLOY.md (391–398).
+  No database or ERD change.
+
+## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
+- NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.
+- `Dockerfile` (requirements.txt only; Pango, DejaVu, Gelasio from `deploy/fonts/gelasio/`, tzdata; user `app`) and
+  `deploy/docker-compose.prod.yml` (db never published, release → web (gunicorn) + worker (qcluster), caddy = HTTPS + /static/).
+  Always run compose through `deploy/compose.sh` (server `.env` at `/opt/csu-tbi/.env`, root only). Scripts in `deploy/`
+  (committed, LF line endings via `.gitattributes`; run them with `sh`), never `tools/`.
+- Server-only settings come from env: `BEHIND_HTTPS_PROXY` (proxy SSL header + short HSTS), `CSRF_TRUSTED_ORIGINS` from an https
+  SITE_URL, `STARTUP_SYNC_ENABLED` (False on the server; `DailySchedule.enabled_setting`), `REVIEW_VERSION_LABEL`
+  (`config.frontend.review_label`), `Q_CLUSTER_WORKERS`. `config/checks.py` runs in `check --deploy` (release step).
+- Every response has `X-Robots-Tag: noindex` (`config.headers.NoIndexMiddleware`); `/robots.txt`, `/healthz/` in `config/views.py`.
+- Logs never contain link tokens: `config.logfilters.HideTokensFilter` on the console handler. No access logs (Caddy, gunicorn).
+- Every email carries `SITE_URL` (also certificate and password-changed emails; tested in `accounts/tests/test_review_clean_seed.py`).
+- Clean database: `seed_data` only, `create_first_admin` (interactive, once), `create_review_startup` (one TEST startup).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -724,6 +746,8 @@ python manage.py index_documents          # index approved documents not indexed
 python manage.py check_gemini             # models in use (and where from), models the key can use, tiny real calls
 python manage.py check_pdf                # WeasyPrint renders a test PDF in memory: OK or the exact error
 python manage.py send_test_email you@example.com [--smtp]   # one test email (--smtp: really send it, even in DEBUG)
+python manage.py create_first_admin       # SERVER: the first System Administrator of a clean database (asks; once only)
+python manage.py create_review_startup --email you@example.com   # SERVER: one TEST startup, set-password link emailed
 python manage.py retry_certificates       # render/issue ready certificates and send unsent emails now (the 8:30 retry)
 python manage.py make_sample_certificate_images <folder>    # DEMO: invented background + 2 signatures (PNG)
 python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG): certificate flow step by step (approve = as the Director)

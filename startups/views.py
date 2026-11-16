@@ -230,11 +230,13 @@ def portal_open_activities(request: HttpRequest) -> JsonResponse:
 @require_POST
 @api_errors
 def portal_register(request: HttpRequest, activity_id: int) -> JsonResponse:
-    """POST {"participant_category": id (optional if only one), "answers": {"<field_id>": value}}"""
+    """POST {"participant_category": id (optional if only one), "answers": {"<field_id>": value},
+    "privacy_consent": true (required, the privacy notice /privacy/)}"""
     activity = registration_services.get_public_activity(activity_id)  # Scheduled only, like the public page
     if activity is None:
         raise Http404("Activity not found.")
     data = _json_body(request)
+    registration_services.check_privacy_consent(data.get(registration_services.PRIVACY_CONSENT_FIELD))
     registration = services.register_as_startup(
         request.startup, activity, participant_category=data.get("participant_category"), answers=data.get("answers") or {}
     )

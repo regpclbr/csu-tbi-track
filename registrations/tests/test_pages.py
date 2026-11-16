@@ -81,7 +81,7 @@ def test_create_from_defaults_removes_the_notice_and_shows_the_link(director, lo
     response = client.post(reverse("registrations:form_create", args=[new_activity.pk, "registration"]), follow=True)
     form = form_of(new_activity)
     assert response.redirect_chain[-1][0] == tab_url(new_activity, "forms")
-    assert f"Registration form created with {form.fields.count()} fields." in messages_of(response)
+    assert f"Registration form created with {form.fields.count()} field." in messages_of(response)  # 1 default field
     html = client.get(detail).content.decode()
     assert activity_pages.FORM_MISSING_NOTICE not in html and "Copy registration link" in html
 
@@ -138,6 +138,7 @@ def test_remove_a_field(director, login, new_activity, with_forms) -> None:
 def test_move_a_field_up_and_down(director, login, new_activity, with_forms) -> None:
     with_forms(new_activity)
     form = form_of(new_activity)
+    services.add_field(director, form, field_label="T-shirt size", field_type="short_text")  # 2 fields to move
     order = lambda: list(form.fields.order_by("sort_order").values_list("field_label", flat=True))  # noqa: E731
     first, second = order()[:2]
     client = login(director)
@@ -227,7 +228,7 @@ def test_list_registrations_search_matches_name_or_email(scheduled, signup) -> N
 def test_registration_details_show_the_answers(director, login, scheduled, signup) -> None:
     person = signup(scheduled, "ana@example.com")
     html = login(director).get(reverse("registrations:registration_detail", args=[scheduled.pk, person.pk]), **HTMX).content.decode()
-    assert "Affiliation / Organization" in html and "CSU" in html and "Data Privacy consent" in html
+    assert "Affiliation / Organization" in html and "CSU" in html
 
 
 def test_mark_attended_is_refused_until_ongoing_then_works(director, login, scheduled, signup) -> None:

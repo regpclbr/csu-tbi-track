@@ -35,7 +35,7 @@ def test_public_info_shows_slots_and_categories_but_no_registrants(client, sched
     body = json.loads(client.get(f"/api/register/{scheduled.pk}/").content)["activity"]
     assert body["slots_remaining"] == 29 and body["is_open"] is True
     assert body["participant_categories"] == [{"participant_category_id": cat("Incubatees").pk, "name": "Incubatees"}]
-    assert [f["field_label"] for f in body["fields"]] == ["Affiliation / Organization", "Data Privacy consent"]
+    assert [f["field_label"] for f in body["fields"]] == ["Affiliation / Organization"]
     text = json.dumps(body)
     assert "ana@example.com" not in text and "Ana Cruz" not in text
 
@@ -203,14 +203,14 @@ def test_answers_are_saved_and_startup_stays_empty(scheduled, signup) -> None:
     registration = signup(scheduled, "ana@example.com")
     assert registration.startup is None
     assert registration.template == form_of(scheduled)
-    assert sorted(a.field.field_label for a in registration.answers.all()) == ["Affiliation / Organization", "Data Privacy consent"]
+    assert sorted(a.field.field_label for a in registration.answers.all()) == ["Affiliation / Organization"]
 
 
 @pytest.mark.django_db
 def test_invalid_answers_are_refused(scheduled) -> None:
     with pytest.raises(ValidationError) as excinfo:
         services.register(scheduled, name="Ana", email="ana@example.com", answers={})
-    assert len(excinfo.value.message_dict) == 2  # both default fields are required
+    assert len(excinfo.value.message_dict) == 1  # the default field (Affiliation / Organization) is required
 
 
 @pytest.mark.django_db
@@ -236,7 +236,8 @@ def test_no_email_when_registration_fails(scheduled, django_capture_on_commit_ca
 
 @pytest.mark.django_db
 def test_public_register_endpoint(client, scheduled) -> None:
-    payload = {"name": "Ana Cruz", "email": "ana@example.com", "contact_number": "0917", "answers": registration_answers(scheduled)}
+    payload = {"name": "Ana Cruz", "email": "ana@example.com", "contact_number": "0917", "answers": registration_answers(scheduled),
+               "privacy_consent": True}
     response = client.post(f"/api/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
     assert response.status_code == 201
     assert json.loads(response.content) == {
@@ -251,7 +252,8 @@ def test_public_register_endpoint(client, scheduled) -> None:
 
 @pytest.mark.django_db
 def test_public_register_shows_field_errors(client, scheduled) -> None:
-    response = client.post(f"/api/register/{scheduled.pk}/", json.dumps({"name": "", "email": "x"}), content_type="application/json")
+    body = {"name": "", "email": "x", "privacy_consent": True}
+    response = client.post(f"/api/register/{scheduled.pk}/", json.dumps(body), content_type="application/json")
     assert response.status_code == 400
     assert {"name", "email"} <= set(json.loads(response.content)["errors"])
 

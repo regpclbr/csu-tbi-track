@@ -77,5 +77,5 @@ def test_submitted_evaluation_flow_still_works(client, attended, monkeypatch) ->
     person = attended(1)[0]
     monkeypatch.setattr(services.timezone, "now", lambda: opens_at(person.activity) + timedelta(hours=1))
     url = f"/api/evaluate/{services.evaluation_token(person)}/"
-    payload = {**CERT, "answers": evaluation_answers(person.activity)}
+    payload = {**CERT, "answers": evaluation_answers(person.activity), "privacy_consent": True}
     assert client.post(url, json.dumps(payload), content_type="application/json").status_code == 201

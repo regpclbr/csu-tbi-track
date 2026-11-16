@@ -31,3 +31,17 @@ def private_token_page(view: Callable) -> Callable:
         return response
 
     return wrapper
+
+
+class NoIndexMiddleware:
+    """X-Robots-Tag: noindex, nofollow on every response (ASSUMPTIONS 392). Nothing of CSU-TBI Track belongs in a
+    search engine: staff pages need a login, and the public pages are reached through the TBI's own links. base.html
+    has the same rule as a meta tag, and /robots.txt asks crawlers not to visit at all; this also covers files."""
+
+    def __init__(self, get_response: Callable) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        response.setdefault("X-Robots-Tag", "noindex, nofollow")
+        return response

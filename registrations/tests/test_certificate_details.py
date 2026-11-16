@@ -69,7 +69,7 @@ def test_evaluation_page_suggests_the_registration_name_and_email(attended, clie
 def test_public_post_needs_the_certificate_details(attended, client) -> None:
     person = attended(1)[0]
     url = f"/api/evaluate/{services.evaluation_token(person)}/"
-    payload = {"answers": evaluation_answers(person.activity)}
+    payload = {"answers": evaluation_answers(person.activity), "privacy_consent": True}
     # The window opens on the end date; these fixtures' activity ends in the future, so freeze "now".
     from unittest import mock
 

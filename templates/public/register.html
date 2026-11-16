@@ -1,7 +1,7 @@
 {% extends "layouts/public.html" %}
 {% comment %}
 /register/<id>/ while registration is open (public_views.register_page). The activity summary, then the form: name,
-email, contact number, participant category (components/category_choice.html: one category is preselected), the activity's form fields (components/answer_field.html) and the hidden honeypot. novalidate: every check is
+email, contact number, participant category (components/category_choice.html: one category is preselected), the activity's form fields (components/answer_field.html), the privacy notice checkbox (ASSUMPTIONS 394) and the hidden honeypot. novalidate: every check is
 the server's, so all messages appear together under their fields; the first field with an error gets the focus.
 {% endcomment %}
 {% block title %}Register: {{ activity.title }} · CSU-TBI Track{% endblock %}
@@ -24,6 +24,8 @@ the server's, so all messages appear together under their fields; the first fiel
     {% include "components/category_choice.html" %}
 
     {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
+
+    {% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
 
     {# Honeypot: hidden from people with CSS (not type="hidden"); bots fill it in. Same field as the JSON endpoint. #}
     <div class="hp-field" aria-hidden="true">

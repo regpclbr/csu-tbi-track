@@ -284,6 +284,32 @@ def send_password_link(member: TBIMember, startup: Startup) -> None:
     security_log.info("Startup set-password link sent: startup_id=%s by member_id=%s", startup.pk, member.pk)
 
 
+REVIEW_STARTUP_DEFAULT_NAME = "TEST Startup (review)"
+
+
+def create_review_startup(*, email: str, name: str = REVIEW_STARTUP_DEFAULT_NAME) -> Startup:
+    """One TEST startup for the hosted review version (`manage.py create_review_startup`, ASSUMPTIONS 396), while the
+    Navigatu sync is off. No navigatu_id (so a later real sync never matches it by ID), active, no password: the
+    "set your password" link is emailed right away (the same email as the Admin's button). The name always starts
+    with "TEST" so nobody takes it for a real startup. Refused when the email is already used.
+    """
+    name = " ".join(name.split()) or REVIEW_STARTUP_DEFAULT_NAME
+    if not name.upper().startswith("TEST"):
+        name = f"TEST {name}"
+    email = email.strip().lower()
+    try:
+        validate_email(email)
+    except ValidationError:
+        raise StartupError("Enter a valid email address.") from None
+    if Startup.objects.filter(email__iexact=email).exists():
+        raise StartupError("A startup with this email already exists.")
+    with transaction.atomic():  # the startup exists only when its link could be emailed
+        startup = Startup.objects.create(name=name[:255], email=email, is_active=True)
+        emails.send_set_password_email(startup, password_link(startup), settings.STARTUP_PASSWORD_LINK_HOURS)
+    security_log.info("Review startup created: startup_id=%s by the create_review_startup command", startup.pk)
+    return startup
+
+
 # --- Startup login (separate from staff) ------------------------------------------------------------
 
 

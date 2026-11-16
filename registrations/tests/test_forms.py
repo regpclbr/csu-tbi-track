@@ -7,7 +7,6 @@ import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 
-from accounts.seed import DATA_PRIVACY_CONSENT
 from registrations import services
 from registrations.models import DefaultFormField, FieldType, FormTemplate, FormType
 
@@ -23,8 +22,7 @@ def test_create_form_copies_the_default_fields(director, new_activity, defaults)
     fields = [(f.field_label, f.field_type, services.parse_options(f.options), f.is_required) for f in form.fields.order_by("sort_order")]
     assert fields == [
         ("Affiliation / Organization", "short_text", [], True),
-        ("Data Privacy consent", "checkbox", [DATA_PRIVACY_CONSENT], True),
-    ]
+    ]  # no "Data Privacy consent" question: the system's privacy checkbox replaces it (ASSUMPTIONS 394)
     evaluation = services.create_form(director, new_activity, FormType.EVALUATION)
     assert [f.field_label for f in evaluation.fields.order_by("sort_order")] == [
         "Overall rating", "Resource person rating", "Organization / venue rating", "Key learnings", "Suggestions",
@@ -64,7 +62,7 @@ def form(director, new_activity, defaults) -> FormTemplate:
 @pytest.mark.django_db
 def test_add_edit_reorder_remove_fields(director, form) -> None:
     field = services.add_field(director, form, field_label="T-shirt size", field_type="multiple_choice", options=["S", "M", "L"])
-    assert services.parse_options(field.options) == ["S", "M", "L"] and field.sort_order == 3
+    assert services.parse_options(field.options) == ["S", "M", "L"] and field.sort_order == 2  # after the 1 default
 
     services.update_field(director, field, field_label="Shirt size", options=["S", "M", "L", "XL"], is_required=False)
     field.refresh_from_db()
@@ -75,7 +73,7 @@ def test_add_edit_reorder_remove_fields(director, form) -> None:
     assert [f.pk for f in form.fields.order_by("sort_order")] == list(reversed(ids))
 
     services.remove_field(director, field)
-    assert form.fields.count() == 2
+    assert form.fields.count() == 1
 
 
 @pytest.mark.django_db
@@ -112,6 +110,7 @@ def test_field_options_are_validated(director, form, field_type, options, messag
 
 @pytest.mark.django_db
 def test_reorder_needs_every_field_once(director, form) -> None:
+    services.add_field(director, form, field_label="T-shirt size", field_type="short_text")
     with pytest.raises(services.RegistrationError, match="every field"):
         services.reorder_fields(director, form, [form.fields.first().pk])
 
@@ -129,7 +128,7 @@ def test_fields_are_locked_once_the_form_has_answers(director, scheduled, signup
     attempts = [
         lambda: services.update_field(director, field, field_label="Company"),
         lambda: services.update_field(director, field, field_type="long_text"),
-        lambda: services.update_field(director, form.fields.get(field_type="checkbox"), options=["I agree"]),
+        lambda: services.update_field(director, field, is_required=False),
         lambda: services.remove_field(director, field),
         lambda: services.add_field(director, form, field_label="New question", field_type="short_text"),
     ]
@@ -204,9 +203,10 @@ def test_invalid_answers(quiz, label, value, message) -> None:
 
 
 @pytest.mark.django_db
-def test_required_checkbox_needs_a_tick(scheduled) -> None:
+def test_required_checkbox_needs_a_tick(director, scheduled) -> None:
     form = form_of(scheduled)
-    consent = form.fields.get(field_type=FieldType.CHECKBOX)
+    consent = services.add_field(director, form, field_label="House rules", field_type=FieldType.CHECKBOX,
+                                 options=["I will follow the house rules."], is_required=True)
     affiliation = form.fields.get(field_type=FieldType.SHORT_TEXT)
     with pytest.raises(ValidationError) as excinfo:
         services.validate_answers(form, {str(affiliation.pk): "CSU", str(consent.pk): []})

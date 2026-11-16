@@ -111,8 +111,12 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
         values = {
             "participant_category": request.POST.get("participant_category", ""),
             "answers": public_pages.answers_from_post(form, request.POST),
+            "privacy_consent": registration_services.has_privacy_consent(
+                request.POST.get(registration_services.PRIVACY_CONSENT_FIELD)
+            ),
         }
         try:
+            registration_services.check_privacy_consent(request.POST.get(registration_services.PRIVACY_CONSENT_FIELD))
             services.register_as_startup(
                 startup, activity, participant_category=values["participant_category"] or None, answers=values["answers"]
             )
@@ -142,6 +146,7 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
         "message": message,
         "focus": focus,
         "rows": public_pages.answer_rows(form, values["answers"], errors, focus),
+        "consent_field": registration_services.PRIVACY_CONSENT_FIELD,
     }
     return _render(request, "portal/register.html", f"Register: {activity.title}", context, status=status)
 

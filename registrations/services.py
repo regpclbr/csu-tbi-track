@@ -117,6 +117,29 @@ def guard_public_registration(ip: str, email, honeypot) -> None:
         raise RegistrationError(HONEYPOT_MESSAGE)
 
 
+# --- Privacy notice consent (public registration and evaluation, ASSUMPTIONS 394) -----------------
+# A required checkbox, checked here so the HTML pages, the JSON endpoints and the startup portal all refuse the same way.
+# Nothing is stored (no column, no ERD change): a registration or evaluation can only exist when it was ticked.
+
+PRIVACY_CONSENT_FIELD = "privacy_consent"
+PRIVACY_CONSENT_REQUIRED = "Please confirm that you have read the privacy notice and agree to it."
+_CONSENT_VALUES = {"yes", "true", "on", "1"}
+
+
+def has_privacy_consent(value) -> bool:
+    """True for a ticked checkbox ("yes" / "on") or JSON true; anything else (missing, empty, false) is no consent."""
+    if value is True:
+        return True
+    return isinstance(value, str) and value.strip().lower() in _CONSENT_VALUES
+
+
+def check_privacy_consent(value) -> None:
+    """Refuse (ValidationError on PRIVACY_CONSENT_FIELD) unless the privacy notice checkbox was ticked. Call it before
+    `register` (public page, /api/register/, startup portal) and `submit_evaluation` (evaluation page, /api/evaluate/)."""
+    if not has_privacy_consent(value):
+        raise ValidationError({PRIVACY_CONSENT_FIELD: [PRIVACY_CONSENT_REQUIRED]})
+
+
 # --- Field options (stored as a JSON list in FORM_FIELD.options) --------------------------
 
 

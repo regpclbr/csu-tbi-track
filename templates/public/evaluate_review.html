@@ -2,7 +2,8 @@
 {% comment %}
 /evaluate/<token>/ step 2, the review (ASSUMPTIONS 175: the participant is responsible for the name and email). The
 certificate name and email in large text, the answers, then "Edit" (step=edit: back to the form, values kept) and
-"Confirm and submit" (step=confirm: services.submit_evaluation checks everything again). The values travel in hidden
+"Confirm and submit" (step=confirm: the privacy notice checkbox must be ticked, ASSUMPTIONS 394; services.submit_evaluation
+checks everything again). The values travel in hidden
 inputs; nothing is saved before the confirmation.
 {% endcomment %}
 {% block title %}Check your evaluation · CSU-TBI Track{% endblock %}
@@ -40,6 +41,10 @@ inputs; nothing is saved before the confirmation.
       {% endfor %}
       <div class="py-3"><dt class="text-sm font-semibold text-ink">Comments</dt><dd class="mt-0.5 text-[15px] break-words whitespace-pre-line {% if comments %}text-slate-800{% else %}text-slate-700 italic{% endif %}">{{ comments|default:"No comments" }}</dd></div>
     </dl>
+  </section>
+
+  <section class="public-card mt-4 p-5 sm:p-8" aria-label="Privacy notice">
+    {% include "public/_privacy_consent.html" with field=consent_field error=consent_error %}
   </section>
 
   <div class="public-card mt-4 flex flex-col-reverse gap-3 p-5 sm:flex-row sm:justify-between sm:px-8">

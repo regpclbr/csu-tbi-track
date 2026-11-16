@@ -13,7 +13,8 @@
 <style>
   @page { size: A4 landscape; margin: 0; }
   html, body { margin: 0; padding: 0; }
-  body { font-family: Georgia, "Times New Roman", serif; color: #1f2933; }
+  {# Gelasio: the same letter widths as Georgia, installed in the server image (Linux has no Georgia; ASSUMPTIONS 397). #}
+  body { font-family: Georgia, Gelasio, "Times New Roman", serif; color: #1f2933; }
   .page { position: relative; width: 297mm; height: 210mm; overflow: hidden; }
   .background { position: absolute; top: 0; left: 0; width: 297mm; height: 210mm; }
   .content { position: absolute; top: 28%; left: 20%; width: 60%; text-align: center; }

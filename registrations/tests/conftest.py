@@ -5,7 +5,7 @@ from datetime import datetime, time
 import pytest
 from django.utils import timezone
 
-from accounts.seed import DATA_PRIVACY_CONSENT, load_default_form_fields
+from accounts.seed import load_default_form_fields
 from activities import services as activity_services
 from activities.models import Activity, ParticipantCategory
 from activities.tests.conftest import (  # noqa: F401  (re-exported fixtures)
@@ -37,7 +37,6 @@ def registration_answers(activity: Activity, affiliation: str = "CSU") -> dict:
     form = form_of(activity)
     return {
         field_id(form, "Affiliation / Organization"): affiliation,
-        field_id(form, "Data Privacy consent"): [DATA_PRIVACY_CONSENT],
     }
 
 

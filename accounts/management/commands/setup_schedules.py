@@ -22,6 +22,11 @@ class Command(BaseCommand):
             self.setup(planned)
 
     def setup(self, planned: DailySchedule | MinutesSchedule) -> None:
+        if not planned.enabled:  # turned off by its setting (e.g. STARTUP_SYNC_ENABLED=False): no schedule row at all
+            removed, _ = Schedule.objects.filter(name=planned.name).delete()
+            note = " (removed the existing schedule)" if removed else ""
+            self.stdout.write(f'Turned off: "{planned.name}" ({planned.enabled_setting}=False){note}.')
+            return
         schedules = list(Schedule.objects.select_for_update().filter(name=planned.name).order_by("pk"))
         for duplicate in schedules[1:]:  # only rows with our own name; normally there are none
             duplicate.delete()

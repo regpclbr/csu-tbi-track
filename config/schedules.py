@@ -17,6 +17,11 @@ class DailySchedule:
     func: str  # dotted path of the task function
     hour_setting: str  # name of the setting holding the hour (0-23, Manila time)
     minute_setting: str | None = None  # name of the setting holding the minute (default :00)
+    enabled_setting: str | None = None  # name of a True/False setting that can turn the schedule off (default: always on)
+
+    @property
+    def enabled(self) -> bool:
+        return getattr(settings, self.enabled_setting) if self.enabled_setting else True
 
     @property
     def hour(self) -> int:
@@ -39,6 +44,7 @@ class MinutesSchedule:
     name: str
     func: str
     minutes_setting: str  # name of the setting holding N
+    enabled = True  # always on
 
     @property
     def minutes(self) -> int:
@@ -51,7 +57,9 @@ class MinutesSchedule:
 
 SCHEDULES: list[DailySchedule | MinutesSchedule] = [
     DailySchedule("Daily document reminders", "documents.tasks.run_document_reminders", "DOCUMENT_REMINDER_HOUR"),
-    DailySchedule("Daily Navigatu startup sync", "startups.tasks.run_startup_sync", "STARTUP_SYNC_HOUR"),
+    # Off with STARTUP_SYNC_ENABLED=False (the hosted review version, ASSUMPTIONS 393): setup_schedules then removes it.
+    DailySchedule("Daily Navigatu startup sync", "startups.tasks.run_startup_sync", "STARTUP_SYNC_HOUR",
+                  enabled_setting="STARTUP_SYNC_ENABLED"),
     # Retries approved documents that are not indexed yet (e.g. after a Gemini rate limit).
     DailySchedule("Index pending documents", "assistant.tasks.run_index_pending", "ASSISTANT_INDEX_HOUR", "ASSISTANT_INDEX_MINUTE"),
     # Renders/issues Approved + evaluated certificates and sends Issued + unsent ones (Step 9).

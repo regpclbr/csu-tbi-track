@@ -98,6 +98,17 @@ all of them are to be validated with the TBI too.
 - **Item 390:** Members now choose a position (job title) on their profile; it is only shown under their name and gives no rights. Which positions (job titles) does the TBI use, so the System Administrator can add them?
 - **Item 204:** Who should be allowed to generate reports? Now: staff whose role can create activities. Any staff member can see the dashboard and download reports. Should some roles not see them?
 
+## Hosted client review version (for NAVIGATU)
+
+- **Items 391, 394 (approval for real data):** The client review version runs on a small cloud server (Microsoft Azure, Southeast Asia) so NAVIGATU staff can check the system with real accounts. It is a copy for review, not the final deployment. May we use real staff accounts and real participant data (names, emails, evaluation answers) on it during the review, or only test data? Who approves this for NAVIGATU?
+- **Item 394 (privacy notice text):** The public registration, startup portal registration and evaluation pages now show a short privacy notice with a required "I agree" checkbox, and a full notice at /privacy/. Can NAVIGATU (or the CSU Data Protection Officer) approve or correct the text?
+- **Item 394 (contact person):** Who is the contact person (or Data Protection Officer) for privacy questions and requests, and which email address should the notice show?
+- **Item 394 (retention period):** How long should participant data (registrations, attendance, evaluations, certificates) be kept after an activity, and what happens to it afterwards (deleted or anonymized)?
+- **Item 394 (two checkboxes):** *Decided (2026-11-16, owner):* the default registration form no longer has its own "Data Privacy consent" question; every public form has the fixed privacy checkbox instead. Is one checkbox linked to the full notice enough for the TBI?
+- **Item 395 (accounts):** Who should get accounts on the review version, with which roles, and for how long? Should the accounts be deactivated when the review ends?
+- **Item 398 (sender address):** During the review, emails come from the researchers' Gmail address. For the real deployment, which official TBI or CSU email address (and mail server) should send invitations, evaluation links and certificates?
+- **Items 391, 397 (review period):** How long will the review run? The server is free for a limited time (Azure for Students); after the defense it will be backed up and deleted unless NAVIGATU decides otherwise.
+
 ## General assumptions (items 1–14)
 
 - **Item 360:** When a certificate email fails, it is retried automatically and staff see "Send failed" with a Resend button. Is that enough, or should someone be notified?

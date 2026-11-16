@@ -1,0 +1,8 @@
+# Files that run on the Linux server keep LF line endings, also when committed from Windows (core.autocrlf=true would
+# give them CRLF, and "sh" then fails with "$'\r': command not found"). config/tests/test_deploy_files.py checks it.
+*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+deploy/Caddyfile text eol=lf
+deploy/*.yml text eol=lf
+*.ttf binary

@@ -35,7 +35,7 @@ def real_queue(monkeypatch, registration_emails_run_now):
 
 
 def payload(activity, email: str = "ana@example.com") -> str:
-    return json.dumps({"name": "Ana Cruz", "email": email, "answers": registration_answers(activity)})
+    return json.dumps({"name": "Ana Cruz", "email": email, "answers": registration_answers(activity), "privacy_consent": True})
 
 
 # --- Registration confirmation ----------------------------------------------------------------------------

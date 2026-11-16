@@ -127,14 +127,11 @@ def load_lookups() -> SeedResult:
 # Default form fields copied into every new registration/evaluation form.
 # PLACEHOLDERS: to be validated with the TBI. The same set is used for every activity type.
 # (field_label, field_type, options, is_required)
-DATA_PRIVACY_CONSENT = (
-    "I agree to the processing of my personal data in accordance with the "
-    "Data Privacy Act of 2012 (RA 10173)."
-)
+# No "Data Privacy consent" question any more (ASSUMPTIONS 394): every public form has the system's fixed privacy notice
+# checkbox. Only NEW installs are affected: seed_data never deletes default fields that already exist.
 DEFAULT_FORM_FIELDS: dict[str, list[tuple[str, str, list[str], bool]]] = {
     "registration": [
         ("Affiliation / Organization", "short_text", [], True),
-        ("Data Privacy consent", "checkbox", [DATA_PRIVACY_CONSENT], True),
     ],
     "evaluation": [
         ("Overall rating", "rating", [], True),

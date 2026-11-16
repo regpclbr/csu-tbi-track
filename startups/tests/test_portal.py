@@ -31,6 +31,7 @@ def portal(client, startup):
 
 def register(client, activity, **body):
     body.setdefault("answers", answers_for(activity))
+    body.setdefault("privacy_consent", True)  # the privacy notice checkbox (ASSUMPTIONS 394)
     return client.post(f"{PORTAL}/activities/{activity.pk}/register/", body, content_type="application/json")
 
 
@@ -88,7 +89,7 @@ def test_step5_rules_still_apply(portal, startup, open_activity) -> None:
     assert response.status_code == 400 and "all slots are taken" in response.json()["error"]
 
     no_form = open_activity(with_form=False, title="No form")
-    assert "form is not ready" in portal.post(f"{PORTAL}/activities/{no_form.pk}/register/", {}, content_type="application/json").json()["error"]
+    assert "form is not ready" in portal.post(f"{PORTAL}/activities/{no_form.pk}/register/", {"privacy_consent": True}, content_type="application/json").json()["error"]
 
     open_one = open_activity(title="Open")
     assert "errors" in register(portal, open_one, answers={}).json()  # required answer missing

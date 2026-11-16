@@ -342,7 +342,7 @@ class Command(BaseCommand):
         if field.field_type == FieldType.RATING:
             return self.rng.choice([3, 4, 4, 5, 5])
         if field.field_type == FieldType.CHECKBOX:
-            return options[:1]  # e.g. the Data Privacy consent
+            return options[:1]  # e.g. a consent question on an older form
         if field.field_type == FieldType.MULTIPLE_CHOICE:
             return self.rng.choice(options)
         if field.field_type == FieldType.SHORT_TEXT:

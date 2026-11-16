@@ -12,7 +12,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
-from accounts.seed import DATA_PRIVACY_CONSENT, load_default_form_fields
+from accounts.seed import load_default_form_fields
 from activities.models import ActivityType
 from registrations import services
 from registrations.models import DefaultFormField, FormTemplate, FormType, Registration
@@ -80,7 +80,7 @@ def test_registrations_and_attendance_api(client, director, scheduled, signup) -
     assert rows["total"] == 1
     row = rows["registrations"][0]
     assert (row["email"], row["participant_category"], row["confirmation_method"]) == ("ana@example.com", "Incubatees", "email")
-    assert {a["field_label"] for a in row["answers"]} == {"Affiliation / Organization", "Data Privacy consent"}
+    assert {a["field_label"] for a in row["answers"]} == {"Affiliation / Organization"}
     assert client.get(f"{API}/activities/{scheduled.pk}/registrations/", {"attended": "maybe"}).status_code == 400
 
 
@@ -202,14 +202,22 @@ def test_default_fields_editable_with_json_options(client, admin_member, default
 @pytest.mark.django_db
 def test_seed_creates_defaults_for_every_type_once(roles) -> None:
     first = load_default_form_fields()
-    assert first.created == ActivityType.objects.count() * 7  # 2 registration + 5 evaluation fields
+    assert first.created == ActivityType.objects.count() * 6  # 1 registration + 5 evaluation fields
     assert load_default_form_fields().created == 0  # safe to run twice
+    # The privacy consent is the system's fixed checkbox now, not a default question (ASSUMPTIONS 394).
+    assert not DefaultFormField.objects.filter(field_label="Data Privacy consent").exists()
 
-    consent = DefaultFormField.objects.filter(field_label="Data Privacy consent").first()
-    assert (consent.field_type, services.parse_options(consent.options), consent.is_required) == (
-        "checkbox", [DATA_PRIVACY_CONSENT], True,
-    )
-    assert "Data Privacy Act of 2012 (RA 10173)" in DATA_PRIVACY_CONSENT
+
+@pytest.mark.django_db
+def test_seed_never_deletes_an_existing_consent_default(roles) -> None:
+    """Older installs keep their own default fields: seed_data only creates missing rows (ASSUMPTIONS 394)."""
+    load_default_form_fields()
+    activity_type = ActivityType.objects.first()
+    old = DefaultFormField.objects.create(activity_type=activity_type, form_type="registration",
+                                          field_label="Data Privacy consent", field_type="checkbox",
+                                          options='["I agree."]', is_required=True, sort_order=2)
+    load_default_form_fields()
+    assert DefaultFormField.objects.filter(pk=old.pk).exists()
 
 
 @pytest.mark.django_db

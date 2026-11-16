@@ -25,3 +25,6 @@ segno==1.6.6
 
 # Configuration
 python-dotenv==1.2.4
+
+# Web server on the hosted review version (docker: deploy/docker-compose.prod.yml; development uses runserver)
+gunicorn==23.0.0

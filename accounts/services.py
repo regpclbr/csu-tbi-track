@@ -232,6 +232,45 @@ def create_member(acting_member: TBIMember, *, name: str, email: str, role: Role
     return member
 
 
+FIRST_ADMIN_EXISTS = (
+    "An active System Administrator already exists. Sign in with that account and invite people from "
+    "Admin Console → Members instead."
+)
+
+
+@transaction.atomic
+def create_first_admin(*, email: str, name: str, password: str) -> TBIMember:
+    """The very first System Administrator of a clean database (`manage.py create_first_admin`, ASSUMPTIONS 395).
+
+    Run on the server's console, so there is no acting member. Refused once any active member can manage users (the
+    admin rows are locked, so two consoles cannot both create one). The password is checked with the password
+    validators and never logged; the person typed it themselves, so no forced change at first sign-in. Every other
+    member is invited from the Admin Console (temporary password + forced change).
+    """
+    if list(_active_admins().select_for_update().values_list("pk", flat=True)):
+        raise MemberManagementError(FIRST_ADMIN_EXISTS)
+    name = name.strip()
+    if not name:
+        raise MemberManagementError("Enter the name.")
+    email = TBIMember.objects.normalize_email(email.strip()).lower()
+    try:
+        validate_email(email)
+    except ValidationError:
+        raise MemberManagementError("Enter a valid email address.") from None
+    if TBIMember.objects.filter(email__iexact=email).exists():
+        raise MemberManagementError("A member with this email already exists.")
+    try:
+        validate_password(password, TBIMember(email=email, name=name))
+    except ValidationError as error:
+        raise MemberManagementError(" ".join(error.messages)) from None
+    try:
+        member = TBIMember.objects.create_superuser(email=email, name=name, password=password)
+    except ValueError as error:  # the roles are not loaded yet
+        raise MemberManagementError(f"{error} Run: python manage.py seed_data") from None
+    audit_log.info("First System Administrator created: %s by the create_first_admin command", _who(member))
+    return member
+
+
 @transaction.atomic
 def change_member_role(acting_member: TBIMember, member: TBIMember, new_role: Role) -> TBIMember:
     """Admin Console: give a member a different role.

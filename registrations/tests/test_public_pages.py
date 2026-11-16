@@ -11,7 +11,6 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.seed import DATA_PRIVACY_CONSENT
 from activities.models import Activity, ParticipantCategory
 from registrations import public_pages, services
 from registrations.models import EvaluationSubmission, FormType, Registration
@@ -33,8 +32,8 @@ def registration_post(activity, email: str = "ana@example.com", **extra) -> dict
         "email": email,
         "contact_number": "09171234567",
         f"field_{field_id(form, 'Affiliation / Organization')}": "CSU",
-        f"field_{field_id(form, 'Data Privacy consent')}": DATA_PRIVACY_CONSENT,
         services.HONEYPOT_FIELD: "",
+        services.PRIVACY_CONSENT_FIELD: "yes",  # the privacy notice checkbox (ASSUMPTIONS 394)
     }
     data.update(extra)
     return data
@@ -77,7 +76,8 @@ def test_registration_page_shows_the_activity_and_the_form(client, scheduled) ->
     assert response.status_code == 200
     assert scheduled.title in text and scheduled.venue in text and "Slots left" in text and "Philippine time" in text
     assert 'name="name"' in text and 'name="email"' in text and 'name="contact_number"' in text
-    assert "Affiliation / Organization" in text and DATA_PRIVACY_CONSENT in text
+    assert "Affiliation / Organization" in text and "Data Privacy consent" not in text  # replaced by the fixed checkbox
+    assert f'name="{services.PRIVACY_CONSENT_FIELD}"' in text
     assert "csrfmiddlewaretoken" in text and "novalidate" in text
     # One category: a single radio, already checked (its ID is sent; services.register would also pick it).
     incubatees = ParticipantCategory.objects.get(name="Incubatees")
@@ -108,7 +108,7 @@ def test_successful_registration_shows_the_success_page(client, scheduled) -> No
     response = client.post(page(scheduled), registration_post(scheduled))
     assert response.status_code == 302 and response["Location"] == reverse("register_done", args=[scheduled.pk])
     registration = Registration.objects.get()
-    assert registration.email == "ana@example.com" and registration.answers.count() == 2
+    assert registration.email == "ana@example.com" and registration.answers.count() == 1
 
     done = client.get(response["Location"])
     text = html(done)
@@ -125,15 +125,14 @@ def test_success_page_only_for_the_browser_that_registered(client, scheduled) ->
 
 def test_field_errors_are_shown_under_their_fields_with_the_values_kept(client, scheduled) -> None:
     form = form_of(scheduled)
-    consent = f"field_{field_id(form, 'Data Privacy consent')}"
-    data = registration_post(scheduled, name="  ", email="not-an-email", **{consent: ""})
-    data.pop(consent)
+    affiliation = f"field_{field_id(form, 'Affiliation / Organization')}"
+    data = registration_post(scheduled, name="  ", email="not-an-email", contact_number="09179998888", **{affiliation: ""})
     response = client.post(page(scheduled), data)
     text = html(response)
     assert response.status_code == 400 and not Registration.objects.exists()
     assert 'id="id_name-error"' in text and 'id="id_email-error"' in text and "Enter a valid email address." in text
-    assert f'id="answer-{field_id(form, "Data Privacy consent")}-error"' in text and "This field is required." in text
-    assert 'value="not-an-email"' in text and 'value="CSU"' in text  # values kept
+    assert f'id="answer-{field_id(form, "Affiliation / Organization")}-error"' in text and "This field is required." in text
+    assert 'value="not-an-email"' in text and 'value="09179998888"' in text  # values kept
     assert "Please check the 3 fields marked below." in text
     # Only the first field with an error gets the focus.
     assert text.count("autofocus") == 1 and re.search(r'<input id="id_name"[^>]*autofocus', text)
@@ -213,7 +212,7 @@ def small_limits(settings):
 
 
 def api_post(client, activity, email: str, ip: str = "203.0.113.5"):
-    body = {"name": "Ana Cruz", "email": email, "answers": registration_answers(activity)}
+    body = {"name": "Ana Cruz", "email": email, "answers": registration_answers(activity), services.PRIVACY_CONSENT_FIELD: True}
     return client.post(f"/api/register/{activity.pk}/", json.dumps(body), content_type="application/json", REMOTE_ADDR=ip)
 
 
@@ -317,7 +316,7 @@ def eval_url(person) -> str:
 
 
 def evaluation_post(activity, step: str = "review", **extra) -> dict:
-    data = {"step": step, "comments": "Great.", **CERT}
+    data = {"step": step, "comments": "Great.", services.PRIVACY_CONSENT_FIELD: "yes", **CERT}
     for key, value in evaluation_answers(activity).items():
         data[f"field_{key}"] = str(value)
     data.update(extra)
@@ -472,7 +471,9 @@ def test_thanks_page_before_submitting_goes_to_the_form(client, person) -> None:
 
 def test_public_pages_without_a_token_keep_the_default_referrer_policy(client, scheduled) -> None:
     response = client.get(page(scheduled))
-    assert response["Referrer-Policy"] == "same-origin" and "X-Robots-Tag" not in response
+    # Every response says noindex since ASSUMPTIONS 392 (config.headers.NoIndexMiddleware); no token-page headers here.
+    assert response["Referrer-Policy"] == "same-origin" and response["X-Robots-Tag"] == "noindex, nofollow"
+    assert "no-store" not in response.get("Cache-Control", "")
     assert '<meta name="robots" content="noindex">' in html(response)
 
 

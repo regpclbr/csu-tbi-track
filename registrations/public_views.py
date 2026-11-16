@@ -65,7 +65,15 @@ def _registration_context(activity, form, values: dict, errors: dict[str, str]) 
         "focus": focus,
         "rows": pages.answer_rows(form, values.get("answers", {}), errors, focus),
         "honeypot_field": services.HONEYPOT_FIELD,
+        "consent_field": services.PRIVACY_CONSENT_FIELD,
     }
+
+
+@require_GET
+def privacy_notice(request: HttpRequest) -> HttpResponse:
+    """/privacy/: the privacy notice (ASSUMPTIONS 394). The registration and evaluation pages link here and ask for
+    consent; the text has [PLACEHOLDER] parts until NAVIGATU and the TBI approve it (docs/TBI_QUESTIONS.md)."""
+    return render(request, "public/privacy.html")
 
 
 @require_http_methods(["GET", "POST"])
@@ -94,9 +102,11 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
             "contact_number": post.get("contact_number", ""),
             "participant_category": post.get("participant_category", ""),
             "answers": pages.answers_from_post(form, post),
+            "privacy_consent": services.has_privacy_consent(post.get(services.PRIVACY_CONSENT_FIELD)),
         }
         try:
             guard_registration_request(request, values["email"], post.get(services.HONEYPOT_FIELD))
+            services.check_privacy_consent(post.get(services.PRIVACY_CONSENT_FIELD))
             services.register(
                 activity,
                 name=values["name"],
@@ -199,8 +209,12 @@ def evaluate_page(request: HttpRequest, token: str) -> HttpResponse:
     step = request.POST.get("step")
     if step == "edit":
         return _evaluation_form(request, registration, form, values, {})
-    if step == "confirm":
+    consent_error = ""
+    if step == "confirm" and not services.has_privacy_consent(request.POST.get(services.PRIVACY_CONSENT_FIELD)):
+        consent_error = services.PRIVACY_CONSENT_REQUIRED  # back to the review page with the message, nothing saved
+    elif step == "confirm":
         try:
+            services.check_privacy_consent(request.POST.get(services.PRIVACY_CONSENT_FIELD))
             services.submit_evaluation(token, **values)
         except ValidationError as error:
             return _evaluation_form(request, registration, form, values, pages.flat_errors(error.message_dict), status=400)
@@ -222,8 +236,10 @@ def evaluate_page(request: HttpRequest, token: str) -> HttpResponse:
         "hidden_answers": pages.hidden_answers(values["answers"]),
         "review": pages.review_rows(form, stored),
         "private_page": True,
+        "consent_field": services.PRIVACY_CONSENT_FIELD,
+        "consent_error": consent_error,
     }
-    return render(request, "public/evaluate_review.html", context)
+    return render(request, "public/evaluate_review.html", context, status=400 if consent_error else 200)
 
 
 @private_token_page

@@ -42,10 +42,11 @@ class Command(BaseCommand):
         else:
             self.stdout.write("  Development mode: the email is printed below, not sent. Use --smtp to really send it.")
         self.stdout.write(f"  From: {settings.DEFAULT_FROM_EMAIL}")
+        self.stdout.write(f"  SITE_URL (the address in every email link): {settings.SITE_URL}")
 
         message = EmailMessage(
             subject="CSU-TBI Track test email",
-            body="This is a test email from CSU-TBI Track. If you can read it, sending works.\n",
+            body=f"This is a test email from CSU-TBI Track. If you can read it, sending works.\n\nCSU-TBI Track: {settings.SITE_URL}/\n",
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[address],
         )

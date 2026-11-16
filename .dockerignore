@@ -1,0 +1,23 @@
+# Never in the image: secrets, local data, development tools (Dockerfile).
+.env
+.env.*
+!.env.example
+.git
+.venv
+venv
+env
+media
+staticfiles
+tools
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.vscode
+.idea
+.claude
+docs
+frontend
+*.docx
+Thumbs.db
+.DS_Store

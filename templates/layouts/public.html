@@ -34,7 +34,7 @@ Never put hx-headers or another per-request value in this layout (as auth_split.
     {# Dark text on small glass pills: readable wherever the gradient puts them (as the sign-in footer) #}
     <footer class="mt-8 flex flex-col items-center gap-2 text-center text-sm text-ink">
       <p class="auth-footnote rounded-2xl px-3.5 py-1 font-medium">© {% now "Y" %} CSU Technology Business Incubator · Caraga State University</p>
-      <p class="auth-footnote rounded-2xl px-3.5 py-1">Questions? Email <a href="mailto:{{ tbi_contact_email }}" class="font-semibold text-primary-hover underline underline-offset-2">{{ tbi_contact_email }}</a></p>
+      <p class="auth-footnote rounded-2xl px-3.5 py-1">Questions? Email <a href="mailto:{{ tbi_contact_email }}" class="font-semibold text-primary-hover underline underline-offset-2">{{ tbi_contact_email }}</a> · <a href="{% url 'privacy_notice' %}" class="font-semibold text-primary-hover underline underline-offset-2">Privacy notice</a></p>
     </footer>
   </div>
 </div>

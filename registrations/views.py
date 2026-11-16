@@ -74,7 +74,8 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
     """GET: activity info, categories, slots left and the form. POST: register.
 
     POST {"name", "email", "contact_number", "participant_category": id (optional if only one),
-          "answers": {"<field_id>": value}, "website": "" (the hidden honeypot field; leave empty)}
+          "answers": {"<field_id>": value}, "website": "" (the hidden honeypot field; leave empty),
+          "privacy_consent": true (required: the person agreed to the privacy notice, /privacy/)}
     Too many attempts from one IP address or for one email: 429.
     """
     activity = services.get_public_activity(activity_id)
@@ -85,6 +86,7 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
 
     data = _json_body(request)
     guard_registration_request(request, data.get("email"), data.get(services.HONEYPOT_FIELD))
+    services.check_privacy_consent(data.get(services.PRIVACY_CONSENT_FIELD))
     registration = services.register(
         activity,
         name=str(data.get("name", "")),
@@ -111,11 +113,12 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
 def public_evaluate(request: HttpRequest, token: str) -> JsonResponse:
     """GET: the evaluation form (or why it is closed), with the suggested certificate name and email.
 
-    POST {"certificate_name", "certificate_email", "comments", "answers": {...}}: submit.
+    POST {"certificate_name", "certificate_email", "comments", "answers": {...}, "privacy_consent": true}: submit.
     """
     if request.method == "GET":
         return JsonResponse({"evaluation": services.evaluation_page(token)})
     data = _json_body(request)
+    services.check_privacy_consent(data.get(services.PRIVACY_CONSENT_FIELD))
     services.submit_evaluation(
         token,
         certificate_name=str(data.get("certificate_name", "")),

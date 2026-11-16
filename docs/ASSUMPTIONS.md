@@ -968,3 +968,103 @@
      - A small note on My profile when an active certificate signatory has the member's name: certificates use the signatory list, so changing the name here changes nothing printed.
      - Tests: `accounts/tests/test_profile.py`.
      - **Tables: 31 → 34** (POSITION, ACTIVITY_DELETION, CERTIFICATE_NUMBER_SEQUENCE); new columns ROLE.can_delete_activities, TBI_MEMBER.position_id.
+
+## Hosted client review version on one Azure server (2026-11-16)
+
+A hosted copy for NAVIGATU staff to check the system with real accounts (hosted UAT). **Full live deployment is out of
+scope of the study**; this is not the final production deployment. Everything runs on ONE Azure virtual machine (Azure
+for Students, B2ats v2, about 1 GB of memory, Ubuntu 24.04 LTS) with Docker Compose. No Railway (not free); no earlier
+deployment work existed, so nothing host-specific had to be removed. Step-by-step guide: `docs/DEPLOY.md`.
+**No database or ERD change** (no migration, no new column; `docs/design/erd.png` unchanged).
+
+391. **Server setup and security** (owner request, 2026-11-16).
+     - `deploy/docker-compose.prod.yml` (project `csu-tbi`, always through `deploy/compose.sh` with the server's
+       `/opt/csu-tbi/.env`, root only, mode 600): **db** `pgvector/pgvector:pg17` (named volume, **never published**),
+       **release** (one-off `deploy/release.sh`: `check --deploy --fail-level ERROR`, `migrate`, `createcachetable`,
+       `seed_data`, `setup_schedules`, `collectstatic`), **web** (gunicorn, `deploy/start-web.sh`: gthread 2×2, timeout
+       120 s > the assistant's 90 s, `--max-requests`), **worker** (`qcluster`, same image and media volume), **caddy**
+       (the only published ports 80/443, automatic free HTTPS for `<name>.<region>.cloudapp.azure.com`, `/static/` from
+       the static volume, uploads ≤ 12 MB, no access log). Web and worker start only after the release step succeeded.
+     - The image (`Dockerfile`): `python:3.12-slim-bookworm`, Pango/HarfBuzz, fontconfig, DejaVu, tzdata; only
+       `requirements.txt` (pytest, Playwright and pypdfium2 stay in `requirements-dev.txt`); non-root user `app`. New
+       dependency: **gunicorn** only (Caddy serves the static files, no WhiteNoise).
+     - Settings from the environment: `BEHIND_HTTPS_PROXY=True` → `SECURE_PROXY_SSL_HEADER` (X-Forwarded-Proto) and HSTS
+       for 1 hour **without includeSubDomains** (cloudapp.azure.com is a shared domain); `CSRF_TRUSTED_ORIGINS` = SITE_URL
+       when https; `SECURE_CONTENT_TYPE_NOSNIFF`; `TRUSTED_PROXY_HEADER=X-Forwarded-For` (Caddy sets it to the visitor's
+       address, `client_ip()` reads the last value). `config/checks.py` (`check --deploy`, DEBUG off only): SITE_URL must
+       be https (E001) and in ALLOWED_HOSTS (E002), the secret key must not be a placeholder (E003); warnings for a proxy
+       without the trusted header (W001) and SMTP without a user/password (W002).
+     - **Tokens never reach the logs**: Django logs the path of refused requests ("Not Found: /evaluate/<token>/");
+       `config.logfilters.HideTokensFilter` on the console handler replaces evaluation, set-password and password-reset
+       tokens with `<hidden>`. Docker logs rotate (10 MB × 3).
+     - Server: SSH with a key only, no root login, firewall (Azure NSG + ufw) open for 22 (NSG: your IP only), 80, 443;
+       automatic security updates with a restart at 03:30 if needed; 2 GB swap; Asia/Manila time zone
+       (`deploy/server-setup.sh`). Code from the private GitHub repository with a read-only deploy key;
+       `deploy/update.sh` = git pull + build + up (the release step migrates). Daily backup at 02:00 (`deploy/backup.sh`:
+       `pg_dump -Fc` + the media volume, newest 14 kept), `deploy/restore.sh` (asks for the database name).
+     - `/healthz/` (`config.views.healthz`): "ok" when the database answers, 503 "database unavailable" otherwise; no
+       login, no cookie (Docker's health check). Tests: `config/tests/test_review_deploy.py`, `test_deploy_files.py`.
+392. **"Review version" label, noindex, robots.txt** (owner request). `REVIEW_VERSION_LABEL` (empty = none; server:
+     "Review version") is shown as a small amber pill on every staff page (top bar) and on the sign-in pages
+     (`config.frontend.review_label`); public pages do not show it. Every response gets `X-Robots-Tag: noindex, nofollow`
+     (`config.headers.NoIndexMiddleware`, always, also in development: nothing of the system belongs in a search
+     engine; base.html already had the meta tag) and `/robots.txt` disallows everything.
+393. **Startup sync can be turned off** (owner request). `STARTUP_SYNC_ENABLED` (default True; **False on the review
+     server**: the mock provider would load invented startups into a clean database). Off: `setup_schedules` removes /
+     never creates the "Daily Navigatu startup sync" schedule (`DailySchedule.enabled_setting`), the task returns
+     `{"skipped": …}`, `sync_startups` refuses (also with `--force`), System status shows "Turned off
+     (STARTUP_SYNC_ENABLED=False)" (not counted as missing).
+394. **Privacy notice and consent on the public pages** (owner request; *pending approval by NAVIGATU and the TBI*).
+     - `/privacy/` (`templates/public/privacy.html`) and a short summary above a **required checkbox** ("I have read the
+       privacy notice and agree that my details are used as described.") on the public registration page, the startup
+       portal's registration page and the evaluation's review step (before "Confirm and submit"); the public footer
+       links to the notice. One rule: `registrations.services.check_privacy_consent` (field `privacy_consent`: a ticked
+       box or JSON `true`), called before `register()` on `/register/<id>/`, `/api/register/<id>/`, the portal page and
+       `/startups/portal/api/activities/<id>/register/`, and before `submit_evaluation()` on `/evaluate/<token>/` and
+       `/api/evaluate/<token>/`. The service functions themselves are unchanged (staff tools, demo seed).
+     - **Nothing is stored** (no column, no ERD change): a registration or an evaluation can only exist when the box was
+       ticked. If per-person proof is wanted later, that needs `REGISTRATION.privacy_consent_at` and
+       `EVALUATION_SUBMISSION.privacy_consent_at` (an ERD change).
+     - **Notice text and date (version of 2026-11-16)**: what is collected (name, email, optional contact number,
+       participant category, form answers, attendance, evaluation answers, certificate name and email); why (run the
+       activity, attendance, evaluation link and certificate, activity reports with totals); who sees it (authorized TBI
+       staff; never other participants; not shared outside CSU and NAVIGATU unless the law requires it); retention
+       **[PLACEHOLDER: retention period]**; rights under the Data Privacy Act of 2012 (RA 10173) and the contact
+       **[PLACEHOLDER: contact person / Data Protection Officer, email]**; "Version [PLACEHOLDER: date approved]".
+       The checkbox's summary: "The CSU Technology Business Incubator collects the details on this form to run this
+       activity, record attendance, send your evaluation link and certificate, and report on its programs. They are kept
+       for [PLACEHOLDER: retention period] and are not shared outside CSU and NAVIGATU. Questions or requests:
+       [PLACEHOLDER: contact person and email]."
+     - **The default "Data Privacy consent" question is removed** (owner decision, 2026-11-16; changes the default
+       fields of item 280 and `seed_data`'s list): `accounts.seed.DEFAULT_FORM_FIELDS` now has only "Affiliation /
+       Organization" for registration, so new forms show only the system's privacy checkbox. Only new installs (and the
+       hosted review version) are affected: `seed_data` never deletes DEFAULT_FORM_FIELD rows that already exist, and
+       existing activity forms keep their own fields (no data migration). On an older database, the System Administrator
+       can delete the old "Data Privacy consent" rows in Django admin → Default form fields if new forms should stop
+       copying it.
+     - Tests: `registrations/tests/test_privacy_consent.py`.
+395. **Clean database and the first System Administrator** (owner request). The review server runs `seed_data` only
+     (never `seed_demo`), with `SEED_ADMIN_*` empty (seed_data then skips the account). `python manage.py
+     create_first_admin` (`accounts.services.create_first_admin`) asks for email, name and password (typed twice,
+     hidden, validated, never printed or logged), creates the System Administrator (no forced change: they typed it), is
+     refused once an active member can manage users, and logs "First System Administrator created" on `accounts.audit`.
+     Everybody else is invited from Admin Console → Members (temporary password, forced change); positions are added by
+     the System Administrator. A fresh seed gives the role defaults of items 388–389 and the document types of 386–387
+     (tested in `accounts/tests/test_review_clean_seed.py`). Tests: `accounts/tests/test_first_admin.py`.
+396. **One TEST startup** (owner request). `python manage.py create_review_startup --email … [--name …]`
+     (`startups.services.create_review_startup`): an active startup without a Navigatu ID or password, the name always
+     starts with "TEST", its "set your password" link emailed at once (never printed); nothing saved if the email fails;
+     refused for an email already used. Tests: `startups/tests/test_review_version.py`.
+397. **Fonts and PDFs on Linux; small memory** (owner request). Linux has no Georgia: the certificate template now says
+     `Georgia, Gelasio, "Times New Roman", serif`; **Gelasio** (SIL Open Font License, the same letter widths as Georgia;
+     `deploy/fonts/gelasio/` with `OFL.txt`) is installed in the image, so certificates look the same on Windows
+     (Georgia) and on the server. Report PDFs use DejaVu Sans (`fonts-dejavu-core`). Memory (about 1 GB): 2 GB swap,
+     gunicorn 2 workers × 2 threads, `Q_CLUSTER_WORKERS=1` (setting, default 2) with `recycle: 50`, Postgres
+     shared_buffers 96 MB / max_connections 30, container limits (db 320 MB, web 400 MB, worker 400 MB, caddy 64 MB, swap
+     allowed above each). If it is too small: resize to B2als v2 (4 GB) from the credit (docs/DEPLOY.md).
+398. **Email on the server** (owner request). Gmail SMTP on port 587 with an App Password, `EMAIL_REAL_SENDING=True`
+     (with DEBUG off SMTP is used anyway; the flag makes it explicit); `DEFAULT_FROM_EMAIL` must be the Gmail address. The
+     demo-domain guard stays. No Brevo backend existed, so there is no `EMAIL_PROVIDER` switch. Every email people get
+     carries the https SITE_URL: invitation (already), evaluation link (already), forgot password (already), **certificate
+     email** (new line "CSU-TBI Track: <SITE_URL>/") and **password changed** (new "Sign in here: <SITE_URL>/accounts/login/").
+     `send_test_email` also prints SITE_URL. Gmail's daily sending limit (about 500 recipients) is enough for the review.

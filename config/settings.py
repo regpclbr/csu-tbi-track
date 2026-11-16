@@ -16,8 +16,15 @@ load_dotenv(BASE_DIR / ".env")
 
 
 def env_bool(name: str, default: bool = False) -> bool:
-    """Read a true/false environment variable."""
-    return os.environ.get(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+    """Read a true/false environment variable (missing or empty = the default)."""
+    value = os.environ.get(name, "").strip().lower()
+    return value in {"1", "true", "yes", "on"} if value else default
+
+
+def env_int(name: str, default: int) -> int:
+    """Read a whole-number environment variable (empty = the default)."""
+    value = os.environ.get(name, "").strip()
+    return int(value) if value else default
 
 
 def env_list(name: str, default: str = "") -> list[str]:
@@ -69,6 +76,7 @@ MIDDLEWARE = [
     "accounts.middleware.MustChangePasswordMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "config.headers.NoIndexMiddleware",  # X-Robots-Tag: noindex on every response (never in a search engine)
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -86,6 +94,7 @@ TEMPLATES = [
                 "config.frontend.staff_layout",  # sidebar, top bar counts (staff pages only)
                 "config.frontend.portal_layout",  # the startup portal's sidebar (portal pages only)
                 "config.frontend.public_footer",  # the contact address in the public pages' footer
+                "config.frontend.review_label",  # the "Review version" label (REVIEW_VERSION_LABEL, empty = none)
             ],
             "libraries": {"ui": "config.ui_tags"},  # {% load ui %}: number, percent, relative_time, ...
         },
@@ -136,6 +145,17 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 # frontend's JavaScript reads the CSRF token from the cookie.)
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
+
+# --- Behind an HTTPS reverse proxy (the hosted review version: Caddy, docs/DEPLOY.md) -------------
+# Caddy ends HTTPS and passes the request on over plain HTTP inside the server, with X-Forwarded-Proto: https.
+# Only with BEHIND_HTTPS_PROXY=True does Django believe that header (anyone can send it to a server without a proxy).
+BEHIND_HTTPS_PROXY = env_bool("BEHIND_HTTPS_PROXY", False)
+if BEHIND_HTTPS_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    # Browsers remember "HTTPS only" for this many seconds. Short on purpose and without includeSubDomains: the
+    # Azure name (<name>.<region>.cloudapp.azure.com) belongs to a shared domain (ASSUMPTIONS 391).
+    SECURE_HSTS_SECONDS = env_int("SECURE_HSTS_SECONDS", 3600)
+SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # "Forgot password" links for staff (Django's password reset) work for this many seconds, once.
 PASSWORD_RESET_TIMEOUT = 60 * 60
@@ -188,7 +208,10 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {"simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
-    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
+    # Personal links (evaluation, startup set-password, password reset) carry a token in the URL; Django logs the path
+    # of every 404/400 ("Not Found: /evaluate/<token>/"), so the token is replaced by "<hidden>" (ASSUMPTIONS 391).
+    "filters": {"hide_tokens": {"()": "config.logfilters.HideTokensFilter"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple", "filters": ["hide_tokens"]}},
     "root": {"handlers": ["console"], "level": "INFO"},
     # WeasyPrint logs every render step at INFO; keep only its warnings (e.g. a missing image).
     "loggers": {"weasyprint": {"level": "WARNING"}, "fontTools": {"level": "WARNING"}},
@@ -239,6 +262,9 @@ ATTENTION_DRAFT_DAYS_BEFORE = 7
 # invented data from startups/mock_data/; NavigatuStartupProvider is a stub for later.
 STARTUP_PROVIDER = os.environ.get("STARTUP_PROVIDER", "startups.providers.MockStartupProvider")
 STARTUP_SYNC_HOUR = 7  # the daily sync runs at 7:00 AM Manila time
+# False on the hosted review version (ASSUMPTIONS 393): no daily sync schedule, the task and `sync_startups` do nothing.
+# With the mock provider a sync would otherwise load invented startups into a clean database.
+STARTUP_SYNC_ENABLED = env_bool("STARTUP_SYNC_ENABLED", True)
 # Safety guard: a sync that would deactivate more than this share of the active startups
 # (or gets zero records) deactivates nobody. `sync_startups --force` overrides it on purpose.
 STARTUP_SYNC_MAX_DEACTIVATE_RATIO = 0.5
@@ -285,6 +311,12 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "CSU-TBI Track <no-rep
 
 # Public address of the site, used to build links in emails (e.g. personal evaluation links).
 SITE_URL = os.environ.get("SITE_URL", "http://127.0.0.1:8000").rstrip("/")
+# Forms posted over HTTPS must come from the public address (Django's CSRF Origin check).
+CSRF_TRUSTED_ORIGINS = [SITE_URL] if SITE_URL.startswith("https://") else []
+
+# A small label on the staff pages and the sign-in page, e.g. "Review version" on the hosted client review copy
+# (ASSUMPTIONS 392). Empty = no label (development).
+REVIEW_VERSION_LABEL = os.environ.get("REVIEW_VERSION_LABEL", "").strip()
 
 # The contact address in the footer of the public pages (phase F3). A PLACEHOLDER until the TBI confirms
 # its address (docs/TBI_QUESTIONS.md); set the real one in .env.
@@ -296,7 +328,10 @@ TBI_CONTACT_EMAIL = os.environ.get("TBI_CONTACT_EMAIL", "tbi.contact@example.com
 Q_CLUSTER = {
     "name": "csu_tbi_track",
     "orm": "default",  # use the Django database as the task queue
-    "workers": 2,
+    # One worker on the small review server (about 1 GB of memory, docs/DEPLOY.md); 2 by default.
+    "workers": env_int("Q_CLUSTER_WORKERS", 2),
+    # A worker process is replaced after this many tasks, so memory used by PDF renders is given back.
+    "recycle": 50,
     "timeout": 300,  # seconds a task may run
     "retry": 360,  # must be larger than timeout
     "catch_up": False,  # don't replay missed schedules after downtime

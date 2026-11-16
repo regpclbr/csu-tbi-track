@@ -62,7 +62,8 @@ def send_password_changed_email(member: TBIMember) -> None:
             f"Hello {member.name},\n\n"
             "The password of your CSU-TBI Track account was just changed on your My profile page.\n\n"
             "If this was you, there is nothing else to do.\n"
-            "If it was not you, please tell the TBI System Administrator right away so they can reset your password.\n"
+            "If it was not you, please tell the TBI System Administrator right away so they can reset your password.\n\n"
+            f"Sign in here: {login_url()}\n"
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[member.email],

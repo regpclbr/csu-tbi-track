@@ -112,7 +112,9 @@ def test_charts_show_the_metric_numbers(director, login, data) -> None:
     assert {row["name"]: row["attended"] for row in page.categories["legend"]} == by_category
     assert page.statuses["total"] == page.cards["activities_by_status"]["value"]
     assert [(row["name"], row["count"]) for row in page.conducted_by_type] == [("Workshop", 1)]
-    assert "Activities by status · 4 total" in html
+    # Not a fixed 4: the default range is this year, and the fixture's dates (relative to today) cross into next year
+    # from mid-November on. The total itself is checked against the card above.
+    assert f"Activities by status · {page.statuses['total']} total" in html
     # Text equivalents of the charts
     assert "Attendees by participant category" in html and "Conducted activities per activity type" in html
 

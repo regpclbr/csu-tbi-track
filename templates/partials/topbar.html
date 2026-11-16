@@ -5,6 +5,7 @@
     {% include "components/icon.html" with name="menu" class="size-6" %}
   </button>
   <div class="min-w-0 flex-1">
+    {% if review_version_label %}<p class="mb-0.5"><span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900" title="A copy for checking the system, not the final production deployment">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}{{ review_version_label }}</span></p>{% endif %}
     <h1 class="truncate text-2xl font-bold tracking-tight text-ink">{{ page_title }}</h1>
     <p class="mt-0.5 truncate text-sm text-muted">{% if page_subtitle %}{{ page_subtitle }}{% else %}{{ layout.today|long_date }} · Here's what's happening at CSU-TBI{% endif %}</p>
   </div>

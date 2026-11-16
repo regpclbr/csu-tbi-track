@@ -24,6 +24,7 @@ def send_certificate_email(certificate: Certificate, name: str, address: str, pd
             f"Your Certificate of Participation (No. {certificate.certificate_number}) is attached as a PDF.\n\n"
             f"{replaces}"
             f"{settings.CERTIFICATE_ORGANIZATION_NAME}\n"
+            f"CSU-TBI Track: {settings.SITE_URL}/\n"
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[address],

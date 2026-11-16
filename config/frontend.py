@@ -181,3 +181,9 @@ def portal_layout(request: HttpRequest) -> dict:
 def public_footer(request: HttpRequest) -> dict:
     """Context processor: the TBI's contact address for the footer of the public pages (phase F3)."""
     return {"tbi_contact_email": settings.TBI_CONTACT_EMAIL}
+
+
+def review_label(request: HttpRequest) -> dict:
+    """Context processor: `review_version_label` ("Review version" on the hosted client review copy, ASSUMPTIONS 392),
+    shown on the staff pages and the sign-in pages; empty in development."""
+    return {"review_version_label": settings.REVIEW_VERSION_LABEL}

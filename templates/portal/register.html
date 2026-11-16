@@ -33,6 +33,8 @@ novalidate: every check is the service's; the first field with an error gets the
 
       {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
 
+      {% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
+
       <button type="submit" class="btn btn-primary btn-arrow w-full sm:w-auto sm:px-8" :disabled="busy">
         <span x-show="!busy">Register</span><span x-show="busy" x-cloak>Registering…</span>
         {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}

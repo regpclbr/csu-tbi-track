@@ -1,0 +1,32 @@
+# Caddy: HTTPS for the hosted review version (docs/DEPLOY.md). SITE_DOMAIN and ACME_EMAIL come from the server's .env.
+# Caddy gets a free certificate by itself (Let's Encrypt, or ZeroSSL when Let's Encrypt refuses) on port 80, renews it,
+# and sends http:// visitors to https://. No access log: personal evaluation links carry a token in the URL.
+{
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# Uploads are at most 10 MB (DOCUMENT_MAX_UPLOAD_MB); a little room for the form around the file.
+	request_body {
+		max_size 12MB
+	}
+
+	header {
+		-Server
+	}
+
+	# CSS, fonts, scripts and images (collectstatic by the release step). Uploaded files are never served here.
+	handle_path /static/* {
+		root * /srv/static
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+
+	handle {
+		# Caddy sets X-Forwarded-For to the visitor's address and X-Forwarded-Proto to https
+		# (Django: BEHIND_HTTPS_PROXY=True, TRUSTED_PROXY_HEADER=X-Forwarded-For).
+		reverse_proxy web:8000
+	}
+}

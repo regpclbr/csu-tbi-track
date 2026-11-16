@@ -1,0 +1,15 @@
+{% comment %}
+The privacy notice summary + its required checkbox (ASSUMPTIONS 394), on the public registration page, the startup portal's
+registration page and the evaluation review step. The rule is registrations.services.check_privacy_consent (also on
+the JSON endpoints); nothing is stored. [PLACEHOLDER] text until NAVIGATU and the TBI approve it (docs/TBI_QUESTIONS.md).
+{% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
+{% endcomment %}
+<div class="rounded-2xl border border-slate-300/70 bg-white/60 p-4">
+  <p class="text-sm font-semibold text-ink">Privacy notice</p>
+  <p class="mt-1 text-sm text-slate-700">The CSU Technology Business Incubator collects the details on this form to run this activity, record attendance, send your evaluation link and certificate, and report on its programs. They are kept for [PLACEHOLDER: retention period] and are not shared outside CSU and NAVIGATU. Questions or requests: [PLACEHOLDER: contact person and email]. <a href="{% url 'privacy_notice' %}" class="font-semibold text-primary-hover underline underline-offset-2" target="_blank" rel="noopener">Read the full privacy notice</a>.</p>
+  <label for="id_{{ field }}" class="mt-3 flex cursor-pointer items-start gap-3 text-sm text-ink">
+    <input type="checkbox" id="id_{{ field }}" name="{{ field }}" value="yes" class="mt-0.5 size-5 shrink-0 accent-primary"{% if checked %} checked{% endif %} required{% if error %} aria-invalid="true" aria-describedby="id_{{ field }}-error" autofocus{% endif %}>
+    <span>I have read the privacy notice and agree that my details are used as described. <span class="text-danger" aria-hidden="true">*</span></span>
+  </label>
+  {% if error %}<p id="id_{{ field }}-error" class="field-error">{{ error }}</p>{% endif %}
+</div>

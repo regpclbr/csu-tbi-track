@@ -1,5 +1,6 @@
 """Run the Navigatu startup sync once, by hand. The daily run is done by Django-Q2 (never forced)."""
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from startups.providers import ProviderNotAvailable
@@ -18,6 +19,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
+        if not settings.STARTUP_SYNC_ENABLED:  # the hosted review version (ASSUMPTIONS 393): never load startups
+            raise CommandError("The startup sync is turned off (STARTUP_SYNC_ENABLED=False). Nothing was changed.")
         try:
             result = sync_startups(force=options["force"])
         except ProviderNotAvailable as error:

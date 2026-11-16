@@ -1,8 +1,10 @@
-"""Project-wide views: error pages and the staff lookups."""
+"""Project-wide views: error pages, the staff lookups, /healthz/ and /robots.txt."""
 
+from django.db import connection
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
 from django.views import defaults
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from accounts.permissions import staff_login_required
@@ -49,3 +51,25 @@ def lookups_api(request: HttpRequest) -> JsonResponse:
     """GET: id and name of activity types, participant categories, document types, activity and
     document statuses, and roles (any active staff member)."""
     return JsonResponse(staff_lookups())
+
+
+@never_cache
+@require_GET
+def healthz(request: HttpRequest) -> HttpResponse:
+    """GET /healthz/: "ok" when the app answers and the database does (Docker's health check, docs/DEPLOY.md).
+    No login, no cookie, no detail about the error (503 "database unavailable" only)."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except Exception:
+        return HttpResponse("database unavailable\n", status=503, content_type="text/plain; charset=utf-8")
+    return HttpResponse("ok\n", content_type="text/plain; charset=utf-8")
+
+
+ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+
+
+@require_GET
+def robots_txt(request: HttpRequest) -> HttpResponse:
+    """GET /robots.txt: no crawler should visit any page (ASSUMPTIONS 392)."""
+    return HttpResponse(ROBOTS_TXT, content_type="text/plain; charset=utf-8")

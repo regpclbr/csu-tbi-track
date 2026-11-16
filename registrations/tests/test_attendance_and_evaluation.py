@@ -206,7 +206,7 @@ def test_evaluate_endpoint(client, attended, monkeypatch) -> None:
     assert page["is_open"] is True and page["name"] == person.name
     assert len(page["fields"]) == 5
 
-    payload = {"comments": "Thanks", **CERT, "answers": evaluation_answers(activity)}
+    payload = {"comments": "Thanks", **CERT, "answers": evaluation_answers(activity), "privacy_consent": True}
     response = client.post(url, json.dumps(payload), content_type="application/json")
     assert response.status_code == 201
     assert json.loads(client.get(url).content)["evaluation"]["closed_reason"] == (

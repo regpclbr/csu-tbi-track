@@ -15,6 +15,9 @@ from . import search, views
 urlpatterns = [
     path("", dashboard_page, name="home"),  # the staff dashboard
     path("search/", search.search_page, name="search"),  # the top bar's search (activities, documents, startups)
+    path("healthz/", views.healthz, name="healthz"),  # Docker's health check (no login)
+    path("robots.txt", views.robots_txt, name="robots_txt"),  # no crawler visits any page
+    path("privacy/", public_views.privacy_notice, name="privacy_notice"),  # the privacy notice (public pages link here)
     # Must come before admin.site.urls: the admin uses the staff login (with lockout).
     path("admin/login/", admin_login_redirect),
     path("admin/", admin.site.urls),
