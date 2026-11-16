@@ -94,10 +94,10 @@ def test_send_links_api(client, director, attended, monkeypatch) -> None:
 
 
 @pytest.mark.django_db
-def test_admin_staff_gets_403_on_staff_changes(client, admin_staff, scheduled, signup) -> None:
+def test_view_only_members_gets_403_on_staff_changes(client, view_only, scheduled, signup) -> None:
     person = signup(scheduled, "ana@example.com")
     form = form_of(scheduled)
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     for url, data in [
         (f"{API}/activities/{scheduled.pk}/forms/", {"form_type": "evaluation"}),
         (f"{API}/forms/{form.pk}/fields/", {"field_label": "X", "field_type": "short_text"}),

@@ -253,13 +253,28 @@ def make_certificate(certificate_template, signatories):
 STRONG_PASSWORD = "Strong-Pass-2026!"
 
 
+# A test-only role with NO permission flags (ASSUMPTIONS 388): the "cannot ..." checks use it (they used Admin Staff
+# before Admin Staff could create activities and approve certificates). It exists only in test databases.
+VIEW_ONLY_ROLE = "View Only (test)"
+
+
 @pytest.fixture
 def roles() -> dict[str, Role]:
-    """The five seeded roles, by name."""
+    """The five seeded roles, by name, plus the test-only VIEW_ONLY_ROLE (every flag off)."""
     from accounts.seed import load_lookups
 
     load_lookups()
+    Role.objects.get_or_create(role_name=VIEW_ONLY_ROLE, defaults={
+        "can_create_activity": False, "can_manage_users": False, "can_approve_documents": False,
+        "can_approve_certificates": False, "description": "Test only: every permission flag off."})
     return {role.role_name: role for role in Role.objects.all()}
+
+
+@pytest.fixture
+def view_only(make_member) -> TBIMember:
+    """An active staff member whose role has no permission flags: views everything, changes nothing that needs a flag
+    (uploads documents, like every active member)."""
+    return make_member(VIEW_ONLY_ROLE)
 
 
 @pytest.fixture

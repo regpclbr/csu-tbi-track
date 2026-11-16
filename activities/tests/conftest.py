@@ -25,12 +25,6 @@ def director(make_member):
 
 
 @pytest.fixture
-def admin_staff(make_member):
-    """Admin Staff cannot create or edit activities."""
-    return make_member("Admin Staff")
-
-
-@pytest.fixture
 def valid_data(roles):
     """Factory: a complete, valid set of activity values, 30 days from today."""
 

@@ -97,7 +97,7 @@ def test_a_failed_resend_clears_sent(conducted, director, monkeypatch) -> None:
     assert states(people)[0] == (False, True)
 
 
-def test_resend_rules(conducted, director, admin_staff) -> None:
+def test_resend_rules(conducted, director, view_only) -> None:
     activity, people, now = conducted
     EvaluationSubmission.objects.create(template=services.get_form(activity, FormType.EVALUATION), registration=people[0],
                                         certificate_name="A", certificate_email="a@example.com")
@@ -108,7 +108,7 @@ def test_resend_rules(conducted, director, admin_staff) -> None:
     from django.core.exceptions import PermissionDenied
 
     with pytest.raises(PermissionDenied):
-        services.send_evaluation_links(admin_staff, activity, now=now)
+        services.send_evaluation_links(view_only, activity, now=now)
     assert services.send_evaluation_links(director, activity, now=now) == 2  # everyone who has not answered
 
 

@@ -59,9 +59,9 @@ def request(member, **data) -> GeneratedReport:
 # --- Requesting -----------------------------------------------------------------------------------
 
 
-def test_request_needs_can_create_activity(admin_staff, queued) -> None:
+def test_request_needs_can_create_activity(view_only, queued) -> None:
     with pytest.raises(PermissionDenied):
-        request(admin_staff)
+        request(view_only)
     assert not GeneratedReport.objects.exists()
 
 
@@ -88,7 +88,7 @@ def test_request_validation(director, queued) -> None:
     assert set(error.value.message_dict) == {"report_type", "format", "included_sections", "date_range_end"}
 
 
-def test_api_request_list_and_detail(director, admin_staff, login, queued) -> None:
+def test_api_request_list_and_detail(director, view_only, login, queued) -> None:
     response = login(director).post(
         reverse("reports:api_reports"),
         data=json.dumps({"report_type": "certificates", "format": "excel", "date_range_start": "2026-01-01", "date_range_end": "2026-06-30"}),
@@ -98,13 +98,13 @@ def test_api_request_list_and_detail(director, admin_staff, login, queued) -> No
     report_id = response.json()["report"]["report_id"]
     assert response.json()["report"]["state"] == "pending"
     # Admin Staff cannot generate (403) but can list and read.
-    denied = login(admin_staff).post(reverse("reports:api_reports"), data="{}", content_type="application/json")
+    denied = login(view_only).post(reverse("reports:api_reports"), data="{}", content_type="application/json")
     assert denied.status_code == 403
-    listing = login(admin_staff).get(reverse("reports:api_reports")).json()
+    listing = login(view_only).get(reverse("reports:api_reports")).json()
     assert [r["report_id"] for r in listing["reports"]] == [report_id]
-    detail = login(admin_staff).get(reverse("reports:api_detail", args=[report_id])).json()["report"]
+    detail = login(view_only).get(reverse("reports:api_detail", args=[report_id])).json()["report"]
     assert detail["included_sections"] == ["certificates"] and detail["download_url"] is None
-    options = login(admin_staff).get(reverse("reports:api_options")).json()
+    options = login(view_only).get(reverse("reports:api_options")).json()
     assert [t["key"] for t in options["report_types"] if t["main"]] == ["accomplishment", "participation"]
 
 
@@ -265,8 +265,8 @@ def ready_report(director, queued, year_data) -> GeneratedReport:
     return report
 
 
-def test_any_active_staff_member_downloads_as_an_attachment(ready_report, admin_staff, login) -> None:
-    response = login(admin_staff).get(reverse("reports:download", args=[ready_report.pk]))
+def test_any_active_staff_member_downloads_as_an_attachment(ready_report, view_only, login) -> None:
+    response = login(view_only).get(reverse("reports:download", args=[ready_report.pk]))
     assert response.status_code == 200
     assert response["Content-Disposition"].startswith("attachment;")
     assert f"accomplishment-report-20260101-20261231-{ready_report.pk}.xlsx" in response["Content-Disposition"]
@@ -287,10 +287,10 @@ def test_download_refuses_anonymous_and_startups(ready_report) -> None:
     assert response.status_code == 302 and "login" in response["Location"]
 
 
-def test_deactivated_member_cannot_download(ready_report, admin_staff, login) -> None:
-    client = login(admin_staff)
-    admin_staff.is_active = False
-    admin_staff.save()
+def test_deactivated_member_cannot_download(ready_report, view_only, login) -> None:
+    client = login(view_only)
+    view_only.is_active = False
+    view_only.save()
     assert client.get(reverse("reports:download", args=[ready_report.pk])).status_code == 302
 
 

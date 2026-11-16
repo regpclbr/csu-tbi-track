@@ -108,9 +108,9 @@ def test_the_state_agrees_with_the_counting_rule(generated, director) -> None:
 # --- The tab's "Certificate approval" card --------------------------------------------------------------------------
 
 
-def test_tab_all_issued_shows_the_count_and_no_button(generated, director, admin_staff) -> None:
+def test_tab_all_issued_shows_the_count_and_no_button(generated, director, view_only) -> None:
     activity = all_issued_not_approved(generated[0])
-    for member in (director, admin_staff):
+    for member in (director, view_only):
         html = tab_html(member, activity)
         assert 'data-approval-state="all_issued"' in html and "All certificates issued (3)" in html
         assert services.ALL_ISSUED_NOTE in html and "bg-green-100 text-green-800" in html
@@ -119,19 +119,19 @@ def test_tab_all_issued_shows_the_count_and_no_button(generated, director, admin
         assert "Needs approval" not in html and GREY not in html and "No certificate is waiting now." not in html
 
 
-def test_tab_with_waiting_certificates_still_needs_approval(generated, director, admin_staff) -> None:
+def test_tab_with_waiting_certificates_still_needs_approval(generated, director, view_only) -> None:
     activity, _ = generated
     html = tab_html(director, activity)
     assert "Needs approval" in html and 'data-approval-state="needs_approval"' in html
     assert "Approve certificates for this activity" in html and "All certificates issued" not in html
-    staff = tab_html(admin_staff, activity)
+    staff = tab_html(view_only, activity)
     assert "Needs approval" in staff and "Approve certificates for this activity" not in staff
 
 
-def test_tab_without_certificates_says_only_how_they_are_created(conducted, director, admin_staff) -> None:
+def test_tab_without_certificates_says_only_how_they_are_created(conducted, director, view_only) -> None:
     activity, _ = conducted
     assert not Certificate.objects.filter(activity=activity).exists()
-    for member in (director, admin_staff):
+    for member in (director, view_only):
         html = tab_html(member, activity)
         assert 'data-approval-state="no_certificates"' in html and NO_CERTIFICATES in html
         assert "Approve certificates for this activity" not in html and 'id="approval-reason"' not in html

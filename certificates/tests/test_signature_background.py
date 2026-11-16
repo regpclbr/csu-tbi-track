@@ -110,13 +110,13 @@ def test_the_preview_shows_the_refusal(director) -> None:
     assert "not a valid PNG image" in html
 
 
-def test_admin_staff_cannot_preview_or_remove(admin_staff, design) -> None:
+def test_view_only_members_cannot_preview_or_remove(view_only, design) -> None:
     _, vp, _ = design
-    client = client_for(admin_staff)
+    client = client_for(view_only)
     assert client.post(reverse("certificates:signature_preview"), {"file": upload("s.jpg", scanned_signature())}).status_code == 403
     assert client.post(reverse("certificates:signatory_remove_background", args=[vp.pk])).status_code == 403
     with pytest.raises(PermissionDenied):
-        services.remove_signature_background(admin_staff, vp)
+        services.remove_signature_background(view_only, vp)
 
 
 def test_remove_white_background_creates_a_new_version(generated, director) -> None:

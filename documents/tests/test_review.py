@@ -23,9 +23,9 @@ def stored(document: Document) -> Path:
 
 
 @pytest.fixture
-def document(upload, admin_staff, scheduled) -> Document:
+def document(upload, view_only, scheduled) -> Document:
     """Uploaded by Admin Staff, waiting for a reviewer."""
-    return upload(admin_staff, scheduled)
+    return upload(view_only, scheduled)
 
 
 # --- Approve -------------------------------------------------------------------------------------
@@ -56,7 +56,7 @@ def test_approve_is_logged_on_the_audit_logger(document, director, caplog) -> No
     assert "own upload" not in caplog.text
 
 
-@pytest.mark.parametrize("role", ["admin_staff", "head", "system_admin"])
+@pytest.mark.parametrize("role", ["view_only", "head", "system_admin"])
 def test_member_without_can_approve_documents_cannot_approve(request, upload, director, scheduled, role) -> None:
     other = upload(director, scheduled)
     with pytest.raises(PermissionDenied, match="approve or return documents"):
@@ -93,7 +93,7 @@ def test_approving_twice_is_refused(document, director, second_director) -> None
 # --- Return --------------------------------------------------------------------------------------
 
 
-def test_return_sends_the_reason_to_the_uploader(document, director, admin_staff, scheduled) -> None:
+def test_return_sends_the_reason_to_the_uploader(document, director, view_only, scheduled) -> None:
     services.return_document(director, document, "  Please add the signature page.  ", now=TEST_NOW)
     document.refresh_from_db()
     assert document.status.status_name == DocumentStatus.FOR_REVIEW
@@ -101,7 +101,7 @@ def test_return_sends_the_reason_to_the_uploader(document, director, admin_staff
     assert document.review_state == Document.RETURNED
 
     notification = Notification.objects.get(type=Notification.DOCUMENT_RETURNED)
-    assert notification.member == admin_staff
+    assert notification.member == view_only
     assert notification.type == Notification.DOCUMENT_RETURNED
     assert notification.activity == scheduled and notification.document_type == document.document_type
     assert "Please add the signature page." in notification.message
@@ -125,7 +125,7 @@ def test_returning_your_own_upload_is_refused(upload, director, scheduled) -> No
     assert not Notification.objects.filter(type=Notification.DOCUMENT_RETURNED).exists()
 
 
-@pytest.mark.parametrize("role", ["admin_staff", "head", "system_admin"])
+@pytest.mark.parametrize("role", ["view_only", "head", "system_admin"])
 def test_member_without_can_approve_documents_cannot_return(request, upload, director, scheduled, role) -> None:
     with pytest.raises(PermissionDenied, match="approve or return documents"):
         services.return_document(request.getfixturevalue(role), upload(director, scheduled), "Wrong file")
@@ -145,9 +145,9 @@ def test_an_approved_document_cannot_be_returned(document, director, second_dire
         services.return_document(second_director, document, "Too late")
 
 
-def test_a_document_can_be_returned_again_after_replacing(document, director, admin_staff) -> None:
+def test_a_document_can_be_returned_again_after_replacing(document, director, view_only) -> None:
     services.return_document(director, document, "First reason")
-    services.replace_document_file(admin_staff, document, make_file("v2.pdf"))
+    services.replace_document_file(view_only, document, make_file("v2.pdf"))
     services.return_document(director, document, "Second reason")
     assert Notification.objects.filter(type=Notification.DOCUMENT_RETURNED).count() == 2
 
@@ -156,14 +156,14 @@ def test_a_document_can_be_returned_again_after_replacing(document, director, ad
 
 
 def test_replace_clears_the_return_and_swaps_the_file(
-    document, director, admin_staff, django_capture_on_commit_callbacks
+    document, director, view_only, django_capture_on_commit_callbacks
 ) -> None:
     services.return_document(director, document, "Wrong file")
     old_file = stored(document)
     assert old_file.exists()
 
     with django_capture_on_commit_callbacks(execute=True):
-        services.replace_document_file(admin_staff, document, make_file("Scan.PNG", PNG_BYTES))
+        services.replace_document_file(view_only, document, make_file("Scan.PNG", PNG_BYTES))
     document.refresh_from_db()
     assert document.reviewed_by is None and document.reviewed_at is None
     assert document.review_state == Document.WAITING_FOR_REVIEW
@@ -180,26 +180,26 @@ def test_only_the_uploader_can_replace(document, director) -> None:
         services.replace_document_file(director, document, make_file())
 
 
-def test_an_approved_document_cannot_be_replaced(document, director, admin_staff) -> None:
+def test_an_approved_document_cannot_be_replaced(document, director, view_only) -> None:
     services.approve_document(director, document)
     with pytest.raises(services.DocumentError, match="approved document cannot be replaced"):
-        services.replace_document_file(admin_staff, document, make_file())
+        services.replace_document_file(view_only, document, make_file())
 
 
-def test_replace_checks_the_file_too(document, admin_staff) -> None:
+def test_replace_checks_the_file_too(document, view_only) -> None:
     with pytest.raises(ValidationError):
-        services.replace_document_file(admin_staff, document, make_file("fake.pdf", b"not a pdf"))
+        services.replace_document_file(view_only, document, make_file("fake.pdf", b"not a pdf"))
 
 
 # --- Delete --------------------------------------------------------------------------------------
 
 
 def test_uploader_deletes_a_for_review_document_and_its_file(
-    document, admin_staff, django_capture_on_commit_callbacks
+    document, view_only, django_capture_on_commit_callbacks
 ) -> None:
     path = stored(document)
     with django_capture_on_commit_callbacks(execute=True):
-        services.delete_document(admin_staff, document)
+        services.delete_document(view_only, document)
     assert not Document.objects.exists()
     assert not path.exists()
 
@@ -210,27 +210,27 @@ def test_only_the_uploader_can_delete(document, director) -> None:
     assert Document.objects.exists()
 
 
-def test_an_approved_document_is_never_deleted(document, director, admin_staff) -> None:
+def test_an_approved_document_is_never_deleted(document, director, view_only) -> None:
     services.approve_document(director, document)
     with pytest.raises(services.DocumentError, match="approved document cannot be deleted"):
-        services.delete_document(admin_staff, document)
+        services.delete_document(view_only, document)
     assert Document.objects.exists() and stored(document).exists()
 
 
-def test_a_returned_document_can_be_deleted_by_its_uploader(document, director, admin_staff) -> None:
+def test_a_returned_document_can_be_deleted_by_its_uploader(document, director, view_only) -> None:
     services.return_document(director, document, "Wrong activity")
-    services.delete_document(admin_staff, document)
+    services.delete_document(view_only, document)
     assert not Document.objects.exists()
 
 
 # --- Review queue and allowed actions -------------------------------------------------------------------
 
 
-def test_review_queue_lists_waiting_documents_including_my_own(upload, director, head, admin_staff, scheduled) -> None:
+def test_review_queue_lists_waiting_documents_including_my_own(upload, director, head, view_only, scheduled) -> None:
     mine = upload(director, scheduled, title="Mine")
-    waiting = upload(admin_staff, scheduled, title="Waiting")
+    waiting = upload(view_only, scheduled, title="Waiting")
     returned = upload(head, scheduled, title="Returned")
-    approved = upload(admin_staff, scheduled, title="Approved")
+    approved = upload(view_only, scheduled, title="Approved")
     services.return_document(director, returned, "Fix it")
     services.approve_document(director, approved)
 
@@ -239,23 +239,23 @@ def test_review_queue_lists_waiting_documents_including_my_own(upload, director,
     assert returned not in queue and approved not in queue
 
 
-@pytest.mark.parametrize("role", ["admin_staff", "head", "system_admin"])
+@pytest.mark.parametrize("role", ["view_only", "head", "system_admin"])
 def test_review_queue_is_empty_without_can_approve_documents(request, upload, director, scheduled, role) -> None:
     upload(director, scheduled)
     assert list(services.review_queue(request.getfixturevalue(role))) == []
 
 
-def test_allowed_actions(document, director, admin_staff, head) -> None:
+def test_allowed_actions(document, director, view_only, head) -> None:
     assert services.allowed_actions(director, document) == {"approve": True, "return": True, "replace": False, "delete": False}
-    assert services.allowed_actions(admin_staff, document) == {"approve": False, "return": False, "replace": True, "delete": True}
+    assert services.allowed_actions(view_only, document) == {"approve": False, "return": False, "replace": True, "delete": True}
     assert services.allowed_actions(head, document) == {"approve": False, "return": False, "replace": False, "delete": False}
     # The services return the reloaded (locked) row; use what they return.
     document = services.return_document(director, document, "Fix")
     assert services.allowed_actions(director, document)["approve"] is False
-    services.replace_document_file(admin_staff, document, make_file())
+    services.replace_document_file(view_only, document, make_file())
     document = services.approve_document(director, document)
     nothing = {"approve": False, "return": False, "replace": False, "delete": False}
-    assert services.allowed_actions(admin_staff, document) == nothing
+    assert services.allowed_actions(view_only, document) == nothing
     assert services.allowed_actions(director, document) == nothing
 
 

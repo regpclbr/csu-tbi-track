@@ -1,7 +1,7 @@
 {% comment %}The Certificate text section of the Certificates tab (certificates.pages.text_panel, ASSUMPTIONS 370). can_create_activity
 or can_approve_certificates choose "Use the default text" or "Custom text for this activity" (POST
 activities:certificates_text: services.use_default_text / save_activity_text). Saving re-renders the certificates that are
-not issued and cancels the activity's approval. Admin Staff: the text, read only.{% endcomment %}
+not issued and cancels the activity's approval. Without the flags: the text, read only.{% endcomment %}
 <section class="card p-6" aria-labelledby="text-title" id="certificate-text" x-data="{ mode: '{% if text.custom %}custom{% else %}default{% endif %}' }">
   <div class="flex flex-wrap items-start justify-between gap-3">
     <div class="min-w-0">

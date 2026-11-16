@@ -8,6 +8,7 @@ from django.urls import reverse
 from certificates import services
 from certificates.models import CertificateSignatory, CertificateTemplate
 from conftest import image_bytes
+from conftest import VIEW_ONLY_ROLE
 
 from .conftest import A4, template_upload, upload
 
@@ -109,7 +110,7 @@ def test_signatory_needs_a_name_and_a_position(director) -> None:
 
 
 def test_only_certificate_approvers_manage_signatories(make_member, director) -> None:
-    staff = make_member("Admin Staff", email="staff.sig@example.com")
+    staff = make_member(VIEW_ONLY_ROLE, email="staff.sig@example.com")
     person = services.add_signatory(director, "VP", "Vice President", None)
     other = services.add_signatory(director, "P", "President", None)
     for call in (
@@ -176,7 +177,7 @@ def test_signature_images_are_never_public(client, director, make_member, stored
     urls = [reverse("certificates:signature_image", args=[signatory.pk]), reverse("certificates:template_image", args=[template.pk])]
     for url in urls:
         assert client.get(url).status_code == 302  # not logged in: sent to the staff login
-    client.force_login(make_member("Admin Staff"))  # staff with neither can_manage_users nor can_approve_certificates
+    client.force_login(make_member(VIEW_ONLY_ROLE))  # staff with neither can_manage_users nor can_approve_certificates
     for url in urls:
         assert client.get(url).status_code == 403
     client.force_login(director)  # approves certificates: the signature (Certificates tab), never the template
@@ -203,7 +204,7 @@ def test_admin_console_api(client, admin_member, director, make_member) -> None:
     client.force_login(director)
     assert client.get(reverse("certificates:api_templates")).status_code == 403
     assert client.get(reverse("certificates:api_signatories")).status_code == 200  # approvers manage the list
-    client.force_login(make_member("Admin Staff", email="staff.api@example.com"))
+    client.force_login(make_member(VIEW_ONLY_ROLE, email="staff.api@example.com"))
     assert client.get(reverse("certificates:api_signatories")).status_code == 403
 
 

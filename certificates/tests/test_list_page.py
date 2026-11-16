@@ -257,9 +257,9 @@ def test_filters_counts_and_search_work_in_both_views(view, director, login, mak
     assert shown(q="person")[0] == numbers(expected)
 
 
-def test_admin_staff_sees_the_same_view_only_page(admin_staff, director, login, make_activity, make_certificates) -> None:
+def test_view_only_member_sees_the_same_view_only_page(view_only, director, login, make_activity, make_certificates) -> None:
     make_certificates(make_activity("Demo", date(2026, 9, 1)), 2)
-    for member in (admin_staff, director):
+    for member in (view_only, director):
         response = login(member).get(URL)
         html = response.content.decode()
         assert response.status_code == 200 and "Demo" in html and "Needs approval" in html
@@ -292,7 +292,7 @@ def test_queries_do_not_grow_with_the_number_of_activities(view, director, login
 # --- The approval state in the group header (ASSUMPTIONS 373) --------------------------------------------------------
 
 
-def test_group_header_shows_what_the_user_needs_to_do(director, admin_staff, login, make_activity,
+def test_group_header_shows_what_the_user_needs_to_do(director, view_only, login, make_activity,
                                                       make_certificates) -> None:
     """Not approved + waiting = "Needs approval" (orange); every certificate Issued and not approved (the owner's "Test"
     activity) = "All certificates issued (N)" (the Issued badge's green) + the short note; old data (some Approved,
@@ -307,7 +307,7 @@ def test_group_header_shows_what_the_user_needs_to_do(director, admin_staff, log
     done = make_activity("Approved Demo", date(2026, 9, 1))
     make_certificates(done, 1, status=S.ISSUED)
     Activity.objects.filter(pk=done.pk).update(certificates_approved_by=director, certificates_approved_at=timezone.now())
-    for member in (director, admin_staff):
+    for member in (director, view_only):
         response = login(member).get(URL)
         groups = {group["activity"].title: group for group in response.context["groups"]}
         states = {title: (group["approval_state"], group["approval"]) for title, group in groups.items()}

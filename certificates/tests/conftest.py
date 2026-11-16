@@ -14,7 +14,6 @@ from registrations.models import Registration
 from registrations.tests.conftest import (  # noqa: F401  (re-exported fixtures)
     CERT,
     TEST_NOW,
-    admin_staff,
     attended,
     defaults,
     director,

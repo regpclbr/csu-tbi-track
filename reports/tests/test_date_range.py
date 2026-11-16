@@ -93,8 +93,8 @@ def test_the_command_needs_both_dates(director, queued) -> None:
                      stdout=StringIO())
 
 
-def test_the_dashboard_still_defaults_missing_dates_but_checks_the_format(admin_staff, login) -> None:
-    client = login(admin_staff)
+def test_the_dashboard_still_defaults_missing_dates_but_checks_the_format(view_only, login) -> None:
+    client = login(view_only)
     data = client.get(reverse("reports:api_dashboard")).json()
     assert data["filters"]["start"].endswith("-01-01") and data["filters"]["end"].endswith("-12-31")
     response = client.get(reverse("reports:api_dashboard"), {"start": "20260101"})
@@ -136,13 +136,13 @@ def test_excel_report_info_sheet_shows_the_exact_range(director, queued, make_ac
     assert "Result" not in rows  # there were conducted activities
 
 
-def test_api_lists_the_range_used(director, admin_staff, login, queued) -> None:
+def test_api_lists_the_range_used(director, view_only, login, queued) -> None:
     created = post(login(director), date_range_start="2026-01-01", date_range_end="2026-06-30").json()["report"]
     assert (created["date_range_start"], created["date_range_end"]) == ("2026-01-01", "2026-06-30")
     assert created["date_range_text"] == "January 1 – June 30, 2026"
-    listed = login(admin_staff).get(API).json()["reports"][0]
+    listed = login(view_only).get(API).json()["reports"][0]
     assert listed["date_range_text"] == "January 1 – June 30, 2026"
-    dashboard = login(admin_staff).get(reverse("reports:api_dashboard"), {"start": "2026-01-01", "end": "2026-06-30"}).json()
+    dashboard = login(view_only).get(reverse("reports:api_dashboard"), {"start": "2026-01-01", "end": "2026-06-30"}).json()
     assert dashboard["filters"]["range_text"] == "January 1 – June 30, 2026"
 
 

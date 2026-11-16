@@ -14,6 +14,7 @@ from certificates.pages import tab_url
 
 from .conftest import S, appreciation_of, certificate_of, upload
 from conftest import image_bytes
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -207,10 +208,10 @@ def test_replace_sends_approved_back_to_waiting(generated, director, design) -> 
 # --- Who sees the approve button (ASSUMPTIONS 369: one per activity) ---------------------------------------------
 
 
-def test_admin_staff_see_no_approve_buttons_at_all(generated, make_member, evaluate) -> None:
+def test_view_only_members_see_no_approve_buttons_at_all(generated, make_member, evaluate) -> None:
     activity, people = generated
     evaluate(people[0])
-    html = tab_html(client_for(make_member("Admin Staff")), activity)
+    html = tab_html(client_for(make_member(VIEW_ONLY_ROLE)), activity)
     assert "Approve certificates for this activity" not in html and "Needs approval" in html
     assert 'name="certificate_ids"' not in html or "type=\"checkbox\"" not in html
     assert 'Approve<span class="sr-only"' not in html
@@ -231,7 +232,7 @@ def test_the_approval_is_disabled_with_the_reason_for_approvers_only(generated, 
     assert 'disabled aria-describedby="approval-reason"' in html and "Approve certificates for this activity" in html
     assert 'id="approve-activity-dialog"' not in html  # no confirm dialog while closed
     assert "Add the signature of Dr. Vice Pres (Vice President) first." in html
-    staff_html = tab_html(client_for(make_member("Admin Staff")), activity)
+    staff_html = tab_html(client_for(make_member(VIEW_ONLY_ROLE)), activity)
     assert "Approve certificates for this activity" not in staff_html
 
 
@@ -243,10 +244,10 @@ def test_list_has_no_checkboxes_or_approve_selected(generated, director) -> None
     assert "Approve selected" not in html and "Generate certificates" not in html
 
 
-def test_admin_staff_cannot_post_approvals(generated, make_member, evaluate) -> None:
+def test_view_only_members_cannot_post_approvals(generated, make_member, evaluate) -> None:
     activity, people = generated
     evaluate(people[0])
-    client = client_for(make_member("Admin Staff"))
+    client = client_for(make_member(VIEW_ONLY_ROLE))
     assert client.post(reverse("activities:certificates_approve_activity", args=[activity.pk])).status_code == 403
     assert not Certificate.objects.filter(status=S.APPROVED).exists()
 

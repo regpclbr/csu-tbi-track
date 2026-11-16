@@ -14,6 +14,7 @@ from activities import tasks as activity_tasks
 from certificates import pages, pdf, services
 from certificates.models import Certificate
 from certificates.pages import tab_url
+from conftest import VIEW_ONLY_ROLE
 
 from .conftest import S, appreciation_of, certificate_of
 
@@ -118,7 +119,7 @@ def test_retry_needs_the_approval_flag(generated, director, make_member, fake_pd
     speaker = appreciation_of(activity)
     services.approve_activity_certificates(director, activity)  # only the resource person is ready
     services.record_render_failure(speaker.pk, RuntimeError("boom"))
-    viewer = make_member("Admin Staff", email="viewer@example.com")
+    viewer = make_member(VIEW_ONLY_ROLE, email="viewer@example.com")
     response = client_for(viewer).post(reverse("activities:certificates_action", args=[activity.pk]),
                                        {"action": "retry_pdf", "certificate_ids": [speaker.pk]})
     assert response.status_code == 403

@@ -26,16 +26,16 @@ def test_download_without_login_is_refused(client, document) -> None:
     assert response.status_code == 302 and "/accounts/login/" in response.url
 
 
-def test_download_with_a_deactivated_account_is_refused(client, document, admin_staff) -> None:
-    client.force_login(admin_staff)
-    admin_staff.is_active = False
-    admin_staff.save()
+def test_download_with_a_deactivated_account_is_refused(client, document, view_only) -> None:
+    client.force_login(view_only)
+    view_only.is_active = False
+    view_only.save()
     response = client.get(url(document))
     assert response.status_code == 302 and "/accounts/login/" in response.url
 
 
-def test_any_active_staff_member_downloads_as_attachment(client, document, admin_staff) -> None:
-    client.force_login(admin_staff)  # not the uploader, no can_create_activity
+def test_any_active_staff_member_downloads_as_attachment(client, document, view_only) -> None:
+    client.force_login(view_only)  # not the uploader, no can_create_activity
     response = client.get(url(document))
     assert response.status_code == 200
     assert response["Content-Disposition"].startswith("attachment;")

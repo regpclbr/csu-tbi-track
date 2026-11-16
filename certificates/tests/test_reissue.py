@@ -80,10 +80,10 @@ def test_a_replaced_image_makes_issued_certificates_outdated(issued, design, dir
     assert len(services.outdated_ids(activity)) == 2
 
 
-def test_list_and_preview_show_the_outdated_state(outdated, director, admin_staff) -> None:
+def test_list_and_preview_show_the_outdated_state(outdated, director, view_only) -> None:
     activity, people = outdated
     participant = certificate_of(people[0])
-    for member in (director, admin_staff):
+    for member in (director, view_only):
         html = client_for(member).get(tab_url(activity.pk)).content.decode()
         assert "Issued with an old signature" in html
     page = client_for(director).get(reverse("certificates:preview_dialog", args=[participant.pk])).content.decode()
@@ -96,7 +96,7 @@ def test_list_and_preview_show_the_outdated_state(outdated, director, admin_staf
 # --- Who may reissue -----------------------------------------------------------------------------------------------
 
 
-def test_only_certificate_approvers_reissue(outdated, admin_staff, make_member) -> None:
+def test_only_certificate_approvers_reissue(outdated, view_only, make_member) -> None:
     from accounts import services as account_services
     from accounts.models import Role
 
@@ -105,7 +105,7 @@ def test_only_certificate_approvers_reissue(outdated, admin_staff, make_member) 
     admin = make_member(Role.SYSTEM_ADMINISTRATOR, email="sysadmin.reissue@example.com")
     account_services.set_role_certificate_approval(admin, creator.role, False)
     creator.refresh_from_db()
-    for member in (admin_staff, creator):
+    for member in (view_only, creator):
         with pytest.raises(PermissionDenied):
             services.reissue_certificates(member, activity=activity)
         client = client_for(member)
@@ -259,10 +259,10 @@ def test_qcluster_not_running(outdated, director, monkeypatch, django_capture_on
     assert mail.outbox[0].subject.startswith("Updated copy:")
 
 
-def test_the_api_reissues_for_approvers_only(outdated, director, admin_staff) -> None:
+def test_the_api_reissues_for_approvers_only(outdated, director, view_only) -> None:
     activity, _ = outdated
     url = reverse("certificates:api_action", args=["reissue"])
-    assert client_for(admin_staff).post(url, {"activity_id": activity.pk}, content_type="application/json").status_code == 403
+    assert client_for(view_only).post(url, {"activity_id": activity.pk}, content_type="application/json").status_code == 403
     response = client_for(director).post(url, {"activity_id": activity.pk}, content_type="application/json")
     assert response.status_code == 200 and response.json() == {"changed": 2}
 

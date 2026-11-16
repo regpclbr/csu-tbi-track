@@ -50,8 +50,8 @@ def test_no_share_card_for_a_draft(director, login, new_activity) -> None:
     assert 'id="share-title"' not in text and qr(new_activity, "registration") not in text
 
 
-def test_scheduled_shows_the_registration_link_from_site_url(admin_staff, login, scheduled) -> None:
-    text = overview(login(admin_staff), scheduled)  # any staff member, also without can_create_activity
+def test_scheduled_shows_the_registration_link_from_site_url(view_only, login, scheduled) -> None:
+    text = overview(login(view_only), scheduled)  # any staff member, also without can_create_activity
     url = f"{SITE}/register/{scheduled.pk}/"
     assert 'id="share-title"' in text and f'value="{url}"' in text and ">Open<" in text
     assert "http://localhost/register/" not in text  # never the request's Host
@@ -86,11 +86,11 @@ def test_qr_view_needs_a_staff_login(client, scheduled) -> None:
     assert response.status_code == 302 and reverse("accounts:login") in response["Location"]
 
 
-def test_qr_view_returns_a_png(admin_staff, login, scheduled) -> None:
-    response = login(admin_staff).get(qr(scheduled, "registration"))
+def test_qr_view_returns_a_png(view_only, login, scheduled) -> None:
+    response = login(view_only).get(qr(scheduled, "registration"))
     assert response.status_code == 200 and response["Content-Type"] == "image/png"
     assert response.content.startswith(PNG_SIGNATURE) and "Content-Disposition" not in response
-    download = login(admin_staff).get(qr(scheduled, "registration") + "?download=1")
+    download = login(view_only).get(qr(scheduled, "registration") + "?download=1")
     assert download["Content-Disposition"] == f'attachment; filename="activity-{scheduled.pk}-registration-qr.png"'
     assert download.content == response.content
 

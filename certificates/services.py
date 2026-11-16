@@ -647,7 +647,7 @@ def missing_slots_reason(signatories: dict[str, CertificateSignatory | None]) ->
 
 def can_choose_signatories(member: TBIMember) -> bool:
     """Who may change an activity's signatories and titles: can_create_activity or can_approve_certificates
-    (ASSUMPTIONS 363, 365). Admin Staff: view only."""
+    (ASSUMPTIONS 363, 365). Without either flag: view only."""
     return has_permission(member, Permission.CREATE_ACTIVITY) or has_permission(member, Permission.APPROVE_CERTIFICATES)
 
 
@@ -890,7 +890,7 @@ def uses_custom_text(activity: Activity) -> bool:
 
 
 def can_edit_activity_text(member: TBIMember) -> bool:
-    """Who may choose an activity's wording: can_create_activity or can_approve_certificates (Admin Staff: view only)."""
+    """Who may choose an activity's wording: can_create_activity or can_approve_certificates (without either: view only)."""
     return can_choose_signatories(member)
 
 

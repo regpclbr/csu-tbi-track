@@ -11,13 +11,15 @@ from django.test import RequestFactory
 from accounts.permissions import Permission, has_permission, permission_required, require_permission
 from config.views import permission_denied
 from startups.models import Startup
+from conftest import VIEW_ONLY_ROLE
 
 # role: (can_create_activity, can_manage_users), as seeded in Step 2
 ROLE_PERMISSIONS = {
     "Director": (True, False),
     "Incubation Project Head": (True, False),
     "Community Development Head": (True, False),
-    "Admin Staff": (False, False),
+    "Admin Staff": (True, False),  # creates and edits activities since ASSUMPTIONS 388
+    VIEW_ONLY_ROLE: (False, False),  # test-only role without flags
     "System Administrator": (False, True),  # separation of duties (ASSUMPTIONS 85, 339)
 }
 
@@ -42,7 +44,7 @@ def test_inactive_anonymous_and_startup_have_no_permissions(make_member) -> None
 @pytest.mark.django_db
 def test_require_permission_raises_with_a_clear_message(make_member) -> None:
     with pytest.raises(PermissionDenied, match="create or edit activities"):
-        require_permission(make_member("Admin Staff"), Permission.CREATE_ACTIVITY)
+        require_permission(make_member(VIEW_ONLY_ROLE), Permission.CREATE_ACTIVITY)
 
 
 @pytest.mark.django_db

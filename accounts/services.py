@@ -397,6 +397,25 @@ def set_role_certificate_approval(acting_member: TBIMember, role: Role, enabled:
     )
 
 
+@transaction.atomic
+def set_role_activity_creation(acting_member: TBIMember, role: Role, enabled: bool) -> Role:
+    """Admin Console roles screen: turn can_create_activity on or off for one role (the other flags stay; ASSUMPTIONS
+    388). Refused for a role that manages users (separation of duties, check_role_flags). No last-member guard (like the
+    approvals): the roles screen warns when no active member can create activities."""
+    role = Role.objects.select_for_update().get(pk=role.pk)
+    return update_role_permissions(
+        acting_member,
+        role,
+        can_create_activity=enabled,
+        can_manage_users=role.can_manage_users,
+    )
+
+
+def active_activity_creators():
+    """Active members whose role can create and edit activities (the roles screen warning)."""
+    return TBIMember.objects.filter(is_active=True, role__can_create_activity=True)
+
+
 def active_certificate_approvers():
     """Active members whose role can approve certificates (the roles screen warning)."""
     return TBIMember.objects.filter(is_active=True, role__can_approve_certificates=True)

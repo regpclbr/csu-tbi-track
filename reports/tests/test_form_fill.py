@@ -250,16 +250,16 @@ def test_without_the_key_the_ai_is_turned_off(director, monkeypatch, settings) -
     assert error.value.message_dict == {"request_text": [services.FILL_AI_OFF]}
 
 
-def test_same_permission_as_generating_a_report(director, admin_staff, fake_gemini) -> None:
+def test_same_permission_as_generating_a_report(director, view_only, fake_gemini) -> None:
     """Whoever may generate a report (reports.services.GENERATE_REPORT_PERMISSION = can_create_activity) may fill."""
     from accounts.permissions import has_permission
 
     assert has_permission(director, services.GENERATE_REPORT_PERMISSION)
-    assert not has_permission(admin_staff, services.GENERATE_REPORT_PERMISSION)
+    assert not has_permission(view_only, services.GENERATE_REPORT_PERMISSION)
     with pytest.raises(PermissionDenied):
-        fill(admin_staff)
+        fill(view_only)
     with pytest.raises(PermissionDenied):
-        services.request_report(admin_staff, {})
+        services.request_report(view_only, {})
     assert fake_gemini.generate_calls == []
 
 
@@ -448,8 +448,8 @@ def test_refusals_and_notes_are_shown_escaped(director, login, fake_gemini) -> N
     assert 'id="report-summary"' not in html  # a refusal changes nothing
 
 
-def test_fill_needs_the_report_permission(admin_staff, login, fake_gemini) -> None:
-    client = login(admin_staff)
+def test_fill_needs_the_report_permission(view_only, login, fake_gemini) -> None:
+    client = login(view_only)
     assert client.post(reverse("reports:fill"), {**FORM, "request_text": EXAMPLE}).status_code == 403
     assert client.post(reverse("reports:fill"), {**FORM, "request_text": EXAMPLE}, **HTMX).status_code == 403
     assert client.get(reverse("reports:fill")).status_code == 405

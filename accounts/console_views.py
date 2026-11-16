@@ -161,6 +161,7 @@ def roles(request: HttpRequest) -> HttpResponse:
     context = {
         "roles": Role.objects.annotate(member_count=Count("members", filter=Q(members__is_active=True))).order_by("role_name"),
         "admin_url": reverse("admin:accounts_role_changelist"),
+        "no_creator": not services.active_activity_creators().exists(),
         "no_approver": not services.active_document_approvers().exists(),
         "no_certificate_approver": not services.active_certificate_approvers().exists(),
     }
@@ -184,6 +185,14 @@ def _switch_role_flag(request: HttpRequest, role_id: int, switch, turned_on: str
         return back
     messages.success(request, f"{role.role_name} {turned_on if enabled else turned_off}.")
     return back
+
+
+@manage_users
+@require_POST
+def role_activity_creation(request: HttpRequest, role_id: int) -> HttpResponse:
+    """POST enabled=true|false: turn can_create_activity on or off for one role (ASSUMPTIONS 388)."""
+    return _switch_role_flag(request, role_id, services.set_role_activity_creation,
+                             "can now create and edit activities", "can no longer create or edit activities")
 
 
 @manage_users

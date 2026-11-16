@@ -145,9 +145,9 @@ def test_activity_errors_and_row_errors_come_back_together(create) -> None:
     assert not Activity.objects.exists()
 
 
-def test_needs_can_create_activity(admin_staff, valid_data) -> None:
+def test_needs_can_create_activity(view_only, valid_data) -> None:
     with pytest.raises(PermissionDenied):
-        document_services.create_activity_with_documents(admin_staff, valid_data(), [])
+        document_services.create_activity_with_documents(view_only, valid_data(), [])
     assert not Activity.objects.exists()
 
 

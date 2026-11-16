@@ -61,7 +61,7 @@ def test_role_flags(admin_env) -> None:
         "Director": (True, False, True),  # only the Director approves documents (ASSUMPTIONS 344)
         "Incubation Project Head": (True, False, False),
         "Community Development Head": (True, False, False),
-        "Admin Staff": (False, False, False),
+        "Admin Staff": (True, False, False),  # creates and edits activities since ASSUMPTIONS 388
         "System Administrator": (False, True, False),
     }
 

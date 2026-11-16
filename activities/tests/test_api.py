@@ -118,9 +118,9 @@ def test_resource_persons_via_api(client, director, new_activity) -> None:
 
 
 @pytest.mark.django_db
-def test_admin_staff_gets_403_on_every_change(client, admin_staff, new_activity, create_payload) -> None:
+def test_view_only_members_gets_403_on_every_change(client, view_only, new_activity, create_payload) -> None:
     person = ResourcePerson.objects.create(name="Dr. Reyes")
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     attempts = [
         (API, create_payload),
         (f"{API}{new_activity.pk}/update/", {"venue": "Room 101"}),
@@ -137,8 +137,8 @@ def test_admin_staff_gets_403_on_every_change(client, admin_staff, new_activity,
 
 
 @pytest.mark.django_db
-def test_any_staff_member_can_read(client, admin_staff, new_activity) -> None:
-    client.force_login(admin_staff)
+def test_any_staff_member_can_read(client, view_only, new_activity) -> None:
+    client.force_login(view_only)
     for url in [
         API,
         f"{API}stats/",

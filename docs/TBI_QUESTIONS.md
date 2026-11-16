@@ -93,6 +93,7 @@ all of them are to be validated with the TBI too.
 - **Item 199:** Should evaluation reports include participants' written suggestions and comments (shown without names), or only the rating averages? (Now: only the rating averages.)
 - **Item 195:** Is it right that a report counts only activities that were Conducted, by the date they ended? (An activity that ends on January 2 counts in the new year.)
 - **Item 384:** Staff can now type the report they want ("Participation report for this quarter, trainings only, in Excel") and the system fills in the report form for them to check. The typed request is sent to Gemini (only the request, never report data). Is that acceptable on the free tier (see item 165), and are 30 requests per staff member per hour enough?
+- **Item 388 (for NAVIGATU):** Admin Staff can now create and edit activities (and therefore generate reports) and approve certificates, like the two Project Heads. They still cannot approve or return documents or manage user accounts. Can NAVIGATU confirm these rights for Admin Staff? Should Admin Staff also approve documents, or should creating activities or approving certificates be limited to some activity types?
 - **Item 204:** Who should be allowed to generate reports? Now: staff whose role can create activities. Any staff member can see the dashboard and download reports. Should some roles not see them?
 
 ## General assumptions (items 1–14)

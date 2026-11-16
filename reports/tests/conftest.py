@@ -32,12 +32,6 @@ def director(make_member):
 
 
 @pytest.fixture
-def admin_staff(make_member):
-    """No can_create_activity: may view the dashboard and download, may not generate."""
-    return make_member("Admin Staff")
-
-
-@pytest.fixture
 def login():
     def log_in(member) -> Client:
         client = Client()

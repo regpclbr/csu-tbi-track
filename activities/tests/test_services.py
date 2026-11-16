@@ -231,15 +231,15 @@ def test_ongoing_activity_can_be_edited(director, new_activity, move_to) -> None
 
 
 @pytest.mark.django_db
-def test_admin_staff_cannot_create_or_change_activities(admin_staff, new_activity, valid_data) -> None:
+def test_view_only_members_cannot_create_or_change_activities(view_only, new_activity, valid_data) -> None:
     person = ResourcePerson.objects.create(name="Dr. Reyes")
     attempts = [
-        lambda: services.create_activity(admin_staff, valid_data()),
-        lambda: services.update_activity(admin_staff, new_activity, {"venue": "Room 101"}),
-        lambda: services.change_status(admin_staff, new_activity, "Scheduled"),
-        lambda: services.add_resource_person(admin_staff, new_activity, person),
-        lambda: services.remove_resource_person(admin_staff, new_activity, person),
-        lambda: services.create_resource_person(admin_staff, "New Person"),
+        lambda: services.create_activity(view_only, valid_data()),
+        lambda: services.update_activity(view_only, new_activity, {"venue": "Room 101"}),
+        lambda: services.change_status(view_only, new_activity, "Scheduled"),
+        lambda: services.add_resource_person(view_only, new_activity, person),
+        lambda: services.remove_resource_person(view_only, new_activity, person),
+        lambda: services.create_resource_person(view_only, "New Person"),
     ]
     for attempt in attempts:
         with pytest.raises(PermissionDenied, match="create or edit activities"):

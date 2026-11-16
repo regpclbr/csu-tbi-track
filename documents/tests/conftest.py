@@ -64,12 +64,6 @@ def head(make_member):
 
 
 @pytest.fixture
-def admin_staff(make_member):
-    """Admin Staff: can upload, cannot review (no can_approve_documents)."""
-    return make_member("Admin Staff")
-
-
-@pytest.fixture
 def system_admin(make_member):
     """System Administrator: manages users, never approves documents (separation of duties)."""
     return make_member("System Administrator")

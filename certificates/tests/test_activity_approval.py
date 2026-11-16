@@ -261,10 +261,10 @@ def test_the_tab_shows_the_state_and_one_approve_button(generated, director) -> 
     assert "Approve certificates for this activity" not in html
 
 
-def test_admin_staff_see_the_state_but_no_button(generated, admin_staff) -> None:
+def test_view_only_members_see_the_state_but_no_button(generated, view_only) -> None:
     activity, _ = generated
     client = Client()
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     html = tab(client, activity).content.decode()
     assert "Needs approval" in html and "Approve certificates for this activity" not in html
     response = client.post(reverse("activities:certificates_approve_activity", args=[activity.pk]))

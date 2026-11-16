@@ -10,7 +10,6 @@ from activities import services as activity_services
 from activities.models import Activity, ParticipantCategory
 from activities.tests.conftest import (  # noqa: F401  (re-exported fixtures)
     TEST_NOW,
-    admin_staff,
     at,
     director,
     move_to,

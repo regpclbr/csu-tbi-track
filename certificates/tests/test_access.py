@@ -32,9 +32,9 @@ def both_issued(generated, approve_all, evaluate, run_tasks, django_capture_on_c
 # --- Staff ------------------------------------------------------------------------------------------
 
 
-def test_any_active_staff_member_lists_and_reads(client, both_issued, admin_staff) -> None:
+def test_any_active_staff_member_lists_and_reads(client, both_issued, view_only) -> None:
     activity, people = both_issued
-    client.force_login(admin_staff)  # no can_create_activity: reading is still allowed
+    client.force_login(view_only)  # no can_create_activity: reading is still allowed
     data = client.get(f"/certificates/api/?activity={activity.pk}&status=issued").json()
     assert data["total"] == 2 and {c["recipient"] for c in data["certificates"]} == {"Ana Cruz"}
     assert client.get("/certificates/api/?recipient_type=resource_person").json()["total"] == 1
@@ -50,9 +50,9 @@ def test_any_active_staff_member_lists_and_reads(client, both_issued, admin_staf
     assert response["X-Content-Type-Options"] == "nosniff"
 
 
-def test_download_before_the_pdf_exists_gives_the_preview(client, generated, admin_staff) -> None:
+def test_download_before_the_pdf_exists_gives_the_preview(client, generated, view_only) -> None:
     """ASSUMPTIONS 358: "Download PDF" works before rendering: the preview, as an attachment (was 404)."""
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     certificate = appreciation_of(generated[0])
     response = client.get(f"/certificates/{certificate.pk}/download/")
     assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
@@ -111,10 +111,10 @@ def test_staff_and_anonymous_cannot_use_the_portal(client, both_issued, director
 # --- Evidence documents (owner decision Q1 = B) -----------------------------------------------------
 
 
-def test_evidence_follows_the_step6_rules(client, generated, director, admin_staff, make_member) -> None:
+def test_evidence_follows_the_step6_rules(client, generated, director, view_only, make_member) -> None:
     activity, _ = generated
     certificate = appreciation_of(activity)
-    client.force_login(admin_staff)  # any active staff member may upload (Step 6)
+    client.force_login(view_only)  # any active staff member may upload (Step 6)
     response = client.post(f"/certificates/api/{certificate.pk}/evidence/", {"file": SimpleUploadedFile("receipt.pdf", PDF), "title": "Signed receipt"})
     assert response.status_code == 201, response.json()
     evidence = Document.objects.get(pk=response.json()["document"]["document_id"])
@@ -137,18 +137,18 @@ def test_evidence_follows_the_step6_rules(client, generated, director, admin_sta
     assert [d["document_id"] for d in detail["evidence"]] == [evidence.pk]
 
 
-def test_approved_evidence_is_not_indexed(generated, director, admin_staff, monkeypatch, django_capture_on_commit_callbacks) -> None:
+def test_approved_evidence_is_not_indexed(generated, director, view_only, monkeypatch, django_capture_on_commit_callbacks) -> None:
     queued = []
     monkeypatch.setattr(document_services, "queue_indexing", queued.append)
-    evidence = services.upload_evidence(admin_staff, appreciation_of(generated[0]), SimpleUploadedFile("scan.pdf", PDF))
+    evidence = services.upload_evidence(view_only, appreciation_of(generated[0]), SimpleUploadedFile("scan.pdf", PDF))
     with django_capture_on_commit_callbacks(execute=True):
         document_services.approve_document(director, evidence)
     assert queued == []
 
 
-def test_only_the_uploader_deletes_evidence(generated, director, admin_staff) -> None:
-    evidence = services.upload_evidence(admin_staff, appreciation_of(generated[0]), SimpleUploadedFile("scan.pdf", PDF))
+def test_only_the_uploader_deletes_evidence(generated, director, view_only) -> None:
+    evidence = services.upload_evidence(view_only, appreciation_of(generated[0]), SimpleUploadedFile("scan.pdf", PDF))
     with pytest.raises(PermissionDenied):
         document_services.delete_document(director, evidence)
-    document_services.delete_document(admin_staff, evidence)
+    document_services.delete_document(view_only, evidence)
     assert not Document.objects.filter(pk=evidence.pk).exists()

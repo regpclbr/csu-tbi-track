@@ -18,6 +18,7 @@ from certificates.pages import tab_url
 
 from .conftest import S, appreciation_of, certificate_of, upload
 from conftest import image_bytes
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -281,14 +282,14 @@ def test_the_edit_form_never_empties_a_slot(design, director, valid_data) -> Non
 # --- Permissions --------------------------------------------------------------------------------------------------
 
 
-def test_admin_staff_only_views_slots_and_titles(generated, admin_staff, design) -> None:
+def test_view_only_members_only_views_slots_and_titles(generated, view_only, design) -> None:
     activity, _ = generated
     _, vp, head = design
     with pytest.raises(PermissionDenied):
-        services.set_activity_signatory(admin_staff, activity, "left", head, title="Anything")
+        services.set_activity_signatory(view_only, activity, "left", head, title="Anything")
     with pytest.raises(PermissionDenied):
-        services.use_current_version(admin_staff, activity, "left")
-    client = client_for(admin_staff)
+        services.use_current_version(view_only, activity, "left")
+    client = client_for(view_only)
     assert client.post(choose_url(activity, "left"), {"signatory": head.pk, "title": "X"}).status_code == 403
     assert client.get(reverse("activities:create")).status_code == 403
     html = client.get(tab_url(activity.pk)).content.decode()
@@ -300,9 +301,9 @@ def test_admin_staff_only_views_slots_and_titles(generated, admin_staff, design)
 def test_a_creator_without_the_approval_flag_changes_slots_but_cannot_add_people(generated, make_member, roles, design) -> None:
     activity, _ = generated
     _, vp, head = design
-    roles["Admin Staff"].can_create_activity = True  # a role that creates activities but does not approve certificates
-    roles["Admin Staff"].save(update_fields=["can_create_activity"])
-    creator = make_member("Admin Staff", email="creator@example.com")
+    roles[VIEW_ONLY_ROLE].can_create_activity = True  # a role that creates activities but does not approve certificates
+    roles[VIEW_ONLY_ROLE].save(update_fields=["can_create_activity"])
+    creator = make_member(VIEW_ONLY_ROLE, email="creator@example.com")
     services.set_activity_signatory(creator, activity, "left", head, title="Director, CSU-TBI")
     assert services.printed_title(services.activity_slots(activity)["left"]) == "Director, CSU-TBI"
     html = client_for(creator).get(reverse("activities:create")).content.decode()

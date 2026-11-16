@@ -38,10 +38,10 @@ def test_preview_without_login_is_refused(client, pdf) -> None:
     assert client.get(preview_url(pdf), **HTMX).status_code == 401  # HTMX: 401 + HX-Redirect
 
 
-def test_preview_with_a_deactivated_account_is_refused(client, pdf, admin_staff) -> None:
-    client.force_login(admin_staff)
-    admin_staff.is_active = False
-    admin_staff.save()
+def test_preview_with_a_deactivated_account_is_refused(client, pdf, view_only) -> None:
+    client.force_login(view_only)
+    view_only.is_active = False
+    view_only.save()
     for url in (view_url(pdf), preview_url(pdf)):
         response = client.get(url)
         assert response.status_code == 302 and "/accounts/login/" in response.url
@@ -64,10 +64,10 @@ def test_certificate_evidence_has_no_preview(client, pdf, director, scheduled, c
     ("Photo.png", PNG_BYTES, "image/png"),
     ("Photo.jpeg", JPG_BYTES, "image/jpeg"),
 ])
-def test_any_active_staff_member_sees_the_file_inline(client, upload, director, admin_staff, scheduled,
+def test_any_active_staff_member_sees_the_file_inline(client, upload, director, view_only, scheduled,
                                                       name, content, content_type) -> None:
     document = upload(director, scheduled, file=make_file(name, content))
-    client.force_login(admin_staff)  # not the uploader, no can_create_activity: the same rule as Download
+    client.force_login(view_only)  # not the uploader, no can_create_activity: the same rule as Download
     response = client.get(view_url(document))
     assert response.status_code == 200
     assert response["Content-Type"] == content_type

@@ -17,6 +17,7 @@ from accounts.models import TBIMember
 from certificates.models import CertificateSignatory, CertificateTemplate
 from certificates.tests.conftest import template_upload, upload
 from conftest import image_bytes
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -167,14 +168,15 @@ def test_member_actions_go_back_only_within_this_site(admin, make_member) -> Non
 # --- Roles ------------------------------------------------------------------------------------------------
 
 
-def test_roles_link_to_the_administration_site_and_switch_only_document_approval(admin, roles) -> None:
+def test_roles_link_to_the_administration_site_and_switch_three_flags(admin, roles) -> None:
     html = admin.get(reverse("accounts:console_roles")).content.decode()
     assert all(name in html for name in roles) and reverse("admin:accounts_role_changelist") in html
     assert "Edit in the administration site" in html
     section = html.split('id="roles-title"')[1].split("</section>")[0]
-    # The only forms are the two approval switches per role (documents, ASSUMPTIONS 344; certificates, 357); the other
-    # flags stay in the Django admin.
-    assert section.count("<form") == 2 * len(roles) == section.count('name="enabled"')
+    # The only forms are the three switches per role (create activities, ASSUMPTIONS 388; documents, 344; certificates,
+    # 357); "Manage users" stays in the Django admin.
+    assert section.count("<form") == 3 * len(roles) == section.count('name="enabled"')
+    assert all(reverse("accounts:console_role_activity_creation", args=[role.pk]) in section for role in roles.values())
     assert all(reverse("accounts:console_role_approval", args=[role.pk]) in section for role in roles.values())
     assert all(reverse("accounts:console_role_certificate_approval", args=[role.pk]) in section for role in roles.values())
 

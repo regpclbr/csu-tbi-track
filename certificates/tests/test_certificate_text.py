@@ -15,6 +15,7 @@ from django.urls import reverse
 from activities.models import Activity, ActivityAuditLog
 from certificates import pdf, services, wording
 from certificates.models import Certificate, CertificateText
+from conftest import VIEW_ONLY_ROLE
 
 from .conftest import S, appreciation_of, certificate_of
 
@@ -219,22 +220,22 @@ def test_unchanged_default_saves_nothing(director) -> None:
 # --- Permissions ---------------------------------------------------------------------------------------------------
 
 
-def test_admin_staff_change_no_text(generated, admin_staff) -> None:
+def test_view_only_members_change_no_text(generated, view_only) -> None:
     activity, _ = generated
     with pytest.raises(PermissionDenied):
-        services.save_activity_text(admin_staff, activity, {P: text(title="X")})
+        services.save_activity_text(view_only, activity, {P: text(title="X")})
     with pytest.raises(PermissionDenied):
-        services.use_default_text(admin_staff, activity)
+        services.use_default_text(view_only, activity)
     with pytest.raises(PermissionDenied):
-        services.save_default_text(admin_staff, P, text(title="X"))
+        services.save_default_text(view_only, P, text(title="X"))
 
 
 def test_a_creator_without_the_approval_flag_edits_activity_text_but_not_the_default(generated, make_member,
                                                                                    roles) -> None:
     activity, _ = generated
-    roles["Admin Staff"].can_create_activity = True
-    roles["Admin Staff"].save(update_fields=["can_create_activity"])
-    creator = make_member("Admin Staff", email="creator.text@example.com")
+    roles[VIEW_ONLY_ROLE].can_create_activity = True
+    roles[VIEW_ONLY_ROLE].save(update_fields=["can_create_activity"])
+    creator = make_member(VIEW_ONLY_ROLE, email="creator.text@example.com")
     assert services.save_activity_text(creator, activity, {P: text(title="Certificate of Completion")})["changed"]
     with pytest.raises(PermissionDenied):
         services.save_default_text(creator, P, text(title="X"))
@@ -286,10 +287,10 @@ def test_the_preview_endpoint(generated, director) -> None:
     assert "&lt;i&gt;Hello&lt;/i&gt;" in page
 
 
-def test_admin_staff_see_the_text_read_only(generated, admin_staff) -> None:
+def test_view_only_members_see_the_text_read_only(generated, view_only) -> None:
     activity, _ = generated
     client = Client()
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     page = client.get(reverse("activities:detail", args=[activity.pk]) + "?tab=certificates").content.decode()
     assert "This activity uses the default text." in page and "Save the certificate text" not in page
     assert client.post(reverse("activities:certificates_text", args=[activity.pk]), {"mode": "default"}).status_code == 403

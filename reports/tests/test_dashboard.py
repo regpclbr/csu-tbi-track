@@ -64,17 +64,17 @@ def test_a_startup_session_is_not_staff(roles) -> None:
     assert response.status_code == 401 and response.json() == {"error": "Login required."}
 
 
-def test_any_active_staff_member_sees_the_dashboard(admin_staff, login) -> None:
-    response = login(admin_staff).get(URL)
+def test_any_active_staff_member_sees_the_dashboard(view_only, login) -> None:
+    response = login(view_only).get(URL)
     assert response.status_code == 200
 
 
 # --- Shape and scopes -------------------------------------------------------------------------------
 
 
-def test_every_card_says_its_scope(admin_staff, login, some_data) -> None:
+def test_every_card_says_its_scope(view_only, login, some_data) -> None:
     some_data()
-    data = login(admin_staff).get(URL, {"start": "2026-01-01", "end": "2026-12-31"}).json()
+    data = login(view_only).get(URL, {"start": "2026-01-01", "end": "2026-12-31"}).json()
     scopes = {card["key"]: card["scope"] for card in data["cards"]}
     assert scopes == {
         "activities_by_status": "period",
@@ -96,9 +96,9 @@ def test_every_card_says_its_scope(admin_staff, login, some_data) -> None:
     assert len(data["charts"]["per_month"]) == 12
 
 
-def test_now_cards_ignore_the_range_but_period_cards_do_not(admin_staff, login, some_data) -> None:
+def test_now_cards_ignore_the_range_but_period_cards_do_not(view_only, login, some_data) -> None:
     some_data()
-    client = login(admin_staff)
+    client = login(view_only)
     this_year = cards(client.get(URL, {"start": "2026-01-01", "end": "2026-12-31"}).json())
     other_year = cards(client.get(URL, {"start": "2020-01-01", "end": "2020-12-31"}).json())
     assert this_year["activities_conducted"]["value"] == 1 and other_year["activities_conducted"]["value"] == 0
@@ -107,22 +107,22 @@ def test_now_cards_ignore_the_range_but_period_cards_do_not(admin_staff, login, 
         assert this_year[key]["value"] == other_year[key]["value"], key
 
 
-def test_now_cards_respect_the_activity_type(admin_staff, login, some_data) -> None:
+def test_now_cards_respect_the_activity_type(view_only, login, some_data) -> None:
     some_data()
     seminar = ActivityType.objects.get(name="Seminar")
-    data = cards(login(admin_staff).get(URL, {"activity_type": seminar.pk}).json())
+    data = cards(login(view_only).get(URL, {"activity_type": seminar.pk}).json())
     assert data["upcoming_activities"]["value"] == 1  # the Scheduled Seminar
     assert data["certificates_waiting_for_approval"]["approved_not_issued"] == 0  # certificates are on a Workshop
 
 
-def test_default_range_is_the_current_year(admin_staff, login) -> None:
-    data = login(admin_staff).get(URL).json()
+def test_default_range_is_the_current_year(view_only, login) -> None:
+    data = login(view_only).get(URL).json()
     year = timezone.localdate().year
     assert data["filters"]["start"] == f"{year}-01-01" and data["filters"]["end"] == f"{year}-12-31"
 
 
-def test_bad_filters_are_400(admin_staff, login) -> None:
-    response = login(admin_staff).get(URL, {"start": "2026-05-01", "end": "2026-04-01"})
+def test_bad_filters_are_400(view_only, login) -> None:
+    response = login(view_only).get(URL, {"start": "2026-05-01", "end": "2026-04-01"})
     assert response.status_code == 400 and "end" in response.json()["errors"]
 
 

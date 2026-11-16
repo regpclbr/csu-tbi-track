@@ -89,13 +89,13 @@ def test_use_the_current_version_is_refused_without_a_newer_active_version(gener
     assert "is inactive. Choose someone else" in html and "Use the current version" not in html
 
 
-def test_the_tab_shows_the_amber_note_with_the_button(versions, director, admin_staff) -> None:
+def test_the_tab_shows_the_amber_note_with_the_button(versions, director, view_only) -> None:
     activity, _, v1, v2 = versions
     html = client_for(director).get(tab_url(activity.pk)).content.decode()
     assert "older, inactive version" in html and "Use the current version" in html
-    viewer = client_for(admin_staff).get(tab_url(activity.pk)).content.decode()
+    viewer = client_for(view_only).get(tab_url(activity.pk)).content.decode()
     assert "older, inactive version" in viewer and "Use the current version" not in viewer  # view only
-    assert client_for(admin_staff).post(
+    assert client_for(view_only).post(
         reverse("activities:certificates_signatory_current", args=[activity.pk, "left"])).status_code == 403
 
 

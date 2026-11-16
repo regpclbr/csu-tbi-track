@@ -69,10 +69,10 @@ def test_registrations_of_another_activity_are_refused(director, attended, valid
 
 
 @pytest.mark.django_db
-def test_admin_staff_cannot_mark_attendance(admin_staff, attended) -> None:
+def test_view_only_members_cannot_mark_attendance(view_only, attended) -> None:
     person = attended(1)[0]
     with pytest.raises(PermissionDenied):
-        services.set_attendance(admin_staff, person.activity, [person.pk], False)
+        services.set_attendance(view_only, person.activity, [person.pk], False)
 
 
 @pytest.mark.django_db
@@ -254,7 +254,7 @@ def test_send_links_refused_without_an_evaluation_form(director, attended) -> No
 
 
 @pytest.mark.django_db
-def test_admin_staff_cannot_send_links(admin_staff, attended) -> None:
+def test_view_only_members_cannot_send_links(view_only, attended) -> None:
     activity = attended(1)[0].activity
     with pytest.raises(PermissionDenied):
-        services.send_evaluation_links(admin_staff, activity, now=opens_at(activity))
+        services.send_evaluation_links(view_only, activity, now=opens_at(activity))

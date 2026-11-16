@@ -21,7 +21,8 @@ from conftest import image_bytes
 
 pytestmark = pytest.mark.django_db
 
-APPROVERS = ["Director", "Incubation Project Head", "Community Development Head", Role.SYSTEM_ADMINISTRATOR]
+APPROVERS = ["Director", "Incubation Project Head", "Community Development Head", "Admin Staff",
+             Role.SYSTEM_ADMINISTRATOR]  # Admin Staff since ASSUMPTIONS 388
 
 
 def client_for(member) -> Client:
@@ -121,16 +122,16 @@ def test_approvers_approve_all_for_the_activity(evaluated, make_member, role_nam
     assert set(Certificate.objects.values_list("status", "approved_by")) == {(S.APPROVED, member.pk)}
 
 
-def test_admin_staff_only_views(generated, admin_staff, design) -> None:
+def test_view_only_members_only_views(generated, view_only, design) -> None:
     activity, _ = generated
     _, vp, head = design
     with pytest.raises(PermissionDenied):
-        services.approve_activity_certificates(admin_staff, activity)
+        services.approve_activity_certificates(view_only, activity)
     with pytest.raises(PermissionDenied):
-        services.upload_signature(admin_staff, activity, "right", png())
+        services.upload_signature(view_only, activity, "right", png())
     with pytest.raises(PermissionDenied):
-        services.set_activity_signatory(admin_staff, activity, "left", vp)
-    client = client_for(admin_staff)
+        services.set_activity_signatory(view_only, activity, "left", vp)
+    client = client_for(view_only)
     assert client.post(reverse("activities:certificates_approve_activity", args=[activity.pk])).status_code == 403
     assert client.post(signature_url(activity, "right"), {"file": png()}).status_code == 403
     assert client.post(choose_url(activity, "left"), {"signatory": vp.pk}).status_code == 403
@@ -459,11 +460,11 @@ def test_upload_page_flow(generated, design, director) -> None:
     assert client.get(signature_url(activity, "right"))["Location"] == tab_url(activity.pk)  # a GET goes to the tab
 
 
-def test_signature_thumbnail_needs_approval_or_admin_rights(design, director, admin_staff, admin_member) -> None:
+def test_signature_thumbnail_needs_approval_or_admin_rights(design, director, view_only, admin_member) -> None:
     url = reverse("certificates:signature_image", args=[design[1].pk])
     assert client_for(director).get(url).status_code == 200
     assert client_for(admin_member).get(url).status_code == 200
-    assert client_for(admin_staff).get(url).status_code == 403
+    assert client_for(view_only).get(url).status_code == 403
     without_image(design[1])
     assert client_for(director).get(url).status_code == 404
 
@@ -506,10 +507,10 @@ def test_admin_console_shows_the_defaults_read_only(design, admin_member, make_m
 # --- The large preview on the tab ---------------------------------------------------------------------------------
 
 
-def test_tab_shows_the_first_certificate_large_with_previous_next(generated, director, admin_staff) -> None:
+def test_tab_shows_the_first_certificate_large_with_previous_next(generated, director, view_only) -> None:
     activity, people = generated
     first = Certificate.objects.filter(activity=activity).order_by("certificate_number").first()
-    for member in (director, admin_staff):
+    for member in (director, view_only):
         html = client_for(member).get(tab_url(activity.pk)).content.decode()
         assert 'id="certificate-preview"' in html and "Previous" in html and "Next" in html
         assert f'src="{reverse("certificates:preview", args=[first.pk])}?v=' in html

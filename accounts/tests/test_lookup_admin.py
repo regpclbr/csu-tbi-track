@@ -9,6 +9,7 @@ from accounts import services
 from accounts.models import Role
 from activities.models import ActivityStatus, ActivityType
 from documents.models import DocumentStatus, DocumentType
+from conftest import VIEW_ONLY_ROLE
 
 
 @pytest.fixture
@@ -66,7 +67,7 @@ def test_roles_cannot_be_added_renamed_or_deleted(admin_request) -> None:
 
 @pytest.mark.django_db
 def test_role_flags_can_be_edited(client, admin_member) -> None:
-    staff = Role.objects.get(role_name="Admin Staff")
+    staff = Role.objects.get(role_name=VIEW_ONLY_ROLE)  # every flag off (Admin Staff already creates activities, 388)
     client.force_login(admin_member)
     response = client.post(
         f"/admin/accounts/role/{staff.pk}/change/",
@@ -74,7 +75,7 @@ def test_role_flags_can_be_edited(client, admin_member) -> None:
     )
     assert response.status_code == 302
     staff.refresh_from_db()
-    assert (staff.role_name, staff.can_create_activity, staff.can_manage_users) == ("Admin Staff", True, False)
+    assert (staff.role_name, staff.can_create_activity, staff.can_manage_users) == (VIEW_ONLY_ROLE, True, False)
 
 
 @pytest.mark.django_db
@@ -122,4 +123,4 @@ def test_system_administrator_does_not_create_activities(roles) -> None:
     """Decided (ASSUMPTIONS 85, 339): the System Administrator manages users and does not create activities."""
     assert roles["System Administrator"].can_create_activity is False
     assert roles["System Administrator"].can_manage_users is True
-    assert roles["Admin Staff"].can_create_activity is False
+    assert roles["Admin Staff"].can_create_activity is True  # since ASSUMPTIONS 388

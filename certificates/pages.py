@@ -208,7 +208,7 @@ def text_panel(member, activity: Activity, values: dict | None = None, errors: d
     """The Certificate text section (ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
     fields per type (the activity's current text; after a refused save, what was typed and the errors), the
     placeholders, the limits and a first live preview (services.wording_preview). can_create_activity or
-    can_approve_certificates edit it; Admin Staff see the text only."""
+    can_approve_certificates edit it; others see the text only."""
     custom = services.uses_custom_text(activity)
     current = services.current_texts(activity)
     defaults = services.current_texts(None)
@@ -254,7 +254,7 @@ def signatures_panel(member, activity: Activity) -> dict:
     whether the image is there; a dropdown of active people (+ "Add a person…" for approvers) and the title field for
     can_create_activity / can_approve_certificates; for an inactive person an amber note with "Use the current
     version" when a newer active version exists (services.inactive_slots); the image form (with the impact of a new
-    version, services.version_impact) and "Add a person" for can_approve_certificates. Admin Staff: view only."""
+    version, services.version_impact) and "Add a person" for can_approve_certificates. Without these flags: view only."""
     can_choose = services.can_choose_signatories(member)
     can_upload = has_permission(member, Permission.APPROVE_CERTIFICATES)
     rows = services.activity_slots(activity)

@@ -22,6 +22,7 @@ from registrations import services as registration_services
 from registrations.models import FormType
 from registrations.tests.conftest import attended, defaults, scheduled, signup, with_forms  # noqa: F401  (fixtures)
 from reports import services as report_services
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -49,7 +50,7 @@ def sysadmin(make_member) -> TBIMember:
 
 def test_seeded_flags_never_combine_the_two_duties(roles) -> None:
     assert (roles[SYSADMIN].can_create_activity, roles[SYSADMIN].can_manage_users) == (False, True)
-    assert "Admin" not in roles and roles["Admin Staff"].can_create_activity is False  # Admin Staff unchanged
+    assert "Admin" not in roles and roles["Admin Staff"].can_create_activity is True  # since ASSUMPTIONS 388
     assert not any(role.can_create_activity and role.can_manage_users for role in roles.values())
 
 
@@ -122,7 +123,7 @@ def test_account_and_role_changes_are_logged_on_accounts_audit(sysadmin, make_me
         services.deactivate_member(sysadmin, other)
         services.reactivate_member(sysadmin, other)
         services.reset_member_password(sysadmin, other)
-        services.update_role_permissions(sysadmin, roles["Admin Staff"], can_create_activity=True, can_manage_users=False)
+        services.update_role_permissions(sysadmin, roles[VIEW_ONLY_ROLE], can_create_activity=True, can_manage_users=False)
     records = [r for r in caplog.records if r.name == "accounts.audit" and r.levelname == "INFO"]
     text = "\n".join(r.getMessage() for r in records)
     who = f"by member_id={sysadmin.pk} <{sysadmin.email}>"
@@ -131,7 +132,7 @@ def test_account_and_role_changes_are_logged_on_accounts_audit(sysadmin, make_me
     assert f"Member deactivated: {target} is_active True -> False {who}" in text
     assert f"Member reactivated: {target} is_active False -> True {who}" in text
     assert f"Password reset by an administrator: {target}" in text and who in text
-    assert f"Role flag changed: role='Admin Staff' can_create_activity False -> True {who}" in text
+    assert f"Role flag changed: role='{VIEW_ONLY_ROLE}' can_create_activity False -> True {who}" in text
     other.refresh_from_db()
     from django.core import mail
 

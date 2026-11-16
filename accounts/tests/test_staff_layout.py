@@ -30,19 +30,14 @@ def director(make_member):
     return make_member("Director")
 
 
-@pytest.fixture
-def admin_staff(make_member):
-    return make_member("Admin Staff")
-
-
 # --- Sidebar -------------------------------------------------------------------------------------------------
 
 
-def test_admin_section_only_with_can_manage_users(admin_member, director, admin_staff) -> None:
+def test_admin_section_only_with_can_manage_users(admin_member, director, view_only) -> None:
     console = reverse("accounts:console")
     admin_html = logged_in(admin_member).get(HOME).content.decode()
     assert "Admin Console" in admin_html and console in admin_html and ">System</p>" in admin_html
-    for member in (director, admin_staff):
+    for member in (director, view_only):
         html = logged_in(member).get(HOME).content.decode()
         assert "Admin Console" not in html and console not in html
 
@@ -129,11 +124,11 @@ def test_unread_count_on_the_bell(director) -> None:
 # --- Notifications dropdown ------------------------------------------------------------------------------------
 
 
-def test_dropdown_shows_only_my_latest_notifications(director, admin_staff) -> None:
+def test_dropdown_shows_only_my_latest_notifications(director, view_only) -> None:
     from notifications.models import Notification
 
     Notification.objects.create(member=director, message="Mine", type="x")
-    Notification.objects.create(member=admin_staff, message="Not mine", type="x")
+    Notification.objects.create(member=view_only, message="Not mine", type="x")
     html = logged_in(director).get(reverse("notifications:dropdown"), **HTMX).content.decode()
     assert "Mine" in html and "Not mine" not in html and "Mark all as read" in html
     assert 'id="bell-count" hx-swap-oob="true"' in html
@@ -179,10 +174,10 @@ def test_admin_console_needs_can_manage_users(admin_member, director) -> None:
     assert response.status_code == 403 and "use the Admin Console" in response.content.decode()
 
 
-def test_new_activity_page_needs_can_create_activity(director, admin_staff) -> None:
+def test_new_activity_page_needs_can_create_activity(director, view_only) -> None:
     url = reverse("activities:create")
     assert logged_in(director).get(url).status_code == 200
-    assert logged_in(admin_staff).get(url).status_code == 403
+    assert logged_in(view_only).get(url).status_code == 403
 
 
 # --- Login and password pages (restyled, same behaviour) ----------------------------------------------------------

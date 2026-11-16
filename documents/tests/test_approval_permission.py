@@ -38,7 +38,7 @@ def waiting_for(member) -> list[Notification]:
 # --- 403 on every review URL ----------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("role", ["head", "admin_staff", "system_admin"])
+@pytest.mark.parametrize("role", ["head", "view_only", "system_admin"])
 def test_approve_and_return_pages_answer_403_without_the_flag(request, role, login, director, scheduled, upload) -> None:
     document = upload(director, scheduled)
     client = login(request.getfixturevalue(role))
@@ -49,7 +49,7 @@ def test_approve_and_return_pages_answer_403_without_the_flag(request, role, log
     assert document.status.status_name == DocumentStatus.FOR_REVIEW and document.reviewed_at is None
 
 
-@pytest.mark.parametrize("role", ["head", "admin_staff", "system_admin"])
+@pytest.mark.parametrize("role", ["head", "view_only", "system_admin"])
 def test_approve_and_return_api_answer_403_without_the_flag(request, role, login, director, scheduled, upload) -> None:
     document = upload(director, scheduled)
     client = login(request.getfixturevalue(role))
@@ -98,8 +98,8 @@ def test_director_approves_their_own_upload_from_the_page(director, login, sched
 # --- Hidden for members without the flag -----------------------------------------------------------------------
 
 
-def test_project_head_sees_no_review_tab_badge_or_review_buttons(head, director, admin_staff, login, scheduled, upload) -> None:
-    document = upload(admin_staff, scheduled)
+def test_project_head_sees_no_review_tab_badge_or_review_buttons(head, director, view_only, login, scheduled, upload) -> None:
+    document = upload(view_only, scheduled)
     client = login(head)
     html = client.get(reverse("documents:list")).content.decode()
     assert "Waiting for my review" not in html
@@ -110,8 +110,8 @@ def test_project_head_sees_no_review_tab_badge_or_review_buttons(head, director,
     assert reverse("documents:action_form", args=[document.pk, "return"]) not in detail
 
 
-def test_director_sees_the_review_tab_badge_and_buttons(director, admin_staff, login, scheduled, upload) -> None:
-    document = upload(admin_staff, scheduled)
+def test_director_sees_the_review_tab_badge_and_buttons(director, view_only, login, scheduled, upload) -> None:
+    document = upload(view_only, scheduled)
     client = login(director)
     html = client.get(reverse("documents:list")).content.decode()
     assert "Waiting for my review" in html and reverse("documents:review") in html
@@ -120,8 +120,8 @@ def test_director_sees_the_review_tab_badge_and_buttons(director, admin_staff, l
     assert reverse("documents:approve", args=[document.pk]) in detail
 
 
-def test_dashboard_shows_my_review_count_only_to_approvers(director, head, admin_staff, login, scheduled, upload) -> None:
-    upload(admin_staff, scheduled)
+def test_dashboard_shows_my_review_count_only_to_approvers(director, head, view_only, login, scheduled, upload) -> None:
+    upload(view_only, scheduled)
     assert "Documents to review" in login(director).get(reverse("home")).content.decode()
     html = login(head).get(reverse("home")).content.decode()
     assert "Documents to review" not in html and "waiting for your review" not in html
@@ -130,14 +130,14 @@ def test_dashboard_shows_my_review_count_only_to_approvers(director, head, admin
 # --- "Document waiting for your review" notifications ------------------------------------------------------------
 
 
-def test_upload_notifies_every_active_approver(director, second_director, admin_staff, head, scheduled, upload) -> None:
-    document = upload(admin_staff, scheduled, title="Signed invitation")
+def test_upload_notifies_every_active_approver(director, second_director, view_only, head, scheduled, upload) -> None:
+    document = upload(view_only, scheduled, title="Signed invitation")
     for approver in (director, second_director):
         [notification] = waiting_for(approver)
         assert notification.activity == scheduled and notification.document_type == document.document_type
-        assert "Signed invitation" in notification.message and admin_staff.name in notification.message
+        assert "Signed invitation" in notification.message and view_only.name in notification.message
         assert not notification.is_read
-    assert waiting_for(head) == [] and waiting_for(admin_staff) == []  # no flag: nothing
+    assert waiting_for(head) == [] and waiting_for(view_only) == []  # no flag: nothing
 
 
 def test_the_uploader_is_never_notified_about_their_own_upload(director, second_director, scheduled, upload) -> None:
@@ -153,13 +153,13 @@ def test_the_only_approver_uploading_notifies_nobody(director, scheduled, upload
 
 
 def test_replacing_notifies_the_approvers_again_but_not_the_uploader(
-    director, second_director, admin_staff, scheduled, upload
+    director, second_director, view_only, scheduled, upload
 ) -> None:
-    document = upload(admin_staff, scheduled)
+    document = upload(view_only, scheduled)
     services.return_document(director, document, "Wrong file")
-    services.replace_document_file(admin_staff, document, make_file("v2.pdf"))
+    services.replace_document_file(view_only, document, make_file("v2.pdf"))
     assert len(waiting_for(director)) == 2 and len(waiting_for(second_director)) == 2
-    assert waiting_for(admin_staff) == []
+    assert waiting_for(view_only) == []
 
 
 def test_the_director_replacing_their_own_file_is_not_notified(director, second_director, scheduled, upload) -> None:
@@ -169,16 +169,16 @@ def test_the_director_replacing_their_own_file_is_not_notified(director, second_
     assert len(waiting_for(second_director)) == 2
 
 
-def test_inactive_approvers_are_not_notified(director, admin_staff, scheduled, upload) -> None:
+def test_inactive_approvers_are_not_notified(director, view_only, scheduled, upload) -> None:
     director.is_active = False
     director.save()
-    upload(admin_staff, scheduled)
+    upload(view_only, scheduled)
     assert not Notification.objects.filter(type=WAITING).exists()
 
 
-def test_a_refused_upload_notifies_nobody(director, admin_staff, scheduled, doc_type) -> None:
+def test_a_refused_upload_notifies_nobody(director, view_only, scheduled, doc_type) -> None:
     with pytest.raises(Exception):
-        services.upload_document(admin_staff, scheduled, doc_type, make_file("fake.pdf", b"not a pdf"))
+        services.upload_document(view_only, scheduled, doc_type, make_file("fake.pdf", b"not a pdf"))
     assert not Notification.objects.filter(type=WAITING).exists()
 
 

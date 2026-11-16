@@ -17,6 +17,7 @@ from certificates.models import Certificate, CertificateSignatory
 
 from .conftest import S, appreciation_of, certificate_of, template_upload, upload
 from conftest import image_bytes
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -36,9 +37,9 @@ def remove_signature_file(signatory: CertificateSignatory) -> None:
 # --- Who may do what ---------------------------------------------------------------------------------
 
 
-def test_admin_staff_cannot_approve(generated, make_member) -> None:
+def test_a_role_without_the_flag_cannot_approve(generated, make_member) -> None:
     activity, _ = generated
-    member = make_member("Admin Staff")
+    member = make_member(VIEW_ONLY_ROLE)
     with pytest.raises(PermissionDenied, match="approve certificates"):
         services.approve_activity_certificates(member, activity)
     activity.refresh_from_db()
@@ -46,8 +47,9 @@ def test_admin_staff_cannot_approve(generated, make_member) -> None:
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
-def test_admin_staff_alone_lacks_the_flag(roles) -> None:
-    assert {name for name, role in roles.items() if not role.can_approve_certificates} == {"Admin Staff"}
+def test_every_seeded_role_has_the_flag(roles) -> None:
+    """Since ASSUMPTIONS 388 Admin Staff approve certificates too; only the test-only role lacks it."""
+    assert {name for name, role in roles.items() if not role.can_approve_certificates} == {VIEW_ONLY_ROLE}
 
 
 def test_the_per_certificate_approval_is_gone() -> None:
@@ -55,7 +57,7 @@ def test_the_per_certificate_approval_is_gone() -> None:
     assert not hasattr(services, "approve_certificate") and not hasattr(services, "approve_certificates")
 
 
-@pytest.mark.parametrize("role_name", ["Admin Staff", Role.SYSTEM_ADMINISTRATOR, "Incubation Project Head"])
+@pytest.mark.parametrize("role_name", ["Admin Staff", VIEW_ONLY_ROLE, Role.SYSTEM_ADMINISTRATOR, "Incubation Project Head"])
 def test_regenerate_hand_over_and_resend_need_can_create_activity(generated, make_member, role_name) -> None:
     activity, _ = generated
     member = make_member(role_name)

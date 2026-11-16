@@ -82,10 +82,24 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - CERTIFICATE_TEXT (ASSUMPTIONS 370): the wording (title, line before the name, main sentence, closing line) per type
   (participation / appreciation); `activity` empty = the default; versioned (`is_current`; a row a certificate uses never
   changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 31 tables.
-- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361): approve certificates and add/replace signatures. Migration
-  accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and System Administrator (not
-  Admin Staff); seed only on create, roles screen switch `set_role_certificate_approval`, no last-approver guard, allowed
-  together with can_manage_users (the System Administrator approves but never generates: that needs can_create_activity).
+- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361, 388): approve certificates and add/replace signatures. Migration
+  accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and System Administrator; seed
+  also gives it to Admin Staff (388); seed only on create, roles screen switch `set_role_certificate_approval`, no
+  last-approver guard, allowed together with can_manage_users (the System Administrator approves but never generates).
+- Roles (seed defaults, ASSUMPTIONS 388; flags are switched per role, never checked by name):
+
+  | Role | can_create_activity | can_manage_users | can_approve_documents | can_approve_certificates |
+  |---|---|---|---|---|
+  | Director | ✓ | – | ✓ | ✓ |
+  | Incubation Project Head | ✓ | – | – | ✓ |
+  | Community Development Head | ✓ | – | – | ✓ |
+  | Admin Staff | ✓ | – | – | ✓ |
+  | System Administrator | – | ✓ | – | ✓ |
+
+  `seed_data` sets can_create_activity and both approval flags only when it creates a role (re-applies can_manage_users).
+  Roles screen switches: can_create_activity (`set_role_activity_creation`), can_approve_documents, can_approve_certificates
+  (toast + `accounts.audit`, amber note when no active member has the flag). Tests' "cannot" checks use the test-only role
+  `conftest.VIEW_ONLY_ROLE` ("View Only (test)", fixture `view_only`), never Admin Staff.
 - `Role.DIRECTOR` ("Director") is used only to choose who gets the new-activity notification
   (`notifications.services.notify_directors_of_new_activity`), never for a permission.
 - CERTIFICATE_SIGNATORY is a list of people (ASSUMPTIONS 363): name, free-text position, nullable signature image,
@@ -659,6 +673,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Other documents (2026-11-16): Invitation Letter optional (data migration documents/0003, one DOCUMENT_TYPE row), "Other"
   type with a required title, seed_data create-only rules, "Upload other document" + grouped dropdown (386). Then the
   Accomplishment Report optional too (documents/0004) and document rows that never squeeze the title (387). No ERD change.
+- Admin Staff rights (2026-11-16): create and edit activities and approve certificates (seed defaults, create-only),
+  roles screen switch for can_create_activity, "View Only (test)" role in tests (388). No database or ERD change.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

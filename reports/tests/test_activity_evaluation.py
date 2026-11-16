@@ -16,7 +16,7 @@ def url(activity) -> str:
     return f"/reports/api/activities/{activity.pk}/evaluation/"
 
 
-def test_counts_and_rating_averages_for_one_activity(make_activity, register, evaluate, login, admin_staff) -> None:
+def test_counts_and_rating_averages_for_one_activity(make_activity, register, evaluate, login, view_only) -> None:
     activity, other = make_activity("Pitching"), make_activity("Other")
     evaluate(register(activity, "Ana", attended=True), {"Overall rating": 5, "Venue": 4},
              comments="Secret comment", text_answers={"Suggestions": "More coffee"})
@@ -25,7 +25,7 @@ def test_counts_and_rating_averages_for_one_activity(make_activity, register, ev
     register(activity, "Dan")  # registered only
     evaluate(register(other, "Eve", attended=True), {"Overall rating": 1})  # another activity: never counted
 
-    response = login(admin_staff).get(url(activity))  # any active staff member
+    response = login(view_only).get(url(activity))  # any active staff member
     assert response.status_code == 200
     data = response.json()
     assert {k: data[k] for k in ("activity_id", "registered", "attended", "evaluations", "evaluation_response_rate")} == {

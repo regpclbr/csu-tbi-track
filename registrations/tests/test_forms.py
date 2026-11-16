@@ -48,9 +48,9 @@ def test_one_form_per_type_per_activity(director, new_activity, defaults) -> Non
 
 
 @pytest.mark.django_db
-def test_admin_staff_cannot_manage_forms(admin_staff, new_activity, defaults) -> None:
+def test_view_only_members_cannot_manage_forms(view_only, new_activity, defaults) -> None:
     with pytest.raises(PermissionDenied):
-        services.create_form(admin_staff, new_activity, FormType.REGISTRATION)
+        services.create_form(view_only, new_activity, FormType.REGISTRATION)
 
 
 # --- Editing fields ---------------------------------------------------------------------

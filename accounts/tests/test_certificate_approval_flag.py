@@ -12,11 +12,13 @@ from accounts import services
 from accounts.models import Role
 from accounts.permissions import Permission, has_permission
 from accounts.seed import load_lookups
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
 SYSADMIN = Role.SYSTEM_ADMINISTRATOR
-APPROVERS = {"Director", "Incubation Project Head", "Community Development Head", SYSADMIN}
+APPROVERS = {"Director", "Incubation Project Head", "Community Development Head", SYSADMIN}  # migration 0006
+SEEDED_APPROVERS = APPROVERS | {"Admin Staff"}  # seed_data since ASSUMPTIONS 388
 
 
 def client_for(member) -> Client:
@@ -64,18 +66,17 @@ def test_migration_0006_gives_it_to_the_four_approver_roles() -> None:
 
 
 def test_seed_gives_it_to_the_approver_roles_and_never_reapplies_it(roles) -> None:
-    assert {name for name, role in roles.items() if role.can_approve_certificates} == APPROVERS
-    Role.objects.filter(role_name="Director").update(can_approve_certificates=False)
-    Role.objects.filter(role_name="Admin Staff").update(can_approve_certificates=True)
+    assert {name for name, role in roles.items() if role.can_approve_certificates} == SEEDED_APPROVERS
+    Role.objects.filter(role_name__in=["Director", "Admin Staff"]).update(can_approve_certificates=False)
     load_lookups()
     flags = dict(Role.objects.values_list("role_name", "can_approve_certificates"))
-    assert flags["Director"] is False and flags["Admin Staff"] is True
+    assert flags["Director"] is False and flags["Admin Staff"] is False
 
 
 def test_permission_comes_from_the_flag(make_member) -> None:
-    for name in APPROVERS:
+    for name in SEEDED_APPROVERS:
         assert has_permission(make_member(name), Permission.APPROVE_CERTIFICATES)
-    assert not has_permission(make_member("Admin Staff"), Permission.APPROVE_CERTIFICATES)
+    assert not has_permission(make_member(VIEW_ONLY_ROLE), Permission.APPROVE_CERTIFICATES)
 
 
 def test_roles_screen_switches_it_and_logs_it(sysadmin, make_member, roles, caplog) -> None:
@@ -86,14 +87,14 @@ def test_roles_screen_switches_it_and_logs_it(sysadmin, make_member, roles, capl
     assert f"{SYSADMIN} can no longer approve certificates." in messages_of(response)
     assert "No active member can approve certificates" in client.get(reverse("accounts:console_roles")).content.decode()
 
-    staff_role = roles["Admin Staff"]
+    view_role = roles[VIEW_ONLY_ROLE]
     with caplog.at_level("INFO", logger="accounts.audit"):
-        response = toggle(client, staff_role, "true")
-    assert "Admin Staff can now approve certificates." in messages_of(response)
-    assert "Role flag changed: role='Admin Staff' can_approve_certificates False -> True" in caplog.text
-    staff_role.refresh_from_db()
-    assert staff_role.can_approve_certificates and not staff_role.can_create_activity and not staff_role.can_approve_documents
-    make_member("Admin Staff")
+        response = toggle(client, view_role, "true")
+    assert f"{VIEW_ONLY_ROLE} can now approve certificates." in messages_of(response)
+    assert f"Role flag changed: role='{VIEW_ONLY_ROLE}' can_approve_certificates False -> True" in caplog.text
+    view_role.refresh_from_db()
+    assert view_role.can_approve_certificates and not view_role.can_create_activity and not view_role.can_approve_documents
+    make_member(VIEW_ONLY_ROLE)
     assert "No active member can approve certificates" not in client.get(reverse("accounts:console_roles")).content.decode()
 
 
@@ -111,12 +112,12 @@ def test_it_may_go_with_managing_users(sysadmin, roles) -> None:
         services.set_role_document_approval(sysadmin, roles[SYSADMIN], True)
 
 
-@pytest.mark.parametrize("role_name", ["Director", "Incubation Project Head", "Admin Staff"])
+@pytest.mark.parametrize("role_name", ["Director", "Incubation Project Head", "Admin Staff", VIEW_ONLY_ROLE])
 def test_only_user_managers_may_switch_it(make_member, roles, role_name) -> None:
-    url = reverse("accounts:console_role_certificate_approval", args=[roles["Admin Staff"].pk])
+    url = reverse("accounts:console_role_certificate_approval", args=[roles[VIEW_ONLY_ROLE].pk])
     assert client_for(make_member(role_name)).post(url, {"enabled": "true"}).status_code == 403
-    roles["Admin Staff"].refresh_from_db()
-    assert roles["Admin Staff"].can_approve_certificates is False
+    roles[VIEW_ONLY_ROLE].refresh_from_db()
+    assert roles[VIEW_ONLY_ROLE].can_approve_certificates is False
 
 
 def test_switch_is_post_only_and_needs_true_or_false(sysadmin, roles) -> None:

@@ -34,10 +34,10 @@ def messages_of(response) -> list[str]:
 # --- List -------------------------------------------------------------------------------------------------------------
 
 
-def test_list_shows_startups_with_filters(admin_staff, login, make_startup) -> None:
+def test_list_shows_startups_with_filters(view_only, login, make_startup) -> None:
     make_startup(name="Kalinaw Agritech", maturity_stage="Validation")
     make_startup(email="old@demo.example.com", name="Old Co", maturity_stage="Scaling", is_active=False)
-    html = login(admin_staff).get(reverse("startups:list")).content.decode()
+    html = login(view_only).get(reverse("startups:list")).content.decode()
     assert "is coming soon" not in html and "Kalinaw Agritech" in html and "Old Co" in html
     assert '<option value="Scaling">Scaling</option>' in html and '<option value="Validation">Validation</option>' in html
     assert "2 startups" in html
@@ -51,21 +51,21 @@ def test_list_shows_startups_with_filters(admin_staff, login, make_startup) -> N
     ("is_active=true", "Kalinaw Agritech", "Old Co"),
     ("is_active=false", "Old Co", "Kalinaw Agritech"),
 ])
-def test_filters_swap_only_the_results(admin_staff, login, make_startup, query, shown, hidden) -> None:
+def test_filters_swap_only_the_results(view_only, login, make_startup, query, shown, hidden) -> None:
     make_startup(name="Kalinaw Agritech", maturity_stage="Validation")
     make_startup(email="old@demo.example.com", name="Old Co", maturity_stage="Scaling", is_active=False)
-    html = login(admin_staff).get(f"{reverse('startups:list')}?{query}", **HTMX).content.decode()
+    html = login(view_only).get(f"{reverse('startups:list')}?{query}", **HTMX).content.decode()
     assert html.lstrip().startswith('<div id="startup-results"')
     assert shown in html and hidden not in html and "matching the filters" in html
 
 
-def test_an_unreadable_filter_is_ignored_with_a_note(admin_staff, login, startup) -> None:
-    html = login(admin_staff).get(reverse("startups:list") + "?is_active=maybe").content.decode()
+def test_an_unreadable_filter_is_ignored_with_a_note(view_only, login, startup) -> None:
+    html = login(view_only).get(reverse("startups:list") + "?is_active=maybe").content.decode()
     assert "ignored: active" in html and startup.name in html
 
 
-def test_empty_states(admin_staff, login) -> None:
-    client = login(admin_staff)
+def test_empty_states(view_only, login) -> None:
+    client = login(view_only)
     assert "No startups yet" in client.get(reverse("startups:list")).content.decode()
     html = client.get(reverse("startups:list") + "?q=zzz").content.decode()
     assert "No startups match the filters" in html and "Clear filters" in html
@@ -74,7 +74,7 @@ def test_empty_states(admin_staff, login) -> None:
 # --- Detail ----------------------------------------------------------------------------------------------------------
 
 
-def test_detail_shows_the_profile_and_the_history(admin_staff, login, startup, open_activity) -> None:
+def test_detail_shows_the_profile_and_the_history(view_only, login, startup, open_activity) -> None:
     activity = open_activity()
     form = FormTemplate.objects.get(activity=activity, form_type=FormType.REGISTRATION)
     category = activity.participant_categories.get()
@@ -83,15 +83,15 @@ def test_detail_shows_the_profile_and_the_history(admin_staff, login, startup, o
                                 confirmation_method=Registration.ConfirmationMethod.EMAIL)
     Registration.objects.create(activity=open_activity(title="Old Forum"), template=FormTemplate.objects.filter(
         activity__title="Old Forum").get(), participant_category=category, name="K", email=startup.email.upper())
-    html = login(admin_staff).get(reverse("startups:detail", args=[startup.pk])).content.decode()
+    html = login(view_only).get(reverse("startups:detail", args=[startup.pk])).content.decode()
     for text in (startup.email, "NAV-1", "Validation", "Pitching Workshop", "Old Forum", "Attended", "Not marked",
                  "Public form (email match)", "2 registrations, 1 attended", "cannot be edited here"):
         assert text in html
     assert "Send set-password link" not in html
 
 
-def test_unknown_startup_is_404(admin_staff, login) -> None:
-    assert login(admin_staff).get(reverse("startups:detail", args=[999999])).status_code == 404
+def test_unknown_startup_is_404(view_only, login) -> None:
+    assert login(view_only).get(reverse("startups:detail", args=[999999])).status_code == 404
 
 
 def test_pages_need_a_staff_login(client, startup) -> None:

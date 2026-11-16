@@ -30,15 +30,15 @@ def test_upload_starts_for_review_with_file_columns(upload, director, scheduled)
     assert document.title == "Request Letter"  # defaults to the type name
 
 
-def test_any_active_staff_member_can_upload(upload, admin_staff, scheduled) -> None:
+def test_any_active_staff_member_can_upload(upload, view_only, scheduled) -> None:
     """Admin Staff has no can_create_activity but may upload (pending TBI validation)."""
-    assert upload(admin_staff, scheduled).uploaded_by == admin_staff
+    assert upload(view_only, scheduled).uploaded_by == view_only
 
 
-def test_deactivated_member_cannot_upload(upload, admin_staff, scheduled) -> None:
-    admin_staff.is_active = False
+def test_deactivated_member_cannot_upload(upload, view_only, scheduled) -> None:
+    view_only.is_active = False
     with pytest.raises(PermissionDenied):
-        upload(admin_staff, scheduled)
+        upload(view_only, scheduled)
 
 
 @pytest.mark.parametrize("status", [ActivityStatus.DRAFT, ActivityStatus.ONGOING, ActivityStatus.CONDUCTED])

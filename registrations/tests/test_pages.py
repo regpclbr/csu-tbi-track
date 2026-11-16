@@ -62,13 +62,13 @@ def test_forms_tab_without_forms_offers_create_from_defaults(director, login, ne
     assert count and f"Start from the {count} default field" in html
 
 
-def test_forms_tab_is_read_only_without_can_create_activity(admin_staff, login, scheduled) -> None:
-    response = login(admin_staff).get(tab_url(scheduled, "forms"))
+def test_forms_tab_is_read_only_without_can_create_activity(view_only, login, scheduled) -> None:
+    response = login(view_only).get(tab_url(scheduled, "forms"))
     html = response.content.decode()
     assert response.status_code == 200 and "Affiliation / Organization" in html
     assert "Create from defaults" not in html and "Add field" not in html and "Move “" not in html
     form = form_of(scheduled)
-    client = login(admin_staff)
+    client = login(view_only)
     assert client.post(reverse("registrations:field_add", args=[form.pk]), {"field_label": "X", "field_type": "short_text"}).status_code == 403
     assert client.post(reverse("registrations:form_create", args=[scheduled.pk, "registration"])).status_code == 403
 
@@ -196,11 +196,11 @@ def test_registrations_tab_shows_counts_and_rows(director, login, scheduled, sig
     assert services.attendance_closed_reason(scheduled) in html
 
 
-def test_registrations_tab_is_read_only_without_can_create_activity(admin_staff, login, attended) -> None:
+def test_registrations_tab_is_read_only_without_can_create_activity(view_only, login, attended) -> None:
     [person] = attended(1)
-    html = login(admin_staff).get(tab_url(person.activity, "registrations")).content.decode()
+    html = login(view_only).get(tab_url(person.activity, "registrations")).content.decode()
     assert person.email in html and 'name="registration_ids"' not in html and 'name="row_action"' not in html
-    response = login(admin_staff).post(reverse("registrations:attendance", args=[person.activity_id]),
+    response = login(view_only).post(reverse("registrations:attendance", args=[person.activity_id]),
                                        {"registration_ids": [person.pk], "action": "unmark"})
     assert response.status_code == 403
 
@@ -304,10 +304,10 @@ def test_read_functions_for_attendance_and_links(director, scheduled, signup) ->
 # --- Attendance sheet -----------------------------------------------------------------------------------------------
 
 
-def test_attendance_sheet_has_names_and_categories_but_no_emails_or_numbers(admin_staff, login, scheduled, signup) -> None:
+def test_attendance_sheet_has_names_and_categories_but_no_emails_or_numbers(view_only, login, scheduled, signup) -> None:
     signup(scheduled, "zoe@example.com", name="Zoe Tan", contact_number="09170000001")
     signup(scheduled, "ana@example.com", name="Ana Cruz", contact_number="09170000002")
-    response = login(admin_staff).get(reverse("registrations:attendance_sheet", args=[scheduled.pk]))
+    response = login(view_only).get(reverse("registrations:attendance_sheet", args=[scheduled.pk]))
     html = response.content.decode()
     assert response.status_code == 200 and "Signature" in html and "Incubatees" in html and scheduled.venue in html
     assert html.index("Ana Cruz") < html.index("Zoe Tan")
@@ -321,10 +321,10 @@ def test_evaluation_tab_empty_state(director, login, scheduled) -> None:
     assert "No evaluations yet" in login(director).get(tab_url(scheduled, "evaluation")).content.decode()
 
 
-def test_evaluation_tab_shows_averages_but_never_names_comments_or_text(admin_staff, director, login, attended) -> None:
+def test_evaluation_tab_shows_averages_but_never_names_comments_or_text(view_only, director, login, attended) -> None:
     [person] = attended(1)
     evaluate(person, person.activity, comments="Secret comment XYZ")
-    html = login(admin_staff).get(tab_url(person.activity, "evaluation")).content.decode()
+    html = login(view_only).get(tab_url(person.activity, "evaluation")).content.decode()
     assert "Overall rating" in html and "5.0 / 5" in html and "rating answers" in html
     for private in (person.name, person.email, CERT["certificate_name"], CERT["certificate_email"], "Secret comment XYZ", "How to pitch."):
         assert private not in html

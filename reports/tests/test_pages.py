@@ -54,8 +54,8 @@ def test_page_shows_the_form_to_members_who_can_generate(director, login) -> Non
     assert "No reports yet" in html
 
 
-def test_without_can_create_activity_there_is_no_form_and_posting_is_refused(admin_staff, login, queued) -> None:
-    client = login(admin_staff)
+def test_without_can_create_activity_there_is_no_form_and_posting_is_refused(view_only, login, queued) -> None:
+    client = login(view_only)
     html = client.get(reverse("reports:list")).content.decode()
     assert 'id="new-report"' not in html and "Generating a new one needs a role" in html
     assert client.post(reverse("reports:list"), VALID).status_code == 403
@@ -101,13 +101,13 @@ def test_no_pills_means_the_type_defaults(director, login, queued) -> None:
 # --- History and polling -----------------------------------------------------------------------------------------
 
 
-def test_history_shows_type_sections_range_format_requester_and_states(director, admin_staff, login) -> None:
+def test_history_shows_type_sections_range_format_requester_and_states(director, view_only, login) -> None:
     pending = make_report(director)
     ready = make_report(director, file_path="reports/2026/report-x.pdf", report_type="participation",
                         included_sections=json.dumps(["summary"]), format="excel")
     failed = make_report(director, report_type="evaluation")
     fail(failed)
-    html = login(admin_staff).get(reverse("reports:list")).content.decode()  # everyone sees the history
+    html = login(view_only).get(reverse("reports:list")).content.decode()  # everyone sees the history
     assert "Accomplishment Report" in html and "Summary, AI-generated summary" in html
     assert "January 1 – June 30, 2026" in html and "Test Director" in html and "Excel" in html
     for label in ("Pending", "Ready", "Failed"):

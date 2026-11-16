@@ -95,9 +95,9 @@ def test_list_shows_the_stats_and_the_rows(director, login, new_activity) -> Non
     assert "0/30" in html  # registered / max slots
 
 
-def test_list_is_for_every_active_staff_member_but_only_creators_see_new_activity(director, admin_staff, login) -> None:
+def test_list_is_for_every_active_staff_member_but_only_creators_see_new_activity(director, view_only, login) -> None:
     assert CREATE in login(director).get(LIST).content.decode()
-    response = login(admin_staff).get(LIST)
+    response = login(view_only).get(LIST)
     assert response.status_code == 200 and CREATE not in response.content.decode()
     assert Client().get(LIST).status_code == 302  # login page
 
@@ -174,10 +174,10 @@ def test_month_grid_starts_on_monday_and_puts_a_multi_day_activity_on_each_day(d
 # --- Create ----------------------------------------------------------------------------------------------------
 
 
-def test_create_page_needs_can_create_activity(director, admin_staff, login) -> None:
+def test_create_page_needs_can_create_activity(director, view_only, login) -> None:
     assert login(director).get(CREATE).status_code == 200
-    assert login(admin_staff).get(CREATE).status_code == 403
-    assert login(admin_staff).post(CREATE, {}).status_code == 403
+    assert login(view_only).get(CREATE).status_code == 403
+    assert login(view_only).post(CREATE, {}).status_code == 403
 
 
 def test_create_saves_a_draft_and_opens_it_with_a_toast(director, login, post_data) -> None:
@@ -272,8 +272,8 @@ def test_an_untouched_deadline_with_seconds_is_not_seen_as_changed(director, new
     assert pages.keep_stored_minutes(sent, new_activity)["registration_deadline"] == with_seconds
 
 
-def test_edit_needs_can_create_activity(admin_staff, login, new_activity) -> None:
-    assert login(admin_staff).get(reverse("activities:edit", args=[new_activity.pk])).status_code == 403
+def test_edit_needs_can_create_activity(view_only, login, new_activity) -> None:
+    assert login(view_only).get(reverse("activities:edit", args=[new_activity.pk])).status_code == 403
 
 
 def test_a_conducted_activity_is_read_only(director, login, new_activity, move_to, post_data) -> None:
@@ -301,8 +301,8 @@ def test_detail_for_a_creator_has_the_actions(director, login, new_activity) -> 
     assert "Add a resource person" in html and "Pitching Workshop" in html and "₱30,000.00" in html
 
 
-def test_detail_is_read_only_without_can_create_activity(admin_staff, login, new_activity) -> None:
-    response = login(admin_staff).get(detail_url(new_activity))
+def test_detail_is_read_only_without_can_create_activity(view_only, login, new_activity) -> None:
+    response = login(view_only).get(detail_url(new_activity))
     html = response.content.decode()
     assert response.status_code == 200 and "View only" in html
     assert reverse("activities:edit", args=[new_activity.pk]) not in html
@@ -358,10 +358,10 @@ def test_a_refused_status_change_shows_why(director, login, new_activity) -> Non
     assert new_activity.status.name == "Draft"
 
 
-def test_status_change_needs_can_create_activity(admin_staff, login, new_activity) -> None:
+def test_status_change_needs_can_create_activity(view_only, login, new_activity) -> None:
     url = reverse("activities:change_status", args=[new_activity.pk])
-    assert login(admin_staff).post(url, {"status": "Scheduled"}).status_code == 403
-    assert login(admin_staff).get(url).status_code in (403, 405)
+    assert login(view_only).post(url, {"status": "Scheduled"}).status_code == 403
+    assert login(view_only).get(url).status_code in (403, 405)
 
 
 # --- Registration link and notice ---------------------------------------------------------------------------------
@@ -445,9 +445,9 @@ def test_remove_a_resource_person(director, login, new_activity) -> None:
     assert not new_activity.resource_person_links.exists() and ResourcePerson.objects.filter(pk=person.pk).exists()
 
 
-def test_resource_person_changes_need_can_create_activity(admin_staff, director, login, new_activity) -> None:
+def test_resource_person_changes_need_can_create_activity(view_only, director, login, new_activity) -> None:
     person = services.create_resource_person(director, "Ben Cruz")
-    client = login(admin_staff)
+    client = login(view_only)
     assert client.post(reverse("activities:add_resource_person", args=[new_activity.pk]), {"mode": "new", "name": "X"}).status_code == 403
     assert client.post(reverse("activities:remove_resource_person", args=[new_activity.pk, person.pk])).status_code == 403
     assert client.get(reverse("activities:resource_person_options")).status_code == 403

@@ -200,13 +200,13 @@ def test_approval_names_the_missing_signature(generated, director, design) -> No
         services.approve_activity_certificates(director, activity)
 
 
-def test_admin_staff_cannot_approve(generated, admin_staff, evaluate) -> None:
+def test_view_only_members_cannot_approve(generated, view_only, evaluate) -> None:
     from django.core.exceptions import PermissionDenied
 
     activity, people = generated
     evaluate(people[0])
     with pytest.raises(PermissionDenied):
-        services.approve_activity_certificates(admin_staff, activity)
+        services.approve_activity_certificates(view_only, activity)
 
 
 def test_approved_participant_is_issued_and_emailed(generated, director, evaluate, run_tasks, mailoutbox,

@@ -82,12 +82,6 @@ def director(make_member):
 
 
 @pytest.fixture
-def admin_staff(make_member):
-    """Active staff without can_manage_users."""
-    return make_member("Admin Staff")
-
-
-@pytest.fixture
 def open_activity(roles, director):
     """Factory: open_activity(categories=["Incubatees"], max_slots=30, status="Scheduled", days=10).
 

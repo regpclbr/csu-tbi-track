@@ -251,9 +251,9 @@ def test_password_must_pass_the_validators(client, startup) -> None:
     assert set_password(client, path).status_code == 200  # the link was not used up by the refusals
 
 
-def test_send_link_needs_can_manage_users(startup, admin_member, admin_staff, settings) -> None:
+def test_send_link_needs_can_manage_users(startup, admin_member, view_only, settings) -> None:
     with pytest.raises(PermissionDenied):
-        services.send_password_link(admin_staff, startup)
+        services.send_password_link(view_only, startup)
     services.send_password_link(admin_member, startup)
     message = mail.outbox[-1]
     assert message.to == [startup.email]

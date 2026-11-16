@@ -15,6 +15,7 @@ from documents.models import DocumentStatus
 from documents.services import review_queue
 from reports import services
 from reports.dashboard_page import matching_quick_range, quick_range
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -69,8 +70,8 @@ def test_hx_current_url_of_another_site_is_ignored() -> None:
     assert response["HX-Redirect"] == f"{reverse('accounts:login')}?next=/"
 
 
-def test_every_active_staff_member_sees_the_dashboard(director, admin_staff, login) -> None:
-    for member in (director, admin_staff):
+def test_every_active_staff_member_sees_the_dashboard(director, view_only, login) -> None:
+    for member in (director, view_only):
         response = login(member).get(URL)
         assert response.status_code == 200
         assert "dashboard/index.html" in [t.name for t in response.templates]
@@ -185,10 +186,10 @@ def test_the_filter_form_updates_with_htmx_and_keeps_the_url(director, login) ->
 # --- Role-dependent parts ---------------------------------------------------------------------------------
 
 
-def test_new_activity_button_only_with_can_create_activity(director, admin_staff, login) -> None:
+def test_new_activity_button_only_with_can_create_activity(director, view_only, login) -> None:
     create_url = reverse("activities:create")
     assert create_url in login(director).get(URL).content.decode()
-    assert create_url not in login(admin_staff).get(URL).content.decode()
+    assert create_url not in login(view_only).get(URL).content.decode()
 
 
 def test_documents_card_for_a_reviewer_counts_my_review_queue(director, make_member, login, data, add_document) -> None:
@@ -205,9 +206,9 @@ def test_documents_card_for_a_reviewer_counts_my_review_queue(director, make_mem
     assert head_page.review["mine"] is False  # no can_approve_documents: the read-only S4 card
 
 
-def test_documents_card_without_can_create_activity_shows_the_s4_total(admin_staff, login, data, add_document) -> None:
+def test_documents_card_without_can_create_activity_shows_the_s4_total(view_only, login, data, add_document) -> None:
     add_document(data["conducted"], "Activity Design", DocumentStatus.FOR_REVIEW)
-    response = login(admin_staff).get(URL)
+    response = login(view_only).get(URL)
     page = response.context["page"]
     html = response.content.decode()
     assert page.review["mine"] is False
@@ -272,8 +273,8 @@ def test_certificates_of_several_activities_link_to_the_certificates_page(direct
     assert item.action_url == f"{reverse('certificates:list')}?status=generated"
 
 
-@pytest.mark.parametrize(("role_name", "approves"), [("Incubation Project Head", True), ("Admin Staff", False),
-                                                     ("System Administrator", True)])
+@pytest.mark.parametrize(("role_name", "approves"), [("Incubation Project Head", True), ("Admin Staff", True),
+                                                     (VIEW_ONLY_ROLE, False), ("System Administrator", True)])
 def test_approvers_and_others_see_their_wording(make_member, login, data, role_name, approves) -> None:
     response = login(make_member(role_name)).get(URL)
     item = next(item for item in response.context["page"].attention if "certificate approval" in item.title)

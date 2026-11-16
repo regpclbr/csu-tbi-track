@@ -112,10 +112,10 @@ def test_state_counts(world) -> None:
 # --- The page ------------------------------------------------------------------------------------------------
 
 
-def test_summary_cards_and_the_waiting_label_by_permission(world, director, admin_staff, login) -> None:
+def test_summary_cards_and_the_waiting_label_by_permission(world, director, view_only, login) -> None:
     html = login(director).get(URL).content.decode()
     assert cards_of(html) == {"Waiting for approval": "3", "Returned": "1", "Missing": "4", "Approved": "1"}
-    html = login(admin_staff).get(URL).content.decode()
+    html = login(view_only).get(URL).content.decode()
     assert "Waiting for the Director" in html and "Waiting for approval" not in html
 
 
@@ -150,10 +150,10 @@ def test_missing_rows_have_an_upload_link(world, director, login) -> None:
     assert f'{reverse("activities:detail", args=[world["ongoing"].pk])}?tab=documents&amp;type={design}#upload' in response.content.decode()
 
 
-def test_approve_and_return_only_for_approvers(world, director, admin_staff, login) -> None:
+def test_approve_and_return_only_for_approvers(world, director, view_only, login) -> None:
     approve_url = reverse("documents:approve", args=[world["waiting"].pk])
     assert approve_url in login(director).get(URL).content.decode()
-    html = login(admin_staff).get(URL).content.decode()
+    html = login(view_only).get(URL).content.decode()
     assert approve_url not in html and "/return/form/" not in html
     assert reverse("documents:download", args=[world["waiting"].pk]) in html
 

@@ -173,10 +173,10 @@ def test_mark_all_read_only_mine(portal, startup, director) -> None:
 # --- Staff side ---------------------------------------------------------------------------------------------
 
 
-def test_staff_list_search_filters_and_pages(client, admin_staff, provider) -> None:
+def test_staff_list_search_filters_and_pages(client, view_only, provider) -> None:
     provider([record(n, maturity_stage="Scaling" if n % 2 else "Ideation") for n in range(1, 24)] + [record(30, is_active=False, name="Gone Co")])
     services.sync_startups()
-    client.force_login(admin_staff)  # any active staff member may look (item 12)
+    client.force_login(view_only)  # any active staff member may look (item 12)
     first = client.get("/startups/api/").json()
     assert first["total"] == 24 and first["num_pages"] == 2 and len(first["startups"]) == 20
     assert client.get("/startups/api/", {"q": "gone"}).json()["total"] == 1
@@ -186,20 +186,20 @@ def test_staff_list_search_filters_and_pages(client, admin_staff, provider) -> N
     assert client.get("/startups/api/", {"is_active": "maybe"}).status_code == 400
 
 
-def test_staff_detail_shows_history(client, admin_staff, startup, open_activity, director) -> None:
+def test_staff_detail_shows_history(client, view_only, startup, open_activity, director) -> None:
     activity = open_activity()
     registration = services.register_as_startup(startup, activity, answers=answers_for(activity))
     Registration.objects.filter(pk=registration.pk).update(attendance_confirmed=True, confirmation_method="email")
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     data = client.get(f"/startups/api/{startup.pk}/").json()
     assert data["startup"]["email"] == startup.email
     assert data["registrations"][0]["attendance_confirmed"] is True
     assert data["registrations"][0]["confirmation_method"] == "email"
 
 
-def test_sync_and_links_need_can_manage_users(client, admin_staff, admin_member, startup, provider) -> None:
+def test_sync_and_links_need_can_manage_users(client, view_only, admin_member, startup, provider) -> None:
     provider([record(1, email=startup.email)])
-    client.force_login(admin_staff)
+    client.force_login(view_only)
     assert client.post("/startups/api/sync/").status_code == 403
     assert client.post(f"/startups/api/{startup.pk}/send-password-link/").status_code == 403
 

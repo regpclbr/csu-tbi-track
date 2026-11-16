@@ -13,6 +13,7 @@ from certificates import services
 from certificates.models import Certificate
 from documents.models import Document
 from documents.tests.conftest import make_file
+from conftest import VIEW_ONLY_ROLE
 
 from .conftest import S, appreciation_of, certificate_of
 
@@ -111,9 +112,9 @@ def test_project_heads_approve(make_member, login, generated) -> None:
     assert appreciation_of(activity).status == S.APPROVED
 
 
-def test_admin_staff_see_no_approval_controls(make_member, login, generated) -> None:
+def test_view_only_members_see_no_approval_controls(make_member, login, generated) -> None:
     activity, _ = generated
-    client = login(make_member("Admin Staff"))
+    client = login(make_member(VIEW_ONLY_ROLE))
     html = client.get(tab(activity)).content.decode()
     assert "Approve certificates for this activity" not in html and "Apply the current design" not in html
     assert "Needs approval" in html  # the state is shown to everyone
@@ -177,7 +178,7 @@ def test_row_action_needs_a_certificate_of_this_activity(director, login, genera
 
 def test_read_only_member_sees_no_actions(make_member, login, generated) -> None:
     activity, _ = generated
-    client = login(make_member("Admin Staff"))
+    client = login(make_member(VIEW_ONLY_ROLE))
     html = client.get(tab(activity)).content.decode()
     assert "Generate certificates" not in html and 'name="certificate_ids"' not in html
     assert "Approve certificates for this activity" not in html
@@ -213,10 +214,10 @@ def test_preview_opens_inline_and_downloads_need_a_login(director, login, genera
     assert f'{certificate.certificate_number}-preview.pdf' in response["Content-Disposition"]
 
 
-def test_preview_dialog_and_page(admin_staff, login, generated) -> None:
+def test_preview_dialog_and_page(view_only, login, generated) -> None:
     activity, people = generated
     certificate = certificate_of(people[0])
-    client = login(admin_staff)  # view only: may still preview
+    client = login(view_only)  # view only: may still preview
     url = reverse("certificates:preview_dialog", args=[certificate.pk])
     html = client.get(url, **HTMX).content.decode()
     assert certificate.certificate_number in html and "Download PDF" in html
@@ -271,10 +272,10 @@ def test_failed_send_shows_send_failed_and_resend(director, login, generated, ap
 # --- Evidence ----------------------------------------------------------------------------------------------------
 
 
-def test_evidence_upload_list_and_review(director, admin_staff, login, generated) -> None:
+def test_evidence_upload_list_and_review(director, view_only, login, generated) -> None:
     activity, people = generated
     certificate = certificate_of(people[0])
-    uploader = login(admin_staff)
+    uploader = login(view_only)
     url = reverse("certificates:evidence", args=[certificate.pk])
     response = uploader.get(url, **HTMX)
     assert "certificates/_evidence.html" in [t.name for t in response.templates] and "No evidence uploaded yet." in response.content.decode()
@@ -285,7 +286,7 @@ def test_evidence_upload_list_and_review(director, admin_staff, login, generated
     response = uploader.post(upload_url, {"file": make_file("receipt.pdf"), "title": "Receipt", "next": tab(activity)}, **HTMX)
     assert response["HX-Redirect"] == tab(activity)
     evidence = Document.objects.get(related_certificate=certificate)
-    assert evidence.title == "Receipt" and evidence.uploaded_by == admin_staff
+    assert evidence.title == "Receipt" and evidence.uploaded_by == view_only
 
     html = login(director).get(url, **HTMX).content.decode()
     assert "Receipt" in html and reverse("documents:approve", args=[evidence.pk]) in html  # director may review it
@@ -296,9 +297,9 @@ def test_evidence_upload_list_and_review(director, admin_staff, login, generated
     assert evidence.review_state == Document.APPROVED
 
 
-def test_evidence_page_without_javascript(admin_staff, login, generated) -> None:
+def test_evidence_page_without_javascript(view_only, login, generated) -> None:
     activity, people = generated
-    response = login(admin_staff).get(reverse("certificates:evidence", args=[certificate_of(people[0]).pk]))
+    response = login(view_only).get(reverse("certificates:evidence", args=[certificate_of(people[0]).pk]))
     assert "layouts/app.html" in [t.name for t in response.templates] and 'name="file"' in response.content.decode()
 
 
@@ -321,8 +322,8 @@ def test_certificates_page_lists_counts_and_filters(director, login, generated) 
     assert "Some filters could not be read and were ignored: activity, status." in html and "3 certificates" in html
 
 
-def test_certificates_page_empty_state(admin_staff, login) -> None:
-    assert "No certificates yet" in login(admin_staff).get(reverse("certificates:list")).content.decode()
+def test_certificates_page_empty_state(view_only, login) -> None:
+    assert "No certificates yet" in login(view_only).get(reverse("certificates:list")).content.decode()
 
 
 # --- Read-only service helpers -----------------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from activities.models import ActivityType
 from documents.models import DocumentType
 from registrations import services as registration_services
 from registrations.models import FormType
+from conftest import VIEW_ONLY_ROLE
 
 pytestmark = pytest.mark.django_db
 
@@ -49,7 +50,8 @@ def test_lookups_list_id_and_name(client, director) -> None:
     assert names["participant_categories"] == ["Faculty", "Incubatees", "MSMEs"]
     assert names["activity_statuses"] == ["Draft", "Scheduled", "Ongoing", "Conducted"]
     assert names["document_statuses"] == ["For Review", "Approved"]
-    assert "System Administrator" in names["roles"] and len(names["roles"]) == 5
+    seeded = set(names["roles"]) - {VIEW_ONLY_ROLE}  # the test-only role exists in test databases only
+    assert "System Administrator" in seeded and len(seeded) == 5
 
 
 def test_lookups_need_a_staff_login(client) -> None:

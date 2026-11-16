@@ -79,11 +79,11 @@ def test_type_parameter_preselects_the_upload_type(director, login, scheduled, d
     assert f'<option value="{certificate_type.pk}"' not in html  # evidence has its own upload
 
 
-def test_any_staff_member_can_upload(admin_staff, login, scheduled, doc_type) -> None:
-    response = login(admin_staff).post(reverse("activities:document_upload", args=[scheduled.pk]),
+def test_any_staff_member_can_upload(view_only, login, scheduled, doc_type) -> None:
+    response = login(view_only).post(reverse("activities:document_upload", args=[scheduled.pk]),
                                        {"document_type": doc_type.pk, "title": "", "file": make_file()}, follow=True)
     document = Document.objects.get()
-    assert document.uploaded_by == admin_staff and document.title == "Request Letter"
+    assert document.uploaded_by == view_only and document.title == "Request Letter"
     assert response.redirect_chain[-1][0].endswith("?tab=documents")
     assert '"Request Letter" was uploaded. It is waiting for review.' in messages_of(response)
 
@@ -106,7 +106,7 @@ def test_upload_errors_are_shown_under_their_fields(director, login, scheduled, 
 # --- Review: approve and return ----------------------------------------------------------------------------------
 
 
-def test_buttons_follow_allowed_actions(director, head, admin_staff, login, scheduled, upload) -> None:
+def test_buttons_follow_allowed_actions(director, head, view_only, login, scheduled, upload) -> None:
     document = upload(head, scheduled)
     as_uploader = login(head).get(tab(scheduled)).content.decode()  # no can_approve_documents: no review buttons
     assert action("approve", document) not in as_uploader and "/return/form/" not in as_uploader
@@ -117,7 +117,7 @@ def test_buttons_follow_allowed_actions(director, head, admin_staff, login, sche
     as_approver_uploader = login(director).get(tab(scheduled)).content.decode()
     assert action("approve", own) in as_approver_uploader  # self-approval is allowed (ASSUMPTIONS 344)
     assert reverse("documents:action_form", args=[own.pk, "return"]) not in as_approver_uploader  # never return your own
-    read_only = login(admin_staff).get(tab(scheduled)).content.decode()
+    read_only = login(view_only).get(tab(scheduled)).content.decode()
     assert action("approve", document) not in read_only and "/return/form/" not in read_only
     assert "/replace/form/" not in read_only and 'action="' + reverse("activities:document_upload", args=[scheduled.pk]) in read_only
 
@@ -139,9 +139,9 @@ def test_returning_your_own_upload_is_refused_with_the_service_message(director,
     assert "You cannot return a document you uploaded. Replace or delete it instead." in messages_of(response)
 
 
-def test_member_without_permission_cannot_approve(admin_staff, director, login, scheduled, upload) -> None:
+def test_member_without_permission_cannot_approve(view_only, director, login, scheduled, upload) -> None:
     document = upload(director, scheduled)
-    response = login(admin_staff).post(action("approve", document))
+    response = login(view_only).post(action("approve", document))
     assert response.status_code == 403
     document.refresh_from_db()
     assert document.review_state == Document.WAITING_FOR_REVIEW
@@ -250,7 +250,7 @@ def test_repository_never_lists_certificate_evidence(director, login, scheduled,
     assert "Signed copy" not in login(director).get(reverse("documents:list")).content.decode()
 
 
-def test_review_queue_shows_mine_to_review_with_the_count(director, head, admin_staff, login, scheduled, upload) -> None:
+def test_review_queue_shows_mine_to_review_with_the_count(director, head, view_only, login, scheduled, upload) -> None:
     mine = upload(director, scheduled, title="My upload")
     theirs = upload(head, scheduled, title="Their upload")
     returned = upload(head, scheduled, title="Returned one")
@@ -258,7 +258,7 @@ def test_review_queue_shows_mine_to_review_with_the_count(director, head, admin_
     html = login(director).get(reverse("documents:review")).content.decode()
     assert theirs.title in html and mine.title in html and returned.title not in html  # own uploads too (344)
     assert re.search(r'Waiting for my review\s*<span[^>]*>2<span class="sr-only"> documents', html)
-    assert login(admin_staff).get(reverse("documents:review")).status_code == 403
+    assert login(view_only).get(reverse("documents:review")).status_code == 403
 
 
 def test_sidebar_always_links_to_the_repository(director, head, login, scheduled, upload) -> None:
