@@ -4,34 +4,38 @@
 <meta charset="utf-8">
 <title>{{ content.title }}</title>
 <style>
+  {% comment %}Landscape A4 for the whole report (ASSUMPTIONS 385). The side margins must stay in step with
+  reports.pdf.PAGE_CONTENT_WIDTH_MM, which computes the column widths.{% endcomment %}
   @page {
-    size: A4 portrait;
-    margin: 18mm 14mm 18mm 14mm;
+    size: A4 landscape;
+    margin: 14mm 14mm 16mm 14mm;
     @bottom-left { content: "CSU-TBI Track"; font-size: 8pt; color: #52514e; }
     @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #52514e; }
   }
-  body { font-family: "DejaVu Sans", Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #0b0b0b; }
+  body { margin: 0; font-family: "DejaVu Sans", Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #0b0b0b; }
   h1 { font-size: 16pt; margin: 0 0 4pt; color: #1f3a5f; }
-  h2 { font-size: 12.5pt; margin: 16pt 0 6pt; color: #1f3a5f; border-bottom: 1.5pt solid #1f3a5f; padding-bottom: 2pt; }
-  h3 { font-size: 10pt; margin: 10pt 0 4pt; }
-  .meta { color: #52514e; margin: 0 0 2pt; }
+  h2 { font-size: 12.5pt; margin: 16pt 0 6pt; color: #1f3a5f; border-bottom: 1.5pt solid #1f3a5f; padding-bottom: 2pt; break-after: avoid; }
+  h3 { font-size: 10pt; margin: 10pt 0 4pt; break-after: avoid; }
+  .meta { color: #52514e; margin: 0 0 2pt; overflow-wrap: anywhere; }
   .meta strong { color: #0b0b0b; }
-  table { width: 100%; border-collapse: collapse; margin: 0 0 6pt; }
+  table { table-layout: fixed; border-collapse: collapse; margin: 0 0 6pt; max-width: 100%; }
   thead { display: table-header-group; }
-  th { background: #1f3a5f; color: #fff; font-weight: bold; text-align: left; padding: 3pt 4pt; font-size: 8.5pt; }
-  td { border-bottom: 0.5pt solid #d9d8d4; padding: 2.5pt 4pt; vertical-align: top; }
-  tr { page-break-inside: avoid; }
-  .num { text-align: right; white-space: nowrap; }
-  table.wide { font-size: 7.5pt; }
-  table.wide th { font-size: 7pt; padding: 2pt 3pt; }
+  th { background: #1f3a5f; color: #fff; font-weight: bold; text-align: left; vertical-align: bottom; padding: 3pt 4pt; font-size: 8.5pt; overflow-wrap: break-word; hyphens: manual; }
+  td { border-bottom: 0.5pt solid #d9d8d4; padding: 2.5pt 4pt; vertical-align: top; overflow-wrap: anywhere; }
+  tr { break-inside: avoid; }
+  th.num, td.num { text-align: right; }
+  td.num, td.time { white-space: nowrap; }
+  table.wide { font-size: 8pt; }
+  table.wide th { font-size: 8pt; padding: 2.5pt 3pt; }
   table.wide td { padding: 2pt 3pt; }
   .note { color: #52514e; font-size: 8.5pt; font-style: italic; margin: 2pt 0 6pt; }
-  .chart { margin: 4pt 0 8pt; page-break-inside: avoid; }
+  .chart { margin: 4pt 0 8pt; break-inside: avoid; }
+  .chart svg { max-width: 100%; height: auto; }
   .chart-title { font-weight: bold; font-size: 9pt; margin-bottom: 2pt; }
   .empty { font-weight: bold; font-size: 11pt; border: 1pt solid #c9c8c3; background: #f6f5f1; padding: 6pt 8pt; margin: 8pt 0; }
   .ai { border: 1pt solid #c9c8c3; background: #f6f5f1; padding: 6pt 8pt; }
   .ai-label { font-weight: bold; color: #8a4b00; margin-bottom: 4pt; }
-  .ai-text { white-space: pre-line; }
+  .ai-text { white-space: pre-line; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -57,11 +61,12 @@
       {% endif %}
       {% for table in section.tables %}
         <h3>{{ table.title }}</h3>
-        <table{% if table.headers|length > 6 %} class="wide"{% endif %}>
-          <thead><tr>{% for header, numeric in table.headers %}<th{% if numeric %} class="num"{% endif %}>{{ header }}</th>{% endfor %}</tr></thead>
+        <table class="data{% if table.wide %} wide{% endif %}" style="width: {{ table.width_mm }}mm">
+          <colgroup>{% for header, css, width in table.headers %}<col style="width: {{ width }}%">{% endfor %}</colgroup>
+          <thead><tr>{% for header, css, width in table.headers %}<th class="{{ css }}">{{ header }}</th>{% endfor %}</tr></thead>
           <tbody>
             {% for row in table.rows %}
-              <tr>{% for value, numeric in row %}<td{% if numeric %} class="num"{% endif %}>{{ value }}</td>{% endfor %}</tr>
+              <tr>{% for value, css in row %}<td class="{{ css }}">{{ value }}</td>{% endfor %}</tr>
             {% empty %}
               <tr><td colspan="{{ table.headers|length }}">No data for this period.</td></tr>
             {% endfor %}

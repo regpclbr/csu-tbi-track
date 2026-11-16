@@ -5,7 +5,7 @@ from datetime import date, datetime
 from django import template
 from django.utils import timezone
 
-from activities.formatting import format_datetime, format_time_range
+from activities.formatting import format_date_span, format_datetime, format_time_range
 
 register = template.Library()
 
@@ -94,15 +94,8 @@ def date_tile(activity) -> dict:
 
 @register.filter
 def date_span(activity) -> str:
-    """Compact dates on one line: Nov 6, 2026 / Oct 30–31, 2026 / Oct 30 – Nov 2, 2026 / Dec 30, 2026 – Jan 2, 2027."""
-    start, end = activity.start_date, activity.end_date
-    if start == end:
-        return f"{start:%b} {start.day}, {start.year}"
-    if start.year != end.year:
-        return f"{start:%b} {start.day}, {start.year} – {end:%b} {end.day}, {end.year}"
-    if start.month != end.month:
-        return f"{start:%b} {start.day} – {end:%b} {end.day}, {end.year}"
-    return f"{start:%b} {start.day}–{end.day}, {end.year}"
+    """Compact dates on one line (activities.formatting.format_date_span): Nov 6, 2026 / Oct 30–31, 2026 / ..."""
+    return format_date_span(activity.start_date, activity.end_date)
 
 
 @register.filter

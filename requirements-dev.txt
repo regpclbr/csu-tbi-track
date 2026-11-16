@@ -10,3 +10,6 @@ pytest-xdist==3.8.0       # runs the tests in parallel (-n auto, see pytest.ini)
 
 # Browser screenshots of pages during development (compare with docs/design/*.png)
 playwright==1.63.0
+
+# PDF pages as PNG images (opt-in report PDF layout test, reports/tests/test_report_pdf_layout.py)
+pypdfium2==5.15.2

@@ -144,10 +144,13 @@ def test_excel_report_has_real_numbers_formats_and_frozen_headers(director, queu
     activities = workbook["Activities"]
     assert activities.freeze_panes == "A8"  # the title block (5 rows + 1 blank), then the header on row 7
     header = [cell.value for cell in activities[7]]
-    assert header[:5] == ["Title", "Type", "Categories", "Start", "End"]
+    # Every column, also after the PDF combined Start + End into one "Date" column (layout only, ASSUMPTIONS 385).
+    assert header == ["Title", "Type", "Categories", "Start", "End", "Time", "Venue", "Registered", "Attended",
+                      "Attendance rate", "Evaluations", "Average rating"]
     row = {name: cell for name, cell in zip(header, activities[8])}
     assert row["Title"].value == "Pitching Workshop"
     assert isinstance(row["Start"].value, datetime) and row["Start"].number_format == "mmm d, yyyy"
+    assert isinstance(row["End"].value, datetime) and row["Time"].value == "8:00 AM – 5:00 PM"
     assert row["Registered"].value == 2 and isinstance(row["Registered"].value, int)
     assert row["Attendance rate"].value == 0.5 and row["Attendance rate"].number_format == "0.0%"
     assert row["Average rating"].value == 5.0 and row["Average rating"].number_format == "0.00"

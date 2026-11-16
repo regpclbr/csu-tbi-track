@@ -385,6 +385,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Reports are never deleted; generating again = new row. Download only via `reports.views.download_report`.
 - PDF via `certificates.pdf.get_renderer()` (fake in tests); Excel cells only through `excel.safe_cell`
   (text starting with = + - @ tab CR stays text).
+- PDF layout (ASSUMPTIONS 385): landscape A4 for every report; `table-layout: fixed` with widths from `reports.pdf.pdf_columns`
+  (keep `PAGE_CONTENT_WIDTH_MM` in step with `@page` in `report_pdf.html`), never below 8 pt. Start + End print as one Date
+  column (`Column.key`, `formatting.format_date_span`), the time as `compact_time_range` — PDF only, Excel keeps every column.
+  After changing the report template or a column, run the opt-in real-WeasyPrint check `test_report_pdf_layout.py` (Commands).
 - Excel layout (`reports/excel.py`, ASSUMPTIONS 338, all report types): "Report info" + short sheet names, a 5-row title
   block + blank row, real Excel tables (unique names without spaces, non-empty unique string headers, totals/notes
   BELOW the range, no merges inside), totals only from `Table.total` (= `period_summary`, never summed rows), date-times
@@ -640,6 +644,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Describe the report (2026-11-16): "Fill in the form" on Reports → New report from a typed request, Gemini reads only,
   every value checked, `parse_range` (quarters, halves, month ranges) in Manila, 30 per hour (384). Then the chat-like
   card: prompt box, example chips, summary card, "More settings"; multi-line `{# #}` fix + test. No database or ERD change.
+- Report PDF layout (2026-11-16): landscape A4, fixed column widths, one Date column, compact time, nothing cut off; opt-in
+  real-WeasyPrint layout test with demo data (385). No database or ERD change.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -686,6 +692,7 @@ pytest                                    # all tests, 2 workers in parallel (py
 pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Remove-Item Env:BROWSER_TESTS   # modals in Chromium
+$env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time
 ```

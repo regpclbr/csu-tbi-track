@@ -35,6 +35,23 @@ def format_time_range(start: time | None, end: time | None) -> str:
     return f"{format_time(start)} – {format_time(end)}"
 
 
+def compact_time_range(text: str) -> str:
+    """format_time_range()'s text without the spaces around the dash, "8:00 AM–5:00 PM" (narrow table columns such
+    as the report PDF). "Time not set" stays as it is."""
+    return text.replace(" – ", "–")
+
+
+def format_date_span(start: date, end: date) -> str:
+    """Compact dates on one line: Nov 6, 2026 / Oct 30–31, 2026 / Oct 30 – Nov 2, 2026 / Dec 30, 2026 – Jan 2, 2027."""
+    if start == end:
+        return f"{start:%b} {start.day}, {start.year}"
+    if start.year != end.year:
+        return f"{start:%b} {start.day}, {start.year} – {end:%b} {end.day}, {end.year}"
+    if start.month != end.month:
+        return f"{start:%b} {start.day} – {end:%b} {end.day}, {end.year}"
+    return f"{start:%b} {start.day}–{end.day}, {end.year}"
+
+
 def format_money(value: Decimal) -> str:
     """₱30,000.00"""
     return f"₱{value:,.2f}"

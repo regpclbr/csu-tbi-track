@@ -22,6 +22,9 @@ class Column:
     label: str
     kind: str = TEXT
     for_ai: bool = True  # False: never sent to Gemini (e.g. startup names)
+    # What the column holds, for the PDF layout only (reports/pdf.py): "start" + "end" are printed as one Date column,
+    # "time" in its compact form; "title" / "venue" get the widest text columns. Excel keeps every column as it is.
+    key: str = ""
 
 
 @dataclass
@@ -182,8 +185,8 @@ def _activities(filters: ReportFilters) -> Section:
         for r in metrics.activity_rows(filters)
     ]
     columns = [
-        Column("Title"), Column("Type"), Column("Categories"), Column("Start", DATE), Column("End", DATE), Column("Time"),
-        Column("Venue"),
+        Column("Title", key="title"), Column("Type"), Column("Categories"), Column("Start", DATE, key="start"),
+        Column("End", DATE, key="end"), Column("Time", key="time"), Column("Venue", key="venue"),
         Column("Registered", INT), Column("Attended", INT), Column("Attendance rate", PERCENT),
         Column("Evaluations", INT), Column("Average rating", DECIMAL),
     ]
@@ -246,7 +249,7 @@ def _evaluation(filters: ReportFilters) -> Section:
 
 def _documents(filters: ReportFilters, now: datetime | None) -> Section:
     data = metrics.document_compliance(metrics.period_activities(filters), now)
-    columns = [Column("Activity"), Column("End", DATE)] + [Column(name) for name in data["document_types"]] + [Column("All approved")]
+    columns = [Column("Activity", key="title"), Column("End", DATE)] + [Column(name) for name in data["document_types"]] + [Column("All approved")]
     rows, overdue = [], 0
     for activity in data["activities"]:
         states = []
