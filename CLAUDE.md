@@ -60,7 +60,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Checklist and Document Repository must use `Document.objects.activity_documents()`
   (excludes certificate files, i.e. `related_certificate` set).
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
-- Activities are never deleted (audit log FK is PROTECT); use status changes instead.
+- Activities are never deleted by normal users (status changes instead). The ONE exception (ASSUMPTIONS 389):
+  `activities.deletion.delete_activity` with `can_delete_activities` (System Administrator), refused by
+  `deletion_refused_reason` (Issued certificate, Approved document/evidence, cited document), title typed to confirm;
+  one transaction, files removed on commit, an ACTIVITY_DELETION record (no FK to the activity) + `activities.audit`.
+  The audit log stays append-only except `ActivityAuditLog.objects.delete_for_deleted_activity` (only there).
+  Certificate numbers come from CERTIFICATE_NUMBER_SEQUENCE (never reused, also after undo attendance).
 - ACTIVITY has `start_time` / `end_time` (Manila, nullable only for old rows the migration could not read; both or
   neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
   `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
@@ -81,24 +86,26 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (never `update_activity`, the form or the admin).
 - CERTIFICATE_TEXT (ASSUMPTIONS 370): the wording (title, line before the name, main sentence, closing line) per type
   (participation / appreciation); `activity` empty = the default; versioned (`is_current`; a row a certificate uses never
-  changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 31 tables.
+  changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 34 tables (ASSUMPTIONS 389,
+  390: POSITION, ACTIVITY_DELETION, CERTIFICATE_NUMBER_SEQUENCE).
 - ROLE.can_approve_certificates (ASSUMPTIONS 357, 361, 388): approve certificates and add/replace signatures. Migration
   accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and System Administrator; seed
   also gives it to Admin Staff (388); seed only on create, roles screen switch `set_role_certificate_approval`, no
   last-approver guard, allowed together with can_manage_users (the System Administrator approves but never generates).
 - Roles (seed defaults, ASSUMPTIONS 388; flags are switched per role, never checked by name):
 
-  | Role | can_create_activity | can_manage_users | can_approve_documents | can_approve_certificates |
-  |---|---|---|---|---|
-  | Director | ✓ | – | ✓ | ✓ |
-  | Incubation Project Head | ✓ | – | – | ✓ |
-  | Community Development Head | ✓ | – | – | ✓ |
-  | Admin Staff | ✓ | – | – | ✓ |
-  | System Administrator | – | ✓ | – | ✓ |
+  | Role | can_create_activity | can_manage_users | can_approve_documents | can_approve_certificates | can_delete_activities |
+  |---|---|---|---|---|---|
+  | Director | ✓ | – | ✓ | ✓ | – |
+  | Incubation Project Head | ✓ | – | – | ✓ | – |
+  | Community Development Head | ✓ | – | – | ✓ | – |
+  | Admin Staff | ✓ | – | – | ✓ | – |
+  | System Administrator | – | ✓ | – | ✓ | ✓ |
 
-  `seed_data` sets can_create_activity and both approval flags only when it creates a role (re-applies can_manage_users).
-  Roles screen switches: can_create_activity (`set_role_activity_creation`), can_approve_documents, can_approve_certificates
-  (toast + `accounts.audit`, amber note when no active member has the flag). Tests' "cannot" checks use the test-only role
+  `seed_data` sets every flag except can_manage_users only when it creates a role (re-applies can_manage_users).
+  Roles screen switches: can_create_activity (`set_role_activity_creation`), can_approve_documents, can_approve_certificates,
+  can_delete_activities (`set_role_activity_deletion`; allowed with can_manage_users, ASSUMPTIONS 389) (toast +
+  `accounts.audit`, amber note when no active member has the flag). Tests' "cannot" checks use the test-only role
   `conftest.VIEW_ONLY_ROLE` ("View Only (test)", fixture `view_only`), never Admin Staff.
 - `Role.DIRECTOR` ("Director") is used only to choose who gets the new-activity notification
   (`notifications.services.notify_directors_of_new_activity`), never for a permission.
@@ -120,6 +127,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   users, roles, master data, certificate design), `Permission.APPROVE_DOCUMENTS` (approve/return documents),
   `Permission.APPROVE_CERTIFICATES` (approve and reissue certificates, the signatory list and its images and defaults).
   Either of several flags: `has_any_permission` / `require_any_permission`.
+- My profile (`/accounts/profile/`, the sidebar name card, ASSUMPTIONS 390): own account only, `update_own_profile`
+  (name, position) and `change_own_password` (validators, 10 wrong tries/hour, stays signed in, confirmation email).
+  POSITION is a displayed job title only, NEVER a permission; managed in Admin Console → Positions (never deleted).
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email. The invitation links to
   `SITE_URL` + `/accounts/login/`; if it cannot be emailed the member is not created (`INVITATION_NOT_SENT`, ASSUMPTIONS 371).
@@ -675,6 +685,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Accomplishment Report optional too (documents/0004) and document rows that never squeeze the title (387). No ERD change.
 - Admin Staff rights (2026-11-16): create and edit activities and approve certificates (seed defaults, create-only),
   roles screen switch for can_create_activity, "View Only (test)" role in tests (388). No database or ERD change.
+- Delete activity + My profile (2026-11-16): can_delete_activities (System Administrator), refused with real records,
+  ACTIVITY_DELETION record, certificate number sequence; My profile (name, position, password), POSITION table (389–390).
+  Database: accounts 0007–0008, activities 0008, certificates 0015–0016; 34 tables.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

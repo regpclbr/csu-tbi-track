@@ -51,3 +51,19 @@ def send_password_reset_email(member: TBIMember, temporary_password: str) -> Non
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[member.email],
     )
+
+
+def send_password_changed_email(member: TBIMember) -> None:
+    """The member changed their own password on My profile (ASSUMPTIONS 390). Never contains the password. Printed in
+    the terminal while emails are not really sent (settings.MAILERS / EMAIL_REAL_SENDING)."""
+    send_mail(
+        subject="Your CSU-TBI Track password was changed",
+        message=(
+            f"Hello {member.name},\n\n"
+            "The password of your CSU-TBI Track account was just changed on your My profile page.\n\n"
+            "If this was you, there is nothing else to do.\n"
+            "If it was not you, please tell the TBI System Administrator right away so they can reset your password.\n"
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[member.email],
+    )

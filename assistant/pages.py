@@ -170,7 +170,7 @@ def _documents_list_url(match: re.Match) -> str:
 def answer_html(content: str, links: dict[int, str], lookup: Lookup | None = None) -> SafeString:
     """The model's text, escaped, with the small Markdown subset (_blocks) and with [n] linked to links[n] (the n-th
     saved source). A marker without a saved source stays plain text. Our own markers (listings) become links only
-    for rows in `lookup`; anything else they name is dropped. [file:n] never becomes a link here (cards show files)."""
+    for rows in `lookup`; an activity that no longer exists says so in plain words (ACTIVITY_GONE). [file:n] never becomes a link here (cards show files)."""
     lookup = lookup or Lookup()
     escaped = escape(content)  # the model's text: nothing in it is ever treated as HTML
 
@@ -182,8 +182,8 @@ def answer_html(content: str, links: dict[int, str], lookup: Lookup | None = Non
 
     def activity_link(match: re.Match) -> str:
         activity = lookup.activities.get(int(match.group(1)))
-        if activity is None:
-            return ""
+        if activity is None:  # deleted since the answer (ASSUMPTIONS 389): plain words, never a link
+            return format_html('<span class="text-muted">{}</span>', ACTIVITY_GONE)
         return format_html('<a href="{}" class="cite" aria-label="Open the activity page: {}">(open)</a>',
                            reverse("activities:detail", args=[activity.pk]), activity.title)
 
@@ -250,9 +250,12 @@ def source_cards(message: AIChatMessage) -> tuple[list[dict], dict[int, str]]:
     return list(cards.values()), links
 
 
-def _activity_heading(activity: Activity | None) -> dict | None:
-    if activity is None:
-        return None
+ACTIVITY_GONE = "(activity no longer available)"
+
+
+def _activity_heading(activity: Activity | None) -> dict:
+    if activity is None:  # deleted since the answer (ASSUMPTIONS 389)
+        return {"missing": True}
     return {"title": activity.title, "url": reverse("activities:detail", args=[activity.pk]), "dates": date_span(activity)}
 
 

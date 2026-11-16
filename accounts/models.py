@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.db import models
-from django.db.models.functions import Lower
+from django.db.models.functions import Lower, Trim
 
 
 class Role(models.Model):
-    """A staff role. Never deleted. Permissions come only from the four flags, never from the name.
+    """A staff role. Never deleted. Permissions come only from the five flags, never from the name.
 
     SYSTEM_ADMINISTRATOR is the role create_superuser and seed_data give the system administrator: it manages users
     and does not create activities (separation of duties, ASSUMPTIONS 85 and 339).
@@ -29,6 +29,9 @@ class Role(models.Model):
     # Approve certificates and add signatures (ASSUMPTIONS 357, 361): Director, both Project Heads and the System
     # Administrator by default; switched like can_approve_documents. Allowed together with can_manage_users.
     can_approve_certificates = models.BooleanField(default=False, db_default=False)
+    # Delete an activity that has no Issued certificate and no Approved document (ASSUMPTIONS 389): System
+    # Administrator by default; switched in the Admin Console. Allowed together with can_manage_users (cleaning up).
+    can_delete_activities = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -37,6 +40,30 @@ class Role(models.Model):
 
     def __str__(self) -> str:
         return self.role_name
+
+
+class Position(models.Model):
+    """A job title shown under a member's name (ASSUMPTIONS 390). ONLY a displayed title: it is not the role and no code
+    reads it for a permission. Managed by the System Administrator (Admin Console): added, renamed, deactivated; never
+    deleted (members keep an inactive position; it is no longer offered)."""
+
+    position_id = models.BigAutoField(primary_key=True)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "position"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                Lower(Trim("name")), name="unique_position_name_ci",
+                violation_error_message="A position with this name already exists.",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class TBIMemberManager(BaseUserManager):
@@ -82,6 +109,8 @@ class TBIMember(AbstractBaseUser):
     member_id = models.BigAutoField(primary_key=True)
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="members")
     name = models.CharField(max_length=255)
+    # Displayed job title only (ASSUMPTIONS 390): never a permission. Chosen by the member on My profile.
+    position = models.ForeignKey(Position, on_delete=models.PROTECT, null=True, blank=True, related_name="members")
     email = models.EmailField(unique=True)
     must_change_password = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True, help_text="Admin deactivates accounts instead of deleting them.")

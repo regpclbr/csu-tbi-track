@@ -1,7 +1,7 @@
 """ACTIVITY, its lookup tables, ACTIVITY_AUDIT_LOG and resource persons."""
 
 from django.conf import settings
-from django.db import models
+from django.db import connection, models
 from django.db.models import F, Q
 from django.db.models.functions import Lower, Trim
 
@@ -172,6 +172,13 @@ class ActivityAuditLogQuerySet(models.QuerySet):
     def delete(self):
         raise AuditLogIsAppendOnly("Audit log rows cannot be deleted.")
 
+    def delete_for_deleted_activity(self, activity_id: int) -> int:
+        """The ONE exception to append-only (ASSUMPTIONS 389): activities.services.delete_activity removes the History
+        of the activity it deletes (an ACTIVITY_DELETION row keeps who, when and the counts). Returns how many."""
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM activity_audit_log WHERE activity_id = %s", [activity_id])
+            return cursor.rowcount
+
 
 class ActivityAuditLog(models.Model):
     """One row per changed field on an ACTIVITY, with readable old and new values.
@@ -208,6 +215,30 @@ class ActivityAuditLog(models.Model):
 
     def delete(self, *args, **kwargs):
         raise AuditLogIsAppendOnly("Audit log rows cannot be deleted.")
+
+
+class ActivityDeletion(models.Model):
+    """A record of a deleted activity (ASSUMPTIONS 389). No foreign key to ACTIVITY, so it survives the deletion:
+    who, when, what the activity was and how many related records and files went with it. Written only by
+    activities.services.delete_activity; never changed or deleted (the Django admin and the Admin Console are read-only)."""
+
+    deletion_id = models.BigAutoField(primary_key=True)
+    deleted_activity_id = models.BigIntegerField(help_text="The ID the activity had (not a foreign key).")
+    activity_title = models.CharField(max_length=255)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    activity_type_name = models.CharField(max_length=100)
+    counts = models.JSONField(default=dict, help_text="How many related records and files were deleted.")
+    certificate_numbers = models.TextField(blank=True, default="", help_text="The deleted certificates' numbers.")
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_deletions")
+    deleted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "activity_deletion"
+        ordering = ["-deleted_at", "-deletion_id"]
+
+    def __str__(self) -> str:
+        return f"{self.activity_title} (deleted {self.deleted_at:%Y-%m-%d})"
 
 
 class ResourcePerson(models.Model):

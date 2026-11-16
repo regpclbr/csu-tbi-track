@@ -1,0 +1,32 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/accounts/console/deleted-activities/ (ASSUMPTIONS 389): the ACTIVITY_DELETION records, newest first, read only. They
+survive the deletion (no foreign key to the activity): who, when, what the activity was, the counts and certificate numbers.
+{% endcomment %}
+{% block content %}
+{% include "console/_tabs.html" %}
+<section class="card p-6" aria-labelledby="deleted-title">
+  <div class="mb-5">
+    <h2 id="deleted-title" class="card-title">Deleted activities</h2>
+    <p class="card-subtitle">A record of every deleted activity, newest first. Records are never changed or removed. Deleted certificate numbers are never given again.</p>
+  </div>
+  {% if deletions %}
+    <ul class="divide-y divide-line rounded-2xl border border-line" aria-label="Deleted activities">
+      {% for record, counts in deletions %}
+        <li class="px-4 py-3" data-deletion-row>
+          <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="min-w-0 font-semibold [overflow-wrap:anywhere] text-ink">{{ record.activity_title }}</p>
+            <p class="text-xs whitespace-nowrap text-muted">Deleted <time datetime="{{ record.deleted_at|date:'c' }}">{{ record.deleted_at|date:"M j, Y g:i A" }}</time> by {{ record.deleted_by.name }}</p>
+          </div>
+          <p class="mt-0.5 text-xs text-slate-700">{{ record.activity_type_name }} · {% if record.start_date == record.end_date %}{{ record.start_date|date:"M j, Y" }}{% else %}{{ record.start_date|date:"M j, Y" }} – {{ record.end_date|date:"M j, Y" }}{% endif %} · was activity #{{ record.deleted_activity_id }}</p>
+          <p class="mt-1 text-xs text-slate-700">{% if counts %}{{ counts|join:" · " }}{% else %}Nothing else was attached.{% endif %}</p>
+          {% if record.certificate_numbers %}<p class="mt-1 text-xs break-words text-muted">Certificate numbers (never reused): {{ record.certificate_numbers }}</p>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    {% include "components/pagination.html" with result=result %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="history" title="No deleted activities" text="When a member with the right to delete activities removes one, a record of it appears here." %}
+  {% endif %}
+</section>
+{% endblock %}

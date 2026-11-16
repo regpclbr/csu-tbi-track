@@ -12,7 +12,7 @@ from django.contrib.admin.options import ActionLocation
 from config.mail import email_sent_message
 
 from . import services
-from .models import Role, TBIMember
+from .models import Position, Role, TBIMember
 from .permissions import Permission, has_permission
 
 
@@ -65,13 +65,14 @@ class ActivityDataAdminMixin:
 
 
 class RoleAdminForm(forms.ModelForm):
-    """Only the three permission flags can change. The separation-of-duties rule (check_role_flags) and the
+    """Only the permission flags can change. The separation-of-duties rule (check_role_flags) and the
     last-System-Administrator rule are checked here so the errors show on the form; the save goes through
     accounts.services.update_role_permissions (which checks both again and writes the audit log)."""
 
     class Meta:
         model = Role
-        fields = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates")
+        fields = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates",
+                  "can_delete_activities")
 
     def clean(self) -> dict:
         cleaned = super().clean()
@@ -91,15 +92,15 @@ class RoleAdminForm(forms.ModelForm):
 
 @admin.register(Role)
 class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
-    """Roles: only the four flags (can_create_activity, can_manage_users, can_approve_documents,
-    can_approve_certificates) can be edited.
+    """Roles: only the five flags (can_create_activity, can_manage_users, can_approve_documents,
+    can_approve_certificates, can_delete_activities) can be edited.
     No adding, renaming or deleting: the code relies on the five fixed role names."""
 
     form = RoleAdminForm
     list_display = ("role_name", "can_create_activity", "can_manage_users", "can_approve_documents",
-                    "can_approve_certificates", "created_at")
+                    "can_approve_certificates", "can_delete_activities", "created_at")
     fields = ("role_name", "description", "can_create_activity", "can_manage_users", "can_approve_documents",
-              "can_approve_certificates", "created_at")
+              "can_approve_certificates", "can_delete_activities", "created_at")
     readonly_fields = ("role_name", "description", "created_at")
 
     def has_add_permission(self, request) -> bool:
@@ -114,6 +115,7 @@ class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
             can_manage_users=form.cleaned_data["can_manage_users"],
             can_approve_documents=form.cleaned_data["can_approve_documents"],
             can_approve_certificates=form.cleaned_data["can_approve_certificates"],
+            can_delete_activities=form.cleaned_data["can_delete_activities"],
         )
 
 
@@ -206,3 +208,19 @@ class TBIMemberAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
                 self.message_user(request, f"{member.email}: {error}", level=messages.ERROR)
             else:
                 self.message_user(request, email_sent_message(f"A new temporary password was emailed to {member.email}."))
+
+
+@admin.register(Position)
+class PositionAdmin(admin.ModelAdmin):
+    """Job titles (ASSUMPTIONS 390): view only here; managed in the Admin Console (Positions) through accounts.services."""
+
+    list_display = ("name", "is_active", "created_at")
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False

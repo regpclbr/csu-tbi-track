@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import console_views, views
+from . import console_views, profile_views, views
 
 app_name = "accounts"
 
@@ -8,6 +8,7 @@ urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("logout/", views.logout_view, name="logout"),
     path("password/change/", views.password_change_view, name="password_change"),
+    path("profile/", profile_views.profile, name="profile"),  # My profile (ASSUMPTIONS 390)
     # Forgot password (self-service, by email)
     path("password/forgot/", views.ForgotPasswordView.as_view(), name="password_forgot"),
     path("password/forgot/sent/", views.ForgotPasswordDoneView.as_view(), name="password_forgot_done"),
@@ -23,9 +24,16 @@ urlpatterns = [
     path("console/roles/", console_views.roles, name="console_roles"),
     path("console/roles/<int:role_id>/activity-creation/", console_views.role_activity_creation,
          name="console_role_activity_creation"),
+    path("console/roles/<int:role_id>/activity-deletion/", console_views.role_activity_deletion,
+         name="console_role_activity_deletion"),
     path("console/roles/<int:role_id>/document-approval/", console_views.role_document_approval, name="console_role_approval"),
     path("console/roles/<int:role_id>/certificate-approval/", console_views.role_certificate_approval,
          name="console_role_certificate_approval"),
+    path("console/positions/", console_views.positions, name="console_positions"),  # ASSUMPTIONS 390
+    path("console/positions/add/", console_views.position_add, name="console_position_add"),
+    path("console/positions/<int:position_id>/rename/", console_views.position_rename, name="console_position_rename"),
+    path("console/positions/<int:position_id>/active/", console_views.position_active, name="console_position_active"),
+    path("console/deleted-activities/", console_views.deleted_activities, name="console_deleted_activities"),  # 389
     path("console/certificates/", console_views.certificate_design, name="console_certificates"),
     path("console/certificates/templates/", console_views.upload_template, name="console_template_upload"),
     path("console/certificates/templates/<int:template_id>/<str:action>/", console_views.template_action, name="console_template_action"),

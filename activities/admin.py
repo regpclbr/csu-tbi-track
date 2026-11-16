@@ -15,6 +15,7 @@ from .formatting import changed_by_name
 from .models import (
     Activity,
     ActivityAuditLog,
+    ActivityDeletion,
     ActivityResourcePerson,
     ActivityStatus,
     ActivityType,
@@ -353,3 +354,11 @@ class ActivityResourcePersonAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     """View only. Add or remove resource persons on the activity's page (audited)."""
 
     list_display = ("activity", "resource_person", "topic")
+
+
+@admin.register(ActivityDeletion)
+class ActivityDeletionAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
+    """Records of deleted activities (ASSUMPTIONS 389): read only, never changed or removed."""
+
+    list_display = ("activity_title", "deleted_activity_id", "start_date", "deleted_by", "deleted_at")
+    search_fields = ("activity_title",)

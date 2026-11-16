@@ -1,0 +1,9 @@
+{% extends "layouts/app.html" %}
+{# Delete an activity without JavaScript, or after a wrong title / a refusal (ASSUMPTIONS 389). #}
+{% block content %}
+<section class="card mx-auto max-w-2xl p-6" aria-labelledby="delete-page-title">
+  <a href="{% url 'activities:detail' activity.pk %}" class="link text-sm">← Back to the activity</a>
+  <h2 id="delete-page-title" class="card-title mt-3 mb-4">Delete activity</h2>
+  {% include "activities/_delete_body.html" %}
+</section>
+{% endblock %}

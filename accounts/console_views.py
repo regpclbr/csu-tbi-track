@@ -17,6 +17,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
+from activities.models import ActivityDeletion
+from activities.services import _paginate
 from certificates import services as certificate_services
 from certificates.models import CertificateTemplate
 from config.mail import email_sent_message
@@ -26,7 +28,7 @@ from registrations.public_pages import flat_errors
 
 from . import console_pages as pages
 from . import services, system_status
-from .models import Role, TBIMember
+from .models import Position, Role, TBIMember
 from .permissions import Permission, is_htmx, permission_required
 
 manage_users = permission_required(Permission.MANAGE_USERS)
@@ -162,6 +164,7 @@ def roles(request: HttpRequest) -> HttpResponse:
         "roles": Role.objects.annotate(member_count=Count("members", filter=Q(members__is_active=True))).order_by("role_name"),
         "admin_url": reverse("admin:accounts_role_changelist"),
         "no_creator": not services.active_activity_creators().exists(),
+        "no_deleter": not services.active_activity_deleters().exists(),
         "no_approver": not services.active_document_approvers().exists(),
         "no_certificate_approver": not services.active_certificate_approvers().exists(),
     }
@@ -197,6 +200,14 @@ def role_activity_creation(request: HttpRequest, role_id: int) -> HttpResponse:
 
 @manage_users
 @require_POST
+def role_activity_deletion(request: HttpRequest, role_id: int) -> HttpResponse:
+    """POST enabled=true|false: turn can_delete_activities on or off for one role (ASSUMPTIONS 389)."""
+    return _switch_role_flag(request, role_id, services.set_role_activity_deletion,
+                             "can now delete activities", "can no longer delete activities")
+
+
+@manage_users
+@require_POST
 def role_document_approval(request: HttpRequest, role_id: int) -> HttpResponse:
     """POST enabled=true|false: turn can_approve_documents on or off for one role (ASSUMPTIONS 344)."""
     return _switch_role_flag(request, role_id, services.set_role_document_approval,
@@ -209,6 +220,82 @@ def role_certificate_approval(request: HttpRequest, role_id: int) -> HttpRespons
     """POST enabled=true|false: turn can_approve_certificates on or off for one role (ASSUMPTIONS 357)."""
     return _switch_role_flag(request, role_id, services.set_role_certificate_approval,
                              "can now approve certificates", "can no longer approve certificates")
+
+
+# --- Positions (job titles, ASSUMPTIONS 390) ---------------------------------------------------------------
+
+
+DELETED_PAGE_SIZE = 25
+
+
+@manage_users
+@require_GET
+def positions(request: HttpRequest) -> HttpResponse:
+    rows = Position.objects.annotate(member_count=Count("members", filter=Q(members__is_active=True))).order_by(
+        "-is_active", "name")
+    return _page(request, "console/positions.html", "accounts:console_positions",
+                 {"positions": rows, "add": {}, "add_errors": {}})
+
+
+def _position_post(request: HttpRequest, action) -> HttpResponse:
+    try:
+        message = action()
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+    else:
+        messages.success(request, message)
+    return redirect("accounts:console_positions")
+
+
+@manage_users
+@require_POST
+def position_add(request: HttpRequest) -> HttpResponse:
+    """POST name: add a job title."""
+    def add() -> str:
+        position = services.add_position(request.user, request.POST.get("name", ""))
+        return f"“{position.name}” was added."
+    return _position_post(request, add)
+
+
+@manage_users
+@require_POST
+def position_rename(request: HttpRequest, position_id: int) -> HttpResponse:
+    """POST name: rename a job title (every member who has it shows the new name)."""
+    position = get_object_or_404(Position, pk=position_id)
+
+    def rename() -> str:
+        old = position.name
+        services.rename_position(request.user, position, request.POST.get("name", ""))
+        return f"“{old}” is now “{position.name}”."
+    return _position_post(request, rename)
+
+
+@manage_users
+@require_POST
+def position_active(request: HttpRequest, position_id: int) -> HttpResponse:
+    """POST active=true|false: deactivate (no longer offered; members keep it) or reactivate. Never deleted."""
+    position = get_object_or_404(Position, pk=position_id)
+
+    def switch() -> str:
+        active = parse_bool(request.POST.get("active"), "active")
+        if active is None:
+            raise ValidationError("active must be true or false.")
+        services.set_position_active(request.user, position, active)
+        return (f"“{position.name}” is offered again." if active
+                else f"“{position.name}” is no longer offered. Members who have it keep it.")
+    return _position_post(request, switch)
+
+
+# --- Deleted activities (read only, ASSUMPTIONS 389) ---------------------------------------------------------
+
+
+@manage_users
+@require_GET
+def deleted_activities(request: HttpRequest) -> HttpResponse:
+    """The ACTIVITY_DELETION records, newest first, 25 a page. Read only: nothing here changes or removes a record."""
+    result = _paginate(ActivityDeletion.objects.select_related("deleted_by"), request.GET.get("page", 1), DELETED_PAGE_SIZE)
+    return _page(request, "console/deleted_activities.html", "accounts:console_deleted_activities",
+                 {"result": result, "deletions": [(record, pages.deletion_counts(record)) for record in result.items]})
 
 
 # --- Certificate design ------------------------------------------------------------------------------

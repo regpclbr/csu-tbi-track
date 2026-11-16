@@ -1,0 +1,54 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/accounts/console/positions/ (ASSUMPTIONS 390): the job titles members choose on My profile. Only a displayed title:
+never a permission (that is the role). Add, rename, deactivate / reactivate through accounts.services; never deleted (a
+deactivated position stays on the members who have it and is no longer offered). Plain POST forms, toasts.
+{% endcomment %}
+{% block content %}
+{% include "console/_tabs.html" %}
+<section class="card p-6" aria-labelledby="positions-title">
+  <div class="mb-5">
+    <h2 id="positions-title" class="card-title">Positions</h2>
+    <p class="card-subtitle">Job titles members choose on My profile and see under their name. A position is only a title: what a member may do comes from their role.</p>
+  </div>
+  <form method="post" action="{% url 'accounts:console_position_add' %}" class="mb-5 flex flex-wrap items-end gap-3" novalidate>
+    {% csrf_token %}
+    <div class="min-w-0 grow basis-64">
+      <label for="position-new" class="text-sm font-semibold text-ink">New position</label>
+      <input id="position-new" name="name" maxlength="100" autocomplete="off" placeholder="e.g. Incubation Manager" class="field-input mt-1.5">
+    </div>
+    <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}Add position</button>
+  </form>
+  {% if positions %}
+    <ul class="divide-y divide-line rounded-2xl border border-line" aria-label="Positions">
+      {% for position in positions %}
+        <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3{% if not position.is_active %} bg-slate-50{% endif %}" data-position-row>
+          <form method="post" action="{% url 'accounts:console_position_rename' position.pk %}" class="flex min-w-0 grow basis-64 flex-wrap items-center gap-2" novalidate>
+            {% csrf_token %}
+            <label for="position-{{ position.pk }}" class="sr-only">Name of the position {{ position.name }}</label>
+            <input id="position-{{ position.pk }}" name="name" value="{{ position.name }}" maxlength="100" class="field-input min-w-0 grow basis-48">
+            <button type="submit" class="btn btn-secondary btn-sm">Rename<span class="sr-only"> {{ position.name }}</span></button>
+          </form>
+          <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {% if position.is_active %}{% include "components/badge.html" with text="Offered" tone="success" %}{% else %}{% include "components/badge.html" with text="No longer offered" tone="neutral" %}{% endif %}
+            <span class="text-xs text-muted">{{ position.member_count }} active member{{ position.member_count|pluralize }}</span>
+            <form method="post" action="{% url 'accounts:console_position_active' position.pk %}">
+              {% csrf_token %}
+              {% if position.is_active %}
+                <input type="hidden" name="active" value="false">
+                <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ position.name }}</span></button>
+              {% else %}
+                <input type="hidden" name="active" value="true">
+                <button type="submit" class="btn btn-secondary btn-sm">Reactivate<span class="sr-only"> {{ position.name }}</span></button>
+              {% endif %}
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {% include "components/empty_state.html" with icon="user-round" title="No positions yet" text="Add the job titles used at the TBI. Members then choose theirs on My profile." %}
+  {% endif %}
+  <p class="mt-4 text-xs text-muted">Positions are never deleted. A deactivated position stays on the members who have it and is no longer offered.</p>
+</section>
+{% endblock %}

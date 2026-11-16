@@ -18,7 +18,7 @@ from documents import services as document_services
 from registrations import pages as registration_pages
 from registrations import services as registration_services
 
-from . import attention, pages, services, share
+from . import attention, deletion, pages, services, share
 from .forms import ActivityPageFormWithSignatories as ActivityPageForm
 from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory, ResourcePerson
 
@@ -187,6 +187,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         "activity_url": reverse("activities:detail", args=[activity.pk]),
         "can_create": can_create,
         "can_edit": can_create and activity.status.name != ActivityStatus.CONDUCTED,
+        "can_delete": has_permission(request.user, Permission.DELETE_ACTIVITIES),  # the "⋯" menu (ASSUMPTIONS 389)
         "registration": pages.registration_summary(activity),
         "attention": (items := attention.activity_attention(activity)),
         "attention_count": attention.warning_count(items),  # informational items not counted (ASSUMPTIONS 364)
@@ -250,6 +251,43 @@ def activity_change_status(request: HttpRequest, activity_id: int) -> HttpRespon
     if request.POST.get("next") == "list":  # a fixed name, never a URL from the request (no open redirect)
         return redirect("activities:list")
     return redirect(_detail_url(activity))
+
+
+# --- Deleting (ASSUMPTIONS 389) ----------------------------------------------------------------------------
+
+
+def _delete_context(activity: Activity, typed_title: str = "", error: str = "") -> dict:
+    summary = deletion.deletion_summary(activity)
+    return {
+        "activity": activity,
+        "refused": deletion.deletion_refused_reason(activity, summary),
+        "lines": deletion.what_will_be_deleted(summary),
+        "nothing_else": not deletion.what_will_be_deleted(summary),
+        "typed_title": typed_title,
+        "error": error,
+    }
+
+
+@permission_required(Permission.DELETE_ACTIVITIES)
+@require_http_methods(["GET", "POST"])
+def activity_delete(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """GET: what deleting the activity would remove, or why it is refused (HTMX: the "⋯" menu's dialog; otherwise a
+    page). POST title=<typed title>: deletion.delete_activity, then the Activities list with a toast. A wrong title or
+    a refusal shows the page again with the reason."""
+    activity = get_object_or_404(Activity.objects.select_related("status", "activity_type"), pk=activity_id)
+    if request.method == "GET":
+        template = "activities/_delete_dialog.html" if is_htmx(request) else "activities/delete_page.html"
+        return render(request, template, {"page_title": f"Delete {activity.title}", **_delete_context(activity)})
+    typed = request.POST.get("title", "")
+    try:
+        record = deletion.delete_activity(request.user, activity, typed)
+    except ValidationError as error:
+        message = " ".join(error.message_dict.get("title", [])) if hasattr(error, "error_dict") else " ".join(error.messages)
+        context = {"page_title": f"Delete {activity.title}", **_delete_context(activity, typed, message)}
+        return render(request, "activities/delete_page.html", context, status=400)
+    messages.success(request, f"“{record.activity_title}” was deleted. A record of it is kept in the Admin Console "
+                              "(Deleted activities).")
+    return redirect("activities:list")
 
 
 # --- Resource persons --------------------------------------------------------------------------------------

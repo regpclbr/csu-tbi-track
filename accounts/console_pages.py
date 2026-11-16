@@ -21,8 +21,10 @@ from .permissions import Permission, has_permission
 TABS = [
     ("Members", "accounts:console", "users"),
     ("Roles", "accounts:console_roles", "shield"),
+    ("Positions", "accounts:console_positions", "user-round"),  # job titles (ASSUMPTIONS 390)
     ("Certificate design", "accounts:console_certificates", "award"),
     ("System status", "accounts:console_system", "server"),
+    ("Deleted activities", "accounts:console_deleted_activities", "history"),  # read only (ASSUMPTIONS 389)
 ]
 
 
@@ -88,3 +90,23 @@ def certificate_design(member=None) -> dict:
         "default_signatories": [(certificate_services.SLOT_LABELS[slot], defaults[slot]) for slot in certificate_services.SLOTS],
         "can_manage_signatories": member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES),
     }
+
+
+DELETION_COUNT_LABELS = [  # ACTIVITY_DELETION.counts keys, in the order the list shows them (ASSUMPTIONS 389)
+    ("registrations", "registration", "registrations"),
+    ("attended", "attended", "attended"),
+    ("evaluations", "evaluation", "evaluations"),
+    ("certificates_waiting", "certificate waiting", "certificates waiting"),
+    ("certificates_approved", "approved certificate not issued", "approved certificates not issued"),
+    ("documents", "document", "documents"),
+    ("evidence", "evidence file", "evidence files"),
+    ("files", "stored file", "stored files"),
+    ("history", "History entry", "History entries"),
+]
+
+
+def deletion_counts(record) -> list[str]:
+    """A deletion record's counts in words, only the ones above zero ("12 registrations", "8 attended")."""
+    counts = record.counts or {}
+    return [f"{counts[key]} {one if counts[key] == 1 else many}" for key, one, many in DELETION_COUNT_LABELS
+            if counts.get(key)]

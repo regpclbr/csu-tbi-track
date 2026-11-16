@@ -67,7 +67,10 @@ from documents.models import Document, DocumentType
 from registrations.models import EvaluationSubmission, Registration
 
 from . import emails, imaging, pdf, wording
-from .models import ActivitySignatory, Certificate, CertificateSignatory, CertificateTemplate, CertificateText, Slot
+from .models import (
+    ActivitySignatory, Certificate, CertificateNumberSequence, CertificateSignatory, CertificateTemplate, CertificateText,
+    Slot,
+)
 
 logger = logging.getLogger("certificates")
 audit_logger = logging.getLogger("certificates.audit")  # signatory changes and reissues (IDs only)
@@ -1095,15 +1098,21 @@ def _certificate_numbers(now: datetime | None = None):
     Must run inside a transaction: a PostgreSQL advisory lock (held until commit) makes other
     generations wait, so two generations at the same moment never get the same number. The
     unique constraint on certificate_number is the final guard.
+
+    A number is never given twice (ASSUMPTIONS 389): CERTIFICATE_NUMBER_SEQUENCE keeps the last number given per year,
+    so a deleted certificate (its activity deleted, attendance undone) leaves a gap instead of being reused. The highest
+    existing number still counts, in case the sequence row is missing or behind.
     """
     year = timezone.localtime(now or timezone.now()).year
     with connection.cursor() as cursor:
         cursor.execute("SELECT pg_advisory_xact_lock(%s)", [NUMBER_LOCK_KEY])
     prefix = f"TBI-{year}-"
+    sequence, _ = CertificateNumberSequence.objects.select_for_update().get_or_create(year=year)
     existing = Certificate.objects.filter(certificate_number__startswith=prefix).values_list("certificate_number", flat=True)
-    last = max((int(n[len(prefix):]) for n in existing if n[len(prefix):].isdigit()), default=0)
+    last = max([sequence.last_number] + [int(n[len(prefix):]) for n in existing if n[len(prefix):].isdigit()])
     while True:
         last += 1
+        CertificateNumberSequence.objects.filter(year=year).update(last_number=last)  # same transaction
         yield f"{prefix}{last:05d}"
 
 
@@ -1990,6 +1999,9 @@ def _write_file_atomically(name: str, content: bytes) -> None:
     write_file_atomically(Certificate._meta.get_field("file_path").storage, name, content)
 
 
+CERTIFICATE_GONE = "certificate no longer exists"
+
+
 def prepare_certificate(certificate_id: int, now: datetime | None = None) -> str:
     """Render the final PDF of an Approved certificate that is ready; issue a participant's. A reissued certificate
     (updated_copy_pending, ASSUMPTIONS 364) gets its new PDF (replacing the old file at the same name) and a
@@ -2000,7 +2012,9 @@ def prepare_certificate(certificate_id: int, now: datetime | None = None) -> str
     """
     certificate = Certificate.objects.select_related(
         "activity", "certificate_template", "left_signatory", "right_signatory", "resource_person"
-    ).get(pk=certificate_id)
+    ).filter(pk=certificate_id).first()
+    if certificate is None:  # deleted since it was queued (its activity was deleted, ASSUMPTIONS 389)
+        return CERTIFICATE_GONE
     if reason := _not_ready_reason(certificate):
         return reason
     content = pdf.render_certificate_pdf(certificate, name=recipient_name(certificate))  # slow part, no lock held
@@ -2195,8 +2209,10 @@ def _send_certificate(certificate_id: int, now: datetime | None) -> str:
         certificate = (
             Certificate.objects.select_for_update(of=("self",))  # lock only the certificate row
             .select_related("activity", "evaluation_submission")
-            .get(pk=certificate_id)
+            .filter(pk=certificate_id).first()
         )
+        if certificate is None:  # deleted since it was queued (ASSUMPTIONS 389): nothing to send, no retry
+            return CERTIFICATE_GONE
         if certificate.delivery_method != DeliveryMethod.EMAIL:
             return "hard copy: never emailed"
         if certificate.status != Status.ISSUED:

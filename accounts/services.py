@@ -19,9 +19,9 @@ from django.http import HttpRequest
 from config.network import client_ip  # one client_ip() for the lockout and the registration limit
 from config.ratelimit import count_attempt
 
-from .emails import send_invitation_email, send_password_reset_email
-from .models import Role, TBIMember
-from .permissions import Permission, require_permission
+from .emails import send_invitation_email, send_password_changed_email, send_password_reset_email
+from .models import Position, Role, TBIMember
+from .permissions import Permission, require_permission, require_staff_member
 
 security_log = logging.getLogger("accounts.security")
 # Account and role changes (ASSUMPTIONS 340): who did it, to whom or which role, old and new values. Never passwords.
@@ -311,7 +311,7 @@ def list_members(filters: dict | None = None, page: int | str | None = 1, per_pa
     from activities.services import _paginate  # activities imports accounts: import here, not at the top
 
     filters = filters or {}
-    queryset = TBIMember.objects.select_related("role")
+    queryset = TBIMember.objects.select_related("role", "position")
     search = (filters.get("q") or "").strip()
     if search:
         queryset = queryset.filter(Q(name__icontains=search) | Q(email__icontains=search))
@@ -334,6 +334,7 @@ def update_role_permissions(
     can_manage_users: bool,
     can_approve_documents: bool | None = None,
     can_approve_certificates: bool | None = None,
+    can_delete_activities: bool | None = None,
 ) -> Role:
     """Change a role's permission flags (roles are never renamed or deleted). Used by the Django admin and the
     Admin Console roles screen. can_approve_documents / can_approve_certificates = None keeps the current value.
@@ -346,6 +347,8 @@ def update_role_permissions(
         can_approve_documents = role.can_approve_documents
     if can_approve_certificates is None:
         can_approve_certificates = role.can_approve_certificates
+    if can_delete_activities is None:
+        can_delete_activities = role.can_delete_activities
     check_role_flags(
         can_create_activity=can_create_activity,
         can_manage_users=can_manage_users,
@@ -354,11 +357,13 @@ def update_role_permissions(
     )
     if role.can_manage_users and not can_manage_users:
         ensure_admins_remain_without_role(role)
-    flags = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates")
+    flags = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates",
+             "can_delete_activities")
     old = {flag: getattr(role, flag) for flag in flags}
     role.can_create_activity, role.can_manage_users = can_create_activity, can_manage_users
     role.can_approve_documents = can_approve_documents
     role.can_approve_certificates = can_approve_certificates
+    role.can_delete_activities = can_delete_activities
     role.save(update_fields=list(flags))
     for flag, before in old.items():
         if before != getattr(role, flag):
@@ -411,6 +416,26 @@ def set_role_activity_creation(acting_member: TBIMember, role: Role, enabled: bo
     )
 
 
+@transaction.atomic
+def set_role_activity_deletion(acting_member: TBIMember, role: Role, enabled: bool) -> Role:
+    """Admin Console roles screen: turn can_delete_activities on or off for one role (ASSUMPTIONS 389). Allowed together
+    with can_manage_users (the System Administrator cleans up mistakes and test activities). No last-member guard: the
+    roles screen warns when nobody can delete activities."""
+    role = Role.objects.select_for_update().get(pk=role.pk)
+    return update_role_permissions(
+        acting_member,
+        role,
+        can_create_activity=role.can_create_activity,
+        can_manage_users=role.can_manage_users,
+        can_delete_activities=enabled,
+    )
+
+
+def active_activity_deleters():
+    """Active members whose role can delete activities (the roles screen warning)."""
+    return TBIMember.objects.filter(is_active=True, role__can_delete_activities=True)
+
+
 def active_activity_creators():
     """Active members whose role can create and edit activities (the roles screen warning)."""
     return TBIMember.objects.filter(is_active=True, role__can_create_activity=True)
@@ -442,7 +467,8 @@ def check_role_flags(
 ) -> None:
     """Separation of duties (ASSUMPTIONS 339, 344): a role with can_manage_users may have neither
     can_create_activity nor can_approve_documents. can_approve_certificates is allowed with it (ASSUMPTIONS 361):
-    the System Administrator approves certificates and adds signatures, but never generates them."""
+    the System Administrator approves certificates and adds signatures, but never generates them. can_delete_activities
+    is allowed with every flag (ASSUMPTIONS 389)."""
     if can_create_activity and can_manage_users:
         raise MemberManagementError(BOTH_FLAGS_REFUSED)
     if can_approve_documents and can_manage_users:
@@ -458,3 +484,130 @@ def ensure_admins_remain_without_role(role: Role) -> None:
             "At least one active System Administrator must always exist: "
             f'no active member outside "{role.role_name}" can manage users.'
         )
+
+
+# --- Positions (job titles) and My profile (ASSUMPTIONS 390) ----------------------------------------------------------
+# A position is ONLY a displayed job title: no code reads it for a permission (the role decides what a member may do).
+
+POSITION_NAME_MAX = 100
+NAME_MAX = 255
+WRONG_PASSWORD_LIMIT = 10  # wrong current passwords per member per hour on My profile (config.ratelimit)
+PASSWORD_LIMIT_REACHED = "Too many attempts. Wait an hour, then try again."
+
+
+def _position_key(name: str) -> str:
+    return " ".join(name.split()).lower()
+
+
+def validate_position_name(name: str, position: Position | None = None) -> str:
+    """Trimmed, 1-100 characters, unique ignoring upper/lower case and spaces."""
+    name = " ".join((name or "").split())
+    if not name:
+        raise ValidationError({"name": ["Type a position name."]})
+    if len(name) > POSITION_NAME_MAX:
+        raise ValidationError({"name": [f"A position name can be at most {POSITION_NAME_MAX} characters."]})
+    others = Position.objects.exclude(pk=position.pk) if position else Position.objects.all()
+    if any(_position_key(existing) == _position_key(name) for existing in others.values_list("name", flat=True)):
+        raise ValidationError({"name": [f"A position named “{name}” already exists."]})
+    return name
+
+
+def add_position(acting_member: TBIMember, name: str) -> Position:
+    """Admin Console: add a job title (can_manage_users)."""
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    position = Position.objects.create(name=validate_position_name(name))
+    audit_log.info("Position added: position_id=%s %r by %s", position.pk, position.name, _who(acting_member))
+    return position
+
+
+def rename_position(acting_member: TBIMember, position: Position, name: str) -> Position:
+    """Admin Console: rename a job title; every member who has it shows the new name."""
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    old, position.name = position.name, validate_position_name(name, position)
+    position.save(update_fields=["name"])
+    audit_log.info("Position renamed: position_id=%s %r -> %r by %s", position.pk, old, position.name, _who(acting_member))
+    return position
+
+
+def set_position_active(acting_member: TBIMember, position: Position, active: bool) -> Position:
+    """Admin Console: deactivate (no longer offered; members who have it keep it) or reactivate. Never deleted."""
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    if position.is_active != active:
+        position.is_active = active
+        position.save(update_fields=["is_active"])
+        audit_log.info("Position %s: position_id=%s %r by %s", "reactivated" if active else "deactivated",
+                       position.pk, position.name, _who(acting_member))
+    return position
+
+
+def offered_positions(member: TBIMember) -> list[Position]:
+    """The My profile dropdown: active positions, plus the member's own even when it was deactivated."""
+    positions = Position.objects.filter(is_active=True)
+    if member.position_id:
+        positions = positions | Position.objects.filter(pk=member.position_id)
+    return list(positions.distinct().order_by("name"))
+
+
+def update_own_profile(member: TBIMember, *, name: str, position_id: int | None) -> TBIMember:
+    """My profile: the member changes their OWN name and position (any active staff member). Email and role are not
+    changed here (only the System Administrator changes them). Logged on accounts.audit (IDs and names only)."""
+    require_staff_member(member)
+    name = " ".join((name or "").split())
+    errors = {}
+    if not name:
+        errors["name"] = ["Type your name."]
+    elif len(name) > NAME_MAX:
+        errors["name"] = [f"Your name can be at most {NAME_MAX} characters."]
+    position = None
+    if position_id is not None:
+        position = Position.objects.filter(pk=position_id).first()
+        if position is None or (not position.is_active and position.pk != member.position_id):
+            errors["position"] = ["Choose a position from the list."]
+    if errors:
+        raise ValidationError(errors)
+    changes = []
+    if member.name != name:
+        changes.append(f"name {member.name!r} -> {name!r}")
+    if member.position_id != (position.pk if position else None):
+        changes.append(f"position {member.position_id} -> {position.pk if position else None}")
+    if changes:
+        member.name, member.position = name, position
+        member.save(update_fields=["name", "position", "updated_at"])
+        audit_log.info("Own profile changed: member_id=%s %s", member.pk, "; ".join(changes))
+    return member
+
+
+def signatory_named_like(member: TBIMember) -> bool:
+    """True when an active certificate signatory has the member's name (ignoring case): My profile then says that
+    certificates use the signatory list, so a name change here does not change what is printed."""
+    from certificates.models import CertificateSignatory
+
+    key = " ".join(member.name.split()).lower()
+    return any(" ".join(name.split()).lower() == key
+               for name in CertificateSignatory.objects.filter(is_active=True).values_list("name", flat=True))
+
+
+def change_own_password(member: TBIMember, current_password: str, new_password1: str, new_password2: str) -> bool:
+    """My profile: change your OWN password (current password, the new one twice, Django's password validators).
+    Wrong current passwords are limited to WRONG_PASSWORD_LIMIT per hour per member. The caller keeps the session
+    (update_session_auth_hash). Sends "Your password was changed" (never the password; printed while emails are not
+    really sent). Returns True when that email was sent; a failed email never undoes the change."""
+    require_staff_member(member)
+    if not member.check_password(current_password or ""):
+        if not count_attempt("own_password", "member", str(member.pk), WRONG_PASSWORD_LIMIT, 60):
+            security_log.warning("Own password change rate limit reached: member_id=%s", member.pk)
+            raise ValidationError({"current_password": [PASSWORD_LIMIT_REACHED]})
+        raise ValidationError({"current_password": ["Your current password is not correct."]})
+    if new_password1 != new_password2:
+        raise ValidationError({"new_password2": ["The two new passwords do not match."]})
+    try:
+        change_password(member, current_password, new_password1)
+    except ValidationError as error:
+        raise ValidationError({"new_password1": error.messages}) from error
+    audit_log.info("Own password changed: member_id=%s", member.pk)
+    try:
+        send_password_changed_email(member)
+    except Exception as error:  # the password stays changed; the page says the email was not sent
+        security_log.warning("Password-changed email not sent: member_id=%s (%s)", member.pk, type(error).__name__)
+        return False
+    return True

@@ -336,6 +336,18 @@
 .sidebar-glass:hover {
   background: rgb(255 255 255 / 0.18);
 }
+/* The staff card opens My profile (ASSUMPTIONS 390): a white keyboard ring, never the browser's black outline. */
+.sidebar-glass:focus-visible {
+  outline: 2px solid #FFFFFF;
+  outline-offset: 2px;
+  background: rgb(255 255 255 / 0.18);
+}
+.sidebar-glass:focus:not(:focus-visible) {
+  outline: none;
+}
+.sidebar-glass[aria-current="page"] {
+  background: rgb(255 255 255 / 0.22);
+}
 /* Dashboard welcome banner: the text stays on the dark (primary) part; the light cyan end is behind the illustration. */
 .welcome-banner {
   background: linear-gradient(110deg, #1D4ED8 0%, #1D4ED8 60%, #60CDEE 100%);

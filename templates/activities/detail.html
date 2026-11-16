@@ -35,6 +35,22 @@ from activities.pages.registration_summary (registrations.services.registration_
         {% if can_edit %}
           <a href="{% url 'activities:edit' activity.pk %}" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="pencil" class="size-4" %}Edit</a>
         {% endif %}
+        {% if can_delete %}{# can_delete_activities only (ASSUMPTIONS 389): a small menu, never a big button #}
+          <div class="relative" x-data="{ menu: false }" @keydown.escape="if (menu) { menu = false; $refs.menuButton.focus() }" @click.outside="menu = false">
+            <button type="button" x-ref="menuButton" class="btn btn-ghost btn-sm px-2" aria-label="More actions for this activity"
+                    aria-haspopup="menu" aria-expanded="false" :aria-expanded="menu.toString()" @click="menu = !menu">
+              {% include "components/icon.html" with name="ellipsis" class="size-5" %}</button>
+            <div x-cloak x-show="menu" role="menu" aria-label="More actions"
+                 class="absolute top-10 right-0 z-20 w-48 rounded-xl border border-line bg-white py-1 text-sm shadow-card">
+              <a href="{% url 'activities:delete' activity.pk %}" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-danger hover:bg-red-50"
+                 hx-get="{% url 'activities:delete' activity.pk %}" hx-target="#delete-dialog-body" hx-swap="innerHTML" hx-push-url="false"
+                 hx-on::before-request="window.modalOpener = this.closest('[x-data]').querySelector('[x-ref=menuButton]')"
+                 hx-on::after-request="if (event.detail.successful) document.getElementById('delete-dialog').showModal()"
+                 @click="menu = false">
+                {% include "components/icon.html" with name="trash-2" class="size-4" %}Delete activity…</a>
+            </div>
+          </div>
+        {% endif %}
       </div>
     </div>
     <div class="mt-4">{% include "activities/_attention.html" %}</div>
@@ -42,6 +58,7 @@ from activities.pages.registration_summary (registrations.services.registration_
     {% if not can_create %}<p class="mt-4 flex items-center gap-2 text-sm text-muted">{% include "components/icon.html" with name="eye" class="size-4" %}View only: your role cannot change activities.</p>{% endif %}
   </section>
 
+  {% if can_delete %}{% include "components/modal.html" with id="delete-dialog" remote=True dialog_class="max-w-xl" %}{% endif %}
   <div id="tab-area">
     {% include "activities/_tab.html" %}
   </div>

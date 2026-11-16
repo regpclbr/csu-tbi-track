@@ -309,3 +309,18 @@ class Certificate(models.Model):
 
     def __str__(self) -> str:
         return self.certificate_number
+
+
+class CertificateNumberSequence(models.Model):
+    """The last certificate number given in each Manila year (ASSUMPTIONS 389). A number is never given twice, even
+    after its certificate was deleted (an activity deleted, attendance undone): certificates.services._certificate_numbers
+    continues from max(last_number, the highest existing number)."""
+
+    year = models.PositiveIntegerField(primary_key=True)
+    last_number = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "certificate_number_sequence"
+
+    def __str__(self) -> str:
+        return f"{self.year}: {self.last_number}"

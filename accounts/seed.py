@@ -24,22 +24,23 @@ PARTICIPANT_CATEGORIES = ["Faculty", "Incubatees", "MSMEs"]
 ACTIVITY_TYPES = ["Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum"]
 DOCUMENT_STATUSES = [DocumentStatus.FOR_REVIEW, DocumentStatus.APPROVED]
 
-# role_name: (can_create_activity, can_manage_users, can_approve_documents, can_approve_certificates, description)
-ROLES: dict[str, tuple[bool, bool, bool, bool, str]] = {
+# role_name: (can_create_activity, can_manage_users, can_approve_documents, can_approve_certificates,
+#             can_delete_activities, description)
+ROLES: dict[str, tuple[bool, bool, bool, bool, bool, str]] = {
     # Only the Director approves or returns documents (ASSUMPTIONS 344). Certificates are approved (and signatures
     # added) by the Director, both Project Heads, Admin Staff and the System Administrator (ASSUMPTIONS 361, 388).
     # Admin Staff create and edit activities too (ASSUMPTIONS 388).
-    Role.DIRECTOR: (True, False, True, True, "Director of the Technology Business Incubator."),
-    "Incubation Project Head": (True, False, False, True, "Leads incubation programs for startups."),
-    "Community Development Head": (True, False, False, True, "Leads community and MSME programs."),
+    Role.DIRECTOR: (True, False, True, True, False, "Director of the Technology Business Incubator."),
+    "Incubation Project Head": (True, False, False, True, False, "Leads incubation programs for startups."),
+    "Community Development Head": (True, False, False, True, False, "Leads community and MSME programs."),
     "Admin Staff": (
-        True, False, False, True,
+        True, False, False, True, False,
         "Supports activities and documents; creates and edits activities and approves certificates.",
     ),
     # Separation of duties (ASSUMPTIONS 85, 339): manages users, never creates activities or approves documents;
-    # may approve certificates (ASSUMPTIONS 361).
+    # may approve certificates (ASSUMPTIONS 361) and delete activities without real records (ASSUMPTIONS 389).
     Role.SYSTEM_ADMINISTRATOR: (
-        False, True, False, True,
+        False, True, False, True, True,
         "System administrator: manages user accounts and system settings; does not create activities.",
     ),
 }
@@ -96,10 +97,10 @@ def load_lookups() -> SeedResult:
     for name in DOCUMENT_STATUSES:
         result.add(DocumentStatus.objects.get_or_create(status_name=name)[1])
 
-    for role_name, (can_create, can_manage, can_approve, can_approve_certificates, description) in ROLES.items():
-        # can_create_activity and the two approval flags are set only when the role is created: the System
-        # Administrator switches them in the Admin Console, and running seed_data again must not undo that (ASSUMPTIONS
-        # 344, 357, 388). can_manage_users is re-applied on every run, so a System Administrator always exists.
+    for role_name, (can_create, can_manage, can_approve, can_approve_certificates, can_delete, description) in ROLES.items():
+        # can_create_activity, the two approval flags and can_delete_activities are set only when the role is created:
+        # the System Administrator switches them in the Admin Console, and running seed_data again must not undo that
+        # (ASSUMPTIONS 344, 357, 388, 389). can_manage_users is re-applied on every run, so a System Administrator always exists.
         _, created = Role.objects.update_or_create(
             role_name=role_name,
             defaults={"can_manage_users": can_manage},
@@ -108,6 +109,7 @@ def load_lookups() -> SeedResult:
                 "can_manage_users": can_manage,
                 "can_approve_documents": can_approve,
                 "can_approve_certificates": can_approve_certificates,
+                "can_delete_activities": can_delete,
                 "description": description,
             },
         )

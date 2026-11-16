@@ -38,14 +38,16 @@ def test_migration_checks_first_then_adds_the_index(make_member, capsys) -> None
 @pytest.mark.django_db(transaction=True)
 def test_migration_stops_with_the_member_ids_and_changes_nothing(make_member) -> None:
     first = make_member("Director", email="ana@example.com")
+    # Both members exist before going back to 0001: later columns (e.g. position_id, ASSUMPTIONS 390) are not there
+    # at 0001, so only queries that touch the email column are used while migrated back.
+    second = make_member("Admin Staff", email="other@example.com")
     try:
         call_command("migrate", "accounts", "0001", verbosity=0)
-        second = make_member("Admin Staff", email="other@example.com")
         TBIMember.objects.filter(pk=second.pk).update(email="Ana@Example.com")  # possible only without the index
         with pytest.raises(RuntimeError, match=rf"ana@example.com: member IDs {first.pk}, {second.pk}"):
             call_command("migrate", "accounts", verbosity=0)
         assert CONSTRAINT not in constraints()  # rolled back: nothing changed
-        second.delete()
+        TBIMember.objects.filter(pk=second.pk).update(email="other@example.com")
     finally:
         call_command("migrate", verbosity=0)
     assert CONSTRAINT in constraints()

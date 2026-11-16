@@ -25,6 +25,7 @@ class Permission(StrEnum):
     MANAGE_USERS = "can_manage_users"  # Admin Console: users, roles, master data, certificate design/signatories
     APPROVE_DOCUMENTS = "can_approve_documents"  # approve or return documents (ASSUMPTIONS 344)
     APPROVE_CERTIFICATES = "can_approve_certificates"  # approve certificates (ASSUMPTIONS 357)
+    DELETE_ACTIVITIES = "can_delete_activities"  # delete activities without real records (ASSUMPTIONS 389)
 
 
 PERMISSION_LABELS = {
@@ -32,6 +33,7 @@ PERMISSION_LABELS = {
     Permission.MANAGE_USERS: "use the Admin Console",
     Permission.APPROVE_DOCUMENTS: "approve or return documents",
     Permission.APPROVE_CERTIFICATES: "approve certificates",
+    Permission.DELETE_ACTIVITIES: "delete activities",
 }
 
 
