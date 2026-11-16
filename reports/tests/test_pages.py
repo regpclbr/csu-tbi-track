@@ -85,7 +85,7 @@ def test_service_errors_appear_under_their_fields(director, login, queued) -> No
     })
     assert response.status_code == 400 and not GeneratedReport.objects.exists()
     html = response.content.decode()
-    assert '<details class="card group p-0" open' in html  # the form stays open
+    assert re.search(r'<details id="report-more"[^>]*\sopen>', html)  # "More settings" opens to show the errors
     assert re.search(r'id="report-end-error" class="field-error">The end date \(2026-06-01\) is before the start date', html)
     assert 'id="report-type-error"' in html and 'id="report-format-error"' in html
     assert 'value="2026-06-30"' in html  # the typed values are kept

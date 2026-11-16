@@ -258,7 +258,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   find files; activity word + period/status/count/list → activities; else Gemini with every tool. Types are matched
   against their tables (never a fixed list). Add a phrasing test in `assistant/tests/test_routing.py` for every change.
 - Activities and find-files answers are written by `assistant/listings.py` without Gemini (work without the key; the page
-  shows "The AI is turned off…" via `gemini.is_configured()`). Periods only through `assistant/periods.py` (Manila,
+  shows "The AI is turned off…" via `gemini.is_configured()`). Periods only through `assistant/periods.py` (`parse_period`; the
+  Reports form uses `parse_range`, which adds quarters/halves/ranges and leaves `parse_period` unchanged) (Manila,
   weeks Monday–Sunday, month without a year = this year unless clearly past/future); Gemini never computes dates (the
   `list_activities_by_period` / `find_files` tools take the user's words; when only they ran, the reply is our text).
   Activities = the list's rules (`activities.services.activities_in_range`, `activity_group`, `happening_now`), drafts
@@ -390,6 +391,21 @@ owner is a student, so explain important decisions briefly and keep the code sim
   through `excel_datetime` (Manila, no tzinfo), money `"₱"#,##0.00`, print setup on every sheet. Layout only: never count here.
 - AI narrative only through `reports/narrative.py`: Gemini gets figures, activity titles and dates only
   (`for_ai=False` columns removed), the exact prompt goes in `ai_prompt`, a failure never stops the report.
+- "Describe the report you want" (ASSUMPTIONS 384): Gemini only READS the typed request (`reports/request_reader.py`, one
+  tool) and returns form settings; `services.fill_report_form` checks each against `REPORT_TYPES` / `SECTIONS` /
+  `GeneratedReport.Format` / active ACTIVITY_TYPE rows, dates only via `assistant.periods.parse_range` (Gemini's
+  `period_words` only if they are in the request), notes are our sentences (quotes only from the request). Nothing saved,
+  text never logged; same permission as generating (`services.GENERATE_REPORT_PERMISSION`), 30 per member per hour
+  (`config.ratelimit`), hidden without the key. `POST /reports/fill/` swaps `#report-form` (`templates/reports/_form.html`).
+  Page = type, check, generate: "What report do you need?" (Enter sends, Shift + Enter new line), `pages.EXAMPLE_REQUESTS`
+  chips, a summary card after a fill, the full form (`_form_fields.html`, the ONLY named fields) under "More settings" (closed;
+  open after a refused Generate; AI off = shown open, no prompt box). Alpine may only mirror values between the summary
+  card and the full form (approved exception), plus the keyboard, chips and More settings; never a rule. Sections combine:
+  our code adds "Activities conducted" / "Certificates" when the request mentions them (activity type names are the filter)
+  and gives the fixed Conducted-only note for upcoming / planned / scheduled. Must fit 1366×768
+  (opt-in `reports/tests/test_report_form_browser.py`).
+- Template comments: `{# #}` on ONE line only (a multi-line one is printed on the page); otherwise `{% comment %}`
+  (`config/tests/test_template_comments.py`).
 
 ## Frontend (Phase F1 onwards)
 - Design reference: `docs/design/dashboard.png` (and `logo.png`). Desktop-first staff pages (1280 px+, usable at
@@ -621,6 +637,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - AI Assistant routing and files (2026-11-16): routing by our code, activities by period (Manila, Monday–Sunday weeks,
   drafts only when asked), find files, source file cards with Open / Download, works without the Gemini key for these,
   path log (381–383). No database or ERD change.
+- Describe the report (2026-11-16): "Fill in the form" on Reports → New report from a typed request, Gemini reads only,
+  every value checked, `parse_range` (quarters, halves, month ranges) in Manila, 30 per hour (384). Then the chat-like
+  card: prompt box, example chips, summary card, "More settings"; multi-line `{# #}` fix + test. No database or ERD change.
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with

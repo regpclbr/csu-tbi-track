@@ -1,0 +1,152 @@
+{% comment %}
+The New report form (reports.page_views; ASSUMPTIONS 384): included by reports/list.html and returned alone by reports:fill
+for HTMX, so Alpine starts again on the filled values.
+
+AI on: "What report do you need?" (Enter sends, Shift + Enter new line), example chips, then after a fill the summary
+card, and the full fields under "More settings" (closed unless Generate was refused). AI off: the full fields, open.
+
+ONE form: only reports/_form_fields.html has named fields, so Generate (either button) posts exactly what
+reports.services.request_report reads. The summary card's controls have no names; they mirror the same Alpine values
+(type, range, start/end, activityType, format, sections, aiSummary): the one approved exception to "only the keyboard,
+the chips and More settings are Alpine". Every value is checked by the services, never here.
+{% endcomment %}
+<form id="report-form" method="post" action="{% url 'reports:list' %}" novalidate class="px-6 pt-3 pb-6"
+      x-data="{
+        type: '{{ form.report_type|escapejs }}',
+        sections: JSON.parse(document.getElementById('report-sections-data').textContent),
+        defaults: JSON.parse(document.getElementById('report-type-defaults').textContent),
+        presets: JSON.parse(document.getElementById('report-presets').textContent),
+        range: '{{ form.range_key|escapejs }}', start: '{{ form.start|escapejs }}', end: '{{ form.end|escapejs }}',
+        activityType: '{{ form.activity_type|escapejs }}', format: '{{ form.format|escapejs }}',
+        aiSummary: {{ form.ai_summary|yesno:'true,false' }},
+        hasText: false, busy: false,
+        chooseType() { if (this.defaults[this.type]) this.sections = [...this.defaults[this.type]]; },
+        chooseRange() { const p = this.presets.find(p => p.key === this.range); if (p && p.start) { this.start = p.start; this.end = p.end; } },
+        rangeText() {
+          const p = this.presets.find(p => p.key === this.range);
+          if (p && p.text) return p.text;
+          if (!this.start || !this.end) return 'Choose the dates under More settings';
+          const words = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+          return words(this.start) + ' – ' + words(this.end);
+        },
+        checkText() { this.hasText = !!this.$refs.request && this.$refs.request.value.trim() !== ''; },
+        enterKey(event) {
+          if (event.shiftKey || event.isComposing || event.keyCode === 229) return;
+          event.preventDefault();
+          if (!this.busy && this.hasText) this.$refs.send.click();
+        },
+        useExample(text) { this.$refs.request.value = text; this.checkText(); this.$nextTick(() => this.$refs.send.click()); },
+        openMore(id) {
+          this.$refs.more.open = true;
+          this.$nextTick(() => { const el = document.getElementById(id); if (el) { el.scrollIntoView({ block: 'center' }); el.focus(); } });
+        },
+      }"
+      @htmx:before-request="busy = true" @htmx:after-request="busy = false">
+  {{ type_defaults|json_script:"report-type-defaults" }}
+  {{ presets|json_script:"report-presets" }}
+  {{ form.sections|json_script:"report-sections-data" }}
+  {% csrf_token %}
+  {% if form.errors %}
+    <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" tabindex="-1" x-init="$el.focus()">
+      <p class="flex items-center gap-2 font-semibold">{% include "components/icon.html" with name="circle-alert" class="size-4.5" %}The report was not requested. Check the fields marked below.</p>
+      {% if form.errors.general %}<p class="mt-1">{{ form.errors.general }}</p>{% endif %}
+    </div>
+  {% endif %}
+
+  {% if ai_fill_available %}
+    {% comment %} The prompt box: Gemini only fills in the settings (reports:fill); every line shown is the service's text. {% endcomment %}
+    <div>
+      <label for="report-request" class="block text-base font-semibold text-ink">What report do you need?</label>
+      <div class="relative mt-2">
+        <textarea id="report-request" name="request_text" rows="2" maxlength="{{ request_max_chars }}" x-ref="request" :readonly="busy"
+                  x-init="checkText()" @input="checkText()" @keydown.enter="enterKey($event)"
+                  class="field-input block min-h-24 resize-none rounded-2xl pt-3 pr-16 pb-9 text-base"
+                  placeholder="e.g. Participation report for this quarter, trainings only, in Excel"
+                  aria-describedby="report-request-help{% if form.fill_error %} report-request-error{% endif %}"{% if form.fill_error %} aria-invalid="true"{% endif %}>{{ form.request_text }}</textarea>
+        <span id="report-fill-loading" class="htmx-indicator pointer-events-none absolute bottom-3 left-4 items-center gap-2 text-sm text-muted" role="status">{% include "components/spinner.html" %} Reading your request…</span>
+        <button type="submit" id="report-send" x-ref="send" formaction="{% url 'reports:fill' %}"
+                hx-post="{% url 'reports:fill' %}" hx-target="#report-form" hx-swap="outerHTML" hx-indicator="#report-fill-loading" hx-sync="this:drop"
+                :disabled="busy || !hasText" :aria-busy="busy.toString()" aria-label="Fill in the form from this request"
+                class="absolute right-3 bottom-3 flex size-10 items-center justify-center rounded-full bg-primary text-white shadow-card transition hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40">
+          {% include "components/icon.html" with name="arrow-right" class="size-5" %}</button>
+      </div>
+      <p id="report-request-help" class="mt-1.5 text-xs text-muted">Enter to send, Shift + Enter for a new line. The AI only fills in the settings; the report is always made from the records.</p>
+      {% if form.fill_error %}<p id="report-request-error" class="field-error" role="alert">{{ form.fill_error }}</p>{% endif %}
+      {% if not form.show_summary %}
+        <div class="mt-3 flex flex-wrap gap-2" aria-label="Examples">
+          {% for example in example_requests %}
+            <button type="submit" name="example" value="{{ example }}" formaction="{% url 'reports:fill' %}" @click.prevent="useExample($el.value)" :disabled="busy"
+                    class="report-example inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:border-primary hover:text-primary focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-50">
+              {% include "components/icon.html" with name="sparkles" class="size-3.5" %}{{ example }}</button>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if form.show_summary %}
+      <section id="report-summary" class="mt-4 rounded-2xl border border-blue-200 bg-blue-50/60 p-4 focus:outline-none" aria-labelledby="report-summary-title"
+               {% if form.filled or form.fill_notes %}tabindex="-1" x-init="$el.focus({ preventScroll: true })"{% endif %}>
+        <input type="hidden" name="show_summary" value="1">
+        <h3 id="report-summary-title" class="flex items-center gap-2 text-sm font-semibold text-ink">
+          {% include "components/icon.html" with name="circle-check" class="size-4 text-primary" %}Check the settings, then generate</h3>
+        <div class="mt-3 grid gap-x-6 gap-y-2.5 lg:grid-cols-2">
+          <div class="flex items-center gap-3">
+            <label for="summary-type" class="w-28 shrink-0 text-sm font-semibold text-ink">Report</label>
+            <select id="summary-type" class="field-input field-select" x-model="type" @change="chooseType()">
+              {% for option in report_types %}<option value="{{ option.key }}"{% if option.key == form.report_type %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="flex items-start gap-3">
+            <label for="summary-range" class="mt-2.5 w-28 shrink-0 text-sm font-semibold text-ink">Period</label>
+            <div class="min-w-0 flex-1">
+              <select id="summary-range" class="field-input field-select" x-model="range" @change="chooseRange(); if (range === 'custom') openMore('report-start')">
+                {% for preset in presets %}<option value="{{ preset.key }}"{% if preset.key == form.range_key %} selected{% endif %}>{{ preset.label }}</option>{% endfor %}
+              </select>
+              <p id="summary-range-text" class="mt-0.5 text-xs text-muted" x-text="rangeText()">{{ form.range_text }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <label for="summary-activity-type" class="w-28 shrink-0 text-sm font-semibold text-ink">Activity type</label>
+            <select id="summary-activity-type" class="field-input field-select" x-model="activityType">
+              <option value="">All activity types</option>
+              {% for activity_type in activity_types %}<option value="{{ activity_type.pk }}"{% if form.activity_type == activity_type.pk|stringformat:"s" %} selected{% endif %}>{{ activity_type.name }}{% if not activity_type.is_active %} (inactive){% endif %}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="flex items-center gap-3">
+            <span id="summary-format-label" class="w-28 shrink-0 text-sm font-semibold text-ink">Format</span>
+            <div class="inline-flex rounded-full border border-slate-300 bg-white p-0.5" role="group" aria-labelledby="summary-format-label">
+              {% for value, label in formats %}
+                <button type="button" data-format="{{ value }}" @click="format = '{{ value }}'" :aria-pressed="(format === '{{ value }}').toString()"
+                        aria-pressed="{% if value == form.format %}true{% else %}false{% endif %}"
+                        class="rounded-full px-4 py-1 text-sm font-medium text-slate-700 aria-pressed:bg-primary aria-pressed:text-white focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none">{{ label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="flex items-center gap-3 lg:col-span-2">
+            <span class="w-28 shrink-0 text-sm font-semibold text-ink">Sections</span>
+            <button type="button" id="summary-sections" @click="openMore('report-sections')" class="text-sm font-medium text-primary underline-offset-2 hover:underline">
+              <span x-text="sections.length">{{ form.sections|length }}</span> section<span x-show="sections.length !== 1">{% if form.sections|length != 1 %}s{% endif %}</span><span x-show="aiSummary"{% if not form.ai_summary %} x-cloak{% endif %}> + AI summary</span> · Change</button>
+          </div>
+        </div>
+        {% for note in form.fill_notes %}<p class="report-note mt-2 flex items-start gap-2 text-sm text-amber-900">{% include "components/icon.html" with name="info" class="mt-0.5 size-4 shrink-0" %}{{ note }}</p>{% endfor %}
+        <div class="mt-4 flex flex-wrap items-center gap-4">
+          <button type="submit" id="summary-generate" class="btn btn-primary px-6 py-2.5 text-base">{% include "components/icon.html" with name="chart-column" class="size-4.5" %}Generate report</button>
+          <a href="{% url 'reports:list' %}" class="text-sm font-medium text-muted underline-offset-2 hover:text-ink hover:underline">Start over</a>
+        </div>
+      </section>
+    {% endif %}
+
+    <details id="report-more" x-ref="more" class="group mt-4 rounded-2xl border border-line" {% if form.errors %}open{% endif %}>
+      <summary class="flex cursor-pointer list-none items-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+        {% include "components/icon.html" with name="chevron-right" class="size-4 transition-transform group-open:rotate-90" %}More settings
+        <span class="font-normal text-muted">— every setting, or fill in the form by hand</span>
+      </summary>
+      <div class="border-t border-line px-4 pt-4 pb-4">
+        {% include "reports/_form_fields.html" %}
+      </div>
+    </details>
+  {% else %}
+    <p class="mb-5 flex items-center gap-2 text-sm text-muted">{% include "components/icon.html" with name="info" class="size-4" %}Describing the report is not available: the AI is turned off.</p>
+    {% include "reports/_form_fields.html" %}
+  {% endif %}
+</form>

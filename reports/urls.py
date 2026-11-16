@@ -8,6 +8,7 @@ app_name = "reports"
 
 urlpatterns = [
     path("", page_views.report_list, name="list"),  # the Reports page: form (POST) and history
+    path("fill/", page_views.fill_form, name="fill"),  # "Fill in the form" from a typed request (ASSUMPTIONS 384)
     path("<int:report_id>/row/", page_views.report_row, name="row"),  # one history row (HTMX polling)
     path("api/dashboard/", views.dashboard_api, name="api_dashboard"),
     path("api/options/", views.options_api, name="api_options"),

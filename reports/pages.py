@@ -6,10 +6,12 @@ report_state); this module turns their inputs and results into what the template
 from dataclasses import dataclass, field
 from datetime import date
 
+from django.conf import settings
 from django.http import QueryDict
 from django.urls import reverse
 
 from activities.models import ActivityType
+from assistant import gemini
 from documents.services import today_in_manila
 
 from . import services
@@ -27,6 +29,14 @@ REPORT_RANGES = [
     ("custom", "Custom"),
 ]
 DEFAULT_RANGE = "this_quarter"
+
+# The example chips under "What report do you need?" (ASSUMPTIONS 384). Clicking one sends it like a typed request.
+EXAMPLE_REQUESTS = [
+    "Accomplishment report this quarter (PDF)",
+    "Participation report last month in Excel",
+    "Evaluation results January to June",
+    "Certificates issued this year",
+]
 
 # A pending row asks for itself again every POLL_SECONDS, at most MAX_POLLS times (15 minutes), so a forgotten tab
 # does not poll forever (then: "refresh to check again").
@@ -79,6 +89,26 @@ class ReportForm:
     activity_type: str = ""
     format: str = GeneratedReport.Format.PDF
     errors: dict[str, str] = field(default_factory=dict)
+    # "Describe the report you want" (ASSUMPTIONS 384): the typed request and what "Fill in the form" said.
+    request_text: str = ""
+    filled: list[str] = field(default_factory=list)
+    fill_notes: list[str] = field(default_factory=list)
+    fill_error: str = ""
+
+    summary_shown: bool = False  # the summary card was on the page (kept through a refused Generate)
+
+    @property
+    def show_summary(self) -> bool:
+        """The summary card appears after "Fill in the form" ran (and stays after a refused Generate)."""
+        return bool(self.filled or self.fill_notes or self.summary_shown)
+
+    @property
+    def range_text(self) -> str:
+        """The dates in words for the summary card ("October 1 – December 31, 2026"), "" while they are not valid."""
+        try:
+            return range_in_words(date.fromisoformat(self.start), date.fromisoformat(self.end))
+        except ValueError:
+            return ""
 
     def service_data(self) -> dict:
         """What reports.services.request_report() reads."""
@@ -114,7 +144,37 @@ def form_from_post(post: QueryDict, today: date) -> ReportForm:
         end=end,
         activity_type=post.get("activity_type", "").strip(),
         format=post.get("format", ""),
+        # An example chip posted without JavaScript sends its text as `example` (with JavaScript it fills the box).
+        request_text=(post.get("example") or post.get("request_text", ""))[:2000],
+        summary_shown=post.get("show_summary") == "1",
     )
+
+
+def matching_range_key(start: date, end: date, today: date) -> str:
+    """The quick choice that gives exactly these dates, else "custom"."""
+    for key, _label in REPORT_RANGES:
+        if report_range(key, today) == (start, end):
+            return key
+    return "custom"
+
+
+def apply_fill(form: ReportForm, fill: services.FormFill, today: date) -> None:
+    """Put the checked settings of services.fill_report_form() into the form (None = keep the current value)."""
+    if fill.report_type is not None:
+        form.report_type = fill.report_type
+    if fill.sections is not None:
+        form.sections = list(fill.sections)
+    if fill.ai_summary is not None:
+        form.ai_summary = fill.ai_summary
+    if fill.start is not None and fill.end is not None:
+        form.start, form.end = fill.start.isoformat(), fill.end.isoformat()
+        form.range_key = matching_range_key(fill.start, fill.end, today)
+    if fill.activity_type is not None:
+        form.activity_type = fill.activity_type
+    if fill.format is not None:
+        form.format = fill.format
+    form.filled, form.fill_notes, form.fill_error = list(fill.filled), list(fill.notes), ""
+    form.summary_shown = True
 
 
 def form_options(today: date) -> dict:
@@ -127,6 +187,9 @@ def form_options(today: date) -> dict:
         "formats": GeneratedReport.Format.choices,
         "presets": date_presets(today),
         "activity_types": ActivityType.objects.order_by("name"),
+        "ai_fill_available": gemini.is_configured(),  # "Describe the report you want" (ASSUMPTIONS 384)
+        "request_max_chars": settings.REPORT_FORM_FILL_MAX_CHARS,
+        "example_requests": EXAMPLE_REQUESTS,
     }
 
 

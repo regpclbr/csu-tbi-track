@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.utils import timezone
 
-from assistant.periods import NOW, RANGE, UPCOMING, parse_period, range_label
+from assistant.periods import NOW, RANGE, UPCOMING, parse_period, parse_range, range_label
 
 MANILA = ZoneInfo("Asia/Manila")
 
@@ -151,3 +151,67 @@ def test_no_period() -> None:
 def test_range_label() -> None:
     assert range_label(date(2026, 11, 1), date(2026, 11, 30)) == "November 1–30, 2026"
     assert range_label(date(2026, 11, 14), date(2026, 11, 14)) == "November 14, 2026"
+
+
+# --- Ranges for the report form: parse_range() (ASSUMPTIONS 384) ------------------------------------------------
+
+
+def span(text: str, now: datetime = MONDAY) -> tuple[date, date]:
+    period = parse_range(text, now)
+    assert period is not None and period.kind == RANGE, text
+    return period.start, period.end
+
+
+def test_report_examples_on_monday_november_16_2026() -> None:
+    assert span("Participation report for last month, in Excel") == (date(2026, 10, 1), date(2026, 10, 31))
+    assert span("Participation report for this quarter, trainings only, in Excel") == (date(2026, 10, 1), date(2026, 12, 31))
+    assert span("accomplishment report January to June") == (date(2026, 1, 1), date(2026, 6, 30))
+    assert parse_range("this quarter", MONDAY).label == "October 1 – December 31, 2026"
+
+
+def test_quarters() -> None:
+    assert span("last quarter") == (date(2026, 7, 1), date(2026, 9, 30))
+    assert span("previous quarter") == (date(2026, 7, 1), date(2026, 9, 30))
+    assert span("next quarter") == (date(2027, 1, 1), date(2027, 3, 31))  # across the year
+    assert span("last quarter", at(2026, 2, 10)) == (date(2025, 10, 1), date(2025, 12, 31))
+    assert span("Q1") == (date(2026, 1, 1), date(2026, 3, 31))
+    assert span("q2 2025") == (date(2025, 4, 1), date(2025, 6, 30))
+    assert span("2025 Q3") == (date(2025, 7, 1), date(2025, 9, 30))
+    assert span("the first quarter of 2025") == (date(2025, 1, 1), date(2025, 3, 31))
+    assert span("4th quarter") == (date(2026, 10, 1), date(2026, 12, 31))
+    assert span("Q4 last year") == (date(2025, 10, 1), date(2025, 12, 31))
+
+
+def test_halves() -> None:
+    assert span("first half") == (date(2026, 1, 1), date(2026, 6, 30))
+    assert span("second half of 2025") == (date(2025, 7, 1), date(2025, 12, 31))
+    assert span("H2") == (date(2026, 7, 1), date(2026, 12, 31))
+    assert span("first half of last year") == (date(2025, 1, 1), date(2025, 6, 30))
+
+
+def test_month_ranges() -> None:
+    assert span("from March to May 2025") == (date(2025, 3, 1), date(2025, 5, 31))
+    assert span("Jan-Jun") == (date(2026, 1, 1), date(2026, 6, 30))
+    assert span("jan – jun 2027") == (date(2027, 1, 1), date(2027, 6, 30))
+    assert span("between March and May") == (date(2026, 3, 1), date(2026, 5, 31))
+    assert span("May to July") == (date(2026, 5, 1), date(2026, 7, 31))  # "may" is a month in a range
+    assert span("November 2026 to February 2027") == (date(2026, 11, 1), date(2027, 2, 28))
+    assert span("November to February") == (date(2026, 11, 1), date(2027, 2, 28))  # wraps into next year
+    assert span("November to February 2026") == (date(2025, 11, 1), date(2026, 2, 28))  # the year belongs to the end
+    assert span("October to December last year") == (date(2025, 10, 1), date(2025, 12, 31))
+
+
+def test_date_ranges_and_the_fallback_to_parse_period() -> None:
+    assert span("2026-01-15 to 2026-03-31") == (date(2026, 1, 15), date(2026, 3, 31))
+    assert span("2026-03-31 to 2026-01-15") == (date(2026, 3, 31), date(2026, 3, 31))  # backwards: not a range
+    assert span("November") == (date(2026, 11, 1), date(2026, 11, 30))
+    assert span("this year") == (date(2026, 1, 1), date(2026, 12, 31))
+    assert span("January and June") == (date(2026, 1, 1), date(2026, 1, 31))  # two months, not a range
+    assert parse_range("upcoming", MONDAY).kind == UPCOMING
+    assert parse_range("a report please", MONDAY) is None
+
+
+def test_parse_period_is_unchanged_for_the_assistant() -> None:
+    assert parse_period("this quarter", MONDAY) is None
+    assert parse_period("activities from January to June", MONDAY).start == date(2026, 1, 1)
+    assert parse_period("activities from January to June", MONDAY).end == date(2026, 1, 31)

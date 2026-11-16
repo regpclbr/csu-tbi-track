@@ -328,6 +328,10 @@ ASSISTANT_REQUEST_TIMEOUT_SECONDS = 60  # one Gemini request may take at most th
 # One question in total (all rounds, embeddings and retries). The assistant still answers inside the
 # web request, so keep this under the web server's timeout (e.g. gunicorn --timeout 120).
 ASSISTANT_QUESTION_TIMEOUT_SECONDS = 90
+# Reports -> New report, "Describe the report you want" (ASSUMPTIONS 384): Gemini only reads the request.
+REPORT_FORM_FILL_MAX_CHARS = 500  # longest request accepted
+REPORT_FORM_FILL_TIMEOUT_SECONDS = 30  # the whole "Fill in the form" call
+REPORT_FORM_FILL_MAX_PER_HOUR = 30  # per member (config.ratelimit)
 ASSISTANT_TOP_K = 6  # excerpts retrieved per search
 ASSISTANT_MIN_SIMILARITY = 0.55  # cosine similarity below this is "not relevant"
 ASSISTANT_HISTORY_MESSAGES = 6  # earlier chat messages sent as context (3 questions + answers)

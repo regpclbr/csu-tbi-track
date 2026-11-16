@@ -12,26 +12,27 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from accounts.permissions import Permission, has_permission, is_htmx, staff_login_required
+from accounts.permissions import has_permission, is_htmx, staff_login_required
 
 from . import pages, services
 from .models import GeneratedReport
 
 
+def _form_context(form: pages.ReportForm) -> dict:
+    return {"form": form, **pages.form_options(pages.today())}
+
+
 def _page(request: HttpRequest, form: pages.ReportForm, status: int = 200) -> HttpResponse:
-    today = pages.today()
     context = {
         "page_title": "Reports",
         "page_subtitle": "Accomplishment, participation, evaluation, document compliance and certificate reports",
-        "can_generate": has_permission(request.user, Permission.CREATE_ACTIVITY),
-        "form": form,
+        "can_generate": has_permission(request.user, services.GENERATE_REPORT_PERMISSION),
         "poll_seconds": pages.POLL_SECONDS,
-        **pages.form_options(today),
+        **_form_context(form),
         **pages.history(request.GET.get("page", "1")),
     }
-    context["type_defaults_json"] = json.dumps(context["type_defaults"])
     return render(request, "reports/list.html", context, status=status)
 
 
@@ -55,6 +56,25 @@ def report_list(request: HttpRequest) -> HttpResponse:
         return _page(request, form, status=400)
     messages.success(request, f"Report {report.pk} was requested. It appears below as Pending until it is made.")
     return redirect("reports:list")
+
+
+@staff_login_required
+@require_POST
+def fill_form(request: HttpRequest) -> HttpResponse:
+    """"Fill in the form" (ASSUMPTIONS 384): services.fill_report_form reads the typed request (same permission as
+    generating a report: PermissionDenied -> 403) and pages.apply_fill puts the checked settings into the form.
+    Nothing is saved. HTMX gets the form part again; without JavaScript the whole page comes back. A refusal is shown
+    under the box (200, so HTMX swaps it in)."""
+    today = pages.today()
+    form = pages.form_from_post(request.POST, today)
+    try:
+        pages.apply_fill(form, services.fill_report_form(request.user, form.request_text,
+                                                         current_sections=form.sections), today)
+    except ValidationError as error:
+        form.fill_error = " ".join(error.message_dict.get("request_text", error.messages))
+    if is_htmx(request):
+        return render(request, "reports/_form.html", _form_context(form))
+    return _page(request, form)
 
 
 @staff_login_required

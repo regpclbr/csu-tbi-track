@@ -9,6 +9,10 @@ or the future:
 - past wording (conducted, held, was, were, did, ...) and a month later than this month -> last year;
 - future wording (upcoming, will, planned, scheduled, ...) and a month earlier than this month -> next year.
 
+`parse_range(text, now)` (the Reports form, ASSUMPTIONS 384) also reads quarters ("this quarter", "Q1 2026"), halves
+("first half of 2025") and ranges ("January to June", "between March and May", "2026-01-01 to 2026-03-31"), then falls
+back to parse_period(). parse_period() does not read them, so the AI Assistant is unchanged.
+
 Pure functions: `now` is passed in (tests fix it), and only the date in Manila matters.
 """
 
@@ -190,6 +194,86 @@ def parse_period(text: str, now: datetime) -> Period | None:
     if UPCOMING_WORDS.search(text):
         return Period(today, None, f"upcoming (from {range_label(today, today)})", UPCOMING)
     return None
+
+
+# --- Ranges for the report form (ASSUMPTIONS 384) ------------------------------------------------------------------
+# parse_range() adds quarters, halves and "<month> to <month>" / "<date> to <date>" ranges, then falls back to
+# parse_period(). parse_period() itself does not read these, so the AI Assistant's routing is unchanged.
+
+_SEP = r"\s*(?:-|–|—|to|until|till|through|thru)\s*"
+ISO_RANGE = re.compile(rf"\b(20\d{{2}}-\d{{2}}-\d{{2}}){_SEP}(20\d{{2}}-\d{{2}}-\d{{2}})\b")
+MONTH_RANGE = re.compile(rf"\b{_MONTH}(?:,?\s+{_YEAR})?{_SEP}{_MONTH}(?:,?\s+(?:of\s+)?{_YEAR}\b)?")
+# "between March and May" reads as "March to May"; a plain "January and June" stays two months (not a range).
+BETWEEN = re.compile(rf"\bbetween\s+({_MONTH}(?:,?\s+{_YEAR})?|20\d{{2}}-\d{{2}}-\d{{2}})\s+and\s+")
+QUARTER_RELATIVE = re.compile(r"\b(this|current|next|coming|last|past|previous)\s+quarter\b")
+_ORDINALS = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
+QUARTER_NUMBER = re.compile(rf"\b(?:q([1-4])|(first|1st|second|2nd|third|3rd|fourth|4th)\s+quarter)\b"
+                            rf"(?:\s+(?:of\s+)?(?:the\s+)?(?:year\s+)?{_YEAR}\b)?")
+YEAR_QUARTER = re.compile(rf"\b{_YEAR}\s+q([1-4])\b")
+HALF = re.compile(rf"\b(?:h([12])|(first|1st|second|2nd)\s+half)\b(?:\s+(?:of\s+)?(?:the\s+)?(?:year\s+)?{_YEAR}\b)?")
+YEAR_HINT = re.compile(r"\b(last|previous|past|next|this)\s+year\b")
+
+
+def quarter_period(year: int, quarter: int) -> Period:
+    """Quarter 1 = January–March, ... (calendar quarters)."""
+    start = date(year, 3 * (quarter - 1) + 1, 1)
+    end = month_period(year, 3 * quarter).end
+    return Period(start, end, range_label(start, end))
+
+
+def half_period(year: int, half: int) -> Period:
+    start, end = (date(year, 1, 1), date(year, 6, 30)) if half == 1 else (date(year, 7, 1), date(year, 12, 31))
+    return Period(start, end, range_label(start, end))
+
+
+def _hinted_year(text: str, today: date) -> int:
+    """A quarter / half / month range named without a year: this year, or "last year" / "next year" said elsewhere."""
+    match = YEAR_HINT.search(text)
+    step = {"last": -1, "previous": -1, "past": -1, "next": 1, "this": 0}[match.group(1)] if match else 0
+    return today.year + step
+
+
+def parse_range(text: str, now: datetime) -> Period | None:
+    """A period for the report form: the ranges above first, then everything parse_period() reads."""
+    clean = " ".join((text or "").lower().replace("’", "'").split())
+    clean = BETWEEN.sub(lambda m: f"{m.group(1)} to ", clean)
+    today = _today(now)
+
+    if match := ISO_RANGE.search(clean):
+        try:
+            start, end = date.fromisoformat(match.group(1)), date.fromisoformat(match.group(2))
+        except ValueError:
+            start = end = None
+        if start and end and start <= end:
+            return Period(start, end, range_label(start, end))
+
+    if match := MONTH_RANGE.search(clean):
+        first, first_year, last, last_year = match.groups()
+        first_month, last_month = _month_number(first), _month_number(last)
+        if last_year:
+            end_year = int(last_year)
+            start_year = int(first_year) if first_year else (end_year if first_month <= last_month else end_year - 1)
+        else:
+            start_year = int(first_year) if first_year else _hinted_year(clean, today)
+            end_year = start_year if first_month <= last_month else start_year + 1
+        start, end = date(start_year, first_month, 1), month_period(end_year, last_month).end
+        if start <= end:
+            return Period(start, end, range_label(start, end))
+
+    if match := QUARTER_RELATIVE.search(clean):
+        step = {"this": 0, "current": 0, "next": 1, "coming": 1, "last": -1, "past": -1, "previous": -1}[match.group(1)]
+        index = today.year * 4 + (today.month - 1) // 3 + step
+        return quarter_period(index // 4, index % 4 + 1)
+    if match := YEAR_QUARTER.search(clean):
+        return quarter_period(int(match.group(1)), int(match.group(2)))
+    if match := QUARTER_NUMBER.search(clean):
+        quarter = int(match.group(1)) if match.group(1) else _ORDINALS[match.group(2)]
+        return quarter_period(int(match.group(3)) if match.group(3) else _hinted_year(clean, today), quarter)
+    if match := HALF.search(clean):
+        half = int(match.group(1)) if match.group(1) else _ORDINALS[match.group(2)]
+        return half_period(int(match.group(3)) if match.group(3) else _hinted_year(clean, today), half)
+
+    return parse_period(text, now)
 
 
 def period_words() -> re.Pattern:
