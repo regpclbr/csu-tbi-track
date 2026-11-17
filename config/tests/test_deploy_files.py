@@ -50,7 +50,9 @@ def test_dockerignore_keeps_secrets_and_local_data_out_of_the_image() -> None:
 
 
 @pytest.mark.parametrize("path", sorted(DEPLOY.glob("*.sh")) + [BASE_DIR / "Dockerfile", DEPLOY / "Caddyfile",
-                                                               DEPLOY / "docker-compose.prod.yml"])
+                                                               DEPLOY / "docker-compose.prod.yml",
+                                                               DEPLOY / "Caddyfile.laptop",
+                                                               DEPLOY / "docker-compose.laptop.yml"])
 def test_server_files_have_unix_line_endings(path) -> None:
     assert b"\r\n" not in path.read_bytes(), f"{path.name} has Windows line endings (see .gitattributes)"
 
@@ -99,6 +101,33 @@ def test_no_access_logs_anywhere() -> None:
     """Personal links carry tokens in the URL: neither Caddy nor gunicorn writes an access log."""
     assert not re.search(r"^\s*log\b", text(DEPLOY / "Caddyfile"), re.MULTILINE)
     assert "--access-logfile" not in text(DEPLOY / "start-web.sh")
+
+
+# --- The laptop review version (Cloudflare quick tunnel in front, docs/DEPLOY.md) ----------------------------------
+
+
+def test_laptop_override_has_its_own_project_and_listens_on_this_laptop_only() -> None:
+    laptop = text(DEPLOY / "docker-compose.laptop.yml")
+    assert re.search(r"^name: csu_tbi_uat$", laptop, re.MULTILINE)  # own volumes, never the development database
+    assert "ports: !override" in laptop and '"127.0.0.1:8080:80"' in laptop
+    assert not re.search(r'^\s+- "(?!127\.0\.0\.1:)[^"]*:\d+"', laptop, re.MULTILINE)  # no port on all addresses
+    assert "./Caddyfile.laptop:/etc/caddy/Caddyfile:ro" in laptop
+    # The database volume comes only from the prod file, under the UAT project name (never an external volume).
+    assert not re.search(r"^\s+- \S*pgdata\S*:", laptop, re.MULTILINE) and "external:" not in laptop
+
+
+def test_laptop_caddy_trusts_cloudflare_for_https_and_the_visitor_ip(settings) -> None:
+    caddy = text(DEPLOY / "Caddyfile.laptop")
+    assert "auto_https off" in caddy and re.search(r"^:80 \{", caddy, re.MULTILINE)
+    assert "header_up X-Forwarded-Proto https" in caddy
+    assert "header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}" in caddy
+    assert not re.search(r"^\s*log\b", caddy, re.MULTILINE)
+    assert int(re.search(r"max_size (\d+)MB", caddy).group(1)) > settings.DOCUMENT_MAX_UPLOAD_MB
+    assert "handle_path /static/*" in caddy and "reverse_proxy web:8000" in caddy
+
+
+def test_laptop_files_have_lf_in_gitattributes() -> None:
+    assert "deploy/Caddyfile.laptop text eol=lf" in text(BASE_DIR / ".gitattributes")
 
 
 def test_gunicorn_timeout_is_above_the_assistant_limit(settings) -> None:

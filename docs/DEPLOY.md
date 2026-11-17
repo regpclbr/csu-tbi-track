@@ -8,6 +8,9 @@
 Commands marked **PowerShell** run on your Windows laptop. Commands marked **server** run on the Azure machine after
 you connect with `ssh` (step 3). Never paste a password, App Password or secret key into a chat, a commit or a screenshot.
 
+**No Azure server?** See [Laptop review version (fallback)](#laptop-review-version-fallback) at the end: the same
+production setup on your own laptop, reached through a Cloudflare quick tunnel.
+
 ## Before the review starts (checklist)
 
 - [ ] NAVIGATU approved using real data on the hosted version (TBI_QUESTIONS, "Hosted client review version").
@@ -316,6 +319,93 @@ worker, the schedules (the startup sync shows "Turned off"), email and the PDF c
 
 **Logs:** `sudo sh deploy/compose.sh logs -f web worker` (Ctrl+C stops). Personal link tokens are shown as `<hidden>`.
 
+## Laptop review version (fallback)
+
+Used when no Azure server is available (Nov 17, 2026 UAT). The same production setup (`docker-compose.prod.yml`) runs
+on the laptop under its own project `csu_tbi_uat` (own volumes, fresh database). `docker-compose.laptop.yml` adds two
+changes: Caddy listens on `127.0.0.1:8080` only, and it uses `Caddyfile.laptop`. A **Cloudflare quick tunnel** gives
+testers an `https://<random>.trycloudflare.com` address:
+
+```
+phone/laptop --https--> Cloudflare --tunnel--> cloudflared (laptop) --> 127.0.0.1:8080 Caddy --> web:8000
+```
+
+Cloudflare ends HTTPS. Caddy serves the static files and tells Django that the visit is HTTPS (`X-Forwarded-Proto`)
+and gives it the visitor's own IP (`CF-Connecting-IP`), so Secure cookies, CSRF and the login lockout work.
+**Your development database (`csu_tbi_db`, volume `pgdata`) is never used.**
+
+**The env file** is `C:\Users\Admin\tbi-uat\uat.env`, outside OneDrive, readable only by you. It already has a
+generated `DJANGO_SECRET_KEY` and `POSTGRES_PASSWORD`. Fill in every `<...>` with `notepad C:\Users\Admin\tbi-uat\uat.env`:
+the tunnel address (3 places: `SITE_URL`, `SITE_DOMAIN`, `DJANGO_ALLOWED_HOSTS`), the Gmail address and App Password,
+`TBI_CONTACT_EMAIL`, and the UAT Gemini key (sample documents only). `CSRF_TRUSTED_ORIGINS` comes from `SITE_URL`.
+
+**Every PowerShell window**, in the project folder, first:
+```powershell
+$env:ENV_FILE = "C:\Users\Admin\tbi-uat\uat.env"
+function uat { docker compose --project-name csu_tbi_uat -f deploy/docker-compose.prod.yml -f deploy/docker-compose.laptop.yml --env-file $env:ENV_FILE @args }
+```
+
+**Start (in this order):**
+1. Plug in the laptop and turn off sleep (the `powercfg` commands below). Pause Windows Update for 7 days.
+2. A **separate** PowerShell window, left open all the time: `cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080`
+   (if it cannot connect: add `--protocol http2`). Copy the `https://....trycloudflare.com` address into `uat.env`.
+3. `uat up -d --build`, then `uat ps` (db, web, worker, caddy running; release exited 0) and `uat logs release`.
+4. On a phone **on mobile data**: `https://<address>/healthz/` shows `ok`; the sign-in page shows "Review version".
+5. `uat exec web python manage.py create_first_admin`
+6. `uat exec web python manage.py send_test_email you@gmail.com` (check Spam too: `trycloudflare.com` links are
+   sometimes flagged).
+7. AI: `uat exec web python manage.py check_gemini`; after uploading the sample documents,
+   `uat exec web python manage.py index_documents`.
+
+**Logs:** `uat logs -f web`, `uat logs -f worker`, `uat logs --tail 50 caddy` (Ctrl+C stops following).
+
+**Stop and start again, data kept:** `uat stop` / `uat start` (or `uat down` / `uat up -d`). **Never `uat down -v`**
+until the study is over: `-v` deletes the database.
+
+**If the tunnel restarts it gets a NEW address** (closing its window, a reboot, sleep). Links in emails already sent
+(invitations, evaluation links, password resets) and QR codes already shown then point to the old address, and
+everyone must sign in again. Container restarts alone change nothing. If it happens: start the tunnel again, put the
+new address in the 3 places in `uat.env`, run `uat up -d` (data kept), then show the activity's general evaluation
+link / QR code again from its Share card, use **Resend** for personal evaluation links, and re-send staff invitations.
+An old personal link still works if the tester replaces only the address part (`/evaluate/<token>/` stays valid).
+
+**Back up** into `C:\Users\Admin\tbi-backups` (never with `>`: PowerShell 5.1 corrupts binary output):
+```powershell
+$stamp = Get-Date -Format yyyyMMdd-HHmm
+uat exec -T db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB" > /tmp/uat.dump'
+uat cp db:/tmp/uat.dump "C:\Users\Admin\tbi-backups\uat-db-$stamp.dump"
+uat exec -T db rm /tmp/uat.dump
+uat exec -T web tar czf /tmp/uat-media.tar.gz -C /app media
+uat cp web:/tmp/uat-media.tar.gz "C:\Users\Admin\tbi-backups\uat-media-$stamp.tar.gz"
+uat exec -T web rm /tmp/uat-media.tar.gz
+```
+The backups contain testers' personal data: delete them by November 30, 2026 (the privacy notice's promise).
+
+**Power settings** (run once, as yourself, before the UAT):
+```powershell
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0
+powercfg /setactive SCHEME_CURRENT
+```
+If the lid command says the setting does not exist, simply keep the lid open. Undo after the UAT (this laptop's values
+before the UAT: sleep after 30 minutes, hibernate after 180 minutes, lid closed = sleep):
+```powershell
+powercfg /change standby-timeout-ac 30
+powercfg /change hibernate-timeout-ac 180
+powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 1
+powercfg /setactive SCHEME_CURRENT
+```
+
+**Remove everything after the study** (data is gone after this; back up first if needed):
+```powershell
+uat down -v
+docker image rm csu-tbi-app:latest caddy:2.8.4-alpine
+Remove-Item -Recurse -Force C:\Users\Admin\tbi-uat
+winget uninstall --id Cloudflare.cloudflared
+```
+The `pgvector/pgvector:pg17` image stays (the development database uses it).
+
 ## Files
 
 | File | What it is |
@@ -328,4 +418,5 @@ worker, the schedules (the startup sync shows "Turned off"), email and the PDF c
 | `deploy/server-setup.sh` | One-time server preparation. |
 | `deploy/update.sh` | Update after a commit. |
 | `deploy/backup.sh` / `restore.sh` | Daily backup and restore. |
+| `deploy/docker-compose.laptop.yml` / `Caddyfile.laptop` | The laptop review version behind a Cloudflare quick tunnel. |
 | `deploy/fonts/gelasio/` | The certificate font for Linux (SIL Open Font License). |

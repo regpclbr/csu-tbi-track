@@ -40,12 +40,20 @@ def test_anything_else_is_no_consent(value) -> None:
 # --- The notice page ------------------------------------------------------------------------------------------------
 
 
-def test_privacy_page_is_public_and_has_the_placeholders(client) -> None:
+def test_privacy_page_is_public_and_has_the_review_text(client) -> None:
     response = client.get(reverse("privacy_notice"))
     assert response.status_code == 200
     text = response.content.decode()
     assert "Privacy notice" in text and "Data Privacy Act of 2012" in text
-    assert "[PLACEHOLDER: retention period" in text and "[PLACEHOLDER: contact person" in text
+    assert "PLACEHOLDER" not in text
+    assert "User Acceptance Testing" in text and "deleted no later than November 30, 2026" in text
+    assert "Regine S. Paclibar and Chrizza Patricia E. Mandap" in text and "Version November 17, 2026." in text
+
+
+def test_consent_summary_has_the_review_text(client, scheduled) -> None:
+    text = client.get(reverse("register", args=[scheduled.pk])).content.decode()
+    assert "PLACEHOLDER" not in text and "deleted no later than November 30, 2026" in text
+    assert "User Acceptance Testing" in text and "Regine S. Paclibar" in text
 
 
 def test_public_footer_links_to_the_notice(client) -> None:

@@ -1025,16 +1025,19 @@ deployment work existed, so nothing host-specific had to be removed. Step-by-ste
      - **Nothing is stored** (no column, no ERD change): a registration or an evaluation can only exist when the box was
        ticked. If per-person proof is wanted later, that needs `REGISTRATION.privacy_consent_at` and
        `EVALUATION_SUBMISSION.privacy_consent_at` (an ERD change).
-     - **Notice text and date (version of 2026-11-16)**: what is collected (name, email, optional contact number,
-       participant category, form answers, attendance, evaluation answers, certificate name and email); why (run the
-       activity, attendance, evaluation link and certificate, activity reports with totals); who sees it (authorized TBI
-       staff; never other participants; not shared outside CSU and NAVIGATU unless the law requires it); retention
-       **[PLACEHOLDER: retention period]**; rights under the Data Privacy Act of 2012 (RA 10173) and the contact
-       **[PLACEHOLDER: contact person / Data Protection Officer, email]**; "Version [PLACEHOLDER: date approved]".
-       The checkbox's summary: "The CSU Technology Business Incubator collects the details on this form to run this
-       activity, record attendance, send your evaluation link and certificate, and report on its programs. They are kept
-       for [PLACEHOLDER: retention period] and are not shared outside CSU and NAVIGATU. Questions or requests:
-       [PLACEHOLDER: contact person and email]."
+     - **Notice text and date (review version, approved by the owners on 2026-11-17; was 2026-11-16 with
+       placeholders)**: what is collected (name, email, optional contact number, participant category, form answers,
+       attendance, evaluation answers, certificate name and email); why: "This is a review version of CSU-TBI Track: what
+       you enter here is used for testing and evaluating CSU-TBI Track during the researchers' capstone study (User Acceptance Testing)", and within that test to run the activity, attendance, evaluation link and
+       certificate, activity reports with totals; who sees it (authorized TBI staff; never other participants; not shared
+       outside CSU and NAVIGATU unless the law requires it); retention: "In this review version, data entered in this review version is kept only until the end of the study and deleted no later than November 30, 2026"; rights
+       under the Data Privacy Act of 2012 (RA 10173), contact: "Regine S. Paclibar and Chrizza Patricia E. Mandap, BSIT, CCIS, Caraga State University, through the project email shown in the invitation emails"; "Version November 17, 2026".
+       The checkbox's summary: "The CSU Technology Business Incubator collects the details on this form, in this review
+       version for testing and evaluating CSU-TBI Track during the researchers' capstone study (User Acceptance Testing), to run this activity, record attendance, send your evaluation link and certificate, and
+       report on its programs. In this review version, data entered in this review version is kept only until the end of the study and deleted no later than November 30, 2026; they are not shared outside CSU and NAVIGATU.
+       Questions or requests: Regine S. Paclibar and Chrizza Patricia E. Mandap, BSIT, CCIS, Caraga State University, through the project email shown in the invitation emails."
+       This text is for the UAT only; the production text (real retention period, Data Protection Officer) still needs
+       NAVIGATU and the TBI's approval (docs/TBI_QUESTIONS.md).
      - **The default "Data Privacy consent" question is removed** (owner decision, 2026-11-16; changes the default
        fields of item 280 and `seed_data`'s list): `accounts.seed.DEFAULT_FORM_FIELDS` now has only "Affiliation /
        Organization" for registration, so new forms show only the system's privacy checkbox. Only new installs (and the

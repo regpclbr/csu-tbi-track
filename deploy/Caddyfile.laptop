@@ -1,0 +1,37 @@
+# Caddy for the laptop review version behind a Cloudflare quick tunnel (docker-compose.laptop.yml, docs/DEPLOY.md).
+# Cloudflare ends HTTPS, so Caddy serves plain HTTP on :80 (published on 127.0.0.1:8080 only) and gets no certificate.
+# No access log: personal evaluation links carry a token in the URL.
+{
+	auto_https off
+}
+
+:80 {
+	encode zstd gzip
+
+	# Uploads are at most 10 MB (DOCUMENT_MAX_UPLOAD_MB); a little room for the form around the file.
+	request_body {
+		max_size 12MB
+	}
+
+	header {
+		-Server
+	}
+
+	# CSS, fonts, scripts and images (collectstatic by the release step). Uploaded files are never served here.
+	handle_path /static/* {
+		root * /srv/static
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+
+	handle {
+		reverse_proxy web:8000 {
+			# Visitors reach the site over HTTPS (at Cloudflare): Django needs that for its Secure cookies and CSRF
+			# checks (BEHIND_HTTPS_PROXY=True).
+			header_up X-Forwarded-Proto https
+			# The visitor's own IP address, from Cloudflare, for the login lockout and the rate limits
+			# (TRUSTED_PROXY_HEADER=X-Forwarded-For). Without it every tester would share one address.
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+		}
+	}
+}

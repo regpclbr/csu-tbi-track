@@ -1,0 +1,13 @@
+# CSU-TBI Track: the laptop review version (fallback, docs/DEPLOY.md "Laptop review version"). Used ON TOP of
+# docker-compose.prod.yml, never alone, with a Cloudflare quick tunnel in front:
+#   docker compose --project-name csu_tbi_uat -f deploy/docker-compose.prod.yml -f deploy/docker-compose.laptop.yml --env-file <uat.env> ...
+# Its own project name, so its own volumes (csu_tbi_uat_pgdata, ...): never the development database.
+# Cloudflare ends HTTPS; cloudflared on the laptop sends the requests to Caddy on http://127.0.0.1:8080.
+name: csu_tbi_uat
+
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:8080:80"  # this laptop only: other devices on the Wi-Fi cannot connect, only the tunnel can
+    volumes:
+      - ./Caddyfile.laptop:/etc/caddy/Caddyfile:ro
