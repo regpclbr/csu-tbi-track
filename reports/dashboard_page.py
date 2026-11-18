@@ -369,26 +369,48 @@ def _percent(part: int, whole: int) -> float:
     return 100 * part / whole if whole else 0
 
 
-def _categories(rows: list[dict]) -> dict:
-    """N9 attended per registration category: legend rows and donut segments (SVG circle with a
-    circumference of 100, so a segment's dash length is its percentage)."""
-    total = sum(row["attended"] for row in rows)
-    shown = sum(1 for row in rows if row["attended"])
+def donut_segments(counts: list[int]) -> list[dict | None]:
+    """Donut segments for these counts, in order (SVG circle with a circumference of 100, so a segment's dash length is
+    its percentage of the total). Colour i is CATEGORY_COLORS[i] (repeating). A count of 0 gets None: a legend row but
+    no slice. Shared by the dashboard and the activity page's "Participants by category" (ASSUMPTIONS 403)."""
+    total = sum(counts)
+    shown = sum(1 for count in counts if count)
     # Rounded ends (stroke-linecap: round, width DONUT_STROKE) stick out half the stroke width at each end:
     # with two or more segments each one is drawn shorter, so a small gap stays between them.
     inset = DONUT_STROKE / 2 + DONUT_GAP / 2 if shown > 1 else 0
-    legend, segments, offset = [], [], 0.0
-    for index, row in enumerate(sorted(rows, key=lambda r: (-r["attended"], r["name"]))):
-        color = CATEGORY_COLORS[index % len(CATEGORY_COLORS)]
-        share = _percent(row["attended"], total)
-        legend.append({"name": row["name"], "attended": row["attended"], "percent": round(share), "color": color})
-        if row["attended"]:
-            # dash + gap = 100 (the circumference), so the pattern wraps round the circle; offset 25 starts at 12 o'clock
-            length = max(share - 2 * inset, 0.001)
-            segments.append({"color": color, "length": round(length, 3), "gap": round(100 - length, 3),
-                             "offset": round(25 - offset - inset, 3)})
-            offset += share
-    return {"total": total, "legend": legend, "segments": segments, "stroke": DONUT_STROKE}
+    segments, offset = [], 0.0
+    for index, count in enumerate(counts):
+        if not count:
+            segments.append(None)
+            continue
+        share = _percent(count, total)
+        # dash + gap = 100 (the circumference), so the pattern wraps round the circle; offset 25 starts at 12 o'clock
+        length = max(share - 2 * inset, 0.001)
+        segments.append({"color": category_color(index), "length": round(length, 3), "gap": round(100 - length, 3),
+                         "offset": round(25 - offset - inset, 3)})
+        offset += share
+    return segments
+
+
+def category_color(index: int) -> str:
+    return CATEGORY_COLORS[index % len(CATEGORY_COLORS)]
+
+
+def _categories(rows: list[dict]) -> dict:
+    """N9 attended per registration category: legend rows and donut segments (`donut_segments`), laid out by
+    components/donut.html."""
+    ordered = sorted(rows, key=lambda r: (-r["attended"], r["name"]))
+    total = sum(row["attended"] for row in ordered)
+    segments = donut_segments([row["attended"] for row in ordered])
+    legend = []
+    for index, row in enumerate(ordered):
+        percent = round(_percent(row["attended"], total))
+        legend.append({"name": row["name"], "attended": row["attended"], "count": row["attended"], "percent": percent,
+                       "percent_text": f"{percent}%", "color": category_color(index)})
+    described = ", ".join(f"{row['name']} {row['count']:,} ({row['percent_text']})" for row in legend)
+    return {"total": total, "legend": legend, "segments": [s for s in segments if s], "stroke": DONUT_STROKE,
+            "label": "attended", "caption": "Attendees by participant category (the chart shows the same numbers)",
+            "count_header": "Attendees", "aria_label": f"Attendees by category, {total:,} attended: {described}"}
 
 
 STATUS_COLORS = {"Draft": "bg-status-draft", "Scheduled": "bg-status-scheduled", "Ongoing": "bg-status-ongoing", "Conducted": "bg-status-conducted"}

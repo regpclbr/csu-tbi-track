@@ -129,16 +129,16 @@ def evaluation_summary_file(member: TBIMember, activity, file_format: str, now: 
 
 
 def individual_evaluation_file(member: TBIMember, registration, now: datetime | None = None) -> ActivityFile:
-    """One participant's submitted evaluation as PDF (ASSUMPTIONS 402). The permission (can_create_activity) and the
+    """One participant's submitted evaluation as a portrait PDF (ASSUMPTIONS 402, 404). The permission (can_create_activity) and the
     answers come from registrations.services.evaluation_answers (PermissionDenied / EvaluationSubmission.DoesNotExist).
     The file name holds IDs only, never the participant's name."""
     from registrations.services import evaluation_answers
 
     answers = evaluation_answers(member, registration)
     activity = registration.activity
-    content = content_module.build_individual_evaluation(activity, answers, generated_by=member.name,
-                                                         generated_at=now or timezone.now())
-    return ActivityFile(pdf.render_report_pdf(content),
+    data = pdf.render_individual_evaluation_pdf(activity, answers, generated_by=member.name,
+                                                generated_at=now or timezone.now())
+    return ActivityFile(data,
                         f"evaluation-activity-{activity.pk}-registration-{registration.pk}.pdf", CONTENT_TYPES["pdf"])
 
 

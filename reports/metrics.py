@@ -181,6 +181,12 @@ def _average(total: int | None, count: int) -> float | None:
     return round(total / count, 2) if count and total is not None else None
 
 
+def participant_average(ratings: list[int]) -> float | None:
+    """One participant's average rating (ASSUMPTIONS 404): the same 2-decimal rounding as the evaluation summary's
+    mean; None when they answered no rating question."""
+    return _average(sum(ratings), len(ratings))
+
+
 RATING_ACTIVITY = "evaluation_submission__registration__activity"  # from FORM_ANSWER to its activity
 
 
@@ -325,15 +331,17 @@ def by_category(filters: ReportFilters) -> list[dict]:
     return [_with_rate(row) for row in rows]
 
 
-def shares(counts: list[int]) -> list[float | None]:
+def shares(counts: list[int], units: int = 1000) -> list[float | None]:
     """Each count's share of their sum as a fraction rounded to 0.1 % (0.333 = 33.3 %), so that the shares add up to
     exactly 100.0 % (ASSUMPTIONS 400): every share is rounded down to 0.1 %, then the 0.1 %s still missing go to the
     largest remainders (ties: the earlier row). Integers only, so no float rounding surprises. Blank-safe: when the sum
-    is 0 every share is None (shown blank, never 0 % and never a division by zero)."""
+    is 0 every share is None (shown blank, never 0 % and never a division by zero).
+
+    `units` is the number of steps in 100 %: 1000 = 0.1 % (reports), 100 = whole percentages (the activity page's
+    donut, ASSUMPTIONS 403), with the same largest-remainder rule."""
     total = sum(counts)
     if not total:
         return [None] * len(counts)
-    units = 1000  # tenths of a percent
     tenths = [count * units // total for count in counts]
     remainders = [count * units % total for count in counts]
     for index in sorted(range(len(counts)), key=lambda i: (-remainders[i], i))[: units - sum(tenths)]:

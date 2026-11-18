@@ -236,35 +236,7 @@ KPI cards (full width), Needs attention (main column), next activity (beside the
     {% elif not page.categories.total %}
       {% include "components/empty_state.html" with icon="users" title="No attendees yet" text="Nobody was marked present in the conducted activities of this period." %}
     {% else %}
-      <div class="flex flex-col items-center gap-6">
-        <div class="relative size-44 shrink-0">
-          <svg viewBox="0 0 42 42" class="size-full" aria-hidden="true">
-            <circle cx="21" cy="21" r="15.915" fill="none" stroke="#EEF2F7" stroke-width="{{ page.categories.stroke }}"></circle>
-            {% for segment in page.categories.segments %}
-              <circle cx="21" cy="21" r="15.915" fill="none" stroke="{{ segment.color }}" stroke-width="{{ page.categories.stroke }}" stroke-linecap="round"
-                      stroke-dasharray="{{ segment.length|stringformat:'f' }} {{ segment.gap|stringformat:'f' }}" stroke-dashoffset="{{ segment.offset|stringformat:'f' }}"></circle>
-            {% endfor %}
-          </svg>
-          <div class="absolute inset-0 flex flex-col items-center justify-center">
-            <span class="text-3xl font-bold tracking-tight text-ink tabular-nums">{{ page.categories.total|number }}</span>
-            <span class="text-sm text-muted">attended</span>
-          </div>
-        </div>
-        <table class="w-full text-[15px]">
-          <caption class="sr-only">Attendees by participant category (the chart shows the same numbers)</caption>
-          <thead class="sr-only"><tr><th scope="col">Category</th><th scope="col">Attendees</th></tr></thead>
-          <tbody>
-            {% for row in page.categories.legend %}
-              <tr>
-                <th scope="row" class="py-1.5 text-left font-normal text-ink">
-                  <span class="mr-2 inline-block size-3 rounded-full align-[-1px]" style="background: {{ row.color }}" aria-hidden="true"></span>{{ row.name }} ({{ row.percent }}%)
-                </th>
-                <td class="py-1.5 text-right font-semibold text-ink tabular-nums">{{ row.attended|number }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      {% include "components/donut.html" with chart=page.categories %}
     {% endif %}
   </section>
 

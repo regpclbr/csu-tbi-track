@@ -25,50 +25,21 @@
       </div>
     </section>
     {% if share %}{% include "activities/_share_card.html" %}{% endif %}
+    {% comment %}Participants by category (ASSUMPTIONS 400, 403): a donut from activities.pages.category_donut (counts from reports.metrics), never counted here.{% endcomment %}
+    <section class="card p-6" aria-labelledby="by-category-title" id="by-category">
+      {% if by_category.attended_basis %}
+        {% include "components/section_header.html" with id="by-category-title" title="Participants by category" subtitle="Attended, with each category's share in whole percentages (they add up to 100%)." %}
+      {% else %}
+        {% include "components/section_header.html" with id="by-category-title" title="Participants by category" subtitle="Registered, with each category's share in whole percentages (they add up to 100%)." %}
+      {% endif %}
+      {% if by_category.legend %}
+        {% include "components/donut.html" with chart=by_category %}
+        {% if not by_category.attended_basis %}<p class="mt-3 text-xs text-muted">Nobody is marked as attended yet; the chart shows registrations.</p>{% endif %}
+      {% else %}
+        {% include "components/empty_state.html" with title="No participant categories" text="This activity has no participant categories yet." %}
+      {% endif %}
+    </section>
   </div>
-
-  {% comment %}Participants by category (ASSUMPTIONS 400): counts and percentages from reports.metrics.participants_by_category, never counted here.{% endcomment %}
-  <section class="card p-6 xl:col-span-2" aria-labelledby="by-category-title">
-    {% include "components/section_header.html" with id="by-category-title" title="Participants by category" subtitle="Percentages are of this activity's registered or attended participants, rounded to one decimal place so they add up to 100%." %}
-    {% if by_category.rows %}
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm" id="by-category-table">
-          <thead>
-            <tr class="border-b border-line text-left text-xs font-semibold tracking-wide text-muted uppercase">
-              <th scope="col" class="py-2 pr-3">Participant category</th>
-              <th scope="col" class="px-3 py-2 text-right">Registered</th>
-              <th scope="col" class="px-3 py-2 text-right">% of registered</th>
-              <th scope="col" class="px-3 py-2 text-right">Attended</th>
-              <th scope="col" class="py-2 pl-3 text-right">% of attended</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in by_category.rows %}
-              <tr class="border-b border-line/60">
-                <th scope="row" class="py-2 pr-3 font-medium text-ink">{{ row.category }}</th>
-                <td class="px-3 py-2 text-right tabular-nums">{{ row.registered|number }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ row.registered_share|share }}</td>
-                <td class="px-3 py-2 text-right tabular-nums">{{ row.attended|number }}</td>
-                <td class="py-2 pl-3 text-right tabular-nums">{{ row.attended_share|share }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-          <tfoot>
-            <tr class="font-semibold text-ink">
-              <th scope="row" class="py-2 pr-3 text-left">Total</th>
-              <td class="px-3 py-2 text-right tabular-nums">{{ by_category.registered|number }}</td>
-              <td class="px-3 py-2 text-right tabular-nums">{% if by_category.registered %}100.0%{% else %}–{% endif %}</td>
-              <td class="px-3 py-2 text-right tabular-nums">{{ by_category.attended|number }}</td>
-              <td class="py-2 pl-3 text-right tabular-nums">{% if by_category.attended %}100.0%{% else %}–{% endif %}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      {% if not by_category.attended %}<p class="mt-2 text-xs text-muted">“–”: nobody is marked as attended yet.</p>{% endif %}
-    {% else %}
-      {% include "components/empty_state.html" with title="No participant categories" text="This activity has no participant categories yet." %}
-    {% endif %}
-  </section>
 </div>
 
 {% include "activities/_resource_persons.html" %}

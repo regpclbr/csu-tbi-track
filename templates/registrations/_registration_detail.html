@@ -1,8 +1,8 @@
-{% comment %}One registration in the details dialog: who, when, attendance, evaluation, and the registration answers.{% endcomment %}
+{% comment %}One registration in the details dialog (ASSUMPTIONS 404): who, category, when, attendance and evaluation status; the
+evaluation (ratings, average, text answers); then the contact details and registration answers in a native <details>,
+closed when the evaluation is shown, open otherwise (it is then the only content).{% endcomment %}
 <p class="text-lg font-semibold [overflow-wrap:anywhere] text-ink">{{ registration.name }}</p>
-<dl class="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Email</dt><dd class="[overflow-wrap:anywhere] text-ink">{{ registration.email }}</dd></div>
-  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Contact number</dt><dd class="text-ink">{{ registration.contact_number|default:"–" }}</dd></div>
+<dl class="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2" id="registration-facts">
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Participant category</dt><dd class="text-ink">{{ registration.participant_category.name }}</dd></div>
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Registered</dt><dd class="text-ink">{{ registration.registration_date|date:"M j, Y g:i A" }}</dd></div>
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Attendance</dt><dd class="text-ink">{% if registration.attendance_confirmed %}Attended ({{ registration.get_confirmation_method_display|lower }}){% else %}Not yet{% endif %}</dd></div>
@@ -10,34 +10,74 @@
   {% if registration.startup %}<div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Startup</dt><dd class="text-ink">{{ registration.startup.name }}</dd></div>{% endif %}
 </dl>
 {% if registration.evaluation_submission %}
-  {% comment %}One participant's evaluation (ASSUMPTIONS 402): answers with the name only for can_create_activity (registrations.services.evaluation_answers); others get a note.{% endcomment %}
+  {% comment %}One participant's evaluation (ASSUMPTIONS 402, 404): answers with the name only for can_create_activity (registrations.services.evaluation_answers); others get a note.{% endcomment %}
   <section id="evaluation" class="mt-5 border-t border-line pt-4" aria-labelledby="evaluation-answers-title">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h3 id="evaluation-answers-title" class="font-semibold text-ink">Evaluation answers</h3>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 id="evaluation-answers-title" class="font-semibold text-ink">Evaluation answers</h3>
+        {% if evaluation %}
+          <p class="mt-1 text-sm [overflow-wrap:anywhere] text-ink"><span class="text-muted">Name on the certificate:</span> {{ evaluation.certificate_name }}</p>
+          <p class="text-sm text-ink"><span class="text-muted">Participant category:</span> {{ evaluation.category }}</p>
+          <p class="text-xs text-muted">Submitted {{ evaluation.submitted_at|date:"M j, Y, g:i A" }}</p>
+        {% endif %}
+      </div>
       {% if evaluation %}
-        <a href="{% url 'registrations:evaluation_pdf' registration.activity_id registration.pk %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download evaluation (PDF)</a>
+        <a href="{% url 'registrations:evaluation_pdf' registration.activity_id registration.pk %}" class="btn btn-secondary btn-sm shrink-0">{% include "components/icon.html" with name="download" class="size-4" %}Download evaluation (PDF)</a>
       {% endif %}
     </div>
     {% if evaluation %}
-      <p class="mt-1 text-xs text-muted">Submitted {{ evaluation.submitted_at|date:"M j, Y g:i A" }} · Name on the certificate: <span class="[overflow-wrap:anywhere]">{{ evaluation.certificate_name }}</span></p>
-      <dl class="mt-2 space-y-3 text-sm" id="evaluation-answers">
-        {% for row in evaluation.rows %}
-          <div><dt class="font-medium text-slate-700">{{ row.question }}</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ row.answer|default:"–" }}</dd></div>
+      <div id="evaluation-answers">
+        {% if evaluation.ratings %}
+          <p class="mt-4 text-sm text-ink" id="evaluation-average">Average rating: <span class="text-lg font-bold tabular-nums">{% if evaluation.average is not None %}{{ evaluation.average|floatformat:2 }}{% else %}–{% endif %}</span>{% if evaluation.average is not None %} <span class="text-muted">out of 5</span>{% endif %}</p>
+          <ul class="mt-2 divide-y divide-line rounded-2xl border border-line text-sm" aria-label="Ratings">
+            {% for row in evaluation.ratings %}
+              <li class="flex items-center justify-between gap-4 px-4 py-2.5">
+                <span class="min-w-0 [overflow-wrap:anywhere] text-ink">{{ row.question }}</span>
+                {% if row.value %}
+                  <span class="flex shrink-0 items-center gap-2">
+                    <span class="flex gap-1" aria-hidden="true">{% for _ in "12345" %}<span class="inline-block size-2.5 rounded-full {% if forloop.counter <= row.value %}bg-primary{% else %}bg-slate-300{% endif %}"></span>{% endfor %}</span>
+                    <span class="w-8 text-right font-semibold text-ink tabular-nums" aria-hidden="true">{{ row.value }}/{{ row.maximum }}</span>
+                    <span class="sr-only">{{ row.value }} out of {{ row.maximum }}</span>
+                  </span>
+                {% else %}
+                  <span class="shrink-0 text-muted">Not answered</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        {% for item in evaluation.answers %}
+          <div class="mt-3 rounded-2xl border border-line bg-white px-4 py-3">
+            <p class="text-xs font-medium text-muted">{{ item.label }}</p>
+            <p class="mt-1 text-sm whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ item.answer }}</p>
+          </div>
         {% endfor %}
-        <div><dt class="font-medium text-slate-700">Comments</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ evaluation.comments|default:"–" }}</dd></div>
-      </dl>
+        {% if not evaluation.ratings and not evaluation.answers %}<p class="mt-3 text-sm text-muted">The evaluation has no answers besides the name on the certificate.</p>{% endif %}
+      </div>
     {% else %}
       <p class="mt-2 text-sm text-muted">Only staff who can create activities see a participant's evaluation answers. The evaluation summary without names is on the Evaluation tab.</p>
     {% endif %}
   </section>
 {% endif %}
-<h3 class="mt-5 border-t border-line pt-4 font-semibold text-ink">Registration answers</h3>
-{% if answers %}
-  <dl class="mt-2 space-y-3 text-sm">
-    {% for label, value in answers %}
-      <div><dt class="font-medium text-slate-700">{{ label }}</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ value|default:"–" }}</dd></div>
-    {% endfor %}
-  </dl>
-{% else %}
-  <p class="mt-2 text-sm text-muted">No answers besides the fixed fields.</p>
-{% endif %}
+<details class="group mt-5 rounded-2xl border border-line" id="registration-answers"{% if not evaluation %} open{% endif %}>
+  <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+    <span>Show contact details and registration answers</span>
+    {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
+  </summary>
+  <div class="border-t border-line px-4 py-3">
+    <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+      <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Email</dt><dd class="[overflow-wrap:anywhere] text-ink">{{ registration.email }}</dd></div>
+      <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Contact number</dt><dd class="text-ink">{{ registration.contact_number|default:"–" }}</dd></div>
+    </dl>
+    <h4 class="mt-4 text-sm font-semibold text-ink">Registration answers</h4>
+    {% if answers %}
+      <dl class="mt-2 space-y-3 text-sm">
+        {% for label, value in answers %}
+          <div><dt class="font-medium text-slate-700">{{ label }}</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ value|default:"–" }}</dd></div>
+        {% endfor %}
+      </dl>
+    {% else %}
+      <p class="mt-2 text-sm text-muted">No answers besides the fixed fields.</p>
+    {% endif %}
+  </div>
+</details>

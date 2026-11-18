@@ -161,29 +161,39 @@ def can_view_individual_evaluations(member) -> bool:
 
 
 def evaluation_answers(member: TBIMember, registration: Registration) -> dict:
-    """One registration's submitted evaluation: name, category, name on the certificate, when, every answer in the
-    form's order (checkbox answers joined, ratings as "4 / 5", empty as "") and the comments. Never the email or the
-    contact number. PermissionDenied without can_create_activity; EvaluationSubmission.DoesNotExist when the
-    registration has not evaluated (the views answer 404)."""
+    """One registration's submitted evaluation (ASSUMPTIONS 402, 404): name, category, name on the certificate, when,
+    the rating questions in form order ("ratings": question, value 1-5 or None when unanswered, maximum), the
+    participant's average rating ("average", 2 decimals via reports.metrics.participant_average; None without ratings)
+    and the other answers in form order with the Comments last ("answers": label, answer; empty ones left out,
+    checkbox answers joined). Never the email or the contact number. PermissionDenied without can_create_activity;
+    EvaluationSubmission.DoesNotExist when the registration has not evaluated (the views answer 404)."""
+    from reports.metrics import participant_average
+
     require_permission(member, INDIVIDUAL_EVALUATION_PERMISSION)
     submission = EvaluationSubmission.objects.select_related("registration__participant_category").get(registration=registration)
     answers = sorted(submission.answers.select_related("field"), key=lambda answer: (answer.field.sort_order, answer.field_id))
-    rows = []
+    ratings, others = [], []
     for answer in answers:
-        value = answer.answer_value or ""
+        value = (answer.answer_value or "").strip()
+        if answer.field.field_type == FieldType.RATING:
+            number = int(value) if value.isdigit() and int(value) in RATING_RANGE else None
+            ratings.append({"question": answer.field.field_label, "value": number, "maximum": RATING_RANGE[-1]})
+            continue
         if answer.field.field_type == FieldType.CHECKBOX:
             value = ", ".join(parse_options(value))
-        elif answer.field.field_type == FieldType.RATING and value.strip():
-            value = f"{value.strip()} / {RATING_RANGE[-1]}"
-        rows.append({"question": answer.field.field_label, "answer": value, "field_type": answer.field.field_type})
+        if value:
+            others.append({"label": answer.field.field_label, "answer": value})
+    if comments := submission.comments.strip():
+        others.append({"label": "Comments", "answer": comments})
     return {
         "registration": registration,
         "name": registration.name,
         "category": submission.registration.participant_category.name,
         "certificate_name": submission.certificate_name,
         "submitted_at": submission.submitted_at,
-        "rows": rows,
-        "comments": submission.comments.strip(),
+        "ratings": ratings,
+        "average": participant_average([row["value"] for row in ratings if row["value"] is not None]),
+        "answers": others,
     }
 
 

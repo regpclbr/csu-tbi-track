@@ -197,3 +197,26 @@ def report_html(content: ReportContent) -> str:
 
 def render_report_pdf(content: ReportContent) -> bytes:
     return get_renderer().render(report_html(content))
+
+
+def individual_evaluation_html(activity, data: dict, *, generated_by: str, generated_at: datetime) -> str:
+    """ONE participant's evaluation (ASSUMPTIONS 402, 404) on portrait A4, the same parts as the registration dialog:
+    the participant, the average rating, one row per rating question (dots + "4/5") and the text answers in boxes.
+    `data` = registrations.services.evaluation_answers (never the email or the contact number)."""
+    return render_to_string("reports/individual_evaluation_pdf.html", {
+        "activity": activity,
+        "dates": format_date_span(activity.start_date, activity.end_date),
+        "data": data,
+        "registered_as": data["name"] if data["name"].strip() != data["certificate_name"].strip() else "",
+        "submitted": format_value(data["submitted_at"], "text"),
+        "average": "–" if data["average"] is None else f"{data['average']:.2f}",
+        "ratings": [{**row, "dots": [index < (row["value"] or 0) for index in range(row["maximum"])]}
+                    for row in data["ratings"]],
+        "generated_by": generated_by,
+        "generated_at": format_value(generated_at, "text"),
+    })
+
+
+def render_individual_evaluation_pdf(activity, data: dict, *, generated_by: str, generated_at: datetime) -> bytes:
+    return get_renderer().render(individual_evaluation_html(activity, data, generated_by=generated_by,
+                                                            generated_at=generated_at))

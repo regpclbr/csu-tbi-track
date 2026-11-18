@@ -35,14 +35,6 @@ def percent(value) -> str:
 
 
 @register.filter
-def share(value) -> str:
-    """A share rounded to 0.1 % (reports.metrics.shares, 0.333) -> "33.3%"; None (nobody to count) -> "–"."""
-    if value is None:
-        return "–"
-    return f"{value * 100:.1f}%"
-
-
-@register.filter
 def rating(value) -> str:
     """4.567 -> "4.6"; None -> "–"."""
     if value is None:

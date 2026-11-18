@@ -440,12 +440,12 @@ def build_content(
     )
 
 
-# --- One activity's evaluations (ASSUMPTIONS 401-402) ------------------------------------------------------------
+# --- One activity's evaluation summary (ASSUMPTIONS 401) -----------------------------------------------------------
+# (One participant's evaluation has its own portrait template: reports.pdf.individual_evaluation_html, ASSUMPTIONS 404.)
 # Built as a ReportContent, so the PDF (the landscape report template) and the Excel file (titles, real tables,
 # formula-safe text) are made by the same code as the reports. `meta_lines` replace the period lines in the header.
 
 EVALUATION_SUMMARY = "evaluation_summary"
-INDIVIDUAL_EVALUATION = "individual_evaluation"
 NO_EVALUATIONS = "No evaluations submitted yet."
 RATING_NOTE = ("Percentages are of the answers to this question, rounded to one decimal place so they add up to 100%. "
                "Mean = the average rating (1-5), two decimal places.")
@@ -514,27 +514,3 @@ def build_evaluation_summary(activity, data: dict, *, generated_by: str, generat
                     note=TEXT_NOTE if text_tables else "No text answers were given.")
     return _activity_content(activity, key=EVALUATION_SUMMARY, label="Evaluation Summary", generated_by=generated_by,
                              generated_at=generated_at, meta=_activity_meta(activity), sections=[responses, ratings, texts])
-
-
-def build_individual_evaluation(activity, data: dict, *, generated_by: str, generated_at: datetime) -> ReportContent:
-    """ONE participant's submitted evaluation from registrations.services.evaluation_answers (name and category, never
-    the email or contact number)."""
-    from activities.formatting import format_datetime
-
-    meta = [("Participant", data["name"]), ("Participant category", data["category"]), *_activity_meta(activity)]
-    details = Table("Details", [Column("Detail"), Column("Value", key="title")], [
-        ["Name", data["name"]],
-        ["Participant category", data["category"]],
-        ["Name on the certificate", data["certificate_name"]],
-        ["Submitted", format_datetime(data["submitted_at"])],
-    ])
-    answers = Table("Answers", [Column("Question", key="title"), Column("Answer", key="title")],
-                    [[row["question"], row["answer"]] for row in data["rows"]])
-    tables = [answers]
-    if data["comments"]:
-        tables.append(Table("Comments", [Column("Comment", key="title")], [[data["comments"]]]))
-    return _activity_content(
-        activity, key=INDIVIDUAL_EVALUATION, label="Evaluation", generated_by=generated_by, generated_at=generated_at,
-        meta=meta, sections=[Section("participant", "Participant", tables=[details]),
-                             Section("answers", "Evaluation answers", tables=tables)],
-    )

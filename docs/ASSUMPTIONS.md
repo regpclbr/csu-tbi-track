@@ -1120,6 +1120,8 @@ value is worked out from existing columns, and the new files are made on request
      - **Activity page → Overview**: a full-width "Participants by category" card (Category | Registered | % of
        registered | Attended | % of attended, total row 100.0 %), any active staff member
        (`reports.services.activity_participants_by_category`, counts only; filter `share` in `config/ui_tags.py`).
+       *(2026-11-18: replaced by a donut with whole percentages, item 403; the `share` filter was removed; the report
+       section is unchanged.)*
      - **Reports**: new section `category_by_activity` "Participants by category per activity", in the default sections
        of the Accomplishment and the Participation Report (any type may add it; stored reports keep their sections). One
        row per activity and category (Activity, Date, Participant category, Registered, % of registered, Attended, % of
@@ -1160,4 +1162,49 @@ value is worked out from existing columns, and the new files are made on request
        is not this activity's or has not evaluated.
      - Tests: `reports/tests/test_individual_evaluation.py` (403 on the PDF and no answers in the dialog for "View Only
        (test)" and the System Administrator).
+     - *(2026-11-18: the dialog and the PDF were redesigned, portrait PDF, contact details collapsed: item 404.)*
+
+## Corrections after UAT, review round 1: display redesign (2026-11-18)
+
+403. **Participants by category as a donut** (owner request 2026-11-18; replaces the Overview table of item 400).
+     - **Activity page → Overview**: the card "Participants by category" now sits in the right column under Registration
+       and Share. It shows a donut in the dashboard's style. The SVG ring, colours (`reports.dashboard_page.CATEGORY_COLORS`) and
+       rounded-end gaps come from one shared function, `reports.dashboard_page.donut_segments`, and one template,
+       `components/donut.html`, used by the dashboard's "Attendees by category" too (its numbers unchanged).
+     - **What it counts**: attended, once anybody is marked as attended; before that registered, with the centre word
+       "registered" and the note "Nobody is marked as attended yet; the chart shows registrations." Counts come from
+       `reports.services.activity_participants_by_category` (item 400, unchanged); `activities.pages.category_donut` only
+       lays them out.
+     - **Legend**: coloured dot, category, whole percentage in brackets, count on the right ("Incubatees (36%) 92"), and,
+       on the attended chart, a small second line "110 registered" (no toggle, no JavaScript). Sorted by count, then name.
+       A category with 0 stays in the legend "(0%)" but has no slice; nobody registered = an empty grey ring, "0
+       registered" and "(–)" for every category.
+     - **Rounding**: whole percentages with the same largest-remainder rule (`metrics.shares(counts, units=100)`), so they
+       add up to exactly 100 %. The report section `category_by_activity` (PDF / Excel) keeps its 0.1 % table (item 400).
+     - **Accessibility**: the ring has `role="img"` and an `aria-label` with every number ("Participants by category, 255
+       attended: Faculty 163 (64%), Incubatees 92 (36%)"); the legend is a text table with a screen-reader caption, so
+       nothing is shown by colour only. The dashboard donut got the same aria-label.
+     - Tests: `reports/tests/test_category_donut.py`.
+404. **One participant's evaluation, redesigned for reading** (owner request 2026-11-18; layout of item 402, same rule).
+     - **Data** (`registrations.services.evaluation_answers`, same permission, never the email or contact number):
+       `ratings` (question, value 1–5 or None when unanswered, maximum), `average` (the participant's mean of the answered
+       ratings, 2 decimals, through `reports.metrics.participant_average` = the summary's rounding; None without ratings),
+       `answers` (every other question with a non-empty answer in form order, checkbox answers joined, the Comments last).
+     - **Registration dialog**: the top shows only name, participant category, registration date, attendance and
+       evaluation status. Then "Evaluation answers": name on the certificate, category, "Submitted Nov 17, 2026, 3:45 PM"
+       and **Download evaluation (PDF)** on the right; "Average rating: 4.50 out of 5"; one row per rating question with
+       5 dots (hidden from screen readers) + "4/5" (screen readers: "4 out of 5"; unanswered: "Not answered"); the text
+       answers in light bordered cards (grey label, normal text), empty ones left out. **Email, contact number and the
+       registration answers** moved into a native `<details>` "Show contact details and registration answers" below the
+       evaluation (owner decision 2026-11-18): **closed** when the evaluation is shown, **open** when it is not (not
+       evaluated yet, or staff without can_create_activity, who still see only the note).
+     - **PDF**: its own **portrait A4** template (`reports/templates/reports/individual_evaluation_pdf.html`,
+       `reports.pdf.individual_evaluation_html`, rendered through `get_renderer()`): one person's filled-in form has no
+       wide tables and reads like the paper form; the period and summary reports stay landscape (item 385). Same parts
+       as the dialog: activity title, dates and type; the participant box (name on the certificate, "Registered as …"
+       only when different, category, submitted); the average; rating rows with ●●●●○ and "4/5"; the answers in boxes.
+       No registration answers, never the email or contact number; file name, headers, 403 and 404 unchanged.
+       `content.build_individual_evaluation` (the landscape table version) was removed.
+     - Tests: `reports/tests/test_individual_evaluation.py`; the opt-in real-WeasyPrint check renders the new template.
+     - No database or ERD change, no migration.
 

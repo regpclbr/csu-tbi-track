@@ -426,20 +426,26 @@ owner is a student, so explain important decisions briefly and keep the code sim
   download name come from the dates (`content.period_name` / `report_title`, `services.download_name`; no column):
   "Accomplishment Report - Q3 2026", "Semi-annual … - January to June 2026", "Annual … - 2026", else "… - <range>".
 - Participants by category per activity (ASSUMPTIONS 400): `metrics.participants_by_category` + `metrics.shares` (0.1 %,
-  largest remainder, adds up to 100.0 %, None when the total is 0). Overview card + section `category_by_activity` (default in
-  Accomplishment and Participation).
+  largest remainder, adds up to 100.0 %, None when the total is 0). Section `category_by_activity` (default in
+  Accomplishment and Participation). The Overview card is a donut (ASSUMPTIONS 403): `activities.pages.category_donut`
+  (attended, else registered + note; whole % via `shares(..., units=100)`; 0 = legend row without a slice; aria-label with
+  the numbers) through `components/donut.html` + `reports.dashboard_page.donut_segments`, shared with the dashboard donut.
 - One activity's evaluations (ASSUMPTIONS 401–402), made on request, never stored, `private, no-store`: the evaluation summary
   (`metrics.activity_evaluation_summary`, `services.evaluation_summary_file`, `reports:evaluation_summary`, PDF/Excel, any staff,
   text answers without names sorted A–Z, mean only: NO interpretation scale until the TBI gives one) and one participant's
   evaluation (`registrations.services.evaluation_answers` + `INDIVIDUAL_EVALUATION_PERMISSION` = can_create_activity,
   `services.individual_evaluation_file`, `registrations:evaluation_pdf`, PDF, no email; the dialog shows the answers only with
-  that flag; the System Administrator gets 403). Both are `ReportContent`s with `meta_lines` (the report PDF/Excel code).
+  that flag; the System Administrator gets 403). The summary is a `ReportContent` with `meta_lines` (the report PDF/Excel
+  code). One participant (ASSUMPTIONS 404): `evaluation_answers` returns `ratings` / `average`
+  (`metrics.participant_average`) / `answers` (non-empty, Comments last); the dialog top has no email or contact number
+  (they and the registration answers are in "Show contact details and registration answers", closed when the evaluation
+  shows); the PDF is its own PORTRAIT template (`reports.pdf.individual_evaluation_html`), the only portrait report PDF.
 - `request_report` (can_create_activity) saves the row with an empty `file_path` and queues task `report-<id>`;
   `build_report` writes `reports/<year>/report-<id>-<type>.<ext>`. State is calculated (ready/failed/pending).
   Reports are never deleted; generating again = new row. Download only via `reports.views.download_report`.
 - PDF via `certificates.pdf.get_renderer()` (fake in tests); Excel cells only through `excel.safe_cell`
   (text starting with = + - @ tab CR stays text).
-- PDF layout (ASSUMPTIONS 385): landscape A4 for every report; `table-layout: fixed` with widths from `reports.pdf.pdf_columns`
+- PDF layout (ASSUMPTIONS 385): landscape A4 for every report (except one participant's evaluation: portrait, 404); `table-layout: fixed` with widths from `reports.pdf.pdf_columns`
   (keep `PAGE_CONTENT_WIDTH_MM` in step with `@page` in `report_pdf.html`), never below 8 pt. Start + End print as one Date
   column (`Column.key`, `formatting.format_date_span`), the time as `compact_time_range` — PDF only, Excel keeps every column.
   After changing the report template or a column, run the opt-in real-WeasyPrint check `test_report_pdf_layout.py` (Commands).
@@ -715,6 +721,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Corrections after UAT, review round 1 (2026-11-17, NAVIGATU comments): quarterly / semi-annual / annual period presets with a
   Year choice and period titles and file names (399), participants by category per activity (400), evaluation summary per
   activity (401), one participant's evaluation for can_create_activity only (402). No database or ERD change, no migration.
+- Display redesign after UAT (2026-11-18): participants by category as a donut on the Overview (403); one participant's
+  evaluation with average, rating dots, answer cards, collapsed contact details, portrait PDF (404). No database change.
 
 ## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
 - NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.

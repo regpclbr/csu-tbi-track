@@ -13,6 +13,8 @@ from django.utils import timezone
 
 from accounts.permissions import Permission, has_permission
 from registrations import services as registration_services
+from reports.dashboard_page import DONUT_STROKE, category_color, donut_segments
+from reports.metrics import shares
 
 from . import attention, services
 from .formatting import audit_sentence, format_date, format_datetime, format_money
@@ -425,3 +427,36 @@ def keep_stored_minutes(cleaned: dict, activity: Activity) -> dict:
         if stored and sent and stored.replace(second=0, microsecond=0) == sent:
             cleaned[name] = stored
     return cleaned
+
+
+def category_donut(by_category: dict) -> dict:
+    """The Overview's "Participants by category" donut (ASSUMPTIONS 403) from reports.services.
+    activity_participants_by_category (counts unchanged). Attended once anybody is marked as attended, else registered
+    (with a note). Whole percentages with the largest-remainder rule (metrics.shares, units=100: they add up to 100 %;
+    "–" when the total is 0). A category with 0 stays in the legend without a slice. Laid out by components/donut.html."""
+    attended_basis = by_category["attended"] > 0
+    key = "attended" if attended_basis else "registered"
+    label = "attended" if attended_basis else "registered"
+    rows = sorted(by_category["rows"], key=lambda row: (-row[key], row["category"].lower()))
+    counts = [row[key] for row in rows]
+    total = sum(counts)
+    legend = []
+    for index, (row, share) in enumerate(zip(rows, shares(counts, units=100))):
+        percent_text = "–" if share is None else f"{round(share * 100)}%"
+        legend.append({
+            "name": row["category"], "count": row[key], "percent_text": percent_text, "color": category_color(index),
+            "note": f"{row['registered']:,} registered" if attended_basis else "",
+        })
+    described = ", ".join(f"{row['name']} {row['count']:,} ({row['percent_text']})" for row in legend)
+    return {
+        "total": total,
+        "label": label,
+        "attended_basis": attended_basis,
+        "registered": by_category["registered"],
+        "segments": [segment for segment in donut_segments(counts) if segment],
+        "stroke": DONUT_STROKE,
+        "legend": legend,
+        "caption": f"Participants by category, {label} (the chart shows the same numbers)",
+        "count_header": label.capitalize(),
+        "aria_label": f"Participants by category, {total:,} {label}: {described}",
+    }

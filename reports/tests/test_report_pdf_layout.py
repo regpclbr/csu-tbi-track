@@ -20,7 +20,7 @@ from django.utils import timezone
 from reports import content as report_content
 from reports.content import AI_LABEL, AI_SUMMARY, REPORT_TYPES, SECTIONS
 from reports.metrics import ReportFilters, today_in_manila
-from reports.pdf import report_html
+from reports.pdf import individual_evaluation_html, report_html
 
 pytestmark = [
     pytest.mark.real_weasyprint,
@@ -117,7 +117,8 @@ def evaluation_contents() -> dict:
     return {
         "evaluation-summary": report_content.build_evaluation_summary(
             activity, activity_evaluation_summary(activity), generated_by="Demo Director", generated_at=now),
-        "individual-evaluation": report_content.build_individual_evaluation(
+        # Its own portrait template (ASSUMPTIONS 404): passed as finished HTML.
+        "individual-evaluation": individual_evaluation_html(
             activity, evaluation_answers(director, submission.registration), generated_by="Demo Director", generated_at=now),
     }
 
@@ -169,7 +170,8 @@ def test_no_report_pdf_is_cut_off(weasyprint, settings, tmp_path) -> None:
 
     problems = []
     for name, content in contents.items():
-        document = weasyprint.HTML(string=report_html(content), url_fetcher=fetcher).render()
+        html = content if isinstance(content, str) else report_html(content)
+        document = weasyprint.HTML(string=html, url_fetcher=fetcher).render()
         found = [problem for number, page in enumerate(document.pages, start=1)
                  for problem in overflows(page, number, name)]
         print(f"{name:22} {len(document.pages)} pages, {len(found)} problems")

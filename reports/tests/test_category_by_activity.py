@@ -1,6 +1,6 @@
 """Participants by category per activity (ASSUMPTIONS 400): counts and percentages from
 reports.metrics.participants_by_category, blank-safe, rounded so each activity adds up to 100.0 %; shown on the
-activity page (Overview) and in the Accomplishment and Participation reports (PDF and Excel)."""
+activity page (Overview, as a donut: test_category_donut.py) and in the Accomplishment and Participation reports (PDF and Excel)."""
 
 import random
 from datetime import date
@@ -8,7 +8,6 @@ from datetime import date
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
-from django.urls import reverse
 from openpyxl import load_workbook
 from openpyxl.utils import range_boundaries
 
@@ -104,26 +103,7 @@ def test_query_count_does_not_grow_with_the_number_of_activities(make_activity, 
     assert count([first.pk] + [a.pk for a in others]) == few == 3
 
 
-# --- The activity page ----------------------------------------------------------------------------------------------
-
-
-def test_overview_shows_the_table_to_any_staff_member(make_activity, register, view_only, login) -> None:
-    activity = make_activity("Bootcamp", categories=("Faculty", "Incubatees"))
-    register(activity, "A", category="Faculty", attended=True)
-    register(activity, "B", category="Faculty")
-    register(activity, "C", category="Incubatees")
-    html = login(view_only).get(reverse("activities:detail", args=[activity.pk])).content.decode()
-    table = html[html.index('id="by-category-table"'):html.index("</table>", html.index('id="by-category-table"'))]
-    assert "Participants by category" in html
-    assert "66.7%" in table and "33.3%" in table and "100.0%" in table
-    assert "Faculty" in table and "Incubatees" in table
-
-
-def test_overview_before_attendance_shows_dashes(make_activity, register, director, login) -> None:
-    activity = make_activity("Soon", categories=("Faculty",))
-    register(activity, "A")
-    html = login(director).get(reverse("activities:detail", args=[activity.pk])).content.decode()
-    assert "nobody is marked as attended yet" in html
+# The activity page's donut (ASSUMPTIONS 403): reports/tests/test_category_donut.py.
 
 
 # --- The reports ----------------------------------------------------------------------------------------------------
