@@ -13,7 +13,7 @@ One report in the history (reports.pages.history_row). A pending row asks for it
   <td class="min-w-48 px-3 py-3 text-xs text-slate-700">
     {{ row.sections|join:", " }}{% if row.has_ai_summary %} <span class="badge badge-info ml-0.5 whitespace-nowrap">{% include "components/icon.html" with name="sparkles" class="size-3" %}AI</span>{% endif %}
   </td>
-  <td class="min-w-40 px-3 py-3 text-slate-700">{{ row.range_text }}</td>
+  <td class="min-w-40 px-3 py-3 text-slate-700">{% if row.period_name %}<span class="block font-semibold text-ink">{{ row.period_name }}</span><span class="text-xs text-muted">{{ row.range_text }}</span>{% else %}{{ row.range_text }}{% endif %}</td>
   <td class="min-w-36 px-3 py-3 text-slate-700">{{ report.generated_by.name }}<br><time class="text-xs whitespace-nowrap text-muted" datetime="{{ report.generated_at|date:'c' }}">{{ report.generated_at|date:"M j, Y g:i A" }}</time></td>
   <td class="px-3 py-3">
     <span class="inline-flex items-center gap-1.5 whitespace-nowrap">

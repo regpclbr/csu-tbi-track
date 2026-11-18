@@ -47,8 +47,9 @@ def test_page_shows_the_form_to_members_who_can_generate(director, login) -> Non
     html = login(director).get(reverse("reports:list")).content.decode()
     assert "is coming soon" not in html and 'id="new-report"' in html
     assert html.index("Accomplishment Report") < html.index("Participation Report") < html.index("Evaluation Report")
-    for label in ("Document Compliance Report", "Certificates", "Include AI summary", "This quarter", "January – June",
-                  "Last year", "Custom", "Excel", "All activity types"):
+    for label in ("Document Compliance Report", "Certificates", "Include AI summary", "This month", "Q1 (Jan–Mar)",
+                  "Q4 (Oct–Dec)", "First half (Jan–Jun)", "Second half (Jul–Dec)", "Whole year (Jan–Dec)", "Custom dates",
+                  'name="period_year"', "Excel", "All activity types"):
         assert label in html
     assert 'value="ai_summary"' not in html  # the switch adds it, it is not a pill
     assert "No reports yet" in html
@@ -74,9 +75,10 @@ def test_posting_requests_the_report_through_the_service(director, login, queued
 
 def test_a_quick_choice_sets_the_dates_without_javascript(director, login, queued, clock) -> None:
     clock(datetime(2026, 10, 28, 10, 0))
-    login(director).post(reverse("reports:list"), {**VALID, "range": "first_half", "date_range_start": "", "date_range_end": ""})
+    login(director).post(reverse("reports:list"), {**VALID, "range": "h1", "period_year": "2025",
+                                                   "date_range_start": "", "date_range_end": ""})
     report = GeneratedReport.objects.get()
-    assert (report.date_range_start, report.date_range_end) == (date(2026, 1, 1), date(2026, 6, 30))
+    assert (report.date_range_start, report.date_range_end) == (date(2025, 1, 1), date(2025, 6, 30))
 
 
 def test_service_errors_appear_under_their_fields(director, login, queued) -> None:
@@ -95,7 +97,7 @@ def test_no_pills_means_the_type_defaults(director, login, queued) -> None:
     data = {key: value for key, value in VALID.items() if key != "included_sections"}
     response = login(director).post(reverse("reports:list"), data)  # no pills and no AI: the service uses the defaults
     assert response.status_code == 302
-    assert services.sections_of(GeneratedReport.objects.get()) == ["summary", "by_category", "monthly", "startups"]
+    assert services.sections_of(GeneratedReport.objects.get()) == ["summary", "by_category", "category_by_activity", "monthly", "startups"]
 
 
 # --- History and polling -----------------------------------------------------------------------------------------
@@ -169,20 +171,27 @@ def test_the_pager_swaps_only_the_history(director, login) -> None:
 
 
 def test_date_presets() -> None:
-    presets = {p["key"]: p for p in pages.date_presets(date(2026, 11, 5))}
-    assert (presets["this_month"]["start"], presets["this_month"]["end"]) == ("2026-11-01", "2026-11-30")
-    assert (presets["this_quarter"]["start"], presets["this_quarter"]["end"]) == ("2026-10-01", "2026-12-31")
-    assert presets["first_half"]["text"] == "January 1 – June 30, 2026"
-    assert (presets["last_year"]["start"], presets["last_year"]["end"]) == ("2025-01-01", "2025-12-31")
-    assert presets["custom"]["start"] == "" and list(presets)[-1] == "custom"
+    today = date(2026, 11, 5)
+    presets = pages.date_presets(today, pages.year_choices(today))
+    keys = [choice["key"] for choice in presets["choices"]]
+    assert keys == ["this_month", "q1", "q2", "q3", "q4", "h1", "h2", "year", "custom"]
+    assert [c["key"] for c in presets["choices"] if c["yearly"]] == ["q1", "q2", "q3", "q4", "h1", "h2", "year"]
+    assert list(presets["dates"]) == ["2027", "2026", "2025", "2024", "2023", "2022", "2021"]
+    dates = presets["dates"]
+    assert (dates["2026"]["this_month"]["start"], dates["2026"]["this_month"]["end"]) == ("2026-11-01", "2026-11-30")
+    assert (dates["2026"]["q4"]["start"], dates["2026"]["q4"]["end"]) == ("2026-10-01", "2026-12-31")
+    assert dates["2025"]["h1"]["text"] == "January 1 – June 30, 2025"
+    assert (dates["2024"]["q1"]["start"], dates["2024"]["q1"]["end"]) == ("2024-01-01", "2024-03-31")
+    assert (dates["2025"]["year"]["start"], dates["2025"]["year"]["end"]) == ("2025-01-01", "2025-12-31")
+    assert "custom" not in dates["2026"]
 
 
 def test_form_from_post_keeps_typed_dates_only_for_custom() -> None:
     from django.http import QueryDict
 
-    post = QueryDict("range=this_year&date_range_start=2020-01-01&date_range_end=2020-02-01&included_sections=ai_summary")
+    post = QueryDict("range=year&period_year=2026&date_range_start=2020-01-01&date_range_end=2020-02-01&included_sections=ai_summary")
     form = pages.form_from_post(post, date(2026, 3, 1))
-    assert (form.start, form.end, form.range_key) == ("2026-01-01", "2026-12-31", "this_year")
+    assert (form.start, form.end, form.range_key, form.period_year) == ("2026-01-01", "2026-12-31", "year", 2026)
     assert form.sections == [] and form.ai_summary is False  # only the switch adds the AI summary
     form = pages.form_from_post(QueryDict("range=custom&date_range_start=2020-01-01&date_range_end=x"), date(2026, 3, 1))
     assert (form.start, form.end) == ("2020-01-01", "x")  # the service checks them

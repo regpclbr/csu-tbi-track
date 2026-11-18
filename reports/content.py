@@ -8,6 +8,7 @@ from datetime import date, datetime
 
 from activities.formatting import format_time_range
 from activities.models import ActivityType
+from assistant.periods import half_period, quarter_period, year_period
 
 from . import metrics
 from .metrics import ReportFilters
@@ -80,9 +81,18 @@ class ReportContent:
     period_in_words: str  # e.g. "January 1 – June 30, 2026"
     has_activities: bool  # False: the period sections say NO_ACTIVITIES instead of showing empty tables
     sections: list[Section]
+    period_name: str = ""  # "Q3 2026", "January to June 2026", "2026" for a quarter / half / whole year; "" otherwise
+    # Header lines that replace the period lines (PDF header, Excel title block and Report info): documents about ONE
+    # activity (evaluation summary, one evaluation; ASSUMPTIONS 401-402) use them. None = a normal period report.
+    meta_lines: list[tuple[str, str]] | None = None
 
     def section(self, key: str) -> Section | None:
         return next((s for s in self.sections if s.key == key), None)
+
+    @property
+    def period_text(self) -> str:
+        """"Q3 2026 (July 1 – September 30, 2026)" for a named period, else the range in words."""
+        return f"{self.period_name} ({self.period_in_words})" if self.period_name else self.period_in_words
 
 
 # --- Catalogue: sections and report types ------------------------------------------------------
@@ -98,6 +108,7 @@ SECTIONS: dict[str, str] = {
     "activities": "Activities conducted",
     "by_type": "By activity type",
     "by_category": "By participant category",
+    "category_by_activity": "Participants by category per activity",
     "monthly": "Per month",
     "evaluation": "Evaluation results",
     "documents": "Document compliance",
@@ -115,9 +126,12 @@ class ReportType:
 
 REPORT_TYPES: dict[str, ReportType] = {
     "accomplishment": ReportType(
-        "Accomplishment Report", ("summary", "activities", "by_type", "by_category", "monthly", "evaluation"), main=True
+        "Accomplishment Report",
+        ("summary", "activities", "by_type", "by_category", "category_by_activity", "monthly", "evaluation"), main=True,
     ),
-    "participation": ReportType("Participation Report", ("summary", "by_category", "monthly", "startups"), main=True),
+    "participation": ReportType(
+        "Participation Report", ("summary", "by_category", "category_by_activity", "monthly", "startups"), main=True
+    ),
     "evaluation": ReportType("Evaluation Report", ("summary", "evaluation", "activities")),
     "document_compliance": ReportType("Document Compliance Report", ("documents",)),
     "certificates": ReportType("Certificates Report", ("certificates",)),
@@ -144,6 +158,49 @@ def range_in_words(start: date, end: date) -> str:
     if start.month != end.month:
         return f"{start:%B} {start.day} – {end:%B} {end.day}, {end.year}"
     return f"{start:%B} {start.day} – {end.day}, {end.year}"
+
+
+# --- Period names (ASSUMPTIONS 399) -----------------------------------------------------------------------------
+# A report whose dates are exactly a calendar quarter, half or year is named after it, in the title and the file name.
+# The name is worked out from the stored dates (no column), so it is the same for old reports.
+QUARTER, HALF, YEAR = "quarter", "half", "year"
+
+
+@dataclass(frozen=True)
+class PeriodName:
+    kind: str  # QUARTER, HALF or YEAR
+    label: str  # "Q3 2026", "January to June 2026", "2026"
+    slug: str  # for the file name: "q3-2026", "jan-jun-2026", "2026"
+
+
+def period_name(start: date, end: date) -> PeriodName | None:
+    """The quarter, half or whole year these dates are exactly, or None (any other range)."""
+    year = start.year
+    if (start, end) == (year_period(year).start, year_period(year).end):
+        return PeriodName(YEAR, str(year), str(year))
+    for half in (1, 2):
+        period = half_period(year, half)
+        if (start, end) == (period.start, period.end):
+            first, last = (("January", "June"), ("July", "December"))[half - 1]
+            return PeriodName(HALF, f"{first} to {last} {year}", f"{first[:3].lower()}-{last[:3].lower()}-{year}")
+    for quarter in (1, 2, 3, 4):
+        period = quarter_period(year, quarter)
+        if (start, end) == (period.start, period.end):
+            return PeriodName(QUARTER, f"Q{quarter} {year}", f"q{quarter}-{year}")
+    return None
+
+
+# The word before the report type's label: "Semi-annual Accomplishment Report", "Annual Participation Report".
+FREQUENCY_WORDS = {QUARTER: "", HALF: "Semi-annual ", YEAR: "Annual "}
+
+
+def report_title(label: str, start: date, end: date) -> str:
+    """"Accomplishment Report - Q3 2026", "Semi-annual Accomplishment Report - January to June 2026",
+    "Annual Accomplishment Report - 2026", else "Accomplishment Report - March 5 – April 2, 2026"."""
+    name = period_name(start, end)
+    if name is None:
+        return f"{label} - {range_in_words(start, end)}"
+    return f"{FREQUENCY_WORDS[name.kind]}{label} - {name.label}"
 
 
 def long_date(value: date) -> str:
@@ -219,6 +276,35 @@ def _by_category(filters: ReportFilters, summary: dict) -> Section:
         "by_category", SECTIONS["by_category"], tables=[Table("By participant category", columns, rows, note=metrics.CATEGORY_NOTE,
                       total=_total_row("Total (distinct activities)", summary))],
         chart=Chart("Attendees by participant category", [(r["name"], r["attended"]) for r in data]),
+    )
+
+
+SHARE_NOTE = (
+    "Percentages are of the activity's registered or attended participants, rounded to one decimal place so that "
+    "each activity's percentages add up to 100%. A dash (or an empty cell in Excel): nobody registered or attended yet."
+)
+
+
+def _category_by_activity(filters: ReportFilters) -> Section:
+    """For each period activity: registered and attended per participant category, with percentages
+    (metrics.participants_by_category, ASSUMPTIONS 400). One row per activity and category, so the Excel table can be
+    filtered; the activity's own totals are in the Activities section."""
+    activities = metrics.activity_rows(filters)
+    breakdown = metrics.participants_by_category([row["activity_id"] for row in activities])
+    rows = [
+        [activity["title"], activity["start_date"], activity["end_date"], item["category"],
+         item["registered"], item["registered_share"], item["attended"], item["attended_share"]]
+        for activity in activities
+        for item in breakdown[activity["activity_id"]]["rows"]
+    ]
+    columns = [
+        Column("Activity", key="title"), Column("Start", DATE, key="start"), Column("End", DATE, key="end"),
+        Column("Participant category"), Column("Registered", INT), Column("% of registered", PERCENT),
+        Column("Attended", INT), Column("% of attended", PERCENT),
+    ]
+    return Section(
+        "category_by_activity", SECTIONS["category_by_activity"],
+        tables=[Table("Participants by category per activity", columns, rows, note=SHARE_NOTE)],
     )
 
 
@@ -323,6 +409,7 @@ def build_content(
         "activities": lambda: _activities(filters),
         "by_type": lambda: _by_type(filters, summary),
         "by_category": lambda: _by_category(filters, summary),
+        "category_by_activity": lambda: _category_by_activity(filters),
         "monthly": lambda: _monthly(filters, summary),
         "evaluation": lambda: _evaluation(filters),
         "documents": lambda: _documents(filters, now),
@@ -332,8 +419,9 @@ def build_content(
     activity_type = (
         ActivityType.objects.get(pk=filters.activity_type_id).name if filters.activity_type_id else "All activity types"
     )
+    name = period_name(filters.start, filters.end)
     return ReportContent(
-        title=f"{report.label}: {period}",
+        title=report_title(report.label, filters.start, filters.end),
         report_type=report_type,
         report_type_label=report.label,
         filters=filters,
@@ -343,9 +431,110 @@ def build_content(
         today=today,
         summary=summary,
         period_in_words=period,
+        period_name=name.label if name else "",
         has_activities=has_activities,
         sections=[
             builders[key]() if has_activities or key not in PERIOD_SECTIONS else Section(key, SECTIONS[key], note=NO_ACTIVITIES)
             for key in ordered_sections(sections)
         ],
+    )
+
+
+# --- One activity's evaluations (ASSUMPTIONS 401-402) ------------------------------------------------------------
+# Built as a ReportContent, so the PDF (the landscape report template) and the Excel file (titles, real tables,
+# formula-safe text) are made by the same code as the reports. `meta_lines` replace the period lines in the header.
+
+EVALUATION_SUMMARY = "evaluation_summary"
+INDIVIDUAL_EVALUATION = "individual_evaluation"
+NO_EVALUATIONS = "No evaluations submitted yet."
+RATING_NOTE = ("Percentages are of the answers to this question, rounded to one decimal place so they add up to 100%. "
+               "Mean = the average rating (1-5), two decimal places.")
+TEXT_NOTE = "Listed without names, sorted A-Z (not in the order they were submitted). Empty answers are left out."
+
+
+def _activity_meta(activity) -> list[tuple[str, str]]:
+    from activities.formatting import format_date_span
+
+    return [("Activity", activity.title), ("Dates", format_date_span(activity.start_date, activity.end_date)),
+            ("Activity type", activity.activity_type.name)]
+
+
+def _activity_content(activity, *, key: str, label: str, sections: list[Section], generated_by: str,
+                      generated_at: datetime, meta: list[tuple[str, str]]) -> ReportContent:
+    return ReportContent(
+        title=f"{label} - {activity.title}",
+        report_type=key,
+        report_type_label=label,
+        filters=ReportFilters(activity.start_date, activity.end_date, activity.activity_type_id),
+        activity_type_name=activity.activity_type.name,
+        generated_by=generated_by,
+        generated_at=generated_at,
+        today=metrics.today_in_manila(generated_at),
+        summary={},
+        period_in_words=range_in_words(activity.start_date, activity.end_date),
+        has_activities=True,
+        sections=sections,
+        meta_lines=meta,
+    )
+
+
+def build_evaluation_summary(activity, data: dict, *, generated_by: str, generated_at: datetime) -> ReportContent:
+    """The evaluation summary of ONE activity from metrics.activity_evaluation_summary (no names anywhere)."""
+    responses = Section("responses", "Responses", tables=[Table("Responses vs attendees", [Column("Measure"), Column("Value", INT)], [
+        ["Registered", data["registered"]],
+        ["Attended", data["attended"]],
+        ["Evaluations submitted", data["evaluations"]],
+        ["Response rate (evaluations / attended)", Cell(data["evaluation_response_rate"], PERCENT)],
+    ])], note=(f"{data['evaluations']} of {data['attended']} attendee{'' if data['attended'] == 1 else 's'} "
+               "submitted the evaluation."))
+    if not data["evaluations"]:
+        return _activity_content(
+            activity, key=EVALUATION_SUMMARY, label="Evaluation Summary", generated_by=generated_by,
+            generated_at=generated_at, meta=_activity_meta(activity),
+            sections=[responses, Section("ratings", "Rating questions", note=NO_EVALUATIONS)],
+        )
+
+    rating_tables = [Table("Overview", [Column("Rating question", key="title"), Column("Answers", INT),
+                                        Column("Mean (1-5)", DECIMAL)],
+                           [[q["question"], q["answers"], q["mean"]] for q in data["ratings"]])]
+    for question in data["ratings"]:
+        rating_tables.append(Table(
+            question["question"], [Column("Rating"), Column("Frequency", INT), Column("Percentage", PERCENT)],
+            [[str(item["rating"]), item["count"], item["share"]] for item in question["frequency"]],
+            total=["Total", question["answers"], 1.0 if question["answers"] else None],
+        ))
+    ratings = Section("ratings", "Rating questions", tables=rating_tables if data["ratings"] else [],
+                      note=RATING_NOTE if data["ratings"] else "The evaluation form has no rating questions.")
+
+    text_tables = [Table(item["question"], [Column("Answer", key="title")], [[answer] for answer in item["answers"]])
+                   for item in data["text_answers"]]
+    if data["comments"]:
+        text_tables.append(Table("Comments", [Column("Comment", key="title")], [[text] for text in data["comments"]]))
+    texts = Section("text_answers", "Text answers", tables=text_tables,
+                    note=TEXT_NOTE if text_tables else "No text answers were given.")
+    return _activity_content(activity, key=EVALUATION_SUMMARY, label="Evaluation Summary", generated_by=generated_by,
+                             generated_at=generated_at, meta=_activity_meta(activity), sections=[responses, ratings, texts])
+
+
+def build_individual_evaluation(activity, data: dict, *, generated_by: str, generated_at: datetime) -> ReportContent:
+    """ONE participant's submitted evaluation from registrations.services.evaluation_answers (name and category, never
+    the email or contact number)."""
+    from activities.formatting import format_datetime
+
+    meta = [("Participant", data["name"]), ("Participant category", data["category"]), *_activity_meta(activity)]
+    details = Table("Details", [Column("Detail"), Column("Value", key="title")], [
+        ["Name", data["name"]],
+        ["Participant category", data["category"]],
+        ["Name on the certificate", data["certificate_name"]],
+        ["Submitted", format_datetime(data["submitted_at"])],
+    ])
+    answers = Table("Answers", [Column("Question", key="title"), Column("Answer", key="title")],
+                    [[row["question"], row["answer"]] for row in data["rows"]])
+    tables = [answers]
+    if data["comments"]:
+        tables.append(Table("Comments", [Column("Comment", key="title")], [[data["comments"]]]))
+    return _activity_content(
+        activity, key=INDIVIDUAL_EVALUATION, label="Evaluation", generated_by=generated_by, generated_at=generated_at,
+        meta=meta, sections=[Section("participant", "Participant", tables=[details]),
+                             Section("answers", "Evaluation answers", tables=tables)],
     )

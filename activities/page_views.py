@@ -17,6 +17,7 @@ from documents import pages as document_pages
 from documents import services as document_services
 from registrations import pages as registration_pages
 from registrations import services as registration_services
+from reports import services as report_services
 
 from . import attention, deletion, pages, services, share
 from .forms import ActivityPageFormWithSignatories as ActivityPageForm
@@ -197,6 +198,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     if tab == "overview":
         context["detail_rows"] = pages.detail_rows(detail)
         context["share"] = share.share_card(activity, context["registration"])
+        context["by_category"] = report_services.activity_participants_by_category(request.user, activity)
     elif tab == "history":
         context["history"], context["history_rows"] = pages.history(activity, request.GET.get("page", 1))
     elif tab == "forms":

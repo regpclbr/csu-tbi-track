@@ -81,7 +81,13 @@ The table scrolls sideways inside the card on narrow screens.
                   {% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
                 </td>
                 <td class="px-3 py-2.5">
-                  {% if registration.evaluation_submission %}<span class="badge badge-info">Submitted</span>{% else %}<span class="text-muted">–</span>{% endif %}
+                  {% if registration.evaluation_submission %}
+                    {% comment %}Opens the registration dialog, which shows the answers only to can_create_activity (ASSUMPTIONS 402).{% endcomment %}
+                    <button type="button" class="badge badge-info cursor-pointer hover:underline" aria-haspopup="dialog" @click="opener = $el"
+                            hx-get="{% url 'registrations:registration_detail' activity.pk registration.pk %}" hx-target="#registration-dialog-body"
+                            hx-on::after-request="if (event.detail.successful) document.getElementById('registration-dialog').showModal()">
+                      Submitted<span class="sr-only">: open the evaluation of {{ registration.name }}</span></button>
+                  {% else %}<span class="text-muted">–</span>{% endif %}
                 </td>
                 <td class="min-w-36 px-3 py-2.5 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
                 <td class="px-3 py-2.5 text-right whitespace-nowrap">

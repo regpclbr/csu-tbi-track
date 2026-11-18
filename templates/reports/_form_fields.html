@@ -60,10 +60,17 @@ the shared Alpine values (ASSUMPTIONS 384).
           <label class="relative">
             <input type="radio" name="range" value="{{ preset.key }}" class="peer sr-only" x-model="range" @change="chooseRange()"
                    {% if preset.key == form.range_key %}checked{% endif %}>
-            <span class="inline-flex cursor-pointer items-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 select-none hover:border-primary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2"
-                  {% if preset.text %}title="{{ preset.text }}"{% endif %}>{{ preset.label }}{% if preset.text %}<span class="sr-only"> ({{ preset.text }})</span>{% endif %}</span>
+            <span class="inline-flex cursor-pointer items-center rounded-full border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 select-none hover:border-primary peer-checked:border-primary peer-checked:bg-primary peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2">{{ preset.label }}</span>
           </label>
         {% endfor %}
+      </div>
+      {% comment %}The Year of a quarter, half or whole year (ASSUMPTIONS 399). Without JavaScript it is always shown; the server ignores it for This month and Custom dates.{% endcomment %}
+      <div class="mt-3 flex items-center gap-3" x-show="isYearly()"{% if form.range_key == "this_month" or form.range_key == "custom" %} x-cloak{% endif %}>
+        <label for="report-year" class="text-sm font-semibold text-ink">Year</label>
+        <select id="report-year" name="period_year" class="field-input field-select w-32" x-model="year" @change="chooseRange()">
+          {% for year in years %}<option value="{{ year }}"{% if year == form.period_year %} selected{% endif %}>{{ year }}</option>{% endfor %}
+        </select>
+        <span class="text-sm text-muted" x-text="rangeText()">{{ form.range_text }}</span>
       </div>
       <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <div>

@@ -87,7 +87,18 @@ def test_type_check_generate(live_server, director, fake_gemini, monkeypatch) ->
         # The summary card shows the form's values ...
         assert page.locator("#summary-type").input_value() == "participation"
         assert page.locator("input[name=report_type]:checked").input_value() == "participation"
-        assert page.locator("#summary-range").input_value() == page.locator("input[name=range]:checked").input_value() == "this_quarter"
+        assert page.locator("#summary-range").input_value() == page.locator("input[name=range]:checked").input_value() == "q4"
+        assert page.locator("#summary-year").input_value() == page.locator("#report-year").input_value()
+
+        # The Year (ASSUMPTIONS 399): the dates come from the server's table, the summary and the form agree.
+        page.locator("#summary-range").select_option("q1")
+        year = page.locator("#summary-year").input_value()
+        page.locator("#summary-year").select_option(str(int(year) - 1))
+        assert page.locator("#report-start").input_value() == f"{int(year) - 1}-01-01"
+        assert page.locator("#report-end").input_value() == f"{int(year) - 1}-03-31"
+        assert page.locator("#report-year").input_value() == str(int(year) - 1)
+        page.locator("#summary-range").select_option("q4")
+        page.locator("#summary-year").select_option(year)
         assert page.locator("#summary-activity-type").input_value() == page.locator("#report-activity-type").input_value() == str(training.pk)
         assert page.locator("button[data-format=excel]").get_attribute("aria-pressed") == "true"
 
@@ -115,7 +126,7 @@ def test_type_check_generate(live_server, director, fake_gemini, monkeypatch) ->
         page.evaluate("() => { document.getElementById('report-more').open = false }")
         page.locator("#summary-range").select_option("custom")
         assert page.evaluate(IS_OPEN)
-        page.locator("#summary-range").select_option("this_quarter")
+        page.locator("#summary-range").select_option("q4")
 
         # Generate: the unchanged request_report with these values.
         page.locator("#summary-generate").click()

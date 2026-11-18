@@ -20,7 +20,8 @@ from .test_reports import queued, request  # noqa: F401  (fixture and helper)
 
 pytestmark = pytest.mark.django_db
 
-ACCOMPLISHMENT_SHEETS = ["Report info", "Summary", "Activities", "By type", "By category", "Per month", "Evaluation"]
+ACCOMPLISHMENT_SHEETS = ["Report info", "Summary", "Activities", "By type", "By category", "Category per activity",
+                         "Per month", "Evaluation"]
 PERIOD = ReportFilters(date(2026, 1, 1), date(2026, 12, 31))
 
 
@@ -67,6 +68,7 @@ def test_every_sheet_has_the_compact_title_block(director, queued, data) -> None
     hour = generated.hour % 12 or 12
     subtitles = {"Report info": "Report information", "Summary": "Summary", "Activities": "Activities conducted",
                  "By type": "By activity type", "By category": "By participant category", "Per month": "Per month",
+                 "Category per activity": "Participants by category per activity",
                  "Evaluation": "Evaluation results"}
     for sheet in workbook.worksheets:
         lines = [sheet.cell(row=row, column=1).value for row in range(1, 7)]
@@ -74,7 +76,7 @@ def test_every_sheet_has_the_compact_title_block(director, queued, data) -> None
             "CSU-TBI Track — Accomplishment Report",
             "Technology Business Incubator, Caraga State University",
             subtitles[sheet.title],
-            "Period: January 1 – December 31, 2026",
+            "Period: 2026 (January 1 – December 31, 2026)",
             f"Generated {generated:%b} {generated.day}, {generated.year} {hour}:{generated:%M} {generated:%p} (Manila time) "
             f"by {director.name}",
             None,  # one blank row
@@ -91,7 +93,7 @@ def test_activity_type_filter_is_named_in_the_title_block(director, queued, data
 
     seminar = ActivityType.objects.get(name="Seminar")
     _report, workbook = build(director, activity_type=seminar.pk)
-    assert workbook["Summary"]["A4"].value == "Period: January 1 – December 31, 2026 · Activity type: Seminar"
+    assert workbook["Summary"]["A4"].value == "Period: 2026 (January 1 – December 31, 2026) · Activity type: Seminar"
 
 
 # --- Excel tables: style, and nothing that makes Excel "repair" the file ------------------------------------
@@ -235,7 +237,7 @@ def test_report_info_sheet(director, queued, data) -> None:
     sheet = workbook["Report info"]
     assert not sheet.tables and sheet.max_column == 2
     rows = {row[0].value: row for row in sheet.iter_rows(min_row=7)}
-    assert rows["Period"][1].value == "January 1 – June 30, 2026"
+    assert rows["Period"][1].value == "January to June 2026 (January 1 – June 30, 2026)"
     start = rows["Period start"][1]
     assert start.value.date() == date(2026, 1, 1) and start.number_format == "mmm d, yyyy"
     assert all(row[0].font.bold and row[1].alignment.horizontal == "left" for row in rows.values())

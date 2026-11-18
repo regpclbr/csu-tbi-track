@@ -10,18 +10,19 @@ import json
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from accounts.permissions import has_permission, is_htmx, staff_login_required
+from activities.models import Activity
 
 from . import pages, services
 from .models import GeneratedReport
 
 
 def _form_context(form: pages.ReportForm) -> dict:
-    return {"form": form, **pages.form_options(pages.today())}
+    return {"form": form, **pages.form_options(pages.today(), form)}
 
 
 def _page(request: HttpRequest, form: pages.ReportForm, status: int = 200) -> HttpResponse:
@@ -89,3 +90,25 @@ def report_row(request: HttpRequest, report_id: int) -> HttpResponse:
     if announcement := pages.state_announcement(row):
         response["HX-Trigger"] = json.dumps({"report-state": announcement})
     return response
+
+
+# --- One activity's evaluations (ASSUMPTIONS 401-402) ---------------------------------------------------------------
+
+
+def activity_file_response(file: services.ActivityFile) -> HttpResponse:
+    """A file made on request: always an attachment, never cached (it can hold evaluation answers)."""
+    response = HttpResponse(file.data, content_type=file.content_type)
+    response["Content-Disposition"] = f'attachment; filename="{file.name}"'
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@staff_login_required
+@require_GET
+def evaluation_summary(request: HttpRequest, activity_id: int, file_format: str) -> HttpResponse:
+    """The Evaluation tab's "Evaluation summary (PDF / Excel)": any active staff member (no names in it)."""
+    activity = get_object_or_404(Activity.objects.select_related("activity_type"), pk=activity_id)
+    if file_format not in GeneratedReport.Format.values:
+        raise Http404("Unknown format.")
+    return activity_file_response(services.evaluation_summary_file(request.user, activity, file_format))

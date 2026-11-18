@@ -192,6 +192,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (`evaluation_link_requested_at`, `evaluation_link_request_result`), the last email's `evaluation_link_delivery`
   (sent / printed_dev / printed_demo) by `deliver_evaluation_link`; the Evaluation tab shows them
   (`pages.link_requests`). An email that matches nobody is never stored (ASSUMPTIONS 354).
+- One participant's evaluation answers (with the name) only for can_create_activity (`INDIVIDUAL_EVALUATION_PERMISSION`,
+  `evaluation_answers`; ASSUMPTIONS 402). Everyone else gets the evaluation summary without names (ASSUMPTIONS 401).
 - Evaluation links: sent only through `deliver_evaluation_link` (row lock, sets `evaluation_link_sent_at` or `_failed_at`,
   one clears the other). First send is automatic, once per attendee, inside the 5-minute job
   (`send_automatic_evaluation_links`: Conducted + evaluation form + open window); failures are never retried
@@ -297,7 +299,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   against their tables (never a fixed list). Add a phrasing test in `assistant/tests/test_routing.py` for every change.
 - Activities and find-files answers are written by `assistant/listings.py` without Gemini (work without the key; the page
   shows "The AI is turned off…" via `gemini.is_configured()`). Periods only through `assistant/periods.py` (`parse_period`; the
-  Reports form uses `parse_range`, which adds quarters/halves/ranges and leaves `parse_period` unchanged) (Manila,
+  Reports form uses `parse_range`, which adds quarters/halves/ranges, "annual"/"yearly", a year said anywhere (`context=`) and
+  kind `ASK` for "quarterly"/"semi-annual" without which one (ASSUMPTIONS 399), and leaves `parse_period` unchanged) (Manila,
   weeks Monday–Sunday, month without a year = this year unless clearly past/future); Gemini never computes dates (the
   `list_activities_by_period` / `find_files` tools take the user's words; when only they ran, the reply is our text).
   Activities = the list's rules (`activities.services.activities_in_range`, `activity_group`, `happening_now`), drafts
@@ -418,6 +421,19 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Document compliance is SQL with the rules of `document_checklist()`; `test_compliance_parity.py` must keep passing.
 - Report types: **accomplishment and participation are the main ones**; also evaluation, document_compliance,
   certificates (`reports/content.py`: `REPORT_TYPES`, `SECTIONS`). `included_sections` = JSON list in the string column.
+- Period presets (ASSUMPTIONS 399): This month, Q1–Q4, First / Second half, Whole year (+ a Year choice), Custom dates. Dates
+  only from `services.preset_range(key, year)`; Alpine only looks up the server's table (`pages.date_presets`). Title and
+  download name come from the dates (`content.period_name` / `report_title`, `services.download_name`; no column):
+  "Accomplishment Report - Q3 2026", "Semi-annual … - January to June 2026", "Annual … - 2026", else "… - <range>".
+- Participants by category per activity (ASSUMPTIONS 400): `metrics.participants_by_category` + `metrics.shares` (0.1 %,
+  largest remainder, adds up to 100.0 %, None when the total is 0). Overview card + section `category_by_activity` (default in
+  Accomplishment and Participation).
+- One activity's evaluations (ASSUMPTIONS 401–402), made on request, never stored, `private, no-store`: the evaluation summary
+  (`metrics.activity_evaluation_summary`, `services.evaluation_summary_file`, `reports:evaluation_summary`, PDF/Excel, any staff,
+  text answers without names sorted A–Z, mean only: NO interpretation scale until the TBI gives one) and one participant's
+  evaluation (`registrations.services.evaluation_answers` + `INDIVIDUAL_EVALUATION_PERMISSION` = can_create_activity,
+  `services.individual_evaluation_file`, `registrations:evaluation_pdf`, PDF, no email; the dialog shows the answers only with
+  that flag; the System Administrator gets 403). Both are `ReportContent`s with `meta_lines` (the report PDF/Excel code).
 - `request_report` (can_create_activity) saves the row with an empty `file_path` and queues task `report-<id>`;
   `build_report` writes `reports/<year>/report-<id>-<type>.<ext>`. State is calculated (ready/failed/pending).
   Reports are never deleted; generating again = new row. Download only via `reports.views.download_report`.
@@ -696,6 +712,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   step, deploy checks, token-free logs, noindex/robots, "Review version" label, privacy notice + required consent checkbox,
   startup sync switch, create_first_admin / create_review_startup, Gelasio font, backups, docs/DEPLOY.md (391–398).
   No database or ERD change.
+- Corrections after UAT, review round 1 (2026-11-17, NAVIGATU comments): quarterly / semi-annual / annual period presets with a
+  Year choice and period titles and file names (399), participants by category per activity (400), evaluation summary per
+  activity (401), one participant's evaluation for can_create_activity only (402). No database or ERD change, no migration.
 
 ## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
 - NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.
@@ -759,7 +778,7 @@ pytest activities                         # one app (or a file: pytest activitie
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Remove-Item Env:BROWSER_TESTS   # modals in Chromium
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_browser.py; Remove-Item Env:BROWSER_TESTS   # document rows: titles wrap by words
-$env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
+$env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time
 ```

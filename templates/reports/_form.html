@@ -7,8 +7,9 @@ card, and the full fields under "More settings" (closed unless Generate was refu
 
 ONE form: only reports/_form_fields.html has named fields, so Generate (either button) posts exactly what
 reports.services.request_report reads. The summary card's controls have no names; they mirror the same Alpine values
-(type, range, start/end, activityType, format, sections, aiSummary): the one approved exception to "only the keyboard,
-the chips and More settings are Alpine". Every value is checked by the services, never here.
+(type, range, year, start/end, activityType, format, sections, aiSummary): the one approved exception to "only the keyboard,
+the chips and More settings are Alpine". Every value is checked by the services, never here. The dates of a period
+choice come from the server's table (preset_dates, ASSUMPTIONS 399); Alpine only looks them up.
 {% endcomment %}
 <form id="report-form" method="post" action="{% url 'reports:list' %}" novalidate class="px-6 pt-3 pb-6"
       x-data="{
@@ -16,15 +17,19 @@ the chips and More settings are Alpine". Every value is checked by the services,
         sections: JSON.parse(document.getElementById('report-sections-data').textContent),
         defaults: JSON.parse(document.getElementById('report-type-defaults').textContent),
         presets: JSON.parse(document.getElementById('report-presets').textContent),
-        range: '{{ form.range_key|escapejs }}', start: '{{ form.start|escapejs }}', end: '{{ form.end|escapejs }}',
+        dates: JSON.parse(document.getElementById('report-preset-dates').textContent),
+        range: '{{ form.range_key|escapejs }}', year: '{{ form.period_year|default:""|escapejs }}',
+        start: '{{ form.start|escapejs }}', end: '{{ form.end|escapejs }}',
         activityType: '{{ form.activity_type|escapejs }}', format: '{{ form.format|escapejs }}',
         aiSummary: {{ form.ai_summary|yesno:'true,false' }},
         hasText: false, busy: false,
         chooseType() { if (this.defaults[this.type]) this.sections = [...this.defaults[this.type]]; },
-        chooseRange() { const p = this.presets.find(p => p.key === this.range); if (p && p.start) { this.start = p.start; this.end = p.end; } },
+        chosen() { return (this.dates[this.year] || Object.values(this.dates)[0] || {})[this.range] || null; },
+        isYearly() { const p = this.presets.find(p => p.key === this.range); return !!(p && p.yearly); },
+        chooseRange() { const d = this.chosen(); if (d) { this.start = d.start; this.end = d.end; } },
         rangeText() {
-          const p = this.presets.find(p => p.key === this.range);
-          if (p && p.text) return p.text;
+          const d = this.chosen();
+          if (d) return d.text;
           if (!this.start || !this.end) return 'Choose the dates under More settings';
           const words = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
           return words(this.start) + ' – ' + words(this.end);
@@ -44,6 +49,7 @@ the chips and More settings are Alpine". Every value is checked by the services,
       @htmx:before-request="busy = true" @htmx:after-request="busy = false">
   {{ type_defaults|json_script:"report-type-defaults" }}
   {{ presets|json_script:"report-presets" }}
+  {{ preset_dates|json_script:"report-preset-dates" }}
   {{ form.sections|json_script:"report-sections-data" }}
   {% csrf_token %}
   {% if form.errors %}
@@ -99,9 +105,14 @@ the chips and More settings are Alpine". Every value is checked by the services,
           <div class="flex items-start gap-3">
             <label for="summary-range" class="mt-2.5 w-28 shrink-0 text-sm font-semibold text-ink">Period</label>
             <div class="min-w-0 flex-1">
-              <select id="summary-range" class="field-input field-select" x-model="range" @change="chooseRange(); if (range === 'custom') openMore('report-start')">
-                {% for preset in presets %}<option value="{{ preset.key }}"{% if preset.key == form.range_key %} selected{% endif %}>{{ preset.label }}</option>{% endfor %}
-              </select>
+              <div class="flex gap-2">
+                <select id="summary-range" class="field-input field-select min-w-0 flex-1" x-model="range" @change="chooseRange(); if (range === 'custom') openMore('report-start')">
+                  {% for preset in presets %}<option value="{{ preset.key }}"{% if preset.key == form.range_key %} selected{% endif %}>{{ preset.label }}</option>{% endfor %}
+                </select>
+                <select id="summary-year" class="field-input field-select w-28 shrink-0" x-model="year" @change="chooseRange()" x-show="isYearly()" aria-label="Year"{% if form.range_key == "this_month" or form.range_key == "custom" %} x-cloak{% endif %}>
+                  {% for year in years %}<option value="{{ year }}"{% if year == form.period_year %} selected{% endif %}>{{ year }}</option>{% endfor %}
+                </select>
+              </div>
               <p id="summary-range-text" class="mt-0.5 text-xs text-muted" x-text="rangeText()">{{ form.range_text }}</p>
             </div>
           </div>

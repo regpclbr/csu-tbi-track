@@ -11,7 +11,9 @@ or the future:
 
 `parse_range(text, now)` (the Reports form, ASSUMPTIONS 384) also reads quarters ("this quarter", "Q1 2026"), halves
 ("first half of 2025") and ranges ("January to June", "between March and May", "2026-01-01 to 2026-03-31"), then falls
-back to parse_period(). parse_period() does not read them, so the AI Assistant is unchanged.
+back to parse_period(). parse_period() does not read them, so the AI Assistant is unchanged. Since ASSUMPTIONS 399 it
+also reads "annual" / "yearly" (the whole year), takes a year written anywhere in the request ("Q3 report for 2025"),
+and answers "quarterly" / "semi-annual" without saying which one with kind ASK (the form then asks for it).
 
 Pure functions: `now` is passed in (tests fix it), and only the date in Manila matters.
 """
@@ -24,6 +26,8 @@ from datetime import date, datetime, timedelta
 from django.utils import timezone
 
 RANGE, UPCOMING, NOW = "range", "upcoming", "now"
+# "quarterly" / "semi-annual" without saying which quarter or half (parse_range only, ASSUMPTIONS 399).
+ASK = "ask"
 
 MONTHS = {
     "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3, "april": 4, "apr": 4, "may": 5,
@@ -212,6 +216,10 @@ QUARTER_NUMBER = re.compile(rf"\b(?:q([1-4])|(first|1st|second|2nd|third|3rd|fou
 YEAR_QUARTER = re.compile(rf"\b{_YEAR}\s+q([1-4])\b")
 HALF = re.compile(rf"\b(?:h([12])|(first|1st|second|2nd)\s+half)\b(?:\s+(?:of\s+)?(?:the\s+)?(?:year\s+)?{_YEAR}\b)?")
 YEAR_HINT = re.compile(r"\b(last|previous|past|next|this)\s+year\b")
+# Report frequencies (ASSUMPTIONS 399). "semi-annual" is checked before "annual".
+SEMI_ANNUAL = re.compile(r"\b(?:semi-?\s?annual(?:ly)?|half-?\s?yearly|bi-?annual)\b")
+ANNUAL = re.compile(r"\b(?:annual(?:ly)?|yearly)\b")
+QUARTERLY = re.compile(r"\bquarterly\b")
 
 
 def quarter_period(year: int, quarter: int) -> Period:
@@ -226,17 +234,24 @@ def half_period(year: int, half: int) -> Period:
     return Period(start, end, range_label(start, end))
 
 
-def _hinted_year(text: str, today: date) -> int:
-    """A quarter / half / month range named without a year: this year, or "last year" / "next year" said elsewhere."""
-    match = YEAR_HINT.search(text)
+def _hinted_year(text: str, today: date, context: str = "") -> int:
+    """A quarter / half / month range named without a year next to it: a year written elsewhere in the text ("Q3
+    report for 2025"), else in `context` (the whole request, when `text` is only Gemini's period words), else this
+    year, or "last year" / "next year" said elsewhere."""
+    for source in (text, context):
+        if match := YEAR_ONLY.search(source):
+            return int(match.group(1))
+    match = YEAR_HINT.search(text) or YEAR_HINT.search(context)
     step = {"last": -1, "previous": -1, "past": -1, "next": 1, "this": 0}[match.group(1)] if match else 0
     return today.year + step
 
 
-def parse_range(text: str, now: datetime) -> Period | None:
-    """A period for the report form: the ranges above first, then everything parse_period() reads."""
+def parse_range(text: str, now: datetime, context: str = "") -> Period | None:
+    """A period for the report form: the ranges above first, then everything parse_period() reads. `context`: the
+    whole request when `text` is only Gemini's period words (a year said elsewhere in it still counts)."""
     clean = " ".join((text or "").lower().replace("’", "'").split())
     clean = BETWEEN.sub(lambda m: f"{m.group(1)} to ", clean)
+    context = " ".join((context or "").lower().replace("’", "'").split())
     today = _today(now)
 
     if match := ISO_RANGE.search(clean):
@@ -254,7 +269,7 @@ def parse_range(text: str, now: datetime) -> Period | None:
             end_year = int(last_year)
             start_year = int(first_year) if first_year else (end_year if first_month <= last_month else end_year - 1)
         else:
-            start_year = int(first_year) if first_year else _hinted_year(clean, today)
+            start_year = int(first_year) if first_year else _hinted_year(clean, today, context)
             end_year = start_year if first_month <= last_month else start_year + 1
         start, end = date(start_year, first_month, 1), month_period(end_year, last_month).end
         if start <= end:
@@ -268,10 +283,19 @@ def parse_range(text: str, now: datetime) -> Period | None:
         return quarter_period(int(match.group(1)), int(match.group(2)))
     if match := QUARTER_NUMBER.search(clean):
         quarter = int(match.group(1)) if match.group(1) else _ORDINALS[match.group(2)]
-        return quarter_period(int(match.group(3)) if match.group(3) else _hinted_year(clean, today), quarter)
+        return quarter_period(int(match.group(3)) if match.group(3) else _hinted_year(clean, today, context), quarter)
     if match := HALF.search(clean):
         half = int(match.group(1)) if match.group(1) else _ORDINALS[match.group(2)]
-        return half_period(int(match.group(3)) if match.group(3) else _hinted_year(clean, today), half)
+        return half_period(int(match.group(3)) if match.group(3) else _hinted_year(clean, today, context), half)
+
+    # Frequencies (ASSUMPTIONS 399): "annual report 2026" = the whole year; "quarterly" / "semi-annual" alone do not
+    # say which quarter or half, so the form asks (the dates are never guessed).
+    if SEMI_ANNUAL.search(clean):
+        return Period(None, None, "semi-annual", ASK)
+    if ANNUAL.search(clean):
+        return year_period(_hinted_year(clean, today, context))
+    if QUARTERLY.search(clean):
+        return Period(None, None, "quarterly", ASK)
 
     return parse_period(text, now)
 

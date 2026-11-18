@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
@@ -21,7 +21,10 @@ from activities.models import Activity
 from config.mail import email_sent_message
 
 from . import pages, services
-from .models import FormField, FormTemplate, FormType, Registration
+from reports import services as report_services
+from reports.page_views import activity_file_response
+
+from .models import EvaluationSubmission, FormField, FormTemplate, FormType, Registration
 
 
 def _activity(activity_id: int) -> Activity:
@@ -177,7 +180,22 @@ def registration_detail(request: HttpRequest, activity_id: int, registration_id:
         pk=registration_id, activity_id=activity_id,
     )
     return render(request, "registrations/_registration_detail.html",
-                  {"registration": registration, "answers": pages.answer_rows(registration)})
+                  {"registration": registration, "answers": pages.answer_rows(registration),
+                   "evaluation": pages.evaluation_detail(request.user, registration)})
+
+
+@permission_required(services.INDIVIDUAL_EVALUATION_PERMISSION)
+@require_GET
+def evaluation_pdf(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
+    """One participant's submitted evaluation as PDF (ASSUMPTIONS 402): can_create_activity only (403 otherwise, also
+    checked in the service); 404 when the registration is not this activity's or has not evaluated."""
+    registration = get_object_or_404(Registration.objects.select_related("activity__activity_type"),
+                                     pk=registration_id, activity_id=activity_id)
+    try:
+        file = report_services.individual_evaluation_file(request.user, registration)
+    except EvaluationSubmission.DoesNotExist:
+        raise Http404("This registration has no evaluation.") from None
+    return activity_file_response(file)
 
 
 def _attendance_request(post) -> tuple[list[str], bool]:

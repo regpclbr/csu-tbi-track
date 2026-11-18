@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.utils import timezone
 
-from assistant.periods import NOW, RANGE, UPCOMING, parse_period, parse_range, range_label
+from assistant.periods import ASK, NOW, RANGE, UPCOMING, parse_period, parse_range, range_label
 
 MANILA = ZoneInfo("Asia/Manila")
 
@@ -209,6 +209,39 @@ def test_date_ranges_and_the_fallback_to_parse_period() -> None:
     assert span("January and June") == (date(2026, 1, 1), date(2026, 1, 31))  # two months, not a range
     assert parse_range("upcoming", MONDAY).kind == UPCOMING
     assert parse_range("a report please", MONDAY) is None
+
+
+# --- Quarterly, semi-annual and annual reports (ASSUMPTIONS 399) ------------------------------------------------
+
+
+def test_report_frequencies() -> None:
+    assert span("quarterly report for Q3") == (date(2026, 7, 1), date(2026, 9, 30))
+    assert span("annual report 2026") == (date(2026, 1, 1), date(2026, 12, 31))
+    assert span("annual report 2025") == (date(2025, 1, 1), date(2025, 12, 31))
+    assert span("annual report") == (date(2026, 1, 1), date(2026, 12, 31))  # no year: this year
+    assert span("yearly accomplishment report for last year") == (date(2025, 1, 1), date(2025, 12, 31))
+    assert span("semi-annual report, first half 2025") == (date(2025, 1, 1), date(2025, 6, 30))
+    assert span("semi-annual report January to June") == (date(2026, 1, 1), date(2026, 6, 30))
+    assert span("semiannual report second half") == (date(2026, 7, 1), date(2026, 12, 31))
+
+
+def test_a_year_said_anywhere_counts() -> None:
+    assert span("Q3 report for 2025") == (date(2025, 7, 1), date(2025, 9, 30))  # before: this year
+    assert span("first half report, year 2024") == (date(2024, 1, 1), date(2024, 6, 30))
+    assert span("January to June report for 2025") == (date(2025, 1, 1), date(2025, 6, 30))
+    # Gemini's period words alone ("Q3") with the whole request as context
+    period = parse_range("Q3", MONDAY, context="Quarterly report, Q3 of the year 2025")
+    assert (period.start, period.end) == (date(2025, 7, 1), date(2025, 9, 30))
+    assert span("Q3") == (date(2026, 7, 1), date(2026, 9, 30))  # no context: this year
+
+
+@pytest.mark.parametrize("text, which", [
+    ("quarterly report", "quarterly"), ("quarterly participation report in Excel", "quarterly"),
+    ("semi-annual report", "semi-annual"), ("half-yearly report", "semi-annual"), ("semi annual report 2026", "semi-annual"),
+])
+def test_quarterly_or_semi_annual_without_saying_which_asks(text, which) -> None:
+    period = parse_range(text, MONDAY)
+    assert (period.kind, period.label, period.start, period.end) == (ASK, which, None, None)
 
 
 def test_parse_period_is_unchanged_for_the_assistant() -> None:

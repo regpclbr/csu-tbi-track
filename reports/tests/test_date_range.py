@@ -119,8 +119,8 @@ def test_pdf_header_shows_the_exact_range_in_words(director, queued, make_activi
     make_activity(start=date(2026, 3, 10))
     services.build_report(request(director, "2026-01-01", "2026-06-30").pk, now=TEST_NOW)
     text = fake_pdf_renderer.last_text()
-    assert "Accomplishment Report: January 1 – June 30, 2026" in text
-    assert "Period: January 1 – June 30, 2026 (2026-01-01 to 2026-06-30)" in text
+    assert "Semi-annual Accomplishment Report - January to June 2026" in text  # a named period (ASSUMPTIONS 399)
+    assert "Period: January to June 2026 (January 1 – June 30, 2026) (2026-01-01 to 2026-06-30)" in text
 
 
 def test_excel_report_info_sheet_shows_the_exact_range(director, queued, make_activity) -> None:
@@ -131,7 +131,7 @@ def test_excel_report_info_sheet_shows_the_exact_range(director, queued, make_ac
     workbook = load_workbook(report.file_path.path)
     assert workbook.sheetnames[0] == "Report info"
     rows = {row[0].value: row[1].value for row in workbook["Report info"].iter_rows(min_row=7)}
-    assert rows["Period"] == "January 1 – June 30, 2026"
+    assert rows["Period"] == "January to June 2026 (January 1 – June 30, 2026)"
     assert rows["Period start"].date() == date(2026, 1, 1) and rows["Period end"].date() == date(2026, 6, 30)
     assert "Result" not in rows  # there were conducted activities
 
@@ -157,7 +157,7 @@ def test_future_range_is_allowed_and_says_no_conducted_activities(director, queu
     report.refresh_from_db()
 
     html, text = fake_pdf_renderer.last, fake_pdf_renderer.last_text()
-    assert "Period: January 1 – June 30, 2027" in text
+    assert "Period: January to June 2027 (January 1 – June 30, 2027)" in text
     assert text.count(NO_ACTIVITIES) >= 5  # the header notice and each period section
     assert "<table" not in html and "<svg" not in html  # no empty tables, no empty charts
     assert "AI summary not included: no conducted activities in this period." in text

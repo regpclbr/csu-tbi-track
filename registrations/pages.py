@@ -16,7 +16,7 @@ from config.mail import prints_emails
 from reports import services as report_services
 
 from . import services
-from .models import DefaultFormField, FieldType, FormField, FormTemplate, FormType, Registration
+from .models import DefaultFormField, EvaluationSubmission, FieldType, FormField, FormTemplate, FormType, Registration
 
 REGISTRATIONS_PER_PAGE = 20
 LINK_ROWS_PER_PAGE = 20
@@ -196,6 +196,17 @@ def answer_rows(registration: Registration) -> list[tuple[str, str]]:
             value = ", ".join(services.parse_options(value))
         rows.append((answer.field.field_label, value))
     return rows
+
+
+def evaluation_detail(member, registration: Registration) -> dict | None:
+    """The registration dialog's "Evaluation answers" (ASSUMPTIONS 402): services.evaluation_answers for staff who
+    may see individual evaluations, else None (the dialog then shows a note; the summary has no names)."""
+    if not services.can_view_individual_evaluations(member):
+        return None
+    try:
+        return services.evaluation_answers(member, registration)
+    except EvaluationSubmission.DoesNotExist:
+        return None
 
 
 def attendance_sheet_rows(activity: Activity) -> list[dict]:

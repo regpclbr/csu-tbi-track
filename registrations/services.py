@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, require_permission
+from accounts.permissions import Permission, has_permission, require_permission
 from activities.formatting import format_date, format_datetime, format_time, format_time_range
 from activities.models import Activity, ActivityStatus, ParticipantCategory
 from activities.services import activity_start_end, is_registration_open, open_for_registration, slots_remaining
@@ -146,6 +146,45 @@ def check_privacy_consent(value) -> None:
 def parse_options(raw: str) -> list[str]:
     """The options stored in a field ('' means no options)."""
     return json.loads(raw) if raw else []
+
+
+# --- One participant's evaluation (ASSUMPTIONS 402) -------------------------------------------------------------------
+# Answers shown WITH the participant's name only to staff who can create activities (owner decision 2026-11-17: the
+# Director, both Project Heads, Admin Staff). Everyone else, the System Administrator included, sees only the
+# evaluation summary without names (reports.services.evaluation_summary_file).
+
+INDIVIDUAL_EVALUATION_PERMISSION = Permission.CREATE_ACTIVITY
+
+
+def can_view_individual_evaluations(member) -> bool:
+    return has_permission(member, INDIVIDUAL_EVALUATION_PERMISSION)
+
+
+def evaluation_answers(member: TBIMember, registration: Registration) -> dict:
+    """One registration's submitted evaluation: name, category, name on the certificate, when, every answer in the
+    form's order (checkbox answers joined, ratings as "4 / 5", empty as "") and the comments. Never the email or the
+    contact number. PermissionDenied without can_create_activity; EvaluationSubmission.DoesNotExist when the
+    registration has not evaluated (the views answer 404)."""
+    require_permission(member, INDIVIDUAL_EVALUATION_PERMISSION)
+    submission = EvaluationSubmission.objects.select_related("registration__participant_category").get(registration=registration)
+    answers = sorted(submission.answers.select_related("field"), key=lambda answer: (answer.field.sort_order, answer.field_id))
+    rows = []
+    for answer in answers:
+        value = answer.answer_value or ""
+        if answer.field.field_type == FieldType.CHECKBOX:
+            value = ", ".join(parse_options(value))
+        elif answer.field.field_type == FieldType.RATING and value.strip():
+            value = f"{value.strip()} / {RATING_RANGE[-1]}"
+        rows.append({"question": answer.field.field_label, "answer": value, "field_type": answer.field.field_type})
+    return {
+        "registration": registration,
+        "name": registration.name,
+        "category": submission.registration.participant_category.name,
+        "certificate_name": submission.certificate_name,
+        "submitted_at": submission.submitted_at,
+        "rows": rows,
+        "comments": submission.comments.strip(),
+    }
 
 
 def clean_options(field_type: str, options) -> str:

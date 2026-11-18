@@ -2,7 +2,8 @@
     $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS
 It fills the TEST database with the demo data (seed_demo: invented names, never the development database) plus one
 activity with a very long title, venue and an unbroken word, builds every report type (its default sections) and one
-report with every section, lays each out with WeasyPrint and fails if any box on any page reaches past the page content
+report with every section, plus one activity's evaluation summary and one participant's evaluation (ASSUMPTIONS
+401-402, with a very long text answer), lays each out with WeasyPrint and fails if any box on any page reaches past the page content
 area, or any text past its table cell. With PDF_LAYOUT_OUT=<folder> the PDFs are also written there, and with pypdfium2
 (requirements-dev.txt) the first pages as PNG images too.
 """
@@ -98,6 +99,29 @@ def overflows(page, page_number: int, name: str) -> list[str]:
     return problems
 
 
+def evaluation_contents() -> dict:
+    """One demo activity's evaluation summary and one participant's evaluation, with a long unbroken text answer."""
+    from accounts.models import TBIMember
+    from registrations.models import EvaluationSubmission, FieldType, FormAnswer, FormField
+    from registrations.services import evaluation_answers
+    from reports.metrics import activity_evaluation_summary
+
+    submission = EvaluationSubmission.objects.select_related("registration__activity__activity_type").order_by("pk").first()
+    assert submission, "seed_demo made no evaluations"
+    field = FormField.objects.create(template=submission.template, field_label="What should we improve next time?",
+                                     field_type=FieldType.LONG_TEXT, sort_order=99)
+    FormAnswer.objects.create(field=field, answer_source=FormAnswer.AnswerSource.EVALUATION, evaluation_submission=submission,
+                              answer_value=("More hands-on exercises and a longer pitching session. " * 8) + LONG_WORD)
+    activity, director = submission.registration.activity, TBIMember.objects.get(email="director@demo.example.com")
+    now = timezone.now()
+    return {
+        "evaluation-summary": report_content.build_evaluation_summary(
+            activity, activity_evaluation_summary(activity), generated_by="Demo Director", generated_at=now),
+        "individual-evaluation": report_content.build_individual_evaluation(
+            activity, evaluation_answers(director, submission.registration), generated_by="Demo Director", generated_at=now),
+    }
+
+
 def write_pngs(pdf_path: Path, pages: int) -> None:
     try:
         import pypdfium2
@@ -129,7 +153,7 @@ def test_no_report_pdf_is_cut_off(weasyprint, settings, tmp_path) -> None:
         out.mkdir(parents=True, exist_ok=True)
     fetcher = weasyprint.URLFetcher(allowed_protocols=["data"])  # as certificates.pdf.WeasyPrintRenderer
 
-    problems = []
+    contents = {}
     for name, sections in reports.items():
         report_type = name if name in REPORT_TYPES else "accomplishment"
         content = report_content.build_content(
@@ -140,6 +164,11 @@ def test_no_report_pdf_is_cut_off(weasyprint, settings, tmp_path) -> None:
         assert content.has_activities, "seed_demo made no conducted activities in the last year"
         if activities := content.section("activities"):
             assert any(LONG_WORD in row[0] for row in activities.tables[0].rows), "the long-text activity is missing"
+        contents[name] = content
+    contents.update(evaluation_contents())
+
+    problems = []
+    for name, content in contents.items():
         document = weasyprint.HTML(string=report_html(content), url_fetcher=fetcher).render()
         found = [problem for number, page in enumerate(document.pages, start=1)
                  for problem in overflows(page, number, name)]

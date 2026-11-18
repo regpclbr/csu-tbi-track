@@ -22,6 +22,11 @@ urlpatterns = [
         page_views.registration_detail,
         name="registration_detail",
     ),
+    path(
+        "activities/<int:activity_id>/registrations/<int:registration_id>/evaluation.pdf",
+        page_views.evaluation_pdf,
+        name="evaluation_pdf",
+    ),
     path("activities/<int:activity_id>/attendance/", page_views.attendance, name="attendance"),
     path("activities/<int:activity_id>/evaluation-links/", page_views.send_links, name="send_links"),
     path("activities/<int:activity_id>/attendance-sheet/", page_views.attendance_sheet, name="attendance_sheet"),

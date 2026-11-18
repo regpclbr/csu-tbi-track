@@ -26,12 +26,16 @@ from accounts.permissions import Permission, require_permission, require_staff_m
 from activities.models import Activity, ActivityType
 from activities.services import PageResult, _paginate, happening_now
 from assistant import gemini
-from assistant.periods import parse_range
+from assistant.periods import ASK, half_period, parse_range, quarter_period, year_period
 from config import ratelimit
 from config.files import write_file_atomically
 
+from . import content as content_module
 from . import excel, metrics, narrative, pdf, request_reader
-from .content import AI_SUMMARY, REPORT_TYPES, SECTIONS, ReportContent, build_content, ordered_sections, range_in_words
+from .content import (
+    AI_SUMMARY, FREQUENCY_WORDS, REPORT_TYPES, SECTIONS, ReportContent, build_content, ordered_sections, period_name,
+    range_in_words,
+)
 from .models import GeneratedReport
 
 logger = logging.getLogger("reports")
@@ -93,6 +97,51 @@ def activity_evaluation(member: TBIMember, activity) -> dict:
     return metrics.activity_evaluation_results(activity)
 
 
+def activity_participants_by_category(member: TBIMember, activity) -> dict:
+    """One activity's registered / attended per participant category with percentages (ASSUMPTIONS 400), for any
+    active staff member (counts only, no names), like the activity page itself."""
+    require_staff_member(member)
+    return metrics.participants_by_category([activity.pk])[activity.pk]
+
+
+@dataclass
+class ActivityFile:
+    """A PDF or Excel file made on request for one activity (never stored, never a GENERATED_REPORT row)."""
+
+    data: bytes
+    name: str
+    content_type: str
+
+
+def evaluation_summary_file(member: TBIMember, activity, file_format: str, now: datetime | None = None) -> ActivityFile:
+    """One activity's evaluation summary as PDF or Excel (ASSUMPTIONS 401), for any active staff member like the
+    Evaluation tab: counts, rating frequencies and means, and text answers WITHOUT names. Made on request (small),
+    through the report renderers (the PDF via certificates.pdf.get_renderer)."""
+    require_staff_member(member)
+    if file_format not in GeneratedReport.Format.values:
+        raise ValidationError({"format": ["Choose pdf or excel."]})
+    content = content_module.build_evaluation_summary(
+        activity, metrics.activity_evaluation_summary(activity), generated_by=member.name,
+        generated_at=now or timezone.now())
+    extension = EXTENSIONS[file_format]
+    data = pdf.render_report_pdf(content) if file_format == GeneratedReport.Format.PDF else excel.build_workbook(content)
+    return ActivityFile(data, f"evaluation-summary-activity-{activity.pk}.{extension}", CONTENT_TYPES[extension])
+
+
+def individual_evaluation_file(member: TBIMember, registration, now: datetime | None = None) -> ActivityFile:
+    """One participant's submitted evaluation as PDF (ASSUMPTIONS 402). The permission (can_create_activity) and the
+    answers come from registrations.services.evaluation_answers (PermissionDenied / EvaluationSubmission.DoesNotExist).
+    The file name holds IDs only, never the participant's name."""
+    from registrations.services import evaluation_answers
+
+    answers = evaluation_answers(member, registration)
+    activity = registration.activity
+    content = content_module.build_individual_evaluation(activity, answers, generated_by=member.name,
+                                                         generated_at=now or timezone.now())
+    return ActivityFile(pdf.render_report_pdf(content),
+                        f"evaluation-activity-{activity.pk}-registration-{registration.pk}.pdf", CONTENT_TYPES["pdf"])
+
+
 def filters_json(filters: metrics.ReportFilters) -> dict:
     return {
         "start": filters.start,
@@ -124,6 +173,43 @@ def sections_of(report: GeneratedReport) -> list[str]:
     except json.JSONDecodeError:
         return []
     return ordered_sections(sections) if isinstance(sections, list) else []
+
+
+# --- Period presets (ASSUMPTIONS 399) ------------------------------------------------------------------------------
+# Quarters, halves and the whole year of a chosen year. The dates come only from here (assistant.periods' calendar
+# quarters and halves), never from Gemini or JavaScript: the form gets them as a table made by reports.pages.
+
+PERIOD_PRESETS: dict[str, str] = {
+    "q1": "Q1 (Jan–Mar)",
+    "q2": "Q2 (Apr–Jun)",
+    "q3": "Q3 (Jul–Sep)",
+    "q4": "Q4 (Oct–Dec)",
+    "h1": "First half (Jan–Jun)",
+    "h2": "Second half (Jul–Dec)",
+    "year": "Whole year (Jan–Dec)",
+}
+PRESET_MIN_YEAR, PRESET_MAX_YEAR = 2000, 2100
+
+
+def preset_range(key: str, year: int) -> tuple[date, date] | None:
+    """The dates of a preset in `year` (Q3 2026 = Jul 1 – Sep 30, 2026), or None for an unknown key or year."""
+    if key not in PERIOD_PRESETS or not PRESET_MIN_YEAR <= year <= PRESET_MAX_YEAR:
+        return None
+    if key == "year":
+        period = year_period(year)
+    elif key.startswith("h"):
+        period = half_period(year, int(key[1]))
+    else:
+        period = quarter_period(year, int(key[1]))
+    return period.start, period.end
+
+
+def matching_preset(start: date, end: date) -> tuple[str, int] | None:
+    """(key, year) of the preset that gives exactly these dates, or None."""
+    for key in PERIOD_PRESETS:
+        if preset_range(key, start.year) == (start, end):
+            return key, start.year
+    return None
 
 
 # --- Requesting a report ----------------------------------------------------------------------------
@@ -219,6 +305,11 @@ FILL_NOT_UNDERSTOOD = "The request could not be read. Nothing was changed; fill 
 FILL_RATE_SCOPE = "report_form_fill"
 MAX_UNSUPPORTED_SHOWN, MAX_QUOTE_CHARS = 3, 80
 FILL_CONDUCTED_ONLY = "Reports include only Conducted activities. For upcoming activities, ask the AI Assistant."
+# "quarterly" / "semi-annual" without saying which one (ASSUMPTIONS 399): the dates are never guessed.
+FILL_WHICH = {
+    "quarterly": "Which quarter? Choose the quarter and the year under Period; the dates were not changed.",
+    "semi-annual": "Which half? Choose First half or Second half and the year under Period; the dates were not changed.",
+}
 # Our own topic words (never Gemini's): the activity list, certificates, and activities that have not happened yet.
 ACTIVITY_WORDS = re.compile(r"\b(?:activit(?:y|ies)(?!\s+types?\b)|events?|programs?|programmes?|trainings?|seminars?|"
                             r"workshops?|sessions?)\b", re.IGNORECASE)
@@ -283,11 +374,17 @@ def _fill_period(fill: FormFill, args: dict, request: str, now: datetime, asks_u
     """Dates from OUR parser: Gemini's period words only when they are in the request, else the request itself.
     Returns False when the request says nothing about a period."""
     words = _quoted_from_request(args.get("period_words"), request)
-    period = (parse_range(words, now) if words else None) or parse_range(request, now)
+    # Gemini's words with the whole request as context, so "Q3" still finds the "2025" said elsewhere in it.
+    period = parse_range(words, now, context=request) if words else None
+    if period is None or period.kind == ASK:
+        period = parse_range(request, now) or period
     if period is None:
         if words:
             fill.notes.append(f"Couldn't work out the period “{_short(words)}”; the dates were not changed.")
         return bool(words)
+    if period.kind == ASK:
+        fill.notes.append(FILL_WHICH[period.label])
+        return True
     if period.start is None or period.end is None:
         if not asks_upcoming:  # else FILL_CONDUCTED_ONLY explains it
             fill.notes.append(f"“{period.label}” is not a date range; the dates were not changed. Choose the dates below.")
@@ -509,7 +606,14 @@ def list_reports(filters: dict | None = None, page: int | str | None = 1, per_pa
 
 
 def download_name(report: GeneratedReport) -> str:
-    return (
-        f"{report.report_type}-report-{report.date_range_start:%Y%m%d}-{report.date_range_end:%Y%m%d}"
-        f"-{report.pk}.{EXTENSIONS[report.format]}"
-    )
+    """"accomplishment-report-q3-2026-12.pdf", "semi-annual-participation-report-jan-jun-2026-12.pdf",
+    "annual-accomplishment-report-2026-12.xlsx" for a named period (ASSUMPTIONS 399); any other range keeps
+    "accomplishment-report-20260305-20260402-12.pdf"."""
+    extension = EXTENSIONS[report.format]
+    name = period_name(report.date_range_start, report.date_range_end)
+    if name is None:
+        return (f"{report.report_type}-report-{report.date_range_start:%Y%m%d}-{report.date_range_end:%Y%m%d}"
+                f"-{report.pk}.{extension}")
+    prefix = FREQUENCY_WORDS[name.kind].strip().lower()
+    report_type = report.report_type.replace("_", "-")
+    return f"{prefix + '-' if prefix else ''}{report_type}-report-{name.slug}-{report.pk}.{extension}"

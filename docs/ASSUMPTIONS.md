@@ -435,7 +435,7 @@
 
      The response also carries a `notes` list saying this in words.
 198. **Counting by category** (completes item 94): N3 can add up to more than N1 and every output says so (dashboard note, report table note); N1 itself never counts an activity twice. N9 always adds up to the totals because each registration has exactly one category.
-199. **Evaluation results across activities.** Forms are edited per activity, so rating questions are grouped by their **label, ignoring upper/lower case and outer spaces** ("Overall rating" and " overall RATING " are one row). The row shows the label used most often, the average (2 decimals) and the number of answers; rows follow the questions' form order. Only `rating` fields are averaged (answers are "1".."5", cast to a number by the database). **Limitation:** a question renamed in one form shows as a separate row. Text answers and comments are **never** shown in reports *(TBI question: should suggestions and comments appear, without names?)*.
+199. **Evaluation results across activities.** Forms are edited per activity, so rating questions are grouped by their **label, ignoring upper/lower case and outer spaces** ("Overall rating" and " overall RATING " are one row). The row shows the label used most often, the average (2 decimals) and the number of answers; rows follow the questions' form order. Only `rating` fields are averaged (answers are "1".."5", cast to a number by the database). **Limitation:** a question renamed in one form shows as a separate row. Text answers and comments are **never** shown in reports *(TBI question: should suggestions and comments appear, without names?)*. *(2026-11-17, item 401: answered by NAVIGATU at the UAT: the per-activity evaluation summary now lists the text answers and comments without names; the period reports are unchanged.)*
 200. **Document compliance in SQL** (owner decision D1). N14, N15 and S3 are computed by the database with the **same rules** as `documents.services.document_checklist()` (item 124): only active required types; a type is complete when an Approved activity document exists (certificate evidence never counts); overdue means today (Manila) is after `start_date`/`end_date` + `due_offset_days` and nothing is Approved (on the due date itself it is not overdue). `document_checklist()` stays the only per-activity check used by the checklist, reminders and assistant. A parity test (`reports/tests/test_compliance_parity.py`) compares the two for every activity of a varied fixture, at four moments including Manila midnight, so they cannot drift apart.
 201. **One source of truth.** The dashboard API, the PDF and the Excel file all call `reports/metrics.py`; the report content (`reports/content.py`) only reshapes its results into tables. Everything is counted by the database (aggregates, EXISTS and per-row subqueries, so counts never multiply; the period is a plain join condition on the activity, `metrics.in_period()`, not "activity IN (subquery)"); Python only loops over the small results (months, rating questions, the rows of the report). Tests: the dashboard and a report give identical numbers for the same filters, and the dashboard always runs the same number of queries whatever the amount of data (18 on 2026-10-23; the test allows 20).
 202. **Dashboard API:** `GET /reports/api/dashboard/?start=YYYY-MM-DD&end=YYYY-MM-DD&activity_type=<id>`, any active staff member (`config.json.JsonResponse`). On the dashboard (only) a missing start or end takes January 1 / December 31 of the current Manila year. Dates follow item 213; an unknown activity type also gives 400. The response has `filters` (with `range_text`, the range in words), `today`, `cards` (key, label, scope, value and details such as `attended`, `attendance_rate`, `by_status`, `next`), `charts` (`per_month`, `by_type`, `by_category`, `average_rating_by_question`) and `notes`. Rates are fractions (0.85 = 85%). `python manage.py show_dashboard [--start --end --activity-type]` prints the same JSON in the terminal.
@@ -485,7 +485,7 @@
 216. **Registration emails are background tasks** (Django-Q2, `registrations/tasks.py`): the confirmation (item 109) and the evaluation links (item 115). The tasks never raise; a failure is logged as ERROR on `registrations` with the registration ID and the error type only (never the address or the link). `qcluster` must be running for these emails to go out. Tests run the tasks straight away (root conftest `registration_emails_run_now`). *(2026-11-06:)* evaluation links are sent by `services.deliver_evaluation_link`, which locks the registration row while sending and records sent/failed on it; the automatic first sending runs inside the 5-minute job (already in qcluster), with SKIP LOCKED so two runs never email the same person (item 348).
 217. **Fields for the frontend.** Activity list rows and the detail have `activity_type_id` next to the name. The detail has `registration_form_id` and `evaluation_form_id` (null until the form exists).
 218. **Lookups endpoint** `GET /api/lookups/` (any active staff member): `activity_types`, `participant_categories`, `document_types`, `activity_statuses`, `document_statuses`, `roles`, each a list of `{"id", "name"}`. Activity and document types are **active only** (an inactive one cannot be chosen); the other tables have no `is_active`, so every row is listed. Statuses are in workflow order, everything else by name.
-219. **Evaluation results of one activity** `GET /reports/api/activities/<id>/evaluation/` (any active staff member, like the dashboard): `registered`, `attended`, `evaluations`, `evaluation_response_rate` (a fraction) and, with the rules of item 199 (`reports.metrics`, the same grouping function as the reports), each rating question's average and answer count plus the overall average. Any activity status (evaluations open on the end date, item 113). Only rating questions: **never comments, text answers or names.**
+219. **Evaluation results of one activity** `GET /reports/api/activities/<id>/evaluation/` (any active staff member, like the dashboard): `registered`, `attended`, `evaluations`, `evaluation_response_rate` (a fraction) and, with the rules of item 199 (`reports.metrics`, the same grouping function as the reports), each rating question's average and answer count plus the overall average. Any activity status (evaluations open on the end date, item 113). Only rating questions: **never comments, text answers or names.** *(Unchanged: this API and the Evaluation tab. Text answers without names are in the evaluation summary file, item 401; one participant's answers with the name only for can_create_activity, item 402.)*
 220. **Strict true/false values** (`config.parsing.parse_bool`): request values that mean true or false accept only JSON `true`/`false` or the text "true"/"false" (any case, outer spaces ignored); anything else (`1`, `"yes"`, `"on"`, a list) is a 400 naming the field. This covers attendance `attended` (now required), the registrations list `attended`, form field `is_required`, the repository `searchable`, the startups list `is_active`, the template upload's `activate`, and the notifications `unread` filter (**changed from `unread=1` to `unread=true`**, staff and startup portal). Before, the text "false" counted as true for attendance.
 221. **Members API input.** `name` and `email` must be text and `role_id` a whole number (not `true`, `"3"` or `1.5`); anything else is a 400 with a clear message instead of a server error.
 222. **TBI_MEMBER email unique ignoring case** (migration `accounts/0002`): a unique index on `LOWER(email)`, like STARTUP (item 138). The migration first looks for emails that differ only in case and, if any exist, stops with their member IDs and changes nothing. Development database (2026-10-23): 7 members, no case duplicates; migrated.
@@ -1071,3 +1071,93 @@ deployment work existed, so nothing host-specific had to be removed. Step-by-ste
      carries the https SITE_URL: invitation (already), evaluation link (already), forgot password (already), **certificate
      email** (new line "CSU-TBI Track: <SITE_URL>/") and **password changed** (new "Sign in here: <SITE_URL>/accounts/login/").
      `send_test_email` also prints SITE_URL. Gmail's daily sending limit (about 500 recipients) is enough for the review.
+
+## Corrections after UAT, review round 1: reports (2026-11-17)
+
+UAT with NAVIGATU on November 17, 2026; the corrections are shown to them on November 19 (the system freezes on
+December 3). **No database or ERD change, no migration** (safe for the laptop review version's UAT data): every new
+value is worked out from existing columns, and the new files are made on request and never stored.
+
+399. **Quarterly, semi-annual and annual reports** (NAVIGATU comment).
+     - **Period choices** on Reports → New report (More settings and the summary card): This month · Q1 (Jan–Mar) · Q2
+       (Apr–Jun) · Q3 (Jul–Sep) · Q4 (Oct–Dec) · First half (Jan–Jun) · Second half (Jul–Dec) · Whole year (Jan–Dec) ·
+       Custom dates, and a **Year** choice for the quarters, halves and the whole year (this year − 5 to this year + 1,
+       plus a filled year outside that). They replace "This quarter / January – June / This year / Last year" (Q + Year
+       covers them). The default is this quarter of this year. Custom dates are unchanged.
+     - **The dates are ours**: `reports.services.preset_range(key, year)` (calendar quarters and halves from
+       `assistant.periods`, Manila calendar). Without JavaScript the server works out the dates from `range` +
+       `period_year`; with JavaScript Alpine only LOOKS UP a table the server made (`pages.date_presets`, `json_script`),
+       never computes a date. Quarters follow the calendar year *(pending validation by the TBI, see TBI_QUESTIONS)*.
+     - **"What report do you need?"** (`assistant.periods.parse_range`; `parse_period` and the AI Assistant unchanged):
+       "quarterly report for Q3" → Q3 of this year; "annual report 2026" / "yearly report" → the whole year (no year:
+       this year); "semi-annual … first half 2025" → H1 2025; a year written anywhere in the request counts ("Q3 report
+       for 2025": before, this year). Gemini's `period_words` are read with the whole request as context, so "Q3" still
+       finds the 2025. "quarterly" / "semi-annual" without saying which quarter or half → kind `ASK` and the note
+       "Which quarter? Choose the quarter and the year under Period; the dates were not changed." (never guessed). The
+       fill selects the matching preset and year (`pages.matching_range_key`; a preset wins over This month). Gemini's
+       instruction says frequency words belong to the period. One example chip: "Quarterly accomplishment report for Q3
+       (PDF)".
+     - **Title and file name** say the period, worked out from the stored dates (`content.period_name`, no column, so
+       old reports get it too): "Accomplishment Report - Q3 2026", "Semi-annual Accomplishment Report - January to June
+       2026", "Annual Accomplishment Report - 2026"; any other range "Accomplishment Report - March 5 – April 2, 2026"
+       (before: "…: …"). Download names: `accomplishment-report-q3-2026-<id>.pdf`,
+       `semi-annual-participation-report-jan-jun-2026-<id>.pdf`, `annual-accomplishment-report-2026-<id>.xlsx`; other
+       ranges keep `<type>-report-<start>-<end>-<id>`. The stored path is unchanged. The PDF header, the Excel title
+       block and Report info say "Period: Q3 2026 (July 1 – September 30, 2026)"; the history shows "Q3 2026" above the
+       dates.
+     - Tests: `reports/tests/test_period_presets.py`, `assistant/tests/test_periods.py`; opt-in Chromium
+       `reports/tests/test_report_form_browser.py` (the Year in the summary card; still fits 1366×768).
+400. **Participants by category per activity** (NAVIGATU comment).
+     - `reports.metrics.participants_by_category(activity_ids)` (two grouped queries + the names, whatever the number
+       of activities): per activity, registered and attended per participant category (REGISTRATION.participant_category)
+       and each category's share of the activity's registered / attended. An activity lists its own categories (also
+       with 0) and any other category it has registrations in (a category removed from the activity later), by name.
+     - **Rounding** (`metrics.shares`): to 0.1 % with the largest-remainder method (every share rounded down to 0.1 %,
+       the missing 0.1 %s go to the largest remainders, ties to the earlier row), so each activity's percentages add up
+       to exactly 100.0 % (1/3, 1/3, 1/3 = 33.4 + 33.3 + 33.3). Integer arithmetic only. **Blank-safe**: nobody
+       registered / attended → every share is None (PDF "—", Excel an empty cell, page "–"), never 0 % or a division by
+       zero.
+     - **Activity page → Overview**: a full-width "Participants by category" card (Category | Registered | % of
+       registered | Attended | % of attended, total row 100.0 %), any active staff member
+       (`reports.services.activity_participants_by_category`, counts only; filter `share` in `config/ui_tags.py`).
+     - **Reports**: new section `category_by_activity` "Participants by category per activity", in the default sections
+       of the Accomplishment and the Participation Report (any type may add it; stored reports keep their sections). One
+       row per activity and category (Activity, Date, Participant category, Registered, % of registered, Attended, % of
+       attended), so the Excel table can be filtered; the note explains the rounding. Excel sheet "Category per
+       activity", % as `0.0%`, formula-like titles stay text.
+     - Tests: `reports/tests/test_category_by_activity.py`; the real-WeasyPrint layout check includes it.
+401. **Evaluation summary per activity** (NAVIGATU comment; answers item 199's TBI question for one activity).
+     - Evaluation tab → "Evaluation summary (PDF)" / "(Excel)" → `GET /reports/activities/<id>/evaluation-summary/<pdf|excel>/`
+       (`reports.page_views.evaluation_summary`), **any active staff member** (like the tab; no names in it). Made on
+       request and never stored (no GENERATED_REPORT row, no new column): an attachment, `Cache-Control: private,
+       no-store`, `nosniff`; file `evaluation-summary-activity-<id>.pdf|xlsx`.
+     - Numbers: `reports.metrics.activity_evaluation_summary(activity)`: registered, attended, evaluations, response rate
+       (evaluations / attended, blank when nobody attended); per rating question of the activity's evaluation form (form
+       order) the frequency of 5, 4, 3, 2, 1, the percentage of that question's answers (`shares`, adds up to 100.0 %)
+       and the mean (2 decimals; none without answers). **No interpretation scale** (owner decision 2026-11-17: the mean
+       only until the TBI gives its scale, see TBI_QUESTIONS).
+     - **Text answers** (short and long text questions, and the Comments box): listed **without names** (never the
+       registration's name, the certificate name or the email), empty ones left out, sorted A–Z ignoring case so they
+       cannot be matched to the order of submission. A participant may still type a name inside an answer; it is shown
+       as typed. Excel keeps formula-like answers as text.
+     - Built as a `ReportContent` (`content.build_evaluation_summary`) with `meta_lines` (Activity, Dates, Activity type)
+       instead of the period lines, so the landscape PDF template, `pdf_columns` and the Excel writer are reused.
+     - Tests: `reports/tests/test_evaluation_summary.py`; the real-WeasyPrint layout check.
+402. **One participant's evaluation** (NAVIGATU comment; **owner decision 2026-11-17: only can_create_activity**).
+     - **Who**: `registrations.services.INDIVIDUAL_EVALUATION_PERMISSION` = can_create_activity (seed: Director, both
+       Project Heads, Admin Staff). Everyone else, **the System Administrator included**, sees only the evaluation
+       summary without names (item 401). Checked in `evaluation_answers()` (PermissionDenied) and on the PDF view
+       (`permission_required` → 403); never public, never `/media/`.
+     - **Registrations tab**: the "Submitted" badge opens the registration dialog (like "View"). The dialog gets an
+       "Evaluation answers" part (submitted when, name on the certificate, every answer in form order with ratings as
+       "4 / 5", the comments) and **Download evaluation (PDF)**; without the permission only the note "Only staff who
+       can create activities see a participant's evaluation answers. The evaluation summary without names is on the
+       Evaluation tab." (`registrations.pages.evaluation_detail`).
+     - **PDF**: `GET /registrations/activities/<a>/registrations/<r>/evaluation.pdf` (`registrations.page_views.evaluation_pdf`
+       → `reports.services.individual_evaluation_file`): the landscape report layout with the name, category, name on
+       the certificate, submitted date and the answers; **never the email or the contact number**. File name with IDs
+       only (`evaluation-activity-<a>-registration-<r>.pdf`), attachment, `private, no-store`. 404 when the registration
+       is not this activity's or has not evaluated.
+     - Tests: `reports/tests/test_individual_evaluation.py` (403 on the PDF and no answers in the dialog for "View Only
+       (test)" and the System Administrator).
+

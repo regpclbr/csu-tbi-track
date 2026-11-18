@@ -9,6 +9,28 @@
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Evaluation</dt><dd class="text-ink">{% if registration.evaluation_submission %}Submitted{% else %}Not submitted{% endif %}</dd></div>
   {% if registration.startup %}<div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Startup</dt><dd class="text-ink">{{ registration.startup.name }}</dd></div>{% endif %}
 </dl>
+{% if registration.evaluation_submission %}
+  {% comment %}One participant's evaluation (ASSUMPTIONS 402): answers with the name only for can_create_activity (registrations.services.evaluation_answers); others get a note.{% endcomment %}
+  <section id="evaluation" class="mt-5 border-t border-line pt-4" aria-labelledby="evaluation-answers-title">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h3 id="evaluation-answers-title" class="font-semibold text-ink">Evaluation answers</h3>
+      {% if evaluation %}
+        <a href="{% url 'registrations:evaluation_pdf' registration.activity_id registration.pk %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download evaluation (PDF)</a>
+      {% endif %}
+    </div>
+    {% if evaluation %}
+      <p class="mt-1 text-xs text-muted">Submitted {{ evaluation.submitted_at|date:"M j, Y g:i A" }} · Name on the certificate: <span class="[overflow-wrap:anywhere]">{{ evaluation.certificate_name }}</span></p>
+      <dl class="mt-2 space-y-3 text-sm" id="evaluation-answers">
+        {% for row in evaluation.rows %}
+          <div><dt class="font-medium text-slate-700">{{ row.question }}</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ row.answer|default:"–" }}</dd></div>
+        {% endfor %}
+        <div><dt class="font-medium text-slate-700">Comments</dt><dd class="mt-0.5 whitespace-pre-line [overflow-wrap:anywhere] text-ink">{{ evaluation.comments|default:"–" }}</dd></div>
+      </dl>
+    {% else %}
+      <p class="mt-2 text-sm text-muted">Only staff who can create activities see a participant's evaluation answers. The evaluation summary without names is on the Evaluation tab.</p>
+    {% endif %}
+  </section>
+{% endif %}
 <h3 class="mt-5 border-t border-line pt-4 font-semibold text-ink">Registration answers</h3>
 {% if answers %}
   <dl class="mt-2 space-y-3 text-sm">

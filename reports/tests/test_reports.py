@@ -119,7 +119,7 @@ def test_pdf_report_is_rendered_saved_and_ready(director, queued, year_data, fak
     assert Path(report.file_path.path).read_bytes().startswith(b"%PDF")
     assert services.report_state(report) == services.READY
     text = fake_pdf_renderer.last_text()
-    assert "Accomplishment Report: January 1 – December 31, 2026" in text
+    assert "Annual Accomplishment Report - 2026" in text  # a named period (ASSUMPTIONS 399)
     assert "Pitching Workshop" in text and "Activities conducted" in text and "<svg" in fake_pdf_renderer.last
     assert "Ana Dela Cruz" not in text  # reports hold totals and titles, never participant names
     # Building again (a second task) changes nothing.
@@ -139,7 +139,7 @@ def test_excel_report_has_real_numbers_formats_and_frozen_headers(director, queu
     report.refresh_from_db()
     assert report.file_path.name.endswith(".xlsx")
     workbook = load_workbook(report.file_path.path)
-    assert workbook.sheetnames == ["Report info", "Summary", "Activities", "By type", "By category", "Per month",
+    assert workbook.sheetnames == ["Report info", "Summary", "Activities", "By type", "By category", "Category per activity", "Per month",
                                    "Evaluation"]
     activities = workbook["Activities"]
     assert activities.freeze_panes == "A8"  # the title block (5 rows + 1 blank), then the header on row 7
@@ -269,7 +269,7 @@ def test_any_active_staff_member_downloads_as_an_attachment(ready_report, view_o
     response = login(view_only).get(reverse("reports:download", args=[ready_report.pk]))
     assert response.status_code == 200
     assert response["Content-Disposition"].startswith("attachment;")
-    assert f"accomplishment-report-20260101-20261231-{ready_report.pk}.xlsx" in response["Content-Disposition"]
+    assert f"annual-accomplishment-report-2026-{ready_report.pk}.xlsx" in response["Content-Disposition"]
     assert response["X-Content-Type-Options"] == "nosniff"
     assert response["Content-Type"].startswith("application/vnd.openxmlformats")
     load_workbook(BytesIO(b"".join(response.streaming_content)))

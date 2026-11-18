@@ -42,7 +42,7 @@ from activities.models import Activity, ActivityParticipantCategory, ActivitySta
 from certificates.models import Certificate
 from documents.models import Document, DocumentStatus, DocumentType
 from documents.services import due_date, today_in_manila
-from registrations.models import EvaluationSubmission, FieldType, FormAnswer, Registration
+from registrations.models import EvaluationSubmission, FieldType, FormAnswer, FormField, FormType, Registration
 from startups.models import Startup
 
 PERIOD = "period"  # depends on the date range
@@ -325,6 +325,64 @@ def by_category(filters: ReportFilters) -> list[dict]:
     return [_with_rate(row) for row in rows]
 
 
+def shares(counts: list[int]) -> list[float | None]:
+    """Each count's share of their sum as a fraction rounded to 0.1 % (0.333 = 33.3 %), so that the shares add up to
+    exactly 100.0 % (ASSUMPTIONS 400): every share is rounded down to 0.1 %, then the 0.1 %s still missing go to the
+    largest remainders (ties: the earlier row). Integers only, so no float rounding surprises. Blank-safe: when the sum
+    is 0 every share is None (shown blank, never 0 % and never a division by zero)."""
+    total = sum(counts)
+    if not total:
+        return [None] * len(counts)
+    units = 1000  # tenths of a percent
+    tenths = [count * units // total for count in counts]
+    remainders = [count * units % total for count in counts]
+    for index in sorted(range(len(counts)), key=lambda i: (-remainders[i], i))[: units - sum(tenths)]:
+        tenths[index] += 1
+    return [value / units for value in tenths]
+
+
+def participants_by_category(activity_ids: list[int]) -> dict[int, dict]:
+    """Registered and attended per participant category for each of these activities, with each category's share of
+    the activity's registered / attended (`shares`, adds up to 100.0 %; None when nobody registered / attended)
+    (ASSUMPTIONS 400). An activity lists its own categories (ACTIVITY_PARTICIPANT_CATEGORY) and any other category it
+    has registrations in, also with zero, by name. Two queries, whatever the number of activities.
+
+    Returns {activity_id: {"registered": n, "attended": n, "rows": [{"participant_category_id", "category",
+    "registered", "registered_share", "attended", "attended_share"}]}}."""
+    counts = (
+        Registration.objects.filter(activity_id__in=activity_ids)
+        .order_by()
+        .values("activity_id", "participant_category_id")
+        .annotate(registered=Count("pk"), attended=Count("pk", filter=Q(attendance_confirmed=True)))
+    )
+    found: dict[int, dict[int, dict]] = {activity_id: {} for activity_id in activity_ids}
+    for row in counts:
+        found[row["activity_id"]][row["participant_category_id"]] = row
+    links = ActivityParticipantCategory.objects.filter(activity_id__in=activity_ids).values_list(
+        "activity_id", "participant_category_id")
+    for activity_id, category_id in links:
+        found[activity_id].setdefault(category_id, {"registered": 0, "attended": 0})
+    category_ids = {category_id for per_activity in found.values() for category_id in per_activity}
+    names = dict(ParticipantCategory.objects.filter(pk__in=category_ids).values_list("pk", "name"))
+
+    result = {}
+    for activity_id, per_activity in found.items():
+        ordered = sorted(per_activity.items(), key=lambda item: (names[item[0]].lower(), item[0]))
+        registered = [row["registered"] for _id, row in ordered]
+        attended = [row["attended"] for _id, row in ordered]
+        result[activity_id] = {
+            "registered": sum(registered),
+            "attended": sum(attended),
+            "rows": [
+                {"participant_category_id": category_id, "category": names[category_id],
+                 "registered": row["registered"], "registered_share": registered_share,
+                 "attended": row["attended"], "attended_share": attended_share}
+                for (category_id, row), registered_share, attended_share in zip(ordered, shares(registered), shares(attended))
+            ],
+        }
+    return result
+
+
 def per_month(filters: ReportFilters) -> list[dict]:
     """N4: period activities per month of their end_date, with registered and attended.
     Every month of the range is listed, also with zero."""
@@ -377,6 +435,69 @@ def activity_evaluation_results(activity: Activity) -> dict:
         "evaluations": counts["evaluations"],
         "evaluation_response_rate": rate(counts["evaluations"], counts["attended"]),
         **ratings,
+    }
+
+
+RATING_VALUES = (5, 4, 3, 2, 1)  # the rows of a frequency table, best first (ratings are 1-5, validate_answers)
+TEXT_FIELD_TYPES = (FieldType.SHORT_TEXT, FieldType.LONG_TEXT)
+
+
+def activity_evaluation_summary(activity: Activity) -> dict:
+    """One activity's evaluation summary (ASSUMPTIONS 401): responses vs attendees; per rating question of the
+    activity's evaluation form (form order) the frequency of each rating 5..1, its share of that question's answers
+    (`shares`, adds up to 100.0 %) and the mean (2 decimals, None without answers); the text answers per text question
+    and the comments, WITHOUT names (never the registration, the certificate name or the email), empty ones left out,
+    sorted A-Z (ignoring case) so they cannot be matched to the order of submission. No interpretation scale (owner
+    decision 2026-11-17: mean only until the TBI gives its scale). Five queries."""
+    counts = Registration.objects.filter(activity=activity).aggregate(
+        registered=Count("pk"),
+        attended=Count("pk", filter=Q(attendance_confirmed=True)),
+        evaluations=Count("evaluation_submission"),
+    )
+    fields = list(
+        FormField.objects.filter(template__activity=activity, template__form_type=FormType.EVALUATION)
+        .filter(field_type__in=(FieldType.RATING, *TEXT_FIELD_TYPES))
+        .order_by("sort_order", "pk")
+        .values("pk", "field_label", "field_type")
+    )
+    answers = FormAnswer.objects.filter(answer_source=FormAnswer.AnswerSource.EVALUATION,
+                                        evaluation_submission__registration__activity=activity)
+    frequency: dict[int, dict[str, int]] = {}
+    for row in (answers.filter(field__field_type=FieldType.RATING).order_by()
+                .values("field_id", "answer_value").annotate(n=Count("pk"))):
+        frequency.setdefault(row["field_id"], {})[row["answer_value"].strip()] = row["n"]
+    texts: dict[int, list[str]] = {}
+    for field_id, value in answers.filter(field__field_type__in=TEXT_FIELD_TYPES).values_list("field_id", "answer_value"):
+        if value and value.strip():
+            texts.setdefault(field_id, []).append(value.strip())
+    comments = [text.strip() for text in EvaluationSubmission.objects.filter(registration__activity=activity)
+                .values_list("comments", flat=True) if text and text.strip()]
+
+    def a_to_z(values: list[str]) -> list[str]:
+        return sorted(values, key=lambda text: (text.casefold(), text))
+
+    ratings = []
+    for field in (f for f in fields if f["field_type"] == FieldType.RATING):
+        counted = [frequency.get(field["pk"], {}).get(str(value), 0) for value in RATING_VALUES]
+        total_answers = sum(counted)
+        total = sum(value * count for value, count in zip(RATING_VALUES, counted))
+        ratings.append({
+            "question": field["field_label"].strip(),
+            "answers": total_answers,
+            "mean": _average(total, total_answers),
+            "frequency": [{"rating": value, "count": count, "share": share}
+                          for value, count, share in zip(RATING_VALUES, counted, shares(counted))],
+        })
+    return {
+        "activity_id": activity.pk,
+        "registered": counts["registered"],
+        "attended": counts["attended"],
+        "evaluations": counts["evaluations"],
+        "evaluation_response_rate": rate(counts["evaluations"], counts["attended"]),
+        "ratings": ratings,
+        "text_answers": [{"question": f["field_label"].strip(), "answers": a_to_z(texts.get(f["pk"], []))}
+                         for f in fields if f["field_type"] in TEXT_FIELD_TYPES],
+        "comments": a_to_z(comments),
     }
 
 
