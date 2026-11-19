@@ -595,7 +595,12 @@ def _overdue(document_type: DocumentType, today: date) -> Q:
     """Today is after the due date and nothing is Approved. "today > reference + offset" is written as
     "reference < today - offset", so it compares plain dates."""
     due_before = {f"{document_type.due_reference}__lt": today - timedelta(days=document_type.due_offset_days)}
-    return Q(**due_before) & ~Q(_approved(document_type))
+    late = Q(**due_before) & ~Q(_approved(document_type))
+    if document_type.name in settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION:
+        # ASSUMPTIONS 405 (documents.services._required_item): on activities created with their creation documents,
+        # an uploaded file (waiting or returned) is never overdue.
+        late &= ~(Q(creation_documents_required=True) & Q(_uploaded(document_type)))
+    return late
 
 
 def _all_approved(types: list[DocumentType]) -> Q:

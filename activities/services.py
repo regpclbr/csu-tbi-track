@@ -362,7 +362,7 @@ def recent_audit_entries(limit: int = RECENT_CHANGES_LIMIT) -> list[ActivityAudi
 @transaction.atomic
 def save_new_activity(
     member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None,
-    signatories: dict | None = None,
+    signatories: dict | None = None, creation_documents_required: bool = False,
 ) -> Activity:
     """Validate and save an unsaved Activity as Draft with its categories, write its first audit row and notify the
     Director (notifications.services.notify_directors_of_new_activity).
@@ -371,12 +371,15 @@ def save_new_activity(
     and the demo seed (to create activities "as of" an earlier day); real calls leave it out.
     `signatories`: the New activity form's "Who signs the certificates" ({slot: (person or None, title)}); empty slots
     take the defaults (certificates.services.assign_default_signatories, ASSUMPTIONS 365, 366).
+    `creation_documents_required` (ASSUMPTIONS 405): True from the New activity form
+    (documents.services.create_activity_with_documents) and the JSON API; the admin, the demo seed and tests keep False.
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     categories = _category_set(participant_categories)
     validate_activity_values({**activity_values(activity), CATEGORIES: categories}, now=now)
     activity.created_by = member
     activity.status = ActivityStatus.objects.get(name=DRAFT)
+    activity.creation_documents_required = creation_documents_required
     activity.save()
     activity.participant_categories.set(categories)
     _write_audit(activity, member, [(STATUS_LABEL, "", activity.status)])
@@ -392,16 +395,18 @@ def save_new_activity(
 
 
 def create_activity(member: TBIMember, data: dict, now: datetime | None = None,
-                    signatories: dict | None = None) -> Activity:
+                    signatories: dict | None = None, creation_documents_required: bool = False) -> Activity:
     """Create a Draft activity. `data` holds Python values (model instances, dates, Decimal);
     `participant_categories` is a list of one or more ParticipantCategory.
 
     start_date and registration_deadline must not be in the past (see save_new_activity for `now`).
+    `creation_documents_required`: see save_new_activity (ASSUMPTIONS 405).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     values = _clean_values(data)
     categories = values.pop(CATEGORIES, frozenset())
-    return save_new_activity(member, Activity(**values), categories, now=now, signatories=signatories)
+    return save_new_activity(member, Activity(**values), categories, now=now, signatories=signatories,
+                             creation_documents_required=creation_documents_required)
 
 
 @transaction.atomic
@@ -473,6 +478,12 @@ def _move_status(current: Activity, new_status: str, member: TBIMember | None) -
         raise ActivityError(
             f"Cannot move back to Draft: {count} {'person has' if count == 1 else 'people have'} already registered."
         )
+    if old_name == DRAFT and target.name == SCHEDULED and current.creation_documents_required:
+        # ASSUMPTIONS 405: uploaded is enough (waiting, returned or approved); approval is the Director's pace.
+        from documents.services import scheduling_refused_reason  # documents.services imports this module
+
+        if reason := scheduling_refused_reason(current):
+            raise ActivityError(reason)
     old_status = current.status
     current.status = target
     current.save(update_fields=["status", "updated_at"])

@@ -4,6 +4,10 @@ One activity on the Documents page, "By activity" view (card: documents.pages._a
 it opens and closes without JavaScript: open when something is missing, waiting or returned (or a filter is in use),
 closed when complete. Lines: the required types in the checklist's order (each upload, or "Missing" with Upload), then
 the other documents. No table: below 1280 px the actions move under the text, so they are never cut off.
+Layout (ASSUMPTIONS 408): from 1280 px ONE grid (the wrapper) holds the header and every line through `grid-cols-subgrid`,
+so the columns line up and the Actions column is as wide as the widest line's buttons (`max-content`): the buttons can
+never overlap the State badges, which wrap inside their own 9–11rem column. Below 1280 px the actions sit on the right
+and wrap (or go under the text below 640 px).
 {% endcomment %}
 {% with activity=card.activity %}
 <li>
@@ -34,12 +38,13 @@ the other documents. No table: below 1280 px the actions move under the text, so
 
     <div class="border-t border-line">
       {% if card.lines %}
-        <div class="hidden gap-4 bg-slate-50 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase xl:grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_11rem_10rem]" aria-hidden="true">
+      <div class="xl:grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(9rem,11rem)_max-content]" data-document-lines>
+        <div class="hidden gap-4 bg-slate-50 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase xl:col-span-5 xl:grid xl:grid-cols-subgrid" aria-hidden="true">
           <span>Type</span><span>Title</span><span>Uploaded</span><span>State</span><span class="text-right">Actions</span>
         </div>
-        <ul class="divide-y divide-line" aria-label="Documents of {{ activity.title }}">
+        <ul class="divide-y divide-line xl:col-span-5 xl:grid xl:grid-cols-subgrid" aria-label="Documents of {{ activity.title }}">
           {% for line in card.lines %}
-            <li class="grid gap-3 px-5 py-3 hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_11rem_10rem] xl:gap-4{% if not line.first_of_type %} bg-slate-50/50{% endif %}">
+            <li class="grid gap-3 px-5 py-3 hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:items-center xl:col-span-5 xl:grid-cols-subgrid xl:gap-4{% if not line.first_of_type %} bg-slate-50/50{% endif %}">
               <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 xl:contents">
                 {# Type #}
                 <p class="w-full text-xs font-semibold text-slate-700 xl:w-auto xl:text-sm{% if not line.first_of_type %} pl-4 font-normal text-muted{% endif %}">
@@ -63,14 +68,14 @@ the other documents. No table: below 1280 px the actions move under the text, so
                   {% endif %}
                 </p>
                 {# State #}
-                <div class="flex flex-wrap items-center gap-1">
+                <div class="flex min-w-0 flex-wrap items-center gap-1" data-document-state>
                   {% include "components/badge.html" with text=line.state.label tone=line.state.tone %}
                   {% if line.is_overdue %}<span class="badge badge-danger">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}Overdue</span>{% endif %}
                   {% if line.searchable %}<span class="badge badge-neutral" title="The AI assistant can use this document">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}AI search</span>{% endif %}
                 </div>
               </div>
               {# Actions: documents.services.allowed_actions (Approve / Return only with can_approve_documents) #}
-              <div class="sm:justify-self-end">
+              <div class="min-w-0 sm:justify-self-end" data-document-actions>
                 {% if line.kind == "missing" %}
                   <a href="{{ line.upload_url }}#upload" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="upload" class="size-4" %}Upload<span class="sr-only"> {{ line.type_name }} for {{ activity.title }}</span></a>
                 {% else %}
@@ -80,6 +85,7 @@ the other documents. No table: below 1280 px the actions move under the text, so
             </li>
           {% endfor %}
         </ul>
+      </div>
       {% else %}
         <p class="px-5 py-4 text-sm text-muted">No documents uploaded yet.</p>
       {% endif %}

@@ -1,0 +1,27 @@
+{% comment %}
+One REQUIRED document of the New activity form (ASSUMPTIONS 405): the Activity Design or the Request Letter, from
+documents.pages.required_document_rows (`row.key` = the type's id, `row.label` = its name). Posted as
+`required-<type id>-file|title`; the service (create_activity_with_documents) checks the file like any upload.
+{% endcomment %}
+<div class="rounded-2xl border border-line bg-slate-50/60 p-4" data-required-document>
+  <div class="grid gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+    <div class="md:pt-7">
+      <p class="font-semibold text-ink">{{ row.label }}</p>
+      <p class="text-xs text-muted">Required</p>
+    </div>
+    <div>
+      <label class="field-label" for="required-{{ row.key }}-file">File <span class="text-red-700" aria-hidden="true">*</span></label>
+      <input type="file" required accept="{{ limits.accept }}" id="required-{{ row.key }}-file" name="required-{{ row.key }}-file"
+             class="field-input bg-white py-2 file:mr-3 file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-1 file:text-sm file:font-semibold file:text-primary"
+             aria-label="{{ row.label }} file (required)"{% if row.errors.file %} aria-invalid="true" aria-describedby="required-{{ row.key }}-file-error"{% endif %}>
+      {% if row.errors.file %}<p id="required-{{ row.key }}-file-error" class="field-error">{{ row.errors.file }}</p>{% endif %}
+      {% if row.errors.document_type %}<p class="field-error">{{ row.errors.document_type }}</p>{% endif %}
+    </div>
+    <div>
+      <label class="field-label" for="required-{{ row.key }}-title">Title <span class="font-normal text-muted">(optional)</span></label>
+      <input type="text" maxlength="255" class="field-input" placeholder="{{ row.label }}" id="required-{{ row.key }}-title"
+             name="required-{{ row.key }}-title" value="{{ row.title }}"{% if row.errors.title %} aria-invalid="true" aria-describedby="required-{{ row.key }}-title-error"{% endif %}>
+      {% if row.errors.title %}<p id="required-{{ row.key }}-title-error" class="field-error">{{ row.errors.title }}</p>{% endif %}
+    </div>
+  </div>
+</div>

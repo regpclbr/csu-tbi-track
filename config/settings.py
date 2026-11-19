@@ -248,6 +248,9 @@ DOCUMENT_REMINDER_HOUR = 8  # the daily reminder task runs at 8:00 AM Manila tim
 # out anyway; these have no due rule but only make sense afterwards (the Accomplishment Report is optional since
 # ASSUMPTIONS 386, so it has no due rule any more).
 DOCUMENT_TYPES_AFTER_ACTIVITY = ["Accomplishment Report", "Certificate", "Evaluation Form"]
+# Required uploads on the New activity form (ASSUMPTIONS 405, NAVIGATU): they exist when the activity is created. Only
+# active, required types with these names count (documents.services.creation_required_types).
+DOCUMENT_TYPES_REQUIRED_AT_CREATION = ["Activity Design", "Request Letter"]
 
 
 # --- Activities: automatic statuses and evaluation links (ASSUMPTIONS 346, 348) -------------

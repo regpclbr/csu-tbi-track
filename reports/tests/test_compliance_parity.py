@@ -78,3 +78,60 @@ def test_fully_compliant_matches_the_checklist(varied) -> None:
         for activity in metrics.period_activities(filters)
     )
     assert metrics.fully_compliant_count(filters) == expected == 1
+
+
+# --- Activities created with their Activity Design and Request Letter (ASSUMPTIONS 405) ----------------------------
+
+
+@pytest.fixture
+def created_with_documents(make_activity, add_document):
+    """Flagged activities (creation_documents_required) with the two types waiting, returned, approved or missing,
+    next to an old activity with the same documents."""
+    def flagged(title: str, status: str = ActivityStatus.SCHEDULED, start: date = date(2026, 10, 25)) -> Activity:
+        activity = make_activity(title, status, start=start)
+        Activity.objects.filter(pk=activity.pk).update(creation_documents_required=True)
+        return activity
+
+    waiting = flagged("New, waiting")
+    add_document(waiting, "Activity Design", FOR_REVIEW)
+    add_document(waiting, "Request Letter", FOR_REVIEW, returned=True)
+    approved = flagged("New, approved", ActivityStatus.ONGOING, start=date(2026, 10, 20))
+    add_document(approved, "Activity Design")
+    add_document(approved, "Request Letter", FOR_REVIEW)
+    flagged("New Draft, nothing", ActivityStatus.DRAFT)
+    old = make_activity("Old, waiting", ActivityStatus.SCHEDULED, start=date(2026, 10, 25))
+    add_document(old, "Activity Design", FOR_REVIEW)
+    add_document(old, "Request Letter", FOR_REVIEW, returned=True)
+    return Activity.objects.all()
+
+
+@pytest.mark.parametrize("now", [
+    timezone.make_aware(datetime(2026, 10, 10, 9, 0)),
+    timezone.make_aware(datetime(2026, 10, 23, 9, 0)),
+    timezone.make_aware(datetime(2026, 12, 31, 12, 0)),
+])
+def test_sql_matches_the_checklist_for_activities_created_with_documents(created_with_documents, now) -> None:
+    sql = {row["activity_id"]: row for row in metrics.document_compliance(Activity.objects.all(), now)["activities"]}
+    for activity in created_with_documents:
+        expected = [
+            (item.document_type.name, item.state, item.is_overdue)
+            for item in sorted(document_checklist(activity, now)["required"], key=lambda item: item.document_type.name)
+        ]
+        assert [(i["document_type"], i["state"], i["is_overdue"]) for i in sql[activity.pk]["items"]] == expected, activity.title
+    expected_overdue = sum(
+        item.is_overdue
+        for activity in created_with_documents.exclude(status__name=ActivityStatus.DRAFT)
+        for item in document_checklist(activity, now)["required"]
+    )
+    filters = metrics.ReportFilters(date(2026, 1, 1), date(2026, 12, 31))
+    assert metrics.documents_now(filters, now)["overdue"] == expected_overdue
+    attention_overdue = metrics.document_attention(filters, now)["overdue"]
+    assert len(attention_overdue) == expected_overdue
+
+
+def test_waiting_files_are_overdue_only_on_the_old_activity(created_with_documents) -> None:
+    now = timezone.make_aware(datetime(2026, 10, 23, 9, 0))
+    overdue = {(row["title"], row["document_type"]) for row in metrics.document_attention(
+        metrics.ReportFilters(date(2026, 1, 1), date(2026, 12, 31)), now)["overdue"]}
+    assert ("Old, waiting", "Activity Design") in overdue and ("Old, waiting", "Request Letter") in overdue
+    assert not any(title.startswith("New") and name in ("Activity Design", "Request Letter") for title, name in overdue)

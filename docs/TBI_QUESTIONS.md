@@ -41,6 +41,8 @@ all of them are to be validated with the TBI too.
 - **Item 344 (review):** Only the Director approves or returns documents now (the System Administrator can give this to another role in the Admin Console). Is that right?
 - **Item 344 (stand-in):** If the Director is unavailable, who should approve documents?
 - **Item 344 (own uploads):** Should the Director's own uploads need someone else's approval? (Now the Director may approve their own upload.)
+- **Item 406 (for NAVIGATU, the Director's own uploads):** Every document, also one the Director uploads, waits for the Director's approval. The Director may approve their own uploads, because by default nobody else can approve documents. Is that acceptable, or should someone else (for example a Project Head) approve the Director's own documents?
+- **Item 405 (for NAVIGATU):** New activities are now created with the Activity Design and the Request Letter (both required on the New activity form, waiting for the Director's approval). An activity can be Scheduled once both are uploaded, even before the Director approves them. Is that right, or must they be approved before the activity is Scheduled (or before registration opens)?
 - **Item 118 (fixing a document):** If a document needs fixing, is it right that only the person who uploaded it can replace or delete it, and only before it is approved? (Approved documents are final; a wrong one is fixed by uploading a new one.)
 - **Item 120:** Should every TBI staff member be able to open and download every activity document, or should some documents be limited to certain roles?
 - **Item 123:** Does the TBI have an official file-naming or folder convention for documents (for example "Year/Activity/Type_Date")? If yes, what is it for each document type?

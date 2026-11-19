@@ -109,6 +109,11 @@ class Activity(models.Model):
         related_name="approved_activity_certificates",
     )
     certificates_approved_at = models.DateTimeField(null=True, blank=True)
+    # ASSUMPTIONS 405: True = the Activity Design and the Request Letter (settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION)
+    # are uploaded when the activity is created and needed before Scheduled; never overdue once uploaded. False =
+    # activities created before 2026-11-19 (current rules). Set only when the activity is created (the New activity
+    # form, the JSON API); never changed afterwards.
+    creation_documents_required = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

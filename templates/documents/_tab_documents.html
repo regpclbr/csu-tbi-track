@@ -6,7 +6,8 @@ document with the actions the member may take. Right: the upload form (any activ
 preselects the type; ?focus=type, the "Upload other document" button, focuses the dropdown; the types grouped Required /
 Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back here with a toast, errors under their fields.
 {% endcomment %}
-<div id="documents-tab" class="grid gap-5 xl:grid-cols-3">
+{# grid-cols-1 = minmax(0,1fr): below 1280 px the one column never grows past the window (ASSUMPTIONS 408) #}
+<div id="documents-tab" class="grid grid-cols-1 gap-5 xl:grid-cols-3">
   <div class="space-y-5 xl:col-span-2">
     <section class="card p-6" aria-labelledby="required-title">
       {% include "components/section_header.html" with id="required-title" title="Required documents" subtitle="Due dates are counted from the activity's dates (Philippine time). Overdue = after the due date and not approved." %}

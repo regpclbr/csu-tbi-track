@@ -27,13 +27,14 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
     {% if people %}
       <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
         {% for row in people %}{% with person=row.signatory %}
-          <li class="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap">
+          {# ASSUMPTIONS 407: the row wraps; the text block grows from 12rem and the buttons move below it when narrow #}
+          <li class="flex flex-wrap items-center gap-3 px-3 py-3" data-signatory-row>
             {% if row.image_url %}
               <img src="{{ row.image_url }}" alt="Signature of {{ person.name }}" loading="lazy" class="h-12 w-28 shrink-0 rounded-lg border border-line bg-[#fbf6e9] object-contain p-1">
             {% else %}
               <span class="flex h-12 w-28 shrink-0 items-center justify-center rounded-lg border border-dashed border-line bg-white px-1 text-center text-xs text-muted">No signature yet</span>
             {% endif %}
-            <div class="min-w-0 flex-1">
+            <div class="min-w-0 grow basis-48" data-signatory-text>
               <p class="font-semibold break-words text-ink">{{ person.name }}</p>
               <p class="text-sm break-words text-slate-700">{{ person.position }}</p>
               <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
@@ -41,7 +42,7 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
                 <span>Used by {{ row.activities }} activit{{ row.activities|pluralize:"y,ies" }}</span>
               </p>
             </div>
-            <div class="flex flex-wrap items-center justify-end gap-1">
+            <div class="ml-auto flex flex-wrap items-center justify-end gap-1">
               {% include "components/modal.html" with id=row.edit_id title="Edit "|add:person.name body="certificates/_edit_person_form.html" trigger_label="Edit" trigger_icon="pencil" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
               {% if person.signature_image_path %}
                 {% include "components/modal.html" with id=row.image_id title="Replace signature?" body="certificates/_person_image_form.html" trigger_label="Replace signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}

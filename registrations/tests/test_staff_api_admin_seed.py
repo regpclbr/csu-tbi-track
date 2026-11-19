@@ -10,6 +10,7 @@ from django.core import mail
 from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
+from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
 from accounts.seed import load_default_form_fields
@@ -234,7 +235,9 @@ def test_seed_keeps_admin_edits_to_defaults(roles) -> None:
 
 BEFORE = ("registrations", "0001_initial")
 AFTER = ("registrations", "0002_step5_categories_forms_json_options")
-ACTIVITIES = ("activities", "0006_auditlog_changed_by_nullable")  # stays applied (the latest activities migration)
+# Activities migrations stay applied, so the historical models must be the LATEST activities state (a NOT NULL column
+# such as creation_documents_required, ASSUMPTIONS 405, would otherwise be missing from the old Activity model).
+ACTIVITIES = max(n for n in MigrationLoader(None, ignore_no_migrations=True).graph.leaf_nodes() if n[0] == "activities")
 REQUIRED = ("registrations", "0003_registration_category_required")
 
 

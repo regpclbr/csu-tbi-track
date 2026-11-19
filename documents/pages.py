@@ -461,6 +461,7 @@ class NewDocumentRow:
     title: str = ""
     file: object = None
     errors: dict[str, str] = field(default_factory=dict)
+    label: str = ""  # required rows only: the type's name (ASSUMPTIONS 405)
 
 
 def new_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
@@ -479,6 +480,20 @@ def new_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
     return [row for _, row in sorted(rows.items()) if row.document_type or row.title or row.file]
 
 
+def required_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
+    """The fixed, required rows of the New activity form (ASSUMPTIONS 405): one per services.creation_required_types()
+    type (the Activity Design and the Request Letter), posted as `required-<type id>-file|title`. Always every type,
+    also when nothing was chosen, so the service reports "Choose a file to upload." under the right field."""
+    rows = []
+    for document_type in services.creation_required_types().order_by("name"):
+        row = NewDocumentRow(key=document_type.pk, document_type=document_type.pk, label=document_type.name)
+        if request.method == "POST":
+            row.title = request.POST.get(f"required-{document_type.pk}-title", "").strip()
+            row.file = request.FILES.get(f"required-{document_type.pk}-file")
+        rows.append(row)
+    return rows
+
+
 def new_documents_for_service(rows: list[NewDocumentRow]) -> list[services.NewDocument]:
     """The rows as services.NewDocument. An unknown type id becomes None ("Choose a document type."); a type that is
     not allowed at creation is passed on, so the service refuses it with its own message."""
@@ -492,16 +507,21 @@ def put_row_errors(rows: list[NewDocumentRow], row_errors: dict[int, dict[str, s
         rows[index].errors = errors
 
 
-def new_documents_context(rows: list[NewDocumentRow]) -> dict:
-    """What the Documents (optional) section shows: the allowed types, the posted rows and the file limits."""
+def new_documents_context(rows: list[NewDocumentRow], required: list[NewDocumentRow] | None = None) -> dict:
+    """What the Documents section shows: the required rows (ASSUMPTIONS 405), the types offered for the optional rows
+    (the creation-required ones left out: they have their own fields), the posted optional rows and the file limits."""
+    required = required or []
     return {
-        "types": services.types_allowed_at_creation().order_by("name"),
+        "required": required,
+        "types": services.types_allowed_at_creation().exclude(
+            pk__in=[row.document_type for row in required]).order_by("name"),
         "rows": rows,
         "empty_row": NewDocumentRow(key=0),  # the one row shown without JavaScript
         "next_key": max((row.key for row in rows), default=-1) + 1,
         "limits": upload_limits(),
-        "max_rows": services.MAX_DOCUMENTS_AT_CREATION,
-        "choose_again": any(row.file for row in rows),  # files were chosen but the browser cleared them
+        "max_total": services.MAX_DOCUMENTS_AT_CREATION,
+        "max_rows": services.MAX_DOCUMENTS_AT_CREATION - len(required),  # optional rows: the limit counts the required ones
+        "choose_again": any(row.file for row in [*required, *rows]),  # files were chosen but the browser cleared them
     }
 
 

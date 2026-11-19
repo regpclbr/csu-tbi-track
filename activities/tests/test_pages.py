@@ -15,6 +15,8 @@ from activities import pages, services
 from activities.models import Activity, ActivityType, ParticipantCategory, ResourcePerson
 from registrations.models import FormTemplate, FormType
 
+from conftest import creation_document_files
+
 from .conftest import at
 
 pytestmark = pytest.mark.django_db
@@ -181,11 +183,12 @@ def test_create_page_needs_can_create_activity(director, view_only, login) -> No
 
 
 def test_create_saves_a_draft_and_opens_it_with_a_toast(director, login, post_data) -> None:
-    response = login(director).post(CREATE, post_data(title="New Pitch Clinic"), follow=True)
+    data = {**post_data(title="New Pitch Clinic"), **creation_document_files()}  # required uploads (ASSUMPTIONS 405)
+    response = login(director).post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="New Pitch Clinic")
-    assert response.redirect_chain[-1][0] == detail_url(activity)
+    assert response.redirect_chain[-1][0] == detail_url(activity) + "?tab=documents"
     assert activity.status.name == "Draft" and activity.audit_logs.count() == 1
-    assert '"New Pitch Clinic" was created as Draft.' in messages_of(response)
+    assert '"New Pitch Clinic" was created as Draft with 2 documents waiting for review.' in messages_of(response)
 
 
 @pytest.mark.parametrize("overrides, field, message", [
@@ -237,7 +240,7 @@ def test_an_inactive_type_gets_the_services_message(director, login, post_data) 
 
 
 def test_deadlines_are_typed_and_shown_in_manila_time(director, login, post_data) -> None:
-    data = post_data(title="Manila Time")
+    data = {**post_data(title="Manila Time"), **creation_document_files()}
     data["registration_deadline"] = data["registration_deadline"][:11] + "17:30"
     login(director).post(CREATE, data)
     activity = Activity.objects.get(title="Manila Time")

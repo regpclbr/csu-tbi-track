@@ -101,12 +101,16 @@ def _initial(activity: Activity) -> dict:
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
-    """The activity, its signatories (pre-filled with the defaults, ASSUMPTIONS 365) and its optional documents are
-    saved by one service call, all or nothing (documents.services.create_activity_with_documents, ASSUMPTIONS 327)."""
+    """The activity, its signatories (pre-filled with the defaults, ASSUMPTIONS 365), its required Activity Design and
+    Request Letter (ASSUMPTIONS 405) and its optional documents are saved by one service call, all or nothing
+    (documents.services.create_activity_with_documents, ASSUMPTIONS 327). The required rows come first, so the
+    service's row errors (by position) map back onto `required + rows`."""
     form = ActivityPageForm(request.POST or None, **pages.signatory_form_options(request.user))
+    required = document_pages.required_document_rows(request)
     rows = document_pages.new_document_rows(request) if request.method == "POST" else []
     if request.method == "POST":
-        uploads = document_pages.new_documents_for_service(rows)
+        all_rows = [*required, *rows]
+        uploads = document_pages.new_documents_for_service(all_rows)
         if form.is_valid():
             signatories = form.signatory_choices()
             try:
@@ -115,7 +119,9 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             except document_services.NewActivityError as error:
                 if error.activity_error:
                     _put_errors_on_fields(form, error.activity_error)
-                document_pages.put_row_errors(rows, error.row_errors)
+                document_pages.put_row_errors(all_rows, error.row_errors)
+                if error.missing_types:  # only when a type became required a moment ago (the form has a row per type)
+                    form.add_error(None, f"Upload these documents too: {', '.join(error.missing_types)}.")
             except ValidationError as error:
                 _put_errors_on_fields(form, error)
             except services.ActivityError as error:
@@ -126,10 +132,10 @@ def activity_create(request: HttpRequest) -> HttpResponse:
                 messages.success(request, f'"{activity.title}" was created as Draft{extra}.')
                 return redirect(_detail_url(activity, "documents" if count else ""))
         else:  # show the rows' problems together with the fields' ones
-            document_pages.put_row_errors(rows, document_services.check_new_documents(uploads))
-        if any(row.errors for row in rows):
+            document_pages.put_row_errors(all_rows, document_services.check_new_documents(uploads))
+        if any(row.errors for row in all_rows):
             form.add_error(None, "Please correct the documents marked below.")
-    context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows),
+    context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows, required),
                "signatories": pages.signatory_form_section(form, request.user)}
     return render(request, "activities/form.html", context)
 

@@ -11,7 +11,8 @@ Review flow (DOCUMENT_STATUS has only For Review and Approved; there is no Rejec
   notification with the reason and must replace the file.
 - Replace: uploader only, For Review only. Clears reviewed_by/reviewed_at (waiting for a reviewer again) and
   notifies the approvers again, except the uploader.
-- Delete: uploader only, For Review only (the file is removed too). Approved documents are never deleted.
+- Delete: uploader only, For Review only (the file is removed too). Approved documents are never deleted. The only
+  Activity Design / Request Letter of a scheduled activity created with them is never deleted (ASSUMPTIONS 405).
 
 Certificate evidence (related_certificate set, Step 9) uses the same upload, review, replace and
 delete functions, but every listing and the checklist use Document.objects.activity_documents(),
@@ -313,12 +314,16 @@ class NewDocument:
 class NewActivityError(Exception):
     """Creating the activity with its documents was refused; nothing was saved.
 
-    `activity_error`: the activity's own ValidationError (or None); `row_errors`: {row index: {field: message}}."""
+    `activity_error`: the activity's own ValidationError (or None); `row_errors`: {row index: {field: message}};
+    `missing_types`: names of the creation-required types without any row (ASSUMPTIONS 405; the New activity form
+    always sends a row for each, so this only happens to other callers)."""
 
-    def __init__(self, activity_error: ValidationError | None, row_errors: dict[int, dict[str, str]]):
+    def __init__(self, activity_error: ValidationError | None, row_errors: dict[int, dict[str, str]],
+                 missing_types: list[str] | None = None):
         super().__init__("The activity was not created.")
         self.activity_error = activity_error
         self.row_errors = row_errors
+        self.missing_types = missing_types or []
 
 
 class _RollBack(Exception):
@@ -333,6 +338,66 @@ def types_allowed_at_creation() -> QuerySet:
         .exclude(due_reference=DocumentType.DueReference.END_DATE)
         .exclude(name__in=settings.DOCUMENT_TYPES_AFTER_ACTIVITY)
     )
+
+
+# --- Documents required when an activity is created (ASSUMPTIONS 405, NAVIGATU) ---------------------------------
+
+
+def creation_required_types() -> QuerySet:
+    """The types every new activity must be created with (settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION: the Activity
+    Design and the Request Letter): only active, required types that can be uploaded at creation. A type the admin
+    deactivates or makes optional simply drops out of the rule."""
+    return types_allowed_at_creation().filter(is_required=True, name__in=settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION)
+
+
+def is_creation_type(activity: Activity, document_type: DocumentType) -> bool:
+    """True when the creation rule applies to this (activity, type) pair: the activity was created with its creation
+    documents (creation_documents_required) and the type is one of them (active and required, as in
+    creation_required_types). Old activities keep the current rules."""
+    return (activity.creation_documents_required and document_type.is_active and document_type.is_required
+            and document_type.name in settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION)
+
+
+def _the_names(names: list[str]) -> str:
+    """["Activity Design", "Request Letter"] -> "the Activity Design and the Request Letter"."""
+    names = [f"the {name}" for name in names]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def missing_creation_types(activity: Activity) -> list[str]:
+    """The creation-required types with no document uploaded for this activity (any review state), by name."""
+    types = list(creation_required_types().order_by("name"))
+    uploaded = set(
+        Document.objects.activity_documents().filter(activity=activity, document_type__in=types)
+        .values_list("document_type_id", flat=True)
+    )
+    return [document_type.name for document_type in types if document_type.pk not in uploaded]
+
+
+def scheduling_refused_reason(activity: Activity) -> str | None:
+    """Why this Draft cannot be Scheduled yet (activities.services._move_status calls it for activities with
+    creation_documents_required), or None. Uploaded is enough: waiting, returned or approved."""
+    if not activity.creation_documents_required:
+        return None
+    missing = missing_creation_types(activity)
+    if not missing:
+        return None
+    return f"Upload {_the_names(missing)} before scheduling this activity (Documents tab)."
+
+
+def _delete_refused_reason(document: Document) -> str | None:
+    """The only Activity Design / Request Letter of a non-Draft activity created with them cannot be deleted: the
+    activity would show it as missing again. Replacing the file stays allowed."""
+    activity = document.activity
+    if document.related_certificate_id or not is_creation_type(activity, document.document_type):
+        return None
+    if activity.status.name == ActivityStatus.DRAFT:
+        return None
+    others = Document.objects.activity_documents().filter(activity=activity, document_type=document.document_type)
+    if others.exclude(pk=document.pk).exists():
+        return None
+    return (f"This is the activity's only {document.document_type.name} and the activity is {activity.status.name}. "
+            "Replace the file instead.")
 
 
 def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str]]:
@@ -363,8 +428,10 @@ def create_activity_with_documents(
     member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None,
     signatories: dict | None = None,
 ) -> Activity:
-    """Create a Draft activity (activities.services.create_activity) and upload its optional documents
-    (upload_document, the same rules as the Documents tab) in one transaction: all or nothing.
+    """Create a Draft activity (activities.services.create_activity) and upload its documents (upload_document, the
+    same rules as the Documents tab) in one transaction: all or nothing. `documents` must hold a row for each
+    creation_required_types() type (the Activity Design and the Request Letter, ASSUMPTIONS 405); the activity is
+    saved with creation_documents_required=True. Other rows are optional.
 
     Errors of the activity and of every row are raised together as NewActivityError. Files already stored when
     something fails are deleted again. upload_document's review notifications are rows in this same transaction
@@ -376,17 +443,20 @@ def create_activity_with_documents(
     if len(documents) > MAX_DOCUMENTS_AT_CREATION:
         raise ValidationError({"documents": [f"Add at most {MAX_DOCUMENTS_AT_CREATION} documents here."]})
     row_errors = check_new_documents(documents)
+    given = {row.document_type.pk for row in documents if row.document_type is not None}
+    missing_types = [t.name for t in creation_required_types().order_by("name") if t.pk not in given]
     activity_error = None
     stored: list[str] = []
     committed = False
     try:
         with transaction.atomic():
             try:
-                activity = create_activity(member, data, now=now, signatories=signatories)
+                activity = create_activity(member, data, now=now, signatories=signatories,
+                                           creation_documents_required=True)
             except ValidationError as error:
                 activity_error = error
                 raise _RollBack from error
-            if row_errors:
+            if row_errors or missing_types:
                 raise _RollBack
             for index, row in enumerate(documents):
                 try:
@@ -404,7 +474,7 @@ def create_activity_with_documents(
             for name in stored:
                 _delete_stored_file(name)
     if not committed:
-        raise NewActivityError(activity_error, row_errors)
+        raise NewActivityError(activity_error, row_errors, missing_types)
     return activity
 
 
@@ -474,6 +544,8 @@ def delete_document(member: TBIMember, document: Document) -> None:
     with transaction.atomic():
         document = _locked(document)
         _ensure_uploader_and_for_review(member, document, "delete")
+        if reason := _delete_refused_reason(document):
+            raise DocumentError(reason)
         name = document.file_path.name
         document.delete()
         transaction.on_commit(lambda: _delete_stored_file(name))
@@ -568,7 +640,7 @@ def allowed_actions(member: TBIMember, document: Document) -> dict[str, bool]:
         "approve": can_review,  # also the member's own upload (ASSUMPTIONS 344)
         "return": can_review and not is_uploader,
         "replace": for_review and is_uploader,
-        "delete": for_review and is_uploader,
+        "delete": for_review and is_uploader and _delete_refused_reason(document) is None,
     }
 
 
@@ -651,7 +723,13 @@ def _required_item(document_type: DocumentType, activity: Activity, documents: l
     else:
         state = MISSING
     due = due_date(document_type, activity)
-    return ChecklistItem(document_type, due, state, today > due and state != APPROVED, documents)
+    if is_creation_type(activity, document_type):
+        # ASSUMPTIONS 405: uploaded at creation, so overdue only while nothing is uploaded (only possible in Draft);
+        # a file waiting for the Director is never overdue. reports.metrics._overdue is the same rule in SQL.
+        overdue = today > due and state == MISSING
+    else:
+        overdue = today > due and state != APPROVED
+    return ChecklistItem(document_type, due, state, overdue, documents)
 
 
 def document_checklist(activity: Activity, now: datetime | None = None) -> dict:

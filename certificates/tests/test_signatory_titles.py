@@ -18,7 +18,7 @@ from certificates.pages import tab_url
 
 from .conftest import S, appreciation_of, certificate_of, upload
 from conftest import image_bytes
-from conftest import VIEW_ONLY_ROLE
+from conftest import VIEW_ONLY_ROLE, creation_document_files
 
 pytestmark = pytest.mark.django_db
 
@@ -84,8 +84,9 @@ def test_the_new_activity_form_is_prefilled_with_the_defaults_and_saves_them(des
     assert f'<option value="{head.pk}" data-position="Director" selected>' in html
     assert f'<option value="{vp.pk}" data-position="Vice President" selected>' in html
     assert "Add a person…" in html  # the Director approves certificates
-    response = client.post(reverse("activities:create"), form_post(
-        valid_data, title="Defaults kept", signatory_left=head.pk, signatory_right=vp.pk, title_left="", title_right=""))
+    response = client.post(reverse("activities:create"), {**form_post(
+        valid_data, title="Defaults kept", signatory_left=head.pk, signatory_right=vp.pk, title_left="", title_right=""),
+        **creation_document_files()})
     assert response.status_code == 302
     activity = activity_services.Activity.objects.get(title="Defaults kept")
     assert services.activity_signatories(activity) == {"left": head, "right": vp}
@@ -93,8 +94,9 @@ def test_the_new_activity_form_is_prefilled_with_the_defaults_and_saves_them(des
 
 def test_the_new_activity_form_saves_another_person_and_a_title(design, director, president, valid_data) -> None:
     _, vp, head = design
-    response = client_for(director).post(reverse("activities:create"), form_post(
-        valid_data, title="Changed", signatory_left=head.pk, signatory_right=president.pk, title_left="Director, CSU-TBI"))
+    response = client_for(director).post(reverse("activities:create"), {**form_post(
+        valid_data, title="Changed", signatory_left=head.pk, signatory_right=president.pk, title_left="Director, CSU-TBI"),
+        **creation_document_files()})
     assert response.status_code == 302
     activity = activity_services.Activity.objects.get(title="Changed")
     rows = services.activity_slots(activity)

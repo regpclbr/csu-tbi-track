@@ -113,7 +113,9 @@ def activities_api(request: HttpRequest) -> JsonResponse:
     """GET: list with search/filters/sort/page. POST: create a Draft activity."""
     if request.method == "POST":
         require_permission(request.user, Permission.CREATE_ACTIVITY)
-        activity = services.create_activity(request.user, parse_activity_data(_json_body(request)))
+        # ASSUMPTIONS 405: a Draft without files; it can be scheduled once both creation documents are uploaded.
+        activity = services.create_activity(request.user, parse_activity_data(_json_body(request)),
+                                            creation_documents_required=True)
         return JsonResponse({"activity": services.get_activity_detail(activity)}, status=201)
 
     filters = {

@@ -1208,3 +1208,82 @@ value is worked out from existing columns, and the new files are made on request
      - Tests: `reports/tests/test_individual_evaluation.py`; the opt-in real-WeasyPrint check renders the new template.
      - No database or ERD change, no migration.
 
+
+## Corrections after UAT, review round 1: documents (2026-11-18)
+
+NAVIGATU comments from the November 17 UAT, shown on November 19. **One migration** (`activities/0009_activity_creation_documents_required`):
+one new NOT NULL boolean column on ACTIVITY with default False. Every existing row (also the laptop review version's UAT data)
+gets False and keeps the current rules; no data is changed or deleted; it can be undone (RemoveField). Back up the UAT
+database and media before `uat up -d --build` (the release step runs `migrate`; DEPLOY.md "Laptop review version").
+Still 34 tables.
+
+405. **The Activity Design and the Request Letter are uploaded when the activity is created** (NAVIGATU: they already exist
+     then; owner decisions 2026-11-18).
+     - **Which types:** `settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION = ["Activity Design", "Request Letter"]`;
+       `documents.services.creation_required_types()` = those of `types_allowed_at_creation()` that are active and
+       `is_required`. A type the admin deactivates or makes optional drops out of the rule (nothing breaks).
+     - **New column `ACTIVITY.creation_documents_required`** (boolean, default False): True = created under this rule. Set
+       only at creation, by `documents.services.create_activity_with_documents` (the New activity form) and by the JSON API
+       create (`POST /activities/api/`, owner decision: the API gets the flag too) through
+       `activities.services.create_activity(..., creation_documents_required=True)`. The Django admin add form, `seed_demo`,
+       `certificate_walkthrough` and test fixtures keep False. Not in `EDITABLE_FIELDS`: never changed afterwards (the edit
+       form, `update_activity`, the API update and the admin cannot touch it). A "created after date X" setting was
+       rejected: the date would differ between the development, UAT and test databases.
+     - **New activity form:** the Documents section starts with two fixed, required fields, "Activity Design" and "Request
+       Letter" (file + optional title; `documents.pages.required_document_rows`, `activities/_required_document_row.html`,
+       posted as `required-<type id>-file|title`), then "Other documents (optional)" (the existing rows; the two types are
+       left out of their dropdown). The required rows go first into the one service call, so row errors map back by
+       position. Same checks as any upload (`validate_upload`: real content, PDF/DOCX/XLSX/JPG/PNG, `DOCUMENT_MAX_UPLOAD_MB`);
+       the error shows under the field and the amber note asks to choose the files again. **All or nothing** (unchanged,
+       item 327): a bad file, a missing file or a failed save leaves no activity, no document, no stored file and no
+       notification. A caller that sends no row for a type gets `NewActivityError.missing_types`.
+     - The files are normal documents: For Review ("waiting for approval"), uploaded by the creator, `notify_approvers`.
+     - **Drafts (owner decision: option A):** every new activity starts as Draft and the form always requires both files.
+       Moving **Draft -> Scheduled** on a flagged activity needs a document of each type **uploaded** (waiting, returned or
+       approved; owner decision: not necessarily approved) (`documents.services.scheduling_refused_reason`, called from
+       `activities.services._move_status`, so the status form, the list's quick actions and the API all refuse with "Upload
+       the Activity Design and the Request Letter before scheduling this activity (Documents tab)."). Certificate evidence
+       never counts. This catches a Draft made through the JSON API and a file deleted while Draft.
+     - **Never missing or overdue once uploaded:** for these two types on flagged activities, overdue = past the due date AND
+       nothing uploaded (`documents.services._required_item`, `is_creation_type`); a waiting or returned file shows "Waiting
+       for review" / "Returned", never Overdue (an activity created 3 days before its start would otherwise be overdue at once:
+       the Activity Design is due at start - 10). The same rule in SQL: `reports.metrics._overdue` (S3, the dashboard's Needs
+       attention, the compliance report; parity test). Reminders, Needs attention and the Documents page follow the
+       checklist. Every other type, and every activity without the flag, keeps "past the due date and not Approved".
+     - **Delete:** the only Activity Design or Request Letter of a flagged activity that is not a Draft cannot be deleted
+       ("This is the activity's only Activity Design and the activity is Scheduled. Replace the file instead.";
+       `_delete_refused_reason`, which also hides Delete through `allowed_actions`). Replace stays allowed; a second copy and
+       Drafts can be deleted.
+     - Tests: `documents/tests/test_creation_documents.py`, `activities/tests/test_create_with_documents.py`,
+       `activities/tests/test_api.py`, `reports/tests/test_compliance_parity.py`; `conftest.creation_document_files()` for
+       tests that post the New activity form.
+406. **Every upload goes to the Director for approval** (NAVIGATU; confirmed, no code change). Every upload (Documents tab, New
+     activity form, Replace, certificate evidence) goes through `upload_document` -> For Review -> `notify_approvers`: an in-app
+     "document_waiting_for_review" notification for every active member with `can_approve_documents` (seed: the Director
+     only), except the uploader, in the same transaction. Needs attention: the activity's "N documents waiting for approval."
+     and the dashboard's "waiting for your review" (`review_queue`, own uploads included). No email (none existed; none added).
+     Creating an activity as a non-Director therefore gives the Director three notifications (activity created + two
+     documents). **The Director's own upload** (owner decision 2026-11-18, item 344 unchanged): no notification to
+     themselves; it is in their review queue and Needs attention, and they may approve it (by default nobody else can;
+     `documents.audit` marks "(own upload)"). *(Question for NAVIGATU, see TBI_QUESTIONS.)* Tests in
+     `documents/tests/test_creation_documents.py` and `activities/tests/test_new_activity_notification.py`.
+407. **Certificates -> Signatories: names no longer squeezed** (UAT bug). The row used `sm:flex-nowrap` with a `min-w-0 flex-1`
+     text block next to the signature image and up to four buttons, so the name and position became a 0 px column, one
+     letter per line. Now the row wraps, the text block is `min-w-0 grow basis-48` and the buttons are an `ml-auto flex-wrap`
+     group that moves below the text when there is no room (the rule of item 387). The Certificates tab's Signatures section
+     stacks the image above the text and was not affected. Opt-in Chromium check
+     `certificates/tests/test_signatories_browser.py` (1280, 1024, 390 px: words never broken, text column at least 150 px,
+     no sideways scroll; it fails on the old template).
+408. **Documents page: buttons no longer cover the State badges** (UAT bug, 2026-11-19). In the "By activity" cards the
+     Actions column was a fixed 10rem and the compact button group could not wrap (`flex-nowrap`), so Download + Preview +
+     Approve + Return (about 290 px) spilled left over "Waiting for review" / "Overdue". Now, from 1280 px, the header and
+     every line share ONE grid through `grid-cols-subgrid` (`documents/_activity_card.html`): Type / Title / Uploaded are
+     fractions, State is its own `minmax(9rem, 11rem)` column whose badges wrap, and Actions is `max-content` (as wide as the
+     widest line's buttons, so they stay together on one line). Below 1280 px the actions sit on the right in a
+     `minmax(0, auto)` column and wrap; below 640 px they go under the text. `documents/_actions.html` always wraps (also
+     compact). Checked the other document lists: the activity's Documents tab rows (item 387) and the "All documents" /
+     review table (a real table that scrolls inside its card) never overlapped; the Documents tab grid got `grid-cols-1`
+     (`minmax(0, 1fr)`), because at 390 px its single implicit column grew 17 px past the window. The opt-in Chromium test
+     `documents/tests/test_document_rows_browser.py` now runs at 1366, 1280, 1024, 800 and 390 px with an approver viewing
+     a waiting, overdue document uploaded by someone else (Approve + Return), and checks on every document line that no
+     badge and button overlap and no button sticks out; it fails on the old templates. No database change.

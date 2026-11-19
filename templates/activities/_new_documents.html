@@ -1,7 +1,8 @@
 {% comment %}
-"Documents (optional)" on the New activity form (ASSUMPTIONS 327–328). Context `docs` = documents.pages.new_documents_context:
-only the types documents.services.types_allowed_at_creation() offers (never Attendance Sheet), the posted rows with
-their errors, the file limits. An empty section creates the activity exactly as before. Rows are added and removed with
+"Documents" on the New activity form (ASSUMPTIONS 327–328, 405). Context `docs` = documents.pages.new_documents_context:
+first the REQUIRED Activity Design and Request Letter (`docs.required`, activities/_required_document_row.html), then the
+optional rows: only the types documents.services.types_allowed_at_creation() offers (never Attendance Sheet, never the
+two required ones), the posted rows with their errors, the file limits. Optional rows are added and removed with
 Alpine; without JavaScript one empty row is shown. Browsers clear chosen files after an error: the amber note says so.
 {% endcomment %}
 <section class="card p-6" aria-labelledby="section-documents"
@@ -10,14 +11,25 @@ Alpine; without JavaScript one empty row is shown. Browsers clear chosen files a
                            this.$nextTick(() => document.getElementById(`doc-${key}-type`).focus()) },
                    remove(key) { this.added.splice(this.added.indexOf(key), 1); this.count--; this.$refs.add.focus() },
                    removeRow(button) { button.closest('[data-document-row]').remove(); this.count--; this.$refs.add.focus() } }">
-  {% include "components/section_header.html" with id="section-documents" title="Documents (optional)" subtitle="Upload documents you already have. Each one waits for review like any upload; you can also add documents later on the activity's Documents tab." %}
+  {% if docs.required %}
+    {% include "components/section_header.html" with id="section-documents" title="Documents" subtitle="The Activity Design and the Request Letter already exist when an activity is created: upload both. Every document waits for the Director's approval like any upload." %}
+  {% else %}
+    {% include "components/section_header.html" with id="section-documents" title="Documents (optional)" subtitle="Upload documents you already have. Each one waits for review like any upload; you can also add documents later on the activity's Documents tab." %}
+  {% endif %}
   {% if docs.choose_again %}
     <div class="mb-4 flex gap-3 rounded-2xl border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
       {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}
       <p>Nothing was saved yet. For security, your browser cleared the chosen files: please choose the file{{ docs.rows|length|pluralize }} again before creating the activity.</p>
     </div>
   {% endif %}
-  <p class="field-help -mt-1 mb-4">{{ docs.limits.extensions }}, at most {{ docs.limits.max_mb }} MB each, up to {{ docs.max_rows }} documents.</p>
+  <p class="field-help -mt-1 mb-4">{{ docs.limits.extensions }}, at most {{ docs.limits.max_mb }} MB each, up to {{ docs.max_total }} documents.</p>
+  {% if docs.required %}
+    <div class="space-y-3" id="required-document-rows">
+      {% for row in docs.required %}{% include "activities/_required_document_row.html" with row=row limits=docs.limits %}{% endfor %}
+    </div>
+    <h3 class="mt-6 mb-1 text-sm font-semibold text-ink">Other documents (optional)</h3>
+    <p class="field-help mb-3">You can also add documents later on the activity's Documents tab.</p>
+  {% endif %}
   <div class="space-y-3" id="new-document-rows">
     {% for row in docs.rows %}{% include "activities/_new_document_row.html" with row=row types=docs.types limits=docs.limits alpine=False %}{% endfor %}
     {% if not docs.rows %}<noscript>{% include "activities/_new_document_row.html" with row=docs.empty_row types=docs.types limits=docs.limits alpine=False %}</noscript>{% endif %}

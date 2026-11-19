@@ -257,6 +257,19 @@ STRONG_PASSWORD = "Strong-Pass-2026!"
 # before Admin Staff could create activities and approve certificates). It exists only in test databases.
 VIEW_ONLY_ROLE = "View Only (test)"
 
+CREATION_PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
+
+
+def creation_document_files() -> dict:
+    """The New activity form's required uploads (ASSUMPTIONS 405) as POST data: `required-<type id>-file` for every
+    documents.services.creation_required_types() type (needs the `roles` fixture: it seeds the types). Add it to any
+    test that posts the New activity form."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from documents.services import creation_required_types
+
+    return {f"required-{t.pk}-file": SimpleUploadedFile(f"{t.pk}.pdf", CREATION_PDF) for t in creation_required_types()}
+
 
 @pytest.fixture
 def roles() -> dict[str, Role]:

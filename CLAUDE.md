@@ -244,6 +244,15 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents with a new activity: only `create_activity_with_documents()` (one transaction with `create_activity` + `upload_document`,
   all or nothing, stored files removed on failure, errors as `NewActivityError`); offered types only from
   `types_allowed_at_creation()` (not due after the end date, not in `DOCUMENT_TYPES_AFTER_ACTIVITY`) (ASSUMPTIONS 327–328).
+- Activity Design + Request Letter at creation (ASSUMPTIONS 405): `creation_required_types()` (`DOCUMENT_TYPES_REQUIRED_AT_CREATION`,
+  active + required) are REQUIRED rows of `create_activity_with_documents` (the form's fixed `required-<type id>-file` fields, first
+  in the row list). `ACTIVITY.creation_documents_required` (set only at creation: the form and the JSON API; admin, `seed_demo`,
+  tests and every row before 2026-11-19 = False = old rules; never editable). Flagged: Draft → Scheduled needs both UPLOADED
+  (`scheduling_refused_reason` in `_move_status`), never overdue once uploaded (`is_creation_type` in `_required_item`, same
+  rule in `reports.metrics._overdue`, parity test), the only one of a type is never deleted outside Draft
+  (`_delete_refused_reason`). Tests posting the New activity form add `conftest.creation_document_files()`.
+- Every upload waits for the Director (`notify_approvers`, in-app only, never the uploader); the Director may approve their
+  own upload (ASSUMPTIONS 344, 406).
 - `document_checklist()` is the only "what is missing" check (Step 8 reuses it). Due dates are
   computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
 - "Required" is only `DOCUMENT_TYPE.is_required` (per type, never per activity); every count reads it (ASSUMPTIONS 386).
@@ -256,6 +265,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   Required / Other documents (`pages.documents_tab` `upload_groups`); `?type=<id>` pre-selects (required rows' Upload).
   Document rows (`documents/_document_item.html`, ASSUMPTIONS 387): title block `min-w-0 grow basis-64`, badges + buttons
   one `ml-auto flex-wrap` group; never `min-w-0 flex-1` alone in a wrapping row (it squeezes the title to letters).
+  Documents page cards (ASSUMPTIONS 408): header + lines share one grid (`grid-cols-subgrid`), State `minmax(9rem,11rem)`,
+  Actions `max-content`; `documents/_actions.html` always wraps (never `flex-nowrap`: buttons covered the State badges).
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
@@ -341,6 +352,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   can_approve_certificates). A new version refreshes the not-Issued certificates of EVERY activity using the person
   (`_refresh_certificates`: PDF removed, Approved → Generated); its dialog shows `version_impact_text()` first. Logged on
   `certificates.audit` (IDs only). The Admin Console only shows the defaults; the Django admin is view only for both tables.
+  Signatories page rows wrap (text `min-w-0 grow basis-48`, buttons `ml-auto flex-wrap`; never `sm:flex-nowrap` with
+  `flex-1` text: it squeezed names to one letter per line, ASSUMPTIONS 407; opt-in `certificates/tests/test_signatories_browser.py`).
 - Certificates are created only by the System (ASSUMPTIONS 362): `generate_missing_certificates(activity, registration_ids=)`
   (no member; Conducted only, active template + both saved slots required (`design_fields(activity)`; an empty slot is
   never filled here, ASSUMPTIONS 366), missing ones only, safe to rerun,
@@ -723,6 +736,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   activity (401), one participant's evaluation for can_create_activity only (402). No database or ERD change, no migration.
 - Display redesign after UAT (2026-11-18): participants by category as a donut on the Overview (403); one participant's
   evaluation with average, rating dots, answer cards, collapsed contact details, portrait PDF (404). No database change.
+- Documents after UAT (2026-11-18, NAVIGATU): Activity Design and Request Letter required on the New activity form, needed
+  before Scheduled, never overdue once uploaded (405); every upload waits for the Director, own uploads self-approved (406);
+  Signatories rows no longer squeezed (407). Database: activities 0009 (`ACTIVITY.creation_documents_required`); 34 tables.
+  Then (2026-11-19) Documents page buttons never cover the State badges, checked at 1366/1280/1024/800/390 px (408).
 
 ## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
 - NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.
@@ -785,7 +802,8 @@ pytest                                    # all tests, 2 workers in parallel (py
 pytest activities                         # one app (or a file: pytest activities/tests/test_services.py)
 pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the first failure (debugging, pdb works)
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Remove-Item Env:BROWSER_TESTS   # modals in Chromium
-$env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_browser.py; Remove-Item Env:BROWSER_TESTS   # document rows: titles wrap by words
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_browser.py; Remove-Item Env:BROWSER_TESTS   # document rows: titles wrap by words, badges and buttons never overlap
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s certificates/tests/test_signatories_browser.py; Remove-Item Env:BROWSER_TESTS   # Signatories page: names never squeezed
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time

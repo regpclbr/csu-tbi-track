@@ -50,11 +50,18 @@ def test_a_refused_activity_notifies_nobody(director, project_head, valid_data) 
 
 
 def test_the_new_activity_page_notifies_too(director, project_head, valid_data) -> None:
-    """Created through the page (create_activity_with_documents -> create_activity): one notification."""
-    from documents.services import create_activity_with_documents
+    """Created through the page (create_activity_with_documents -> create_activity): one "activity created"
+    notification, plus one "waiting for your review" per required document (ASSUMPTIONS 405); no email."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
 
-    activity = create_activity_with_documents(project_head, valid_data(), [])
-    assert Notification.objects.get().activity_id == activity.pk
+    from conftest import CREATION_PDF
+    from documents.services import NewDocument, create_activity_with_documents, creation_required_types
+
+    rows = [NewDocument(t, SimpleUploadedFile("a.pdf", CREATION_PDF)) for t in creation_required_types()]
+    activity = create_activity_with_documents(project_head, valid_data(), rows)
+    assert Notification.objects.get(type=Notification.ACTIVITY_CREATED).activity_id == activity.pk
+    waiting = Notification.objects.filter(type=Notification.DOCUMENT_WAITING_FOR_REVIEW, member=director)
+    assert waiting.count() == 2 and mail.outbox == []
 
 
 def test_the_director_sees_it_in_the_notifications_list(director, project_head, valid_data) -> None:

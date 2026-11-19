@@ -192,3 +192,37 @@ def test_audit_log_endpoint(client, director, new_activity) -> None:
         "changed_by": director.name,
         "changed_at": None,
     }
+
+
+# --- Creation documents (ASSUMPTIONS 405) --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_an_api_draft_needs_both_creation_documents_before_scheduled(client, director, create_payload) -> None:
+    """The JSON API creates a Draft without files but under the new rule: it cannot be Scheduled until the Activity
+    Design and the Request Letter are uploaded (Documents tab or API)."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from conftest import CREATION_PDF
+    from documents.services import creation_required_types, upload_document
+
+    client.force_login(director)
+    activity = Activity.objects.get(pk=body(post_json(client, API, create_payload))["activity"]["activity_id"])
+    assert activity.creation_documents_required is True
+    response = post_json(client, f"{API}{activity.pk}/status/", {"status": "Scheduled"})
+    assert response.status_code == 400
+    assert body(response)["error"] == ("Upload the Activity Design and the Request Letter before scheduling this activity "
+                                       "(Documents tab).")
+    for document_type in creation_required_types():
+        upload_document(director, activity, document_type, SimpleUploadedFile("a.pdf", CREATION_PDF))
+    response = post_json(client, f"{API}{activity.pk}/status/", {"status": "Scheduled"})
+    assert response.status_code == 200 and body(response)["activity"]["status"] == "Scheduled"
+
+
+@pytest.mark.django_db
+def test_the_flag_cannot_be_set_or_changed_through_the_api(client, director, create_payload, new_activity) -> None:
+    client.force_login(director)
+    response = post_json(client, f"{API}{new_activity.pk}/update/", {"creation_documents_required": True})
+    assert response.status_code == 400
+    new_activity.refresh_from_db()
+    assert new_activity.creation_documents_required is False

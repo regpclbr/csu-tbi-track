@@ -3,10 +3,11 @@ A document's buttons: Download, Preview (activity documents: documents/_preview.
 Approve (a direct POST), Return / Replace / Delete (open documents/_dialog.html). The services check again on POST.
 {% include "documents/_actions.html" with row=row next=request.get_full_path compact=False %}
 compact=True (tables): Download, Replace and Delete become icon buttons (the full name stays for screen readers and as a
-tooltip), so the row's actions fit on one line.
+tooltip), so the row's actions usually fit on one line. The group always wraps when its column is narrower (never
+flex-nowrap: it pushed Approve / Return over the State badges on the Documents page, ASSUMPTIONS 408).
 {% endcomment %}
 {% with document=row.document %}
-<div class="flex {% if compact %}flex-nowrap{% else %}flex-wrap{% endif %} items-center justify-end gap-1.5">
+<div class="flex flex-wrap items-center justify-end gap-1.5" data-actions-group>
   <a href="{{ row.download_url }}" class="btn btn-secondary btn-sm"{% if compact %} title="Download"{% endif %}>{% include "components/icon.html" with name="download" class="size-4" %}{% if compact %}<span class="sr-only">Download {{ document.title }}</span>{% else %}Download<span class="sr-only"> {{ document.title }}</span>{% endif %}</a>
   {% if row.preview_url %}
     <a href="{{ row.preview_url }}" class="btn btn-secondary btn-sm" aria-haspopup="dialog"{% if compact %} title="Preview"{% endif %}
