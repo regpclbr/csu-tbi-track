@@ -182,13 +182,14 @@ def test_create_page_needs_can_create_activity(director, view_only, login) -> No
     assert login(view_only).post(CREATE, {}).status_code == 403
 
 
-def test_create_saves_a_draft_and_opens_it_with_a_toast(director, login, post_data) -> None:
+def test_create_saves_it_as_scheduled_and_opens_the_forms_tab_with_a_toast(director, login, post_data) -> None:
     data = {**post_data(title="New Pitch Clinic"), **creation_document_files()}  # required uploads (ASSUMPTIONS 405)
     response = login(director).post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="New Pitch Clinic")
-    assert response.redirect_chain[-1][0] == detail_url(activity) + "?tab=documents"
-    assert activity.status.name == "Draft" and activity.audit_logs.count() == 1
-    assert '"New Pitch Clinic" was created as Draft with 2 documents waiting for review.' in messages_of(response)
+    assert response.redirect_chain[-1][0] == detail_url(activity) + "?tab=forms"  # ASSUMPTIONS 409
+    assert activity.status.name == "Scheduled" and activity.audit_logs.count() == 2
+    assert any(text.startswith('"New Pitch Clinic" was created as Scheduled with 2 documents waiting for review.')
+               for text in messages_of(response))
 
 
 @pytest.mark.parametrize("overrides, field, message", [

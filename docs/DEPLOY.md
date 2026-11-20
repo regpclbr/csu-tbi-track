@@ -381,7 +381,8 @@ uat exec -T web rm /tmp/uat-media.tar.gz
 ```
 The backups contain testers' personal data: delete them by November 30, 2026 (the privacy notice's promise).
 
-**Updating to a new version** (for example the November 19 corrections, which add migration `activities/0009`): make
+**Updating to a new version** (for example the November 19 corrections, which add migrations `activities/0009` and
+`registrations/0008`): make
 the backup above FIRST, then `uat up -d --build`. The release step runs `migrate` by itself; check `uat logs release`
 (exited 0) and `uat ps`. To go back: restore the dump (`pg_restore --clean`) and run the previous version.
 

@@ -456,16 +456,54 @@ def registration_page_activity(activity_id: int) -> Activity | None:
 
 
 REGISTRATION_FORM_NOT_READY = "Registration is not open yet: the registration form is not ready."
+REGISTRATION_FORM_HISTORY_LABEL = "Registration form"
+REGISTRATION_FORM_READY_VALUE = "Marked ready (registration can open)"
+FORM_ALREADY_READY = "This registration form is already marked as ready."
+
+
+def registration_form_ready(activity: Activity, form: FormTemplate | None) -> bool:
+    """The registration form counts (ASSUMPTIONS 409): it exists and, on an activity created with its documents
+    (creation_documents_required, ASSUMPTIONS 405), staff marked it ready (ready_at). Older activities: it exists (the
+    rule before). activities.services.open_for_registration is the same rule as a query (parity test)."""
+    if form is None:
+        return False
+    return form.ready_at is not None or not activity.creation_documents_required
+
+
+def registration_form_needs_ready(activity: Activity, form: FormTemplate | None) -> bool:
+    """The form exists but still waits for "Open registration" (the Forms tab button, Needs attention, the Share card)."""
+    return form is not None and not registration_form_ready(activity, form)
+
+
+@transaction.atomic
+def mark_registration_form_ready(member: TBIMember, activity: Activity, now: datetime | None = None) -> FormTemplate:
+    """"Open registration" on the Forms tab (ASSUMPTIONS 409): staff checked the registration form's fields; from now on
+    it counts for registration (the activity still has to be Scheduled, before the deadline and with slots left).
+    can_create_activity. One History row ("Registration form": "" -> "Marked ready …"). Not undone: the fields stay
+    editable until the first registration, and Scheduled -> Draft closes registration while nobody has registered."""
+    require_permission(member, Permission.CREATE_ACTIVITY)
+    Activity.objects.select_for_update().get(pk=activity.pk)
+    form = get_form(activity, FormType.REGISTRATION)
+    if form is None:
+        raise RegistrationError("Create the registration form first.")
+    if form.ready_at is not None:
+        raise RegistrationError(FORM_ALREADY_READY)
+    form.ready_at = now or timezone.now()
+    form.save(update_fields=["ready_at", "updated_at"])
+    from activities.services import write_registration_form_history
+
+    write_registration_form_history(activity, member, "", REGISTRATION_FORM_READY_VALUE)
+    return form
 
 
 def registration_closed_reason(activity: Activity, now: datetime | None = None) -> str | None:
     """None when registration is open; otherwise why it is closed.
 
     The open/closed rule itself is activities.services.is_registration_open() (one place);
-    this adds the "form exists" check and explains which part failed.
+    this adds the "form exists (and is marked ready, ASSUMPTIONS 409)" check and explains which part failed.
     """
     now = now or timezone.now()
-    has_form = get_form(activity, FormType.REGISTRATION) is not None
+    has_form = registration_form_ready(activity, get_form(activity, FormType.REGISTRATION))
     if is_registration_open(activity, now) and has_form:
         return None
     if activity.status.name != ActivityStatus.SCHEDULED:

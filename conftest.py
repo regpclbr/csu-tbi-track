@@ -261,14 +261,18 @@ CREATION_PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 
 
 def creation_document_files() -> dict:
-    """The New activity form's required uploads (ASSUMPTIONS 405) as POST data: `required-<type id>-file` for every
-    documents.services.creation_required_types() type (needs the `roles` fixture: it seeds the types). Add it to any
-    test that posts the New activity form."""
+    """The New activity form's required uploads (ASSUMPTIONS 405) as POST data: `required-<type id>-file` and its
+    required `required-<type id>-title` (ASSUMPTIONS 410) for every documents.services.creation_required_types() type
+    (needs the `roles` fixture: it seeds the types). Add it to any test that posts the New activity form."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
     from documents.services import creation_required_types
 
-    return {f"required-{t.pk}-file": SimpleUploadedFile(f"{t.pk}.pdf", CREATION_PDF) for t in creation_required_types()}
+    data = {}
+    for t in creation_required_types():
+        data[f"required-{t.pk}-file"] = SimpleUploadedFile(f"{t.pk}.pdf", CREATION_PDF)
+        data[f"required-{t.pk}-title"] = f"{t.name} - Test"
+    return data
 
 
 @pytest.fixture

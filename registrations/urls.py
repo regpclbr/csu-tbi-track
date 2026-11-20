@@ -10,6 +10,7 @@ app_name = "registrations"
 urlpatterns = [
     # Pages and actions of the activity page's Forms and Registrations tabs (phase F2b)
     path("activities/<int:activity_id>/forms/<str:form_type>/create/", page_views.form_create, name="form_create"),
+    path("activities/<int:activity_id>/forms/registration/ready/", page_views.form_ready, name="form_ready"),  # ASSUMPTIONS 409
     path("forms/<int:template_id>/card/", page_views.form_card, name="form_card"),
     path("forms/<int:template_id>/fields/new/", page_views.field_editor, name="field_new"),
     path("forms/<int:template_id>/fields/<int:field_id>/edit/", page_views.field_editor, name="field_edit"),

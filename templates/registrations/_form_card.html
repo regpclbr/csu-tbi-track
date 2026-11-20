@@ -1,6 +1,8 @@
 {% comment %}
 One form's card (registrations.pages.form_card). Field actions are HTMX requests that replace this card (outerHTML)
 and show a toast; edit controls appear only with can_create_activity and only while the form has no answers.
+Registration form of an activity created with its documents (ASSUMPTIONS 409): until "Open registration"
+(registrations:form_ready, services.mark_registration_form_ready) an amber box says registration stays closed.
 {% endcomment %}
 <section id="form-card-{{ card.form_type }}" class="card flex flex-col p-6" aria-labelledby="form-title-{{ card.form_type }}">
   <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -30,6 +32,20 @@ and show a toast; edit controls appear only with can_create_activity and only wh
       {% endif %}
     </div>
   {% else %}
+    {% if card.needs_ready %}
+      <div class="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-amber-900" role="note" data-form-not-ready>
+        {% include "components/icon.html" with name="triangle-alert" class="size-4.5 shrink-0" %}
+        <p class="min-w-0 grow basis-60"><strong>Registration stays closed.</strong> Check the fields below{% if card.form.generated_from_default %} (they started from the defaults){% endif %}, then open registration. Nobody can register before that.</p>
+        {% if can_create %}
+          <form method="post" action="{% url 'registrations:form_ready' activity.pk %}" class="ml-auto">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="check" class="size-4" %}Open registration</button>
+          </form>
+        {% endif %}
+      </div>
+    {% elif card.ready_at %}
+      <p class="mb-4 flex items-center gap-2 text-sm text-green-800">{% include "components/icon.html" with name="circle-check" class="size-4" %}Marked ready on {{ card.ready_at|date:"M j, Y g:i A" }}.</p>
+    {% endif %}
     {% if card.locked %}
       <div class="mb-4 flex gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3 text-sm text-slate-700" role="note">
         {% include "components/icon.html" with name="lock" class="mt-0.5 size-4.5 text-muted" %}

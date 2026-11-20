@@ -75,6 +75,9 @@ def form_card(
         "rows": field_rows(form) if form else [],
         "default_count": 0 if form else default_field_count(activity, form_type),
         "is_registration": form_type == FormType.REGISTRATION,
+        # ASSUMPTIONS 409: the registration form waits for "Open registration" (activities created with their documents).
+        "needs_ready": form_type == FormType.REGISTRATION and services.registration_form_needs_ready(activity, form),
+        "ready_at": form.ready_at if form and form_type == FormType.REGISTRATION else None,
         "categories": [category.name for category in activity.participant_categories.order_by("name")],
         "editing": str(editing) if editing is not None else "",
         "editable": False,

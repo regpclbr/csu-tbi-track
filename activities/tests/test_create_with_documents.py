@@ -26,6 +26,8 @@ CREATE = reverse("activities:create")
 NewDocument = document_services.NewDocument
 PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+DESIGN_TITLE = "Activity Design - Product Development Workshop"
+REQUEST_TITLE = "Request Letter - Product Development Workshop"
 
 
 def pdf(name: str = "Invitation.pdf") -> SimpleUploadedFile:
@@ -41,13 +43,18 @@ def stored_files() -> list[Path]:
 
 
 def required_rows() -> list[NewDocument]:
-    """The two required rows (ASSUMPTIONS 405), always first, as the form sends them."""
-    return [NewDocument(doc_type("Activity Design"), pdf("Design.pdf")), NewDocument(doc_type("Request Letter"), pdf("Request.pdf"))]
+    """The two required rows (ASSUMPTIONS 405), always first, as the form sends them, with their required titles (410)."""
+    return [NewDocument(doc_type("Activity Design"), pdf("Design.pdf"), DESIGN_TITLE),
+            NewDocument(doc_type("Request Letter"), pdf("Request.pdf"), REQUEST_TITLE)]
 
 
 def required_post() -> dict:
-    """The form's required fields `required-<type id>-file`."""
-    return {f"required-{doc_type(name).pk}-file": pdf(f"{name}.pdf") for name in ("Activity Design", "Request Letter")}
+    """The form's required fields `required-<type id>-file|title`."""
+    data = {}
+    for name, title in (("Activity Design", DESIGN_TITLE), ("Request Letter", REQUEST_TITLE)):
+        data[f"required-{doc_type(name).pk}-file"] = pdf(f"{name}.pdf")
+        data[f"required-{doc_type(name).pk}-title"] = title
+    return data
 
 
 @pytest.fixture
@@ -79,7 +86,7 @@ def test_settings_and_deactivation_change_the_offer(roles, settings) -> None:
 
 def test_only_the_two_required_documents(create) -> None:
     activity = create([])
-    assert activity.status.name == "Draft" and activity.audit_logs.count() == 1
+    assert activity.status.name == "Scheduled" and activity.audit_logs.count() == 2  # Draft, then Scheduled (ASSUMPTIONS 409)
     assert activity.creation_documents_required is True
     assert sorted(activity.documents.values_list("document_type__name", flat=True)) == ["Activity Design", "Request Letter"]
     assert len(stored_files()) == 2
@@ -99,7 +106,7 @@ def test_one_document_is_uploaded_with_the_upload_rules(create, director) -> Non
     assert document.status.status_name == DocumentStatus.FOR_REVIEW and document.reviewed_at is None  # waiting for review
     assert document.title == "Invitation to the workshop" and document.file_extension == "pdf"
     assert document.file_path.name.startswith("documents/") and document.file_path.storage.exists(document.file_path.name)
-    assert activity.audit_logs.count() == 1
+    assert activity.audit_logs.count() == 2
     assert not OrmQ.objects.exists()  # nothing is indexed before approval
     checklist = document_services.document_checklist(activity)  # optional since ASSUMPTIONS 386: an "other" document
     entry = next(entry for entry in checklist["optional"] if entry["document_type"].name == "Invitation Letter")
@@ -110,12 +117,12 @@ def test_one_document_is_uploaded_with_the_upload_rules(create, director) -> Non
 def test_several_documents(create) -> None:
     activity = create([
         NewDocument(doc_type("Invitation Letter"), pdf()),
-        NewDocument(doc_type("Activity Design"), SimpleUploadedFile("Design.png", PNG)),  # a second one is allowed
+        NewDocument(doc_type("Activity Design"), SimpleUploadedFile("Design.png", PNG), "Design v2"),  # a second one is allowed
         NewDocument(doc_type("Pre-registration Form"), pdf("Form.pdf"), "Form"),
     ])
     assert activity.documents.count() == 5
     assert sorted(activity.documents.values_list("title", flat=True)) == [
-        "Activity Design", "Activity Design", "Form", "Invitation Letter", "Request Letter"]
+        DESIGN_TITLE, "Design v2", "Form", "Invitation Letter", REQUEST_TITLE]
     assert len(stored_files()) == 5
 
 
@@ -123,7 +130,7 @@ def test_an_invalid_file_in_row_2_saves_nothing_and_notifies_nobody(create) -> N
     with pytest.raises(document_services.NewActivityError) as caught:
         create([
             NewDocument(doc_type("Invitation Letter"), pdf()),
-            NewDocument(doc_type("Activity Design"), SimpleUploadedFile("Design.pdf", b"not a pdf")),
+            NewDocument(doc_type("Activity Design"), SimpleUploadedFile("Design.pdf", b"not a pdf"), "Design v2"),
         ], title="Rolled back")
     assert caught.value.row_errors == {3: {"file": "The file's content is not a valid PDF file."}}
     assert caught.value.activity_error is None
@@ -224,17 +231,18 @@ def test_new_page_offers_only_the_allowed_types_and_edit_has_no_section(browser,
     assert "Other documents (optional)" not in edit and "required-" not in edit
 
 
-def test_posting_documents_opens_the_documents_tab(browser, post_data) -> None:
+def test_posting_documents_saves_them_and_opens_the_forms_tab(browser, post_data) -> None:
     data = post_data(title="With files")
     data.update(required_post())
     data.update({"documents-0-type": doc_type("Invitation Letter").pk, "documents-0-file": pdf(), "documents-0-title": "",
                  "documents-3-type": "", "documents-3-title": ""})  # a row left empty is ignored
     response = browser.post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="With files")
-    assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk]) + "?tab=documents"
+    assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk]) + "?tab=forms"
     html = response.content.decode()
-    assert "was created as Draft with 3 documents waiting for review." in html
-    assert activity.documents.count() == 3 and "Waiting for review" in html
+    assert "was created as Scheduled with 3 documents waiting for review." in html
+    assert activity.documents.count() == 3 and "Create from defaults" in html  # the next step (ASSUMPTIONS 409)
+    assert all(d.review_state == Document.WAITING_FOR_REVIEW for d in activity.documents.select_related("status"))
     assert activity.creation_documents_required is True
 
 
@@ -281,6 +289,7 @@ def test_posting_without_the_required_files_shows_both_errors_and_saves_nothing(
     for name in ("Activity Design", "Request Letter"):
         pk = doc_type(name).pk
         assert f'id="required-{pk}-file-error" class="field-error">Choose a file to upload.' in html
+        assert f'id="required-{pk}-title-error" class="field-error">Enter a title for the {name}.' in html
     assert "Please correct the documents marked below." in html
 
 
@@ -310,5 +319,81 @@ def test_the_required_files_are_saved_waiting_for_approval(browser, post_data, d
     documents = {d.document_type.name: d for d in activity.documents.select_related("document_type", "status")}
     assert set(documents) == {"Activity Design", "Request Letter"}
     assert documents["Request Letter"].title == "Request to the Dean"
-    assert documents["Activity Design"].title == "Activity Design"
+    assert documents["Activity Design"].title == DESIGN_TITLE
     assert all(d.review_state == Document.WAITING_FOR_REVIEW and d.uploaded_by == director for d in documents.values())
+
+
+# --- The required titles (ASSUMPTIONS 410, NAVIGATU) ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t \n"])
+@pytest.mark.parametrize("index, name", [(0, "Activity Design"), (1, "Request Letter")])
+def test_a_blank_required_title_is_refused_and_nothing_is_created(director, valid_data, blank, index, name) -> None:
+    rows = required_rows()
+    rows[index].title = blank
+    with pytest.raises(document_services.NewActivityError) as refused:
+        document_services.create_activity_with_documents(director, valid_data(title="No title"), rows)
+    assert refused.value.row_errors == {index: {"title": f"Enter a title for the {name}."}}
+    assert not Activity.objects.exists() and not Document.objects.exists() and not stored_files()
+    assert not Notification.objects.exists() and not OrmQ.objects.exists()
+
+
+def test_a_required_title_has_the_normal_length_limit(director, valid_data) -> None:
+    rows = required_rows()
+    rows[0].title = "x" * 256
+    with pytest.raises(document_services.NewActivityError) as refused:
+        document_services.create_activity_with_documents(director, valid_data(), rows)
+    assert refused.value.row_errors == {0: {"title": "The title can be at most 255 characters."}}
+    assert not Activity.objects.exists()
+    rows = required_rows()
+    rows[0].title = "x" * 255
+    activity = document_services.create_activity_with_documents(director, valid_data(), rows)
+    assert activity.documents.get(document_type__name="Activity Design").title == "x" * 255
+
+
+def test_a_valid_required_title_is_saved_as_the_document_title(director, valid_data) -> None:
+    rows = required_rows()
+    rows[1].title = "  Request to the Dean  "
+    activity = document_services.create_activity_with_documents(director, valid_data(), rows)
+    titles = dict(activity.documents.values_list("document_type__name", "title"))
+    assert titles == {"Activity Design": DESIGN_TITLE, "Request Letter": "Request to the Dean"}
+
+
+def test_the_page_shows_title_star_and_an_example_placeholder_without_a_value(browser) -> None:
+    html = browser.get(CREATE).content.decode()
+    for name in ("Activity Design", "Request Letter"):
+        pk = doc_type(name).pk
+        field = html.split(f'for="required-{pk}-title"')[1].split("</div>")[0]
+        assert 'Title <span class="text-red-700" aria-hidden="true">*</span></label>' in field
+        assert "(optional)" not in field and " required " in field and 'maxlength="255"' in field
+        assert f'placeholder="e.g. {name} - Product Development Workshop"' in field and 'value=""' in field
+
+
+def test_a_blank_title_on_the_page_shows_its_error_and_keeps_the_other_typed_title(browser, post_data) -> None:
+    data = post_data(title="Blank title")
+    data.update(required_post())
+    design, request = doc_type("Activity Design").pk, doc_type("Request Letter").pk
+    data[f"required-{design}-title"] = "   "
+    data[f"required-{request}-title"] = "Request to the Dean"
+    response = browser.post(CREATE, data)
+    html = response.content.decode()
+    assert response.status_code == 200 and not Activity.objects.exists() and not stored_files()
+    assert f'id="required-{design}-title-error" class="field-error">Enter a title for the Activity Design.' in html
+    assert f'id="required-{request}-title-error"' not in html
+    assert 'value="Request to the Dean"' in html and "please choose the files again" in html
+
+
+def test_a_file_error_keeps_both_typed_titles(browser, post_data) -> None:
+    data = post_data(title="Bad file")
+    data.update(required_post())
+    data[f"required-{doc_type('Request Letter').pk}-file"] = SimpleUploadedFile("r.pdf", b"not a pdf")
+    html = browser.post(CREATE, data).content.decode()
+    assert not Activity.objects.exists()
+    assert f'value="{DESIGN_TITLE}"' in html and f'value="{REQUEST_TITLE}"' in html
+
+
+def test_the_documents_tab_keeps_the_title_optional(director, valid_data) -> None:
+    """Only the New activity form requires these titles: a later upload on the Documents tab may leave it empty."""
+    activity = document_services.create_activity_with_documents(director, valid_data(), required_rows())
+    document = document_services.upload_document(director, activity, doc_type("Activity Design"), pdf("v2.pdf"), "  ")
+    assert document.title == "Activity Design"

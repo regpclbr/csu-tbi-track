@@ -1230,7 +1230,7 @@ Still 34 tables.
        form, `update_activity`, the API update and the admin cannot touch it). A "created after date X" setting was
        rejected: the date would differ between the development, UAT and test databases.
      - **New activity form:** the Documents section starts with two fixed, required fields, "Activity Design" and "Request
-       Letter" (file + optional title; `documents.pages.required_document_rows`, `activities/_required_document_row.html`,
+       Letter" (file + required title, ASSUMPTIONS 410; `documents.pages.required_document_rows`, `activities/_required_document_row.html`,
        posted as `required-<type id>-file|title`), then "Other documents (optional)" (the existing rows; the two types are
        left out of their dropdown). The required rows go first into the one service call, so row errors map back by
        position. Same checks as any upload (`validate_upload`: real content, PDF/DOCX/XLSX/JPG/PNG, `DOCUMENT_MAX_UPLOAD_MB`);
@@ -1238,7 +1238,7 @@ Still 34 tables.
        item 327): a bad file, a missing file or a failed save leaves no activity, no document, no stored file and no
        notification. A caller that sends no row for a type gets `NewActivityError.missing_types`.
      - The files are normal documents: For Review ("waiting for approval"), uploaded by the creator, `notify_approvers`.
-     - **Drafts (owner decision: option A):** every new activity starts as Draft and the form always requires both files.
+     - **Drafts (owner decision: option A):** every new activity starts as Draft and the form always requires both files *(2026-11-19: the form now creates it as Scheduled, item 409)*.
        Moving **Draft -> Scheduled** on a flagged activity needs a document of each type **uploaded** (waiting, returned or
        approved; owner decision: not necessarily approved) (`documents.services.scheduling_refused_reason`, called from
        `activities.services._move_status`, so the status form, the list's quick actions and the API all refuse with "Upload
@@ -1287,3 +1287,56 @@ Still 34 tables.
      `documents/tests/test_document_rows_browser.py` now runs at 1366, 1280, 1024, 800 and 390 px with an approver viewing
      a waiting, overdue document uploaded by someone else (Approve + Return), and checks on every document line that no
      badge and button overlap and no button sticks out; it fails on the old templates. No database change.
+409. **New activities are created as Scheduled; registration opens only after "Open registration"** (NAVIGATU: with its
+     Activity Design and Request Letter an activity is no longer a Draft; owner decisions 2026-11-19). **One more migration**
+     (`registrations/0008_form_template_ready_at`): a nullable datetime on FORM_TEMPLATE; existing rows get NULL and nothing
+     changes for them (older activities ignore it). Same backup advice as 405.
+     - **Status:** `create_activity_with_documents` creates the activity, uploads the two files and then calls
+       `activities.services.change_status(..., "Scheduled")` in the same transaction (the one transition rule, including the
+       "both uploaded" check of item 405), so History shows "Status: → Draft" and "Status: Draft → Scheduled", both by the
+       creator. A failure undoes everything (no activity, no file). After saving, the page opens the **Forms tab** with
+       "… was created as Scheduled with 2 documents waiting for review. Registration stays closed until you create the
+       registration form, check its fields and click "Open registration"." Scheduled → Draft stays possible while nobody has
+       registered. The JSON API create (no files), the admin, `seed_demo` and every older activity still start as Draft.
+     - **What Scheduled triggers** (checked before building): registration only with a registration form (below); the public
+       page `/register/<id>/` becomes reachable and shows "Registration is closed … the registration form is not ready"
+       (Draft: 404); the automatic Scheduled → Ongoing move at the start time (item 346); document reminders and missing
+       counts like any Scheduled activity; the dashboard's upcoming list (S2); no notification and no email (no status
+       change sends any).
+     - **Why a ready mark:** a registration form exists only after "Create from defaults" on the Forms tab
+       (`create_form`, which copies the default placeholder fields). Before this item registration opened at that moment
+       on a Scheduled activity, with only the defaults. Now, on activities created with their documents
+       (`creation_documents_required`), the form counts only once staff click **"Open registration"** on the Forms tab
+       (`registrations.services.mark_registration_form_ready`: can_create_activity, sets `FORM_TEMPLATE.ready_at`, one History
+       row "Registration form: Marked ready (registration can open)", refused without a form or twice; not undone: fields
+       stay editable until the first registration, and Scheduled → Draft closes registration while nobody registered).
+     - **The one rule:** `registrations.services.registration_form_ready(activity, form)` = the form exists and (it is marked
+       ready or the activity is older). It is used by `registration_closed_reason` (the public page and `/api/register/`,
+       the startup portal page, `register()` itself, the activity page notice, the Share card) and, as the same query, by
+       `activities.services.open_for_registration` (the open list `/register/`, `/api/activities/open/`, the portal's open
+       activities, the Activities card and preset, the dashboard KPI). Parity test. The closed reason stays
+       `REGISTRATION_FORM_NOT_READY` ("Registration is not open yet: the registration form is not ready.").
+     - **Share card:** on these activities, while the form is missing or not ready, the card shows "Build the registration
+       form first: create it on the Forms tab, check its fields and click "Open registration". The registration link and
+       QR code appear then." with a link to the Forms tab, and NO link, copy button or QR code (`share.build_form_first`;
+       the QR URL answers 404). Older activities keep showing the link with the reason.
+     - **Staff hints:** the Forms tab's registration card shows an amber "Registration stays closed." box with the
+       **Open registration** button (only with can_create_activity), then "Marked ready on …"; the activity header notice
+       says "Registration stays closed until you check the registration form and click "Open registration" on the Forms
+       tab."; Needs attention: "Registration form not marked as ready: registration stays closed. …" (Draft/Scheduled).
+     - The evaluation form is unchanged (it never opens registration). Tests: `activities/tests/test_created_as_scheduled.py`.
+
+410. **The Activity Design and Request Letter titles are required on the New activity form** (NAVIGATU, 2026-11-19).
+     - Label "Title *" (same style as "File *"), no "(optional)"; the input is `required`, `maxlength="255"`, never
+       prefilled; the placeholder is only an example ("e.g. Activity Design - Product Development Workshop").
+     - Rule in `documents.services.creation_title_error`, called by `check_new_documents` after `title_error` (so the
+       255-character limit is the normal document title's): a blank or spaces-only title on a creation-required type
+       (`creation_required_types()`) is refused with "Enter a title for the Activity Design." / "... the Request Letter."
+       under that field. It is checked before anything is saved, so nothing is half-created (no activity, document,
+       stored file or notification). The saved document title is the typed title (stripped).
+     - It applies to every row of those two types on the New activity form (also a second Activity Design in an
+       optional row). After any error the typed titles are shown again (browsers clear only the file inputs).
+     - Unchanged: the Documents tab upload (`upload_document` / `title_error`): the title stays optional there (empty =
+       the type's name), required only for "Other". The JSON API create has no documents, so nothing changes there.
+     - Tests: `activities/tests/test_create_with_documents.py` (blank / spaces refused per type, nothing created,
+       length limit, valid title saved, label and placeholder, typed titles kept, Documents tab still optional).

@@ -57,7 +57,7 @@ def test_the_new_activity_page_notifies_too(director, project_head, valid_data) 
     from conftest import CREATION_PDF
     from documents.services import NewDocument, create_activity_with_documents, creation_required_types
 
-    rows = [NewDocument(t, SimpleUploadedFile("a.pdf", CREATION_PDF)) for t in creation_required_types()]
+    rows = [NewDocument(t, SimpleUploadedFile("a.pdf", CREATION_PDF), t.name) for t in creation_required_types()]
     activity = create_activity_with_documents(project_head, valid_data(), rows)
     assert Notification.objects.get(type=Notification.ACTIVITY_CREATED).activity_id == activity.pk
     waiting = Notification.objects.filter(type=Notification.DOCUMENT_WAITING_FOR_REVIEW, member=director)

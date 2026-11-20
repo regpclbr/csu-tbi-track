@@ -98,6 +98,10 @@ def _initial(activity: Activity) -> dict:
     return values
 
 
+REGISTRATION_NEXT_STEP = ("Registration stays closed until you create the registration form, check its fields and click "
+                          "“Open registration”.")
+
+
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
@@ -129,8 +133,10 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             else:
                 count = len(uploads)
                 extra = f" with {count} document{'s' if count != 1 else ''} waiting for review" if count else ""
-                messages.success(request, f'"{activity.title}" was created as Draft{extra}.')
-                return redirect(_detail_url(activity, "documents" if count else ""))
+                # ASSUMPTIONS 409: created as Scheduled; the next step is the registration form (Forms tab).
+                messages.success(request, f'"{activity.title}" was created as {activity.status.name}{extra}. '
+                                          f"{REGISTRATION_NEXT_STEP}")
+                return redirect(_detail_url(activity, "forms"))
         else:  # show the rows' problems together with the fields' ones
             document_pages.put_row_errors(all_rows, document_services.check_new_documents(uploads))
         if any(row.errors for row in all_rows):

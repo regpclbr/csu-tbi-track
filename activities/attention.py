@@ -38,6 +38,7 @@ SET_TIMES = "Set the start and end time."
 CHOOSE_SIGNATORIES = "Choose who signs the certificates ({sides})."  # ASSUMPTIONS 365, 366
 INACTIVE_SIGNATORY = "A signatory on this activity is inactive."  # ASSUMPTIONS 367
 NEEDS_CERTIFICATE_APPROVAL = "Certificates need approval."  # ASSUMPTIONS 369
+FORM_NOT_READY = "Registration form not marked as ready: registration stays closed. Check it and click “Open registration”."  # 409
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,7 @@ class _Facts:
     waiting_review: int = 0
     returned: int = 0
     forms: set[str] = field(default_factory=set)
+    registration_form_ready_at: object = None  # FORM_TEMPLATE.ready_at of the registration form (ASSUMPTIONS 409)
     registered: int = 0
     attended: int = 0
     attended_after_evaluation: int = 0
@@ -93,8 +95,11 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
         fact.waiting_review = sum(1 for d in own if d.review_state == Document.WAITING_FOR_REVIEW)
         fact.returned = sum(1 for d in own if d.review_state == Document.RETURNED)
 
-    for activity_id, form_type in FormTemplate.objects.filter(activity_id__in=ids).values_list("activity_id", "form_type"):
+    for activity_id, form_type, ready_at in FormTemplate.objects.filter(activity_id__in=ids).values_list(
+            "activity_id", "form_type", "ready_at"):
         facts[activity_id].forms.add(form_type)
+        if form_type == FormType.REGISTRATION:
+            facts[activity_id].registration_form_ready_at = ready_at
 
     registrations = (
         Activity.objects.filter(pk__in=ids)
@@ -187,6 +192,10 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
     opens, closes = registration_services.evaluation_window(activity)
     if status in (DRAFT, SCHEDULED) and FormType.REGISTRATION not in fact.forms:
         items.append(AttentionItem("Registration form not built yet.", "forms"))
+    # ASSUMPTIONS 409 (registrations.services.registration_form_needs_ready): built but not marked ready.
+    elif (status in (DRAFT, SCHEDULED) and activity.creation_documents_required
+          and fact.registration_form_ready_at is None):
+        items.append(AttentionItem(FORM_NOT_READY, "forms"))
     if FormType.EVALUATION not in fact.forms and now <= closes:
         items.append(AttentionItem("Evaluation form not built yet.", "forms"))
 

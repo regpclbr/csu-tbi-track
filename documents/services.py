@@ -400,8 +400,20 @@ def _delete_refused_reason(document: Document) -> str | None:
             "Replace the file instead.")
 
 
+def creation_title_error(document_type: DocumentType | None, title: str) -> str | None:
+    """ASSUMPTIONS 410 (NAVIGATU): on the New activity form the Activity Design and the Request Letter need a real
+    title (blank or spaces only is refused); the length limit is title_error's. The Documents tab keeps title_error
+    alone (optional except for "Other")."""
+    if document_type is None or (title or "").strip():
+        return None
+    if not creation_required_types().filter(pk=document_type.pk).exists():
+        return None
+    return f"Enter a title for the {document_type.name}."
+
+
 def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str]]:
-    """Every row's type, file (validate_upload: real content, size) and title, before anything is saved."""
+    """Every row's type, file (validate_upload: real content, size) and title (title_error, plus creation_title_error
+    for the Activity Design and the Request Letter), before anything is saved."""
     allowed = set(types_allowed_at_creation().values_list("pk", flat=True))
     errors: dict[int, dict[str, str]] = {}
     for index, row in enumerate(documents):
@@ -417,7 +429,7 @@ def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str
             validate_upload(row.file)
         except ValidationError as error:
             row_errors["file"] = error.messages[0]
-        if message := title_error(row.document_type, row.title):
+        if message := title_error(row.document_type, row.title) or creation_title_error(row.document_type, row.title):
             row_errors["title"] = message
         if row_errors:
             errors[index] = row_errors
@@ -428,16 +440,16 @@ def create_activity_with_documents(
     member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None,
     signatories: dict | None = None,
 ) -> Activity:
-    """Create a Draft activity (activities.services.create_activity) and upload its documents (upload_document, the
+    """Create the activity (activities.services.create_activity), upload its documents (upload_document, the
     same rules as the Documents tab) in one transaction: all or nothing. `documents` must hold a row for each
     creation_required_types() type (the Activity Design and the Request Letter, ASSUMPTIONS 405); the activity is
-    saved with creation_documents_required=True. Other rows are optional.
+    saved with creation_documents_required=True and then moved to Scheduled (ASSUMPTIONS 409). Other rows are optional.
 
     Errors of the activity and of every row are raised together as NewActivityError. Files already stored when
     something fails are deleted again. upload_document's review notifications are rows in this same transaction
     and it creates no email or task (indexing is queued only on approval, on commit), so a refused create never
     tells anyone anything."""
-    from activities.services import create_activity  # documents imports activities, never the other way round
+    from activities.services import change_status, create_activity  # documents imports activities, never the reverse
 
     require_permission(member, Permission.CREATE_ACTIVITY)
     if len(documents) > MAX_DOCUMENTS_AT_CREATION:
@@ -466,6 +478,11 @@ def create_activity_with_documents(
                     row_errors[index] = {key: messages[0] for key, messages in found.items()}
                     raise _RollBack from error
                 stored.append(document.file_path.name)
+            # ASSUMPTIONS 409 (NAVIGATU): with its Activity Design and Request Letter uploaded it is no longer a Draft.
+            # The one transition rule (change_status -> _move_status, incl. the "both uploaded" check), so History shows
+            # "Draft" then "Draft -> Scheduled" by the creator. Registration still stays closed until the registration
+            # form exists AND is marked ready (registrations.services.registration_form_ready).
+            change_status(member, activity, ActivityStatus.SCHEDULED)
         committed = True
     except _RollBack:
         pass

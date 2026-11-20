@@ -1,6 +1,7 @@
 {% comment %}
 The Share card of the Overview tab (activities.share.share_card; not shown for Draft).
-Scheduled: the registration link with Open / Closed (registrations.services.registration_closed_reason).
+Scheduled: the registration link with Open / Closed (registrations.services.registration_closed_reason); an activity
+created with its documents shows no link or QR code until its registration form is ready (share.BUILD_FORM_FIRST, 409).
 Ongoing / Conducted: the general evaluation link, only while evaluation_request_state is open; otherwise the reason.
 {% endcomment %}
 <section class="card p-6" aria-labelledby="share-title">
@@ -10,8 +11,12 @@ Ongoing / Conducted: the general evaluation link, only while evaluation_request_
       <h3 class="text-sm font-semibold text-ink">Registration</h3>
       {% if share.registration.open %}{% include "components/badge.html" with text="Open" tone="success" %}{% else %}{% include "components/badge.html" with text="Closed" tone="warning" %}{% endif %}
     </div>
-    {% if not share.registration.open %}<p class="mt-1.5 text-sm text-slate-700">{{ share.registration.reason }}</p>{% endif %}
-    {% include "activities/_share_link.html" with kind="registration" url=share.registration.url label="Registration link" done="Registration link copied." %}
+    {% if share.registration.build_form_first %}
+      <p class="mt-1.5 flex gap-2 text-sm text-slate-700" data-build-form-first>{% include "components/icon.html" with name="info" class="mt-0.5 size-4.5 shrink-0 text-muted" %}<span>{{ share.registration.reason }} <a href="{{ activity_url }}?tab=forms" class="link">Open the Forms tab</a></span></p>
+    {% else %}
+      {% if not share.registration.open %}<p class="mt-1.5 text-sm text-slate-700">{{ share.registration.reason }}</p>{% endif %}
+      {% include "activities/_share_link.html" with kind="registration" url=share.registration.url label="Registration link" done="Registration link copied." %}
+    {% endif %}
   {% elif share.evaluation %}
     <div class="flex flex-wrap items-center gap-2">
       <h3 class="text-sm font-semibold text-ink">Evaluation</h3>

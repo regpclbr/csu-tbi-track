@@ -250,9 +250,17 @@ owner is a student, so explain important decisions briefly and keep the code sim
   tests and every row before 2026-11-19 = False = old rules; never editable). Flagged: Draft → Scheduled needs both UPLOADED
   (`scheduling_refused_reason` in `_move_status`), never overdue once uploaded (`is_creation_type` in `_required_item`, same
   rule in `reports.metrics._overdue`, parity test), the only one of a type is never deleted outside Draft
-  (`_delete_refused_reason`). Tests posting the New activity form add `conftest.creation_document_files()`.
+  (`_delete_refused_reason`). Their title is required on the New activity form only
+  (`creation_title_error` in `check_new_documents`, ASSUMPTIONS 410). Tests posting the New activity form add
+  `conftest.creation_document_files()` (files + titles).
 - Every upload waits for the Director (`notify_approvers`, in-app only, never the uploader); the Director may approve their
   own upload (ASSUMPTIONS 344, 406).
+- New activities (the form) are created as Scheduled: `create_activity_with_documents` → `change_status` in the same
+  transaction (History: Draft, then Draft → Scheduled); the page opens the Forms tab (ASSUMPTIONS 409). API / admin / demo:
+  Draft. On flagged activities the registration form counts only once marked ready (`FORM_TEMPLATE.ready_at`,
+  `mark_registration_form_ready`, Forms tab "Open registration"): the one rule `registrations.services.registration_form_ready`
+  in `registration_closed_reason` and (as a query) `open_for_registration` (parity test). Until then the Share card shows
+  `share.BUILD_FORM_FIRST` and no link / QR (404).
 - `document_checklist()` is the only "what is missing" check (Step 8 reuses it). Due dates are
   computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
 - "Required" is only `DOCUMENT_TYPE.is_required` (per type, never per activity); every count reads it (ASSUMPTIONS 386).
@@ -739,7 +747,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents after UAT (2026-11-18, NAVIGATU): Activity Design and Request Letter required on the New activity form, needed
   before Scheduled, never overdue once uploaded (405); every upload waits for the Director, own uploads self-approved (406);
   Signatories rows no longer squeezed (407). Database: activities 0009 (`ACTIVITY.creation_documents_required`); 34 tables.
-  Then (2026-11-19) Documents page buttons never cover the State badges, checked at 1366/1280/1024/800/390 px (408).
+  Then (2026-11-19) Documents page buttons never cover the State badges, checked at 1366/1280/1024/800/390 px (408); new
+  activities created as Scheduled, registration closed until the form is marked ready ("Open registration") (409).
+  Database: also registrations 0008 (`FORM_TEMPLATE.ready_at`).
+  Then their titles are required on the New activity form (`creation_title_error`; the Documents tab keeps
+  the title optional) (410).
 
 ## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
 - NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.

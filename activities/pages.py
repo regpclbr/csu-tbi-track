@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from accounts.permissions import Permission, has_permission
 from registrations import services as registration_services
+from registrations.models import FormType
 from reports.dashboard_page import DONUT_STROKE, category_color, donut_segments
 from reports.metrics import shares
 
@@ -50,6 +51,8 @@ DEFAULT_TAB = "overview"
 
 # Shown to staff instead of the public wording when only the registration form is missing (owner request, F2a).
 FORM_MISSING_NOTICE = "Registration form not created yet. Create it in the Forms tab (phase F2b)."
+# ASSUMPTIONS 409: the form exists but is not marked ready (activities created with their documents).
+FORM_NOT_READY_NOTICE = "Registration stays closed until you check the registration form and click “Open registration” on the Forms tab."
 
 
 @dataclass
@@ -336,6 +339,9 @@ def registration_summary(activity: Activity, now: datetime | None = None) -> dic
     notice = None
     if reason and activity.status.name == ActivityStatus.SCHEDULED:
         notice = FORM_MISSING_NOTICE if reason == registration_services.REGISTRATION_FORM_NOT_READY else reason
+        if reason == registration_services.REGISTRATION_FORM_NOT_READY and registration_services.registration_form_needs_ready(
+                activity, registration_services.get_form(activity, FormType.REGISTRATION)):
+            notice = FORM_NOT_READY_NOTICE
     return {
         "registered": registered, "max_slots": activity.max_slots, "percent": _percent(registered, activity.max_slots),
         "slots_remaining": services.slots_remaining(activity), "open": reason is None, "reason": reason,

@@ -290,6 +290,13 @@ def write_certificate_history(activity: Activity, member: TBIMember | None, old:
     _write_audit(activity, member, [(CERTIFICATES_LABEL, old, new)])
 
 
+def write_registration_form_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
+    """One History row about the registration form (registrations.services.mark_registration_form_ready, ASSUMPTIONS 409)."""
+    from registrations.services import REGISTRATION_FORM_HISTORY_LABEL  # registrations.services imports this module
+
+    _write_audit(activity, member, [(REGISTRATION_FORM_HISTORY_LABEL, old, new)])
+
+
 def write_certificate_approval_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
     """One History row about the approval of the activity's certificates (certificates.services, ASSUMPTIONS 369):
     "Certificate approval": "Needs approval" -> "Approved by Ana Cruz", or the approval cancelled by a change."""
@@ -772,15 +779,17 @@ def open_for_registration(queryset: QuerySet | None = None, now: datetime | None
     """Activities open for registration now, as a database query: the ONE rule behind the Activities card and
     preset, the dashboard KPI, /register/ and the startup portal (registrations.services.open_activities).
 
-    Scheduled, deadline not passed, slots left (= is_registration_open()) AND a registration form exists
-    (= registrations.services.registration_closed_reason() is None). A parity test keeps the two in step.
+    Scheduled, deadline not passed, slots left (= is_registration_open()) AND a registration form that counts
+    (= registrations.services.registration_form_ready: exists, and marked ready on activities created with their
+    documents, ASSUMPTIONS 409) (= registration_closed_reason() is None). A parity test keeps the two in step.
     """
     now = now or timezone.now()
     queryset = Activity.objects.all() if queryset is None else queryset
     has_form = FormTemplate.objects.filter(activity=OuterRef("pk"), form_type=FormType.REGISTRATION)
+    ready_form = Exists(has_form.filter(ready_at__isnull=False)) | (Q(creation_documents_required=False) & Exists(has_form))
     registered = Registration.objects.filter(activity=OuterRef("pk")).values("activity").annotate(n=Count("pk")).values("n")
     return queryset.filter(
-        Exists(has_form),
+        ready_form,
         status__name=SCHEDULED,
         registration_deadline__gte=now,
         max_slots__gt=Coalesce(Subquery(registered), 0),

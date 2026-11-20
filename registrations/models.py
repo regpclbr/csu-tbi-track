@@ -57,6 +57,11 @@ class FormTemplate(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="created_form_templates"
     )
+    # ASSUMPTIONS 409: when staff marked this REGISTRATION form ready ("Open registration"). On activities created with
+    # their documents (Activity.creation_documents_required) registration stays closed until it is set, so it never opens
+    # with only the default placeholder fields. Empty for evaluation forms and for older activities' forms (not needed).
+    # Set only by registrations.services.mark_registration_form_ready.
+    ready_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

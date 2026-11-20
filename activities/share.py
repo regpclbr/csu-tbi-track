@@ -21,10 +21,23 @@ QR_SCALE = 12  # pixels per module: about 500 px for a typical link, sharp enoug
 QR_BORDER = 4  # the quiet zone the QR standard asks for (in modules)
 
 
+BUILD_FORM_FIRST = ("Build the registration form first: create it on the Forms tab, check its fields and click "
+                    "“Open registration”. The registration link and QR code appear then.")
+
+
+def build_form_first(activity: Activity, reason: str | None) -> bool:
+    """ASSUMPTIONS 409: an activity created with its documents shows no registration link or QR code while its
+    registration form is missing or not marked ready (older activities keep showing the link with the reason)."""
+    return (activity.creation_documents_required and activity.status.name == ActivityStatus.SCHEDULED
+            and reason == registration_services.REGISTRATION_FORM_NOT_READY)
+
+
 def share_card(activity: Activity, registration: dict, now: datetime | None = None) -> dict | None:
     """What the Share card shows; None for Draft. `registration` is activities.pages.registration_summary()."""
     status = activity.status.name
     if status == ActivityStatus.SCHEDULED:
+        if build_form_first(activity, registration["reason"]):
+            return {"registration": {"url": None, "open": False, "reason": BUILD_FORM_FIRST, "build_form_first": True}}
         return {"registration": {"url": registration_services.registration_page_url(activity),
                                  "open": registration["open"], "reason": registration["reason"]}}
     if status in EVALUATION_STATUSES:
@@ -38,6 +51,8 @@ def qr_url(activity: Activity, kind: str, now: datetime | None = None) -> str | 
     """The link a QR code may show: only a link the Share card shows (None otherwise, answered with 404)."""
     status = activity.status.name
     if kind == "registration" and status == ActivityStatus.SCHEDULED:
+        if build_form_first(activity, registration_services.registration_closed_reason(activity, now)):
+            return None  # ASSUMPTIONS 409: no QR code before the registration form is ready
         return registration_services.registration_page_url(activity)
     if kind == "evaluation" and status in EVALUATION_STATUSES:
         if registration_services.evaluation_request_state(activity, now).kind == "open":

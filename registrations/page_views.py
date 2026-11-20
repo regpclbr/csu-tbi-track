@@ -74,6 +74,24 @@ def form_create(request: HttpRequest, activity_id: int, form_type: str) -> HttpR
     return redirect(_tab_url(activity, "forms"))
 
 
+@permission_required(Permission.CREATE_ACTIVITY)
+@post_only_or_tab("forms")
+def form_ready(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """"Open registration" (ASSUMPTIONS 409): the registration form is marked ready, so registration can open. A full
+    page load afterwards, so the header's registration notice and the Share card update too."""
+    activity = _activity(activity_id)
+    try:
+        services.mark_registration_form_ready(request.user, activity)
+    except services.RegistrationError as error:
+        messages.error(request, str(error))
+    else:
+        activity.refresh_from_db()
+        reason = services.registration_closed_reason(activity)
+        messages.success(request, "The registration form is ready. " + (
+            "Registration is open: share the link from the Overview tab." if reason is None else reason))
+    return redirect(_tab_url(activity, "forms"))
+
+
 @staff_login_required
 @require_GET
 def form_card(request: HttpRequest, template_id: int) -> HttpResponse:
