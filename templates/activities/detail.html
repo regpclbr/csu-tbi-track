@@ -5,6 +5,8 @@ The activity page (activities.page_views.activity_detail): header with the actio
 tabs (activities/_tab.html, swapped by HTMX; the URL keeps ?tab=). The registration state and the amber notice come
 from activities.pages.registration_summary (registrations.services.registration_closed_reason).
 {% endcomment %}
+{# The header card below is this page's header (ASSUMPTIONS 411): the activity title is the page's h1, not the layout's. #}
+{% block page_header %}{% endblock %}
 {% block content %}
 <div class="space-y-5">
   <section class="card p-6" aria-labelledby="activity-title">
@@ -12,7 +14,7 @@ from activities.pages.registration_summary (registrations.services.registration_
     <div class="mt-3 flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-2.5">
-          <h2 id="activity-title" class="text-2xl leading-tight font-bold tracking-tight [overflow-wrap:anywhere] text-ink">{{ activity.title }}</h2>
+          <h1 id="activity-title" class="page-title [overflow-wrap:anywhere]">{{ activity.title }}</h1>
           {% include "components/status_badge.html" with status=activity.status.name %}
         </div>
         <ul class="mt-2.5 flex flex-wrap gap-1.5" aria-label="Type and participant categories">

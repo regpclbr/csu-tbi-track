@@ -1,0 +1,136 @@
+/*
+  UI revision after the UAT (Phase 1 prototype; NOT loaded by the app).
+  Injected by Playwright on top of static/css/app.css to make the after-*.png mock-ups. Phase 2 moves these values into
+  the @theme block and the component classes of frontend/tailwind/app.css.
+*/
+
+/* ---- 1. Tokens ---------------------------------------------------------------------------------------------------
+   Contrast (WCAG 2.2, measured): white on primary 7.9:1, primary text on white 7.9:1 / on the page 7.3:1, ink 17.8:1,
+   muted 7.7:1 (7.2:1 on the page), helper 5.8:1, white on danger 6.6:1, every badge text 5.2:1 or more on its tint,
+   input border 3.1:1 (non-text, needs 3:1), white on the sidebar 10.4:1. */
+:root {
+  /* brand */
+  --color-sidebar: #22378F;          /* the brand navy, unchanged: solid sidebar, no full-screen gradient */
+  --color-sidebar-hover: #2B44A6;
+  --color-sidebar-muted: #C7D2FE;
+  --brand-accent: linear-gradient(90deg, #22378F 0%, #60CDEE 100%);  /* only a 3 px accent line */
+
+  /* actions */
+  --color-primary: #2B4BA8;          /* calmer than #1D4ED8, closer to the brand navy */
+  --color-primary-hover: #223C8A;
+  --color-primary-soft: #EEF2FB;
+
+  /* surfaces and text */
+  --color-page: #F5F7FA;
+  --color-panel: #F5F7FA;
+  --color-line: #E4E7EC;             /* card and table borders (decorative) */
+  --color-line-strong: #8D96A7;      /* input borders: 3.1:1 */
+  --color-ink: #101828;
+  --color-muted: #475467;
+  --color-helper: #5D6676;
+  --color-kpi: #101828;              /* KPI numbers in ink: colour only in the small icon chip */
+
+  /* status */
+  --color-danger: #B42318;
+  --color-danger-hover: #912018;
+  --color-danger-soft: #FEF3F2;
+  --color-warning: #93370D;
+  --color-warning-soft: #FFFAEB;
+
+  /* spacing scale (4 px base): 4 8 12 16 24 32 */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+  --page-padding: var(--space-8);    /* 24 px below 1280 px */
+  --card-padding: var(--space-6);
+  --card-gap: var(--space-6);
+  --field-gap: var(--space-4);
+  --section-gap: var(--space-8);
+
+  /* shape and depth */
+  --radius-control: 8px;             /* buttons, inputs, selects, segmented controls */
+  --radius-card: 12px;
+  --radius-badge: 6px;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-card-hover: 0 4px 12px rgb(16 24 40 / 0.08);
+}
+
+/* ---- 2. Shell: solid brand sidebar, flat light content, thin gradient accent ----------------------------------- */
+body.app-bg { background: var(--color-page) !important; }
+.app-shell aside#sidebar { background: var(--color-sidebar) !important; }
+#content-panel {
+  margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: var(--color-page) !important;
+}
+#content-panel::before { content: ""; display: block; height: 3px; background: var(--brand-accent); }
+#content-panel > header { min-height: 64px !important; background: rgb(255 255 255 / 0.9) !important;
+  border-bottom: 1px solid var(--color-line); padding-left: var(--page-padding) !important; padding-right: var(--page-padding) !important; }
+#main { padding: var(--page-padding) !important; }
+.app-shell aside nav a[aria-current="page"] { background: rgb(255 255 255 / 0.14) !important; box-shadow: inset 3px 0 0 #60CDEE !important; }
+.app-shell aside nav a { border-radius: var(--radius-control) !important; }
+
+/* ---- 3. Buttons: one size, one radius, four levels --------------------------------------------------------------- */
+.btn, .app-shell .btn {
+  border-radius: var(--radius-control) !important; height: 40px; padding: 0 16px; font-size: 14px; font-weight: 600;
+  box-shadow: none !important; transform: none !important; gap: 8px;
+}
+.btn.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn-primary { background: var(--color-primary); color: #fff; border: 1px solid var(--color-primary); }
+.btn-primary:hover { background: var(--color-primary-hover); }
+.btn-secondary, .btn-warning { background: #fff !important; color: var(--color-ink) !important; border: 1px solid #D0D5DD !important; }
+.btn-secondary:hover, .btn-warning:hover { background: #F9FAFB !important; border-color: var(--color-line-strong) !important; }
+.btn-ghost, .btn-tertiary { background: transparent; color: var(--color-primary); border: 1px solid transparent; }
+.btn-ghost:hover, .btn-tertiary:hover { background: var(--color-primary-soft); }
+.btn-danger { background: #fff; color: var(--color-danger); border: 1px solid #FDA29B; }  /* filled red only inside a confirm dialog */
+.btn-danger:hover { background: var(--color-danger-soft); }
+.btn-icon { width: 32px; padding: 0 !important; }
+
+/* ---- 4. Cards, KPI cards, badges, tags ---------------------------------------------------------------------------- */
+.card, .kpi-card { border-radius: var(--radius-card) !important; border: 1px solid var(--color-line) !important; box-shadow: var(--shadow-card) !important; }
+.card.p-6, .card.p-5 { padding: var(--card-padding) !important; }
+.hover-lift:hover { transform: none !important; box-shadow: var(--shadow-card-hover) !important; }
+.kpi-card .text-2xl { color: var(--color-ink); font-weight: 600; }
+.chip { border-radius: 8px !important; }
+.badge { border-radius: var(--radius-badge); font-weight: 500; border: 1px solid transparent; }
+.badge-draft, .badge-neutral { background: #F2F4F7; color: #344054; border-color: #E4E7EC; }
+.badge-scheduled { background: #EFF8FF; color: #175CD3; border-color: #D1E9FF; }
+.badge-ongoing, .badge-warning { background: #FFFAEB; color: #B54708; border-color: #FEDF89; }
+.badge-conducted, .badge-success { background: #ECFDF3; color: #067647; border-color: #ABEFC6; }
+.badge-danger { background: #FEF3F2; color: #B42318; border-color: #FECDCA; }
+.badge-info { background: #EFF4FF; color: #1E40AF; border-color: #D1E0FF; }
+.tag { border-radius: var(--radius-badge); }
+.tag-type { background: var(--color-primary-soft); color: var(--color-primary); }
+
+/* ---- 5. Typography ------------------------------------------------------------------------------------------------ */
+.page-title { font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-ink); }
+.page-description { margin-top: 4px; font-size: 14px; line-height: 20px; color: var(--color-muted); }
+.card-title { font-size: 16px !important; line-height: 24px; font-weight: 600 !important; }
+.card-subtitle { font-size: 13px; color: var(--color-muted); }
+.section-title { font-size: 18px; line-height: 28px; font-weight: 600; color: var(--color-ink); }
+
+/* ---- 6. Form fields, segmented controls -------------------------------------------------------------------------- */
+.field-input { border-radius: var(--radius-control) !important; border-color: var(--color-line-strong) !important; box-shadow: none !important; }
+.pill-select { border-radius: var(--radius-control) !important; box-shadow: none !important; }
+nav.inline-flex.rounded-full, .inline-flex.rounded-full.border { border-radius: var(--radius-control) !important; }
+nav.inline-flex.rounded-full > a, .inline-flex.rounded-full.border > a { border-radius: 6px !important; box-shadow: none !important; }
+
+/* ---- 7. Page header (new component in Phase 2: components/page_header.html) ------------------------------------- */
+.page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4);
+  margin-bottom: var(--space-6); }
+.page-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.page-header-actions .divider { width: 1px; height: 24px; background: var(--color-line); margin: 0 var(--space-1); }
+
+/* ---- 8. Calmer dashboard hero blocks ---------------------------------------------------------------------------- */
+.welcome-banner, .spotlight { background: #fff !important; color: var(--color-ink) !important; border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-card) !important; border-radius: var(--radius-card) !important; }
+.welcome-banner { border-top: 3px solid transparent; background-image: linear-gradient(#fff, #fff), var(--brand-accent) !important;
+  background-origin: border-box !important; background-clip: padding-box, border-box !important; }
+.welcome-banner *, .spotlight * { color: inherit; }
+.welcome-banner .on-dark p, .spotlight p, .spotlight span { color: var(--color-muted); }
+.spotlight h3, .welcome-banner h2 { color: var(--color-ink) !important; }
+.spotlight .text-white, .spotlight .text-blue-100 { color: var(--color-muted) !important; }
+.spotlight [class*="bg-white/"] { background: var(--color-primary-soft) !important; color: var(--color-primary) !important; border-color: transparent !important; }
+.welcome-banner > .pointer-events-none, .spotlight > .pointer-events-none, .spotlight > div[aria-hidden] { display: none !important; }
+.spotlight svg circle { stroke: #E4E7EC; }
+.date-tile-gradient { background: var(--color-primary-soft) !important; color: var(--color-primary) !important; }
+.date-tile-gradient * { color: var(--color-primary) !important; }
+.welcome-banner .btn-ghost { color: var(--color-primary) !important; padding-left: 0; padding-right: 0; }
+/* Segmented controls (List / Calendar, Someone in the list / A new person): the selected option is white, not solid blue. */
+.app-shell .inline-flex.rounded-full > .bg-primary { background: #fff !important; color: var(--color-primary) !important; box-shadow: var(--shadow-card) !important; }

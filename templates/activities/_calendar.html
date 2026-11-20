@@ -34,7 +34,7 @@ days of the week; each chip's link text is the title and its status.
           {% for day in week %}
             <td class="h-24 border-t border-l border-line p-1.5 align-top first:border-l-0 {% if day.in_month %}bg-white{% else %}bg-slate-50{% endif %}">
               <p class="mb-1 flex justify-end">
-                <span class="flex size-6 items-center justify-center rounded-full text-xs font-semibold {% if day.is_today %}bg-primary text-white{% elif day.in_month %}text-ink{% else %}text-slate-500{% endif %}">
+                <span class="flex size-6 items-center justify-center rounded-full text-xs font-semibold {% if day.is_today %}bg-primary-soft text-primary font-bold{% elif day.in_month %}text-ink{% else %}text-slate-500{% endif %}">
                   <span class="sr-only">{{ day.date|date:"l, F j" }}{% if day.is_today %} (today){% endif %}</span><span aria-hidden="true">{{ day.date.day }}</span>
                 </span>
               </p>

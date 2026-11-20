@@ -78,10 +78,10 @@ Summary cards: click = filter by that state (again = clear). Rendered from the U
 </div>
 
 <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-  <nav class="inline-flex shrink-0 rounded-full border border-line bg-slate-50 p-1" aria-label="How to show the documents">
+  <nav class="segmented shrink-0" aria-label="How to show the documents">
     {% for link in view_links %}
       <a href="{{ link.url }}" hx-get="{{ link.url }}" hx-target="#document-repository" hx-push-url="true"{% if link.selected %} aria-current="true"{% endif %}
-         class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold whitespace-nowrap {% if link.selected %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
+         class="segmented-item {% if link.selected %}is-selected{% endif %}">
         {% include "components/icon.html" with name=link.icon class="size-4" %}{{ link.label }}</a>
     {% endfor %}
   </nav>

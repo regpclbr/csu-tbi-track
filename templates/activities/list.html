@@ -7,6 +7,8 @@ toggle, the filters (list view only) and #activity-results, which HTMX replaces 
 month link; the URL keeps the filters (hx-push-url), so a reload or a shared link shows the same view.
 Without JavaScript the Apply button submits the filters.
 {% endcomment %}
+{# The page's one primary action, in the page header (ASSUMPTIONS 411). #}
+{% block page_actions %}{% if can_create %}<a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="space-y-5">
   {% include "activities/_stat_cards.html" %}
@@ -15,16 +17,13 @@ Without JavaScript the Apply button submits the filters.
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-wrap items-center gap-4">
         <h2 id="activities-title" class="card-title">{% if filters.view == "calendar" %}Calendar{% else %}All activities{% endif %}</h2>
-        <nav class="inline-flex rounded-full border border-line bg-slate-50 p-1" aria-label="View">
+        <nav class="segmented" aria-label="View">
           <a href="{% url 'activities:list' %}"{% if filters.view == "list" %} aria-current="page"{% endif %}
-             class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if filters.view == 'list' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">{% include "components/icon.html" with name="list" class="size-4" %}List</a>
+             class="segmented-item {% if filters.view == 'list' %}is-selected{% endif %}">{% include "components/icon.html" with name="list" class="size-4" %}List</a>
           <a href="{% url 'activities:list' %}?view=calendar"{% if filters.view == "calendar" %} aria-current="page"{% endif %}
-             class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if filters.view == 'calendar' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">{% include "components/icon.html" with name="calendar" class="size-4" %}Calendar</a>
+             class="segmented-item {% if filters.view == 'calendar' %}is-selected{% endif %}">{% include "components/icon.html" with name="calendar" class="size-4" %}Calendar</a>
         </nav>
       </div>
-      {% if can_create %}
-        <a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>
-      {% endif %}
     </div>
 
     {% if filters.view == "list" %}
@@ -59,7 +58,7 @@ Without JavaScript the Apply button submits the filters.
             {% for category in categories %}<option value="{{ category.pk }}"{% if category.pk == filters.participant_category %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
           </select>
         </div>
-        <div class="flex items-center gap-1.5">
+        <div class="flex flex-wrap items-center gap-2">
           <label for="filter-from" class="text-sm text-muted">From</label>
           <input id="filter-from" type="date" name="date_from" value="{{ filters.date_from|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3">
           <label for="filter-to" class="text-sm text-muted">to</label>

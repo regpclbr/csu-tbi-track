@@ -113,7 +113,7 @@ def test_tab_all_issued_shows_the_count_and_no_button(generated, director, view_
     for member in (director, view_only):
         html = tab_html(member, activity)
         assert 'data-approval-state="all_issued"' in html and "All certificates issued (3)" in html
-        assert services.ALL_ISSUED_NOTE in html and "bg-green-100 text-green-800" in html
+        assert services.ALL_ISSUED_NOTE in html and "bg-success-soft text-success" in html  # the Approved green tint (ASSUMPTIONS 412)
         assert "Approve certificates for this activity" not in html  # hidden, not disabled
         assert services.ALL_ISSUED not in html and 'id="approval-reason"' not in html
         assert "Needs approval" not in html and GREY not in html and "No certificate is waiting now." not in html

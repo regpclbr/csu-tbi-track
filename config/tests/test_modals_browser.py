@@ -49,7 +49,7 @@ def _targets(director, admin) -> list[dict]:
         {"name": "status-change", "member": director, "url": detail(not_final), "click": "button[aria-haspopup=dialog]:has-text('Change status')"},
         {"name": "return-document", "member": director, "url": detail(returnable.activity, "documents"),
          "click": f"a[href^='{reverse('documents:action_form', args=[returnable.pk, 'return'])}']"},
-        {"name": "mark-attended", "member": director, "url": detail(attendance, "registrations"), "click": "button[aria-haspopup=dialog]:has-text('Mark attended')"},
+        # (No "mark-attended" case: "Mark attended" and "Mark selected as attended" are direct submit buttons, no dialog.)
         {"name": "registration-details", "member": director, "url": detail(attendance, "registrations"), "click": "button:has-text('View') >> nth=0"},
         {"name": "evidence", "member": director, "url": detail(evidence_activity, "certificates"), "click": "a:has-text('Evidence') >> nth=0"},
         {"name": "form-preview", "member": director, "url": detail(with_form, "forms"), "click": "button[aria-haspopup=dialog]:has-text('Preview') >> nth=0"},

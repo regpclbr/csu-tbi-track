@@ -5,6 +5,8 @@ evidence), its review history (who and when; the return reason is not stored: it
 notification), Download and the actions this member may take (documents.services.allowed_actions). Back goes to the
 page the member came from (?next=, documents.pages.back_link); the Activity link stays in the details.
 {% endcomment %}
+{# The header card below is this page's header: the document title is the h1 (ASSUMPTIONS 411). #}
+{% block page_header %}{% endblock %}
 {% block content %}
 <div class="mx-auto max-w-4xl space-y-5">
   <a href="{{ back_link.url }}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}{{ back_link.label|truncatechars:90 }}</a>
@@ -13,7 +15,7 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0">
         <p class="text-xs font-semibold tracking-wide text-primary uppercase">{{ document.document_type.name }}</p>
-        <h2 id="document-title" class="mt-1 text-2xl leading-tight font-bold break-words text-ink">{{ document.title }}</h2>
+        <h1 id="document-title" class="page-title mt-1 break-words">{{ document.title }}</h1>
         <div class="mt-2 flex flex-wrap items-center gap-1.5">
           {% include "components/badge.html" with text=state.label tone=state.tone %}
           {% if searchable %}<span class="badge badge-neutral">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}Searchable by the AI assistant</span>{% endif %}

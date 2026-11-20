@@ -17,7 +17,7 @@ One report in the history (reports.pages.history_row). A pending row asks for it
   <td class="min-w-36 px-3 py-3 text-slate-700">{{ report.generated_by.name }}<br><time class="text-xs whitespace-nowrap text-muted" datetime="{{ report.generated_at|date:'c' }}">{{ report.generated_at|date:"M j, Y g:i A" }}</time></td>
   <td class="px-3 py-3">
     <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-      {% if row.poll %}{% include "components/spinner.html" with class="size-3.5 animate-spin text-blue-700" %}{% endif %}
+      {% if row.poll %}{% include "components/spinner.html" with class="size-3.5 animate-spin text-info" %}{% endif %}
       {% include "components/badge.html" with text=row.badge.label tone=row.badge.tone %}
     </span>
     {% if row.gave_up %}<p class="mt-1 max-w-48 text-xs text-muted">Still pending. Is qcluster running? Refresh the page to check again.</p>{% endif %}

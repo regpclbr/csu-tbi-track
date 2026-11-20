@@ -1,5 +1,5 @@
-{% load ui %}{# Date tile (OCT / 28, NOV / 4–5). {% include "components/date_tile.html" with activity=activity gradient=True %} gradient: white on the dark blue gradient. Decorative: write the dates as text elsewhere. #}{% with tile=activity|date_tile %}
-<div class="flex shrink-0 flex-col items-center justify-center py-2 {% if gradient %}date-tile-gradient w-15 rounded-2xl text-white{% else %}w-17 rounded-lg bg-blue-50 text-primary{% endif %}" aria-hidden="true">
+{% load ui %}{# Date tile (OCT / 28, NOV / 4–5). {% include "components/date_tile.html" with activity=activity gradient=True %} gradient: the primary on its soft tint (ASSUMPTIONS 411; the name is kept). Decorative: write the dates as text elsewhere. #}{% with tile=activity|date_tile %}
+<div class="flex shrink-0 flex-col items-center justify-center py-2 {% if gradient %}date-tile-gradient w-15 rounded-2xl text-primary{% else %}w-17 rounded-lg bg-primary-soft text-primary{% endif %}" aria-hidden="true">
   <span class="text-[11px] font-bold tracking-wide">{{ tile.month }}</span>
   <span class="{% if gradient %}text-xl{% else %}text-2xl{% endif %} leading-tight font-bold">{{ tile.days }}</span>
 </div>{% endwith %}

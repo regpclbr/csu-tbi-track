@@ -62,10 +62,10 @@ the activity groups (certificates/_activity_group.html) or the flat table (certi
   </ul>
 
   <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-    <nav class="inline-flex max-w-full flex-wrap rounded-full border border-line bg-slate-50 p-1" aria-label="How to show the certificates">
+    <nav class="segmented max-w-full flex-wrap" aria-label="How to show the certificates">
       {% for link in view_links %}
         <a href="{{ link.url }}" hx-get="{{ link.url }}" hx-target="#certificate-results" hx-push-url="true"{% if link.selected %} aria-current="true"{% endif %}
-           class="cert-link inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold whitespace-nowrap {% if link.selected %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
+           class="cert-link segmented-item {% if link.selected %}is-selected{% endif %}">
           {% include "components/icon.html" with name=link.icon class="size-4" %}{{ link.label }}</a>
       {% endfor %}
     </nav>

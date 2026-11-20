@@ -1,9 +1,9 @@
 {# The Admin Console's tab row (accounts.console_pages.TABS) and the link to the Startups page (sync, set-password links). #}
 <nav class="mb-5 flex flex-wrap items-center gap-2" aria-label="Admin Console">
-  <ul class="inline-flex flex-wrap gap-1 rounded-full border border-line bg-white p-1 shadow-card">
+  <ul class="inline-flex flex-wrap gap-1 rounded-full border border-line bg-slate-50 p-1">
     {% for tab in tabs %}
       <li><a href="{{ tab.url }}"{% if tab.active %} aria-current="page"{% endif %}
-             class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold {% if tab.active %}bg-primary text-white{% else %}text-slate-700 hover:bg-slate-100 hover:text-ink{% endif %}">
+             class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold {% if tab.active %}bg-primary-soft text-primary{% else %}text-slate-700 hover:bg-white/70 hover:text-ink{% endif %}">
         {% include "components/icon.html" with name=tab.icon class="size-4" %}{{ tab.label }}</a></li>
     {% endfor %}
   </ul>

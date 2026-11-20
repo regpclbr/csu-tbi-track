@@ -32,7 +32,7 @@ standalone=True: its own page (Close becomes a link back to the Certificates tab
   </div>
 </div>
 {% if item.issued_note %}
-  <p class="mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm {% if item.outdated %}bg-amber-50 text-amber-900{% else %}bg-emerald-50 text-emerald-900{% endif %}" role="note">
+  <p class="mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm {% if item.outdated %}bg-amber-50 text-amber-900{% else %}bg-success-soft text-success{% endif %}" role="note">
     {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span>{{ item.issued_note }}</span></p>
 {% elif not name_final %}
   <p class="mt-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note">

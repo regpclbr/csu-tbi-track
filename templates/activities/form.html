@@ -7,19 +7,22 @@ New only: the required Activity Design and Request Letter and optional documents
 ASSUMPTIONS 405), saved with the activity in one service call.
 "Who signs the certificates" (activities/_signatories_fields.html, ASSUMPTIONS 365): saved with the activity.
 {% endcomment %}
+{# The form's heading is the page header: back link, the h1 and the description (ASSUMPTIONS 411). #}
+{% block page_header %}
+  <div class="page-header mx-auto max-w-4xl">
+    <div class="min-w-0">
+      <a href="{% if activity %}{% url 'activities:detail' activity.pk %}{% else %}{% url 'activities:list' %}{% endif %}" class="link inline-flex items-center gap-1.5 text-sm">
+        {% include "components/icon.html" with name="arrow-left" class="size-4" %}{% if activity %}Back to the activity{% else %}All activities{% endif %}
+      </a>
+      <h1 class="page-title mt-1">{% if activity %}Edit activity{% else %}New activity{% endif %}</h1>
+      <p class="page-description">{% if activity %}Every change is written to the activity's History.{% else %}A new activity is created as Scheduled, with its Activity Design and Request Letter. Every field except the description is required.{% endif %}</p>
+    </div>
+  </div>
+{% endblock %}
 {% block content %}
 <form method="post" novalidate{% if not activity %} enctype="multipart/form-data"{% endif %} class="mx-auto max-w-4xl space-y-5"
       x-data x-init="$nextTick(() => { const first = $el.querySelector('[aria-invalid=true]'); if (first) first.focus(); })">
   {% csrf_token %}
-  <div class="flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <a href="{% if activity %}{% url 'activities:detail' activity.pk %}{% else %}{% url 'activities:list' %}{% endif %}" class="link inline-flex items-center gap-1.5 text-sm">
-        {% include "components/icon.html" with name="arrow-left" class="size-4" %}{% if activity %}Back to the activity{% else %}All activities{% endif %}
-      </a>
-      <h2 class="mt-1 text-2xl font-bold tracking-tight text-ink">{% if activity %}Edit activity{% else %}New activity{% endif %}</h2>
-      <p class="text-sm text-muted">{% if activity %}Every change is written to the activity's History.{% else %}A new activity starts as Draft. Every field except the description is required.{% endif %}</p>
-    </div>
-  </div>
 
   {% if form.errors %}
     <div class="flex gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">

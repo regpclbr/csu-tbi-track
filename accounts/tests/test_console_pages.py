@@ -273,7 +273,7 @@ def test_email_in_development_mode_is_blue(admin, settings) -> None:
     assert item.tone == system_status.INFO and item.summary == "Development mode: emails are printed in the terminal."
     html = admin.get(reverse("accounts:console_system")).content.decode()
     status_email = html.split('id="status-email"')[0].rsplit("<li", 1)[1]
-    assert "border-blue-200" in status_email and "Development mode: emails are printed in the terminal." in html
+    assert "border-info-line" in status_email and "Development mode: emails are printed in the terminal." in html
 
 
 def test_email_console_mode_without_debug_is_amber_with_the_fix(admin, settings) -> None:

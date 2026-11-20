@@ -9,7 +9,7 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
 {% with message=item.message %}
 {% if item.is_answer %}
   <li class="flex gap-3" id="message-{{ message.pk }}">
-    <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary" aria-hidden="true">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
+    <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary" aria-hidden="true">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
     <div class="min-w-0 max-w-[85%]">
       <p class="sr-only">The assistant answered:</p>
       <div class="rounded-2xl rounded-tl-md border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-card break-words [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold">{{ item.html }}</div>
@@ -24,7 +24,7 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
             {% if group.activity.missing %}
               <p class="mt-2 text-sm text-muted">Activity no longer available</p>
             {% elif group.activity %}
-              <p class="mt-2 text-sm"><a href="{{ group.activity.url }}" class="font-semibold text-primary hover:underline">{{ group.activity.title }}</a>
+              <p class="mt-2 text-sm"><a href="{{ group.activity.url }}" class="font-semibold text-link hover:underline">{{ group.activity.title }}</a>
                 <span class="text-xs text-muted">· {{ group.activity.dates }}</span></p>
             {% endif %}
             <ul class="mt-2 grid gap-2 sm:grid-cols-2">
@@ -34,10 +34,10 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
                     <p class="text-slate-700">This file is no longer available.</p>
                   {% else %}
                     <div class="flex items-start gap-2">
-                      {% for number in card.numbers %}<span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white" aria-label="Source {{ number }}">{{ number }}</span>{% endfor %}
+                      {% for number in card.numbers %}<span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-bold text-primary" aria-label="Source {{ number }}">{{ number }}</span>{% endfor %}
                       <div class="min-w-0 flex-1">
                         <p class="truncate font-semibold text-ink" title="{{ card.title }}">{{ card.title }}</p>
-                        <p class="truncate text-slate-700">{{ card.type }} · <a href="{{ card.activity_url }}" class="text-primary hover:underline">{{ card.activity }}</a></p>
+                        <p class="truncate text-slate-700">{{ card.type }} · <a href="{{ card.activity_url }}" class="text-link hover:underline">{{ card.activity }}</a></p>
                         <p class="mt-1 flex flex-wrap items-center gap-2">
                           {% include "components/badge.html" with text=card.badge.label tone=card.badge.tone %}
                           <span class="text-muted">Uploaded {{ card.uploaded_on|date:"M j, Y" }}</span>
@@ -63,7 +63,7 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
 {% else %}
   <li class="flex justify-end" id="message-{{ message.pk }}">
     <p class="sr-only">You asked:</p>
-    <p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm break-words text-white">{{ message.content|linebreaksbr }}</p>
+    <p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm break-words text-ink">{{ message.content|linebreaksbr }}</p>
   </li>
 {% endif %}
 {% endwith %}

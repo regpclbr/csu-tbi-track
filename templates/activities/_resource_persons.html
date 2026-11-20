@@ -3,7 +3,7 @@ Resource persons (services.get_activity_detail). Adding (an existing person, or 
 activities.services (duplicates and Conducted are refused there; the message comes back as a toast).
 Only shown to members with can_create_activity, and not on a Conducted activity.
 {% endcomment %}
-<section id="resource-persons" class="card mt-5 scroll-mt-24 p-6" aria-labelledby="rp-title">
+<section id="resource-persons" class="card scroll-mt-24 p-6" aria-labelledby="rp-title">
   {% with count=detail.resource_persons|length %}
     {% include "components/section_header.html" with id="rp-title" title="Resource persons" aside=count|stringformat:"s"|add:" linked" %}
   {% endwith %}
@@ -40,11 +40,11 @@ Only shown to members with can_create_activity, and not on a Conducted activity.
     <div class="mt-5 rounded-2xl border border-line bg-slate-50/60 p-5" x-data="{ mode: 'existing' }">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <h3 class="font-semibold text-ink">Add a resource person</h3>
-        <div class="inline-flex rounded-full border border-line bg-white p-1" role="radiogroup" aria-label="Who to add">
+        <div class="segmented max-w-full flex-wrap" role="radiogroup" aria-label="Who to add">
           <button type="button" role="radio" :aria-checked="(mode === 'existing').toString()" @click="mode = 'existing'"
-                  class="rounded-full px-3.5 py-1.5 text-sm font-semibold" :class="mode === 'existing' ? 'bg-primary text-white' : 'text-slate-600 hover:text-ink'">Someone already in the list</button>
+                  class="segmented-item" :class="mode === 'existing' ? 'is-selected' : ''">Someone already in the list</button>
           <button type="button" role="radio" :aria-checked="(mode === 'new').toString()" @click="mode = 'new'"
-                  class="rounded-full px-3.5 py-1.5 text-sm font-semibold" :class="mode === 'new' ? 'bg-primary text-white' : 'text-slate-600 hover:text-ink'">A new person</button>
+                  class="segmented-item" :class="mode === 'new' ? 'is-selected' : ''">A new person</button>
         </div>
       </div>
 
@@ -62,7 +62,7 @@ Only shown to members with can_create_activity, and not on a Conducted activity.
           <label for="rp-topic" class="text-sm font-semibold text-ink">Topic <span class="font-normal text-muted">(optional)</span></label>
           <input id="rp-topic" type="text" name="topic" maxlength="255" class="field-input mt-1.5">
         </div>
-        <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Add resource person</button>
+        <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Add resource person</button>
       </form>
 
       <form method="post" action="{% url 'activities:add_resource_person' activity.pk %}" x-show="mode === 'new'" x-cloak class="mt-4 grid gap-3 md:grid-cols-2">
@@ -85,7 +85,7 @@ Only shown to members with can_create_activity, and not on a Conducted activity.
           <input id="rp-new-topic" type="text" name="topic" maxlength="255" class="field-input mt-1.5">
         </div>
         <div class="md:col-span-2">
-          <button type="submit" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Add new resource person</button>
+          <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="plus" class="size-4" %}Add new resource person</button>
         </div>
       </form>
     </div>

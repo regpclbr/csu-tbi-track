@@ -13,7 +13,7 @@ dropped on it is put into that same input, and the chosen file's name is shown. 
     <span class="flex size-10 items-center justify-center rounded-full bg-white text-primary shadow-card" aria-hidden="true">{% include "components/icon.html" with name="upload" class="size-5" %}</span>
     <p class="text-sm text-slate-700"><span class="hidden sm:inline" x-show="!name">Drag a file here, or choose one: </span><span x-show="name" x-cloak>Chosen: <strong class="break-all text-ink" x-text="name"></strong></span></p>
     <input id="{{ id }}" x-ref="input" type="file" name="{{ name|default:'file' }}" accept="{{ limits.accept }}" required
-           class="max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary-hover"
+           class="max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border file:border-solid file:border-control-line file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink hover:file:bg-slate-50"
            @change="name = $event.target.files.length ? $event.target.files[0].name : ''"
            aria-describedby="{{ id }}-help{% if error %} {{ id }}-error{% endif %}"{% if error %} aria-invalid="true"{% endif %}{% if autofocus %} autofocus{% endif %}>
   </div>

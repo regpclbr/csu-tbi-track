@@ -22,7 +22,7 @@ Never put hx-headers or another per-request value in this layout (as auth_split.
         <img src="{% static 'img/logo-96.png' %}" alt="" width="40" height="40" class="size-10 rounded-xl">
         <span class="leading-tight">
           <span class="block text-lg font-bold tracking-tight">CSU-TBI Track</span>
-          <span class="block text-[13px] text-blue-100">Technology Business Incubator</span>
+          <span class="block text-[13px] text-glacial-sky">Technology Business Incubator</span>
         </span>
       </a>
     </header>
@@ -34,7 +34,7 @@ Never put hx-headers or another per-request value in this layout (as auth_split.
     {# Dark text on small glass pills: readable wherever the gradient puts them (as the sign-in footer) #}
     <footer class="mt-8 flex flex-col items-center gap-2 text-center text-sm text-ink">
       <p class="auth-footnote rounded-2xl px-3.5 py-1 font-medium">© {% now "Y" %} CSU Technology Business Incubator · Caraga State University</p>
-      <p class="auth-footnote rounded-2xl px-3.5 py-1">Questions? Email <a href="mailto:{{ tbi_contact_email }}" class="font-semibold text-primary-hover underline underline-offset-2">{{ tbi_contact_email }}</a> · <a href="{% url 'privacy_notice' %}" class="font-semibold text-primary-hover underline underline-offset-2">Privacy notice</a></p>
+      <p class="auth-footnote rounded-2xl px-3.5 py-1">Questions? Email <a href="mailto:{{ tbi_contact_email }}" class="font-semibold text-link underline underline-offset-2">{{ tbi_contact_email }}</a> · <a href="{% url 'privacy_notice' %}" class="font-semibold text-link underline underline-offset-2">Privacy notice</a></p>
     </footer>
   </div>
 </div>

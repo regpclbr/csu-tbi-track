@@ -45,7 +45,8 @@ The buttons are shown for every member: the services refuse what is not allowed 
                 {% if member.is_active and member.must_change_password %}<span class="block pt-1 text-xs text-muted">Temporary password</span>{% endif %}
               </td>
               <td class="px-3 py-3">
-                <div class="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
+                {# The actions wrap inside the cell (never wider than the table at 1366 px: Deactivate was cut off, ASSUMPTIONS 411). #}
+                <div class="flex flex-wrap justify-end gap-2">
                   {% if member.is_active %}
                     {% with pk=member.pk|stringformat:"s" %}{% with reset_id="reset-member-"|add:pk deactivate_id="deactivate-member-"|add:pk %}
                       {% include "components/modal.html" with id=reset_id title="Reset password" body="console/_confirm_reset.html" trigger_label="Reset password" trigger_sr=member.name trigger_icon="key-round" trigger_class="btn btn-secondary btn-sm" %}

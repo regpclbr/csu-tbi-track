@@ -1,5 +1,5 @@
-{# A Scheduled activity whose registration is closed: the reason (activities.pages.registration_summary), in amber. #}
-<div class="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+{# A Scheduled activity whose registration is closed: the reason (activities.pages.registration_summary), an amber notice (ASSUMPTIONS 411). #}
+<div class="notice notice-warning flex gap-3" role="status">
   {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-amber-700" %}
   <p>{{ registration.notice }}</p>
 </div>

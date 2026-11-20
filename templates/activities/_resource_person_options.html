@@ -1,8 +1,12 @@
-{% comment %}HTMX: the pick list for "add an existing person" (services.search_resource_persons).{% endcomment %}
+{% comment %}HTMX: the pick list for "add an existing person" (services.search_resource_persons).
+The rounded border sits on a wrapper and the list inside scrolls with square corners: a scroll box with rounded corners
+inside the scrolling content panel made Chromium draw a small square over the panel's rounded top-left corner
+(ASSUMPTIONS 412). Never give a vertical scroll box inside the panel its own rounded corners.{% endcomment %}
 {% if people %}
   <fieldset>
     <legend class="sr-only">Choose a resource person</legend>
-    <ul class="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-line bg-white p-1.5">
+    <div class="rounded-xl border border-line bg-white p-1.5">
+    <ul class="max-h-[13.25rem] space-y-1 overflow-y-auto">
       {% for person in people %}
         <li>
           <label class="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-50 has-[:checked]:bg-primary-soft">
@@ -15,6 +19,7 @@
         </li>
       {% endfor %}
     </ul>
+    </div>
   </fieldset>
 {% else %}
   <p class="rounded-xl border border-dashed border-line bg-white px-4 py-3 text-sm text-muted">{% if q %}No one called “{{ q }}”. Add them as a new person.{% else %}No resource persons yet. Add a new person.{% endif %}</p>

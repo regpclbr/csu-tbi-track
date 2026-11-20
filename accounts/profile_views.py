@@ -26,6 +26,7 @@ def _context(member, profile: dict | None = None, profile_errors: dict | None = 
              password_errors: dict | None = None) -> dict:
     return {
         "page_title": "My profile",
+        "page_subtitle": "Your name, position and password",
         "member": member,
         "positions": services.offered_positions(member),
         "profile": profile or {"name": member.name, "position": member.position_id},

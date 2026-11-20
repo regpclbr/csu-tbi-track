@@ -21,7 +21,7 @@ the grid fills main, so both cards reach the bottom and only the messages and th
 message box stays at the bottom of the chat card. Lower windows: the panel scrolls and the grid is 34rem high.
 {% endcomment %}
 {% block panel_scroll %}short-screen:overflow-y-auto fit-screen:flex fit-screen:flex-col fit-screen:overflow-hidden{% endblock %}
-{% block main_class %}px-5 pt-5 pb-10 sm:px-6 xl:px-7 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-5{% endblock %}
+{% block main_class %}px-4 pt-2 pb-10 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-6{% endblock %}
 {% block content %}
 <div id="assistant-layout" class="grid gap-5 short-screen:h-[34rem] fit-screen:min-h-0 fit-screen:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]"
      x-data="{
@@ -41,7 +41,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
                 aria-controls="my-chats-panel" aria-expanded="true" :aria-expanded="chatsOpen.toString()" @click="setChats(false)">
           {% include "components/icon.html" with name="panel-left-close" class="size-4" %}</button>
       </div>
-      <a href="{% url 'assistant:chat' %}" class="btn btn-primary btn-sm mt-2 w-full justify-center">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
+      <a href="{% url 'assistant:chat' %}" class="btn btn-secondary btn-sm mt-2 w-full justify-center">{% include "components/icon.html" with name="plus" class="size-4" %}New chat</a>
     </div>
     {% include "assistant/_chat_list.html" %}
   </nav>
@@ -76,7 +76,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
         <a href="{% url 'assistant:chat' %}" class="btn btn-secondary btn-sm px-2.5" aria-label="New chat">
           {% include "components/icon.html" with name="plus" class="size-4" %}</a>
       </div>
-      <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
+      <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
       <div class="min-w-0">
         <h2 id="chat-title" class="truncate font-semibold text-ink">{% if chat %}{{ chat.title }}{% else %}New chat{% endif %}</h2>
         <p class="text-xs text-muted">Answers cite approved documents with their files; activities, files and what is missing come from the records.</p>
@@ -89,7 +89,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
            @htmx:after-settle="if ($event.target.id === 'messages') contentAdded()">
         {% if suggestions %}
           <div id="chat-empty" class="mx-auto max-w-xl py-6 text-center">
-            <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" %}</span>
+            <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" %}</span>
             <p class="font-semibold text-ink">Ask about your activities and documents</p>
             <p class="mt-1 text-sm text-muted">For example, try one of these:</p>
             <ul class="mt-4 space-y-2">
@@ -107,9 +107,9 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
 
         {# The question being answered and the typing indicator (only while waiting). #}
         <div x-cloak x-show="busy" class="mt-5 space-y-5">
-          <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm break-words whitespace-pre-line text-white" x-text="pending"></p></div>
+          <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm break-words whitespace-pre-line text-ink" x-text="pending"></p></div>
           <div class="flex items-center gap-3" role="status">
-            <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
+            <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
             <span class="inline-flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3" aria-hidden="true">
               <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce"></span>
               <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:150ms]"></span>

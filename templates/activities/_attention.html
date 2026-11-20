@@ -1,26 +1,26 @@
 {% comment %}
-Needs attention (activities.attention.activity_attention): each item links to its tab (or the edit page). Same amber style
-as the registration notice; a small green "All set" when nothing is left. Informational items (e.g. issued certificates
+Needs attention (activities.attention.activity_attention): each item links to its tab (or the edit page). A white notice with an amber
+left edge, links in the primary colour (ASSUMPTIONS 411), like the registration notice; a small green "All set" when nothing is left. Informational items (e.g. issued certificates
 with an old signature, ASSUMPTIONS 364) are listed but not counted (attention_count = attention.warning_count).
 {% endcomment %}
 {% if attention %}
-  <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="region" aria-labelledby="attention-title">
+  <div class="notice notice-warning" role="region" aria-labelledby="attention-title">
     <p id="attention-title" class="flex items-center gap-2 font-semibold">
       {% include "components/icon.html" with name="triangle-alert" class="size-4.5 text-amber-700" %}{% if attention_count %}Needs attention ({{ attention_count }}){% else %}For your information{% endif %}</p>
-    <ul class="mt-1.5 list-disc space-y-1 pl-11">
+    <ul class="mt-2 list-disc space-y-1 pl-11 marker:text-muted">
       {% for item in attention %}
         <li>
           {% if item.tab == "edit" %}
-            {% if can_edit %}<a href="{% url 'activities:edit' activity.pk %}" class="underline underline-offset-2 hover:no-underline">{{ item.text }}</a>{% else %}{{ item.text }}{% endif %}
+            {% if can_edit %}<a href="{% url 'activities:edit' activity.pk %}" class="link font-medium">{{ item.text }}</a>{% else %}{{ item.text }}{% endif %}
           {% else %}
-            <a href="{{ activity_url }}?tab={{ item.tab }}" hx-get="{{ activity_url }}?tab={{ item.tab }}" hx-target="#tab-area" hx-push-url="true" class="underline underline-offset-2 hover:no-underline">{{ item.text }}</a>
+            <a href="{{ activity_url }}?tab={{ item.tab }}" hx-get="{{ activity_url }}?tab={{ item.tab }}" hx-target="#tab-area" hx-push-url="true" class="link font-medium">{{ item.text }}</a>
           {% endif %}
-          {% if item.informational %}<span class="text-xs text-amber-800">(for information)</span>{% endif %}
+          {% if item.informational %}<span class="text-xs text-muted">(for information)</span>{% endif %}
         </li>
       {% endfor %}
     </ul>
   </div>
 {% else %}
-  <p class="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-sm font-medium text-green-800">
+  <p class="badge badge-success text-sm">
     {% include "components/icon.html" with name="circle-check" class="size-4" %}All set</p>
 {% endif %}

@@ -24,6 +24,9 @@ from .forms import ActivityPageFormWithSignatories as ActivityPageForm
 from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory, ResourcePerson
 
 
+# The delete page's one-line description (ASSUMPTIONS 389, 411).
+DELETE_SUBTITLE = "Deleting removes the activity and its records for good; a record of the deletion is kept"
+
 def _can_create(request: HttpRequest) -> bool:
     return has_permission(request.user, Permission.CREATE_ACTIVITY)
 
@@ -45,7 +48,8 @@ def activity_list(request: HttpRequest) -> HttpResponse:
     first (statuses only, never emails), so the list never shows a status that is already out of date."""
     services.apply_automatic_statuses()
     filters = pages.parse_list_filters(request.GET)
-    context = {"page_title": "Activities", "filters": filters, "q": filters.q, "can_create": _can_create(request)}
+    context = {"page_title": "Activities", "page_subtitle": "Every TBI activity: happening now, needing follow-up, upcoming, drafts and past",
+               "filters": filters, "q": filters.q, "can_create": _can_create(request)}
     if filters.view == pages.CALENDAR:
         context["calendar"] = pages.month_grid(filters.month)
     elif filters.grouped:  # the default: sections (services.grouped_activities); only Past is paginated
@@ -292,13 +296,13 @@ def activity_delete(request: HttpRequest, activity_id: int) -> HttpResponse:
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type"), pk=activity_id)
     if request.method == "GET":
         template = "activities/_delete_dialog.html" if is_htmx(request) else "activities/delete_page.html"
-        return render(request, template, {"page_title": f"Delete {activity.title}", **_delete_context(activity)})
+        return render(request, template, {"page_title": f"Delete {activity.title}", "page_subtitle": DELETE_SUBTITLE, **_delete_context(activity)})
     typed = request.POST.get("title", "")
     try:
         record = deletion.delete_activity(request.user, activity, typed)
     except ValidationError as error:
         message = " ".join(error.message_dict.get("title", [])) if hasattr(error, "error_dict") else " ".join(error.messages)
-        context = {"page_title": f"Delete {activity.title}", **_delete_context(activity, typed, message)}
+        context = {"page_title": f"Delete {activity.title}", "page_subtitle": DELETE_SUBTITLE, **_delete_context(activity, typed, message)}
         return render(request, "activities/delete_page.html", context, status=400)
     messages.success(request, f"“{record.activity_title}” was deleted. A record of it is kept in the Admin Console "
                               "(Deleted activities).")

@@ -54,6 +54,9 @@ ROW_ACTIONS = {
 }
 
 
+# The evidence page's one-line description (ASSUMPTIONS 411).
+EVIDENCE_SUBTITLE = "Files kept as evidence for this certificate"
+
 def _keep_background(request: HttpRequest) -> bool:
     """The upload dialogs' "Keep the background" checkbox (ASSUMPTIONS 366)."""
     try:
@@ -98,7 +101,8 @@ def certificate_list(request: HttpRequest) -> HttpResponse:
     """GET q, activity, status, recipient_type, delivery_method, view (activity | all), page (ASSUMPTIONS 372). View only
     for any active staff member. An HTMX request gets only the results (the filters are inside them)."""
     filters = pages.parse_filters(request.GET)
-    context = {"page_title": "Certificates", "filters": filters, **pages.certificate_list(filters), **pages.filter_choices()}
+    context = {"page_title": "Certificates", "page_subtitle": "All certificates, the most recent activity first; approve, preview and reissue them on each activity's Certificates tab",
+               "filters": filters, **pages.certificate_list(filters), **pages.filter_choices()}
     if is_htmx(request):
         return render(request, "certificates/_results.html", context)
     if has_permission(request.user, Permission.APPROVE_CERTIFICATES):  # the Signatories page (ASSUMPTIONS 363)
@@ -379,7 +383,8 @@ def reissue_all(request: HttpRequest, activity_id: int) -> HttpResponse:
 
 def _text_page(request: HttpRequest, *, values: dict | None = None, errors: dict | None = None,
                status: int = 200) -> HttpResponse:
-    context = {"page_title": "Certificate text", **pages.default_text_page(values, errors)}
+    context = {"page_title": "Certificate text", "page_subtitle": "The default wording printed on certificates of participation and appreciation",
+               **pages.default_text_page(values, errors)}
     return render(request, "certificates/text.html", context, status=status)
 
 
@@ -437,7 +442,8 @@ def certificate_text_preview(request: HttpRequest) -> HttpResponse:
 
 def _signatories_page(request: HttpRequest, *, errors: dict | None = None, values: dict | None = None,
                       open_form: str = "", status: int = 200) -> HttpResponse:
-    context = {"page_title": "Signatories", **pages.signatories_page(request.user, errors, values, open_form)}
+    context = {"page_title": "Signatories", "page_subtitle": "The people whose names and signatures are printed on certificates, and the two defaults",
+               **pages.signatories_page(request.user, errors, values, open_form)}
     return render(request, "certificates/signatories.html", context, status=status)
 
 
@@ -627,7 +633,8 @@ def signatory_defaults(request: HttpRequest) -> HttpResponse:
 def preview_dialog(request: HttpRequest, certificate_id: int) -> HttpResponse:
     """The preview dialog's content for HTMX (the PDF in an <iframe> + Download PDF); its own page without JavaScript."""
     certificate = get_object_or_404(Certificate.objects.select_related("activity", "registration", "resource_person"), pk=certificate_id)
-    context = {"page_title": f"Certificate {certificate.certificate_number}", **pages.preview(certificate, request.user)}
+    context = {"page_title": f"Certificate {certificate.certificate_number}", "page_subtitle": "The certificate as it is printed",
+               **pages.preview(certificate, request.user)}
     if is_htmx(request):
         return render(request, "certificates/_preview.html", context)
     return render(request, "certificates/preview_page.html", context)
@@ -641,7 +648,7 @@ def preview_dialog(request: HttpRequest, certificate_id: int) -> HttpResponse:
 def evidence(request: HttpRequest, certificate_id: int) -> HttpResponse:
     """The evidence list and upload form: the modal's content for HTMX, a page of its own without JavaScript."""
     certificate = get_object_or_404(Certificate.objects.select_related("activity", "registration", "resource_person"), pk=certificate_id)
-    context = {"page_title": f"Evidence for {certificate.certificate_number}", **pages.evidence(request, certificate)}
+    context = {"page_title": f"Evidence for {certificate.certificate_number}", "page_subtitle": EVIDENCE_SUBTITLE, **pages.evidence(request, certificate)}
     template = "certificates/_evidence.html" if is_htmx(request) else "certificates/evidence_page.html"
     return render(request, template, context)
 
@@ -659,7 +666,8 @@ def evidence_upload(request: HttpRequest, certificate_id: int) -> HttpResponse:
             errors = {key: " ".join(values) for key, values in error.message_dict.items()}
         else:
             errors = {"file": str(error)}
-        context = {"page_title": f"Evidence for {certificate.certificate_number}", **pages.evidence(request, certificate, errors, title)}
+        context = {"page_title": f"Evidence for {certificate.certificate_number}", "page_subtitle": EVIDENCE_SUBTITLE,
+                   **pages.evidence(request, certificate, errors, title)}
         if is_htmx(request):
             return render(request, "certificates/_evidence.html", context)
         return render(request, "certificates/evidence_page.html", context, status=400)

@@ -31,8 +31,10 @@ from .decorators import STAFF_REFUSED, portal_page_required
 PROFILE_FIELDS = ("name", "email", "contact_number")
 
 
-def _render(request: HttpRequest, template: str, title: str, context: dict | None = None, status: int = 200) -> HttpResponse:
-    return render(request, template, {"page_title": title, **(context or {})}, status=status)
+def _render(request: HttpRequest, template: str, title: str, context: dict | None = None, status: int = 200,
+            subtitle: str = "Startup portal") -> HttpResponse:
+    """A portal page; `subtitle` is its one-line description under the title (ASSUMPTIONS 411)."""
+    return render(request, template, {"page_title": title, "page_subtitle": subtitle, **(context or {})}, status=status)
 
 
 def notice(request: HttpRequest, *, title: str, text: str, icon: str, tone: str = "info", status: int = 200, **extra) -> HttpResponse:
@@ -80,13 +82,15 @@ def logout_page(request: HttpRequest) -> HttpResponse:
 @portal_page_required
 @require_GET
 def home(request: HttpRequest) -> HttpResponse:
-    return _render(request, "portal/home.html", "Overview", pages.overview(request.startup))
+    return _render(request, "portal/home.html", "Overview", pages.overview(request.startup),
+                   subtitle="Your startup's activities at a glance")
 
 
 @portal_page_required
 @require_GET
 def open_activities(request: HttpRequest) -> HttpResponse:
-    return _render(request, "portal/activities.html", "Open activities", {"cards": pages.open_cards(request.startup)})
+    return _render(request, "portal/activities.html", "Open activities", {"cards": pages.open_cards(request.startup)},
+                   subtitle="TBI activities you can register for now")
 
 
 @portal_page_required
@@ -148,7 +152,8 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
         "rows": public_pages.answer_rows(form, values["answers"], errors, focus),
         "consent_field": registration_services.PRIVACY_CONSENT_FIELD,
     }
-    return _render(request, "portal/register.html", f"Register: {activity.title}", context, status=status)
+    return _render(request, "portal/register.html", f"Register: {activity.title}", context, status=status,
+                   subtitle="Fill in the form to register for this activity")
 
 
 @portal_page_required
@@ -158,7 +163,8 @@ def registered(request: HttpRequest, activity_id: int) -> HttpResponse:
     activity = registration_services.registration_page_activity(activity_id)
     if activity is None or not public_pages.has_registered(request, activity.pk):
         return redirect("startups:portal_registrations_page")
-    return _render(request, "portal/registered.html", "You're registered", {"activity": activity})
+    return _render(request, "portal/registered.html", "You're registered", {"activity": activity},
+                   subtitle="Your registration is saved")
 
 
 # --- My registrations, certificates, notifications, profile ------------------------------------
@@ -168,7 +174,8 @@ def registered(request: HttpRequest, activity_id: int) -> HttpResponse:
 @require_GET
 def my_registrations(request: HttpRequest) -> HttpResponse:
     context = {**pages.registration_rows(request.startup), "activities_url": reverse("startups:portal_activities")}
-    return _render(request, "portal/registrations.html", "My registrations", context)
+    return _render(request, "portal/registrations.html", "My registrations", context,
+                   subtitle="The activities you registered for")
 
 
 @portal_page_required
@@ -176,7 +183,8 @@ def my_registrations(request: HttpRequest) -> HttpResponse:
 def my_certificates(request: HttpRequest) -> HttpResponse:
     """Issued certificates of my registrations only; the download is the permission-checked portal view."""
     certificates = certificates_for_startup(request.startup).select_related("activity").order_by("-issued_at")
-    return _render(request, "portal/certificates.html", "My certificates", {"certificates": certificates})
+    return _render(request, "portal/certificates.html", "My certificates", {"certificates": certificates},
+                   subtitle="Certificates issued to you")
 
 
 @portal_page_required
@@ -193,7 +201,8 @@ def notifications(request: HttpRequest) -> HttpResponse:
         "unread": notification_services.unread_count(startup),
         "query": "show=unread" if show == "unread" else "",
     }
-    return _render(request, "portal/notifications.html", "Notifications", context)
+    return _render(request, "portal/notifications.html", "Notifications", context,
+                   subtitle="Updates for your startup")
 
 
 def _notifications_url(request: HttpRequest) -> str:
@@ -219,4 +228,5 @@ def mark_all_read(request: HttpRequest) -> HttpResponse:
 @portal_page_required
 @require_GET
 def profile(request: HttpRequest) -> HttpResponse:
-    return _render(request, "portal/profile.html", "Profile", {"startup": request.startup})
+    return _render(request, "portal/profile.html", "Profile", {"startup": request.startup},
+                   subtitle="Your startup's details from Navigatu")

@@ -7,14 +7,14 @@ marks it as read and goes to its page (notifications:open, as in the bell's drop
 {% block content %}
 <section class="card p-6" aria-labelledby="notifications-title">
   <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-    <h2 id="notifications-title" class="card-title">Notifications</h2>
+    <h2 id="notifications-title" class="sr-only">Notifications</h2>
     <div class="flex flex-wrap items-center gap-3">
-      <nav class="inline-flex rounded-full border border-line bg-slate-50 p-1" aria-label="Which notifications">
+      <nav class="segmented" aria-label="Which notifications">
         <a href="{% url 'notifications:list' %}"{% if show == "all" %} aria-current="page"{% endif %}
-           class="rounded-full px-3.5 py-1.5 text-sm font-semibold {% if show == 'all' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">All</a>
+           class="segmented-item {% if show == 'all' %}is-selected{% endif %}">All</a>
         <a href="{% url 'notifications:list' %}?show=unread"{% if show == "unread" %} aria-current="page"{% endif %}
-           class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if show == 'unread' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">Unread
-          <span class="rounded-full px-1.5 text-xs font-bold {% if unread %}bg-primary text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ unread }}<span class="sr-only"> unread</span></span></a>
+           class="segmented-item {% if show == 'unread' %}is-selected{% endif %}">Unread
+          <span class="rounded-full px-1.5 text-xs font-bold {% if unread %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ unread }}<span class="sr-only"> unread</span></span></a>
       </nav>
       {% if unread %}
         <form method="post" action="{% url 'notifications:read_all' %}">
@@ -29,7 +29,7 @@ marks it as read and goes to its page (notifications:open, as in the bell's drop
   {% if notifications %}
     <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
       {% for item in notifications %}{% with notification=item.notification %}
-        <li class="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:flex-nowrap {% if not notification.is_read %}bg-blue-50/60{% else %}bg-white{% endif %}">
+        <li class="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:flex-nowrap {% if not notification.is_read %}bg-info-soft/60{% else %}bg-white{% endif %}">
           <span class="mt-1.5 size-2.5 shrink-0 rounded-full {% if notification.is_read %}bg-slate-200{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
           <div class="min-w-0 flex-1">
             <p class="text-sm text-ink">{% if not notification.is_read %}<span class="sr-only">Unread: </span>{% endif %}{{ notification.message }}</p>

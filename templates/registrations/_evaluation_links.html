@@ -51,7 +51,7 @@ Registrations tab anyway); never ratings, comments or answers.
         <li class="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2">
           <span class="font-semibold text-ink">{{ request.registration.name }}</span>
           <span class="text-muted">· requested <time datetime="{{ request.requested_at|date:'c' }}">{{ request.requested_at|date:"M j, g:i A" }}</time> ·</span>
-          <span class="{% if request.sent %}font-semibold text-green-800{% elif request.pending %}text-slate-700{% else %}font-semibold text-amber-900{% endif %}">{{ request.text }}</span>
+          <span class="{% if request.sent %}font-semibold text-success{% elif request.pending %}text-slate-700{% else %}font-semibold text-amber-900{% endif %}">{{ request.text }}</span>
         </li>
       {% endfor %}
     </ul>

@@ -25,7 +25,7 @@ Touch targets are at least 44 px (rating buttons, option rows).
         {% for number in "12345" %}
           <label class="relative">
             <input type="radio" name="field_{{ field.pk }}" value="{{ number }}" class="peer sr-only"{% if row.value == number %} checked{% endif %}{% if disabled %} disabled{% endif %}{% if row.autofocus and forloop.first %} autofocus{% endif %}{% if row.error %} aria-invalid="true"{% endif %}>
-            <span class="flex size-11 cursor-pointer items-center justify-center rounded-xl border bg-white text-base font-semibold text-slate-700 peer-checked:border-primary peer-checked:bg-primary peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 {% if row.error %}border-danger{% else %}border-slate-300{% endif %}">{{ number }}</span>
+            <span class="flex size-11 cursor-pointer items-center justify-center rounded-xl border bg-white text-base font-semibold text-slate-700 peer-checked:border-primary peer-checked:bg-primary-soft peer-checked:text-primary peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 {% if row.error %}border-danger{% else %}border-slate-300{% endif %}">{{ number }}</span>
           </label>
         {% endfor %}
       </div>

@@ -9,7 +9,7 @@ the TBI sends a new set-password link. The link under the card goes back to the 
 {% block headline %}
   <span class="rise block" style="--d: 0ms">Startup portal.</span>
   <span class="rise block" style="--d: 80ms">Register for activities.</span>
-  <span class="rise block text-[#5EEAD4]" style="--d: 160ms">Get your certificates.</span>
+  <span class="rise block text-glacial-sky" style="--d: 160ms">Get your certificates.</span>
 {% endblock %}
 {% block panel_text %}For incubatees of the Technology Business Incubator at Caraga State University.{% endblock %}
 {% block card_heading %}Startup portal{% endblock %}
@@ -26,7 +26,7 @@ the TBI sends a new set-password link. The link under the card goes back to the 
     {% include "public/_input.html" with name="password" label="Password" type="password" autocomplete="current-password" required=True reveal=True %}
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-[15px]">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
-    <p class="text-sm text-slate-700">Forgot your password? Ask the TBI to send you a new link: <a href="mailto:{{ contact_email }}" class="font-semibold text-primary-hover underline underline-offset-2">{{ contact_email }}</a></p>
+    <p class="text-sm text-slate-700">Forgot your password? Ask the TBI to send you a new link: <a href="mailto:{{ contact_email }}" class="font-semibold text-link underline underline-offset-2">{{ contact_email }}</a></p>
   </form>
 {% endblock %}
 {% block below_card %}

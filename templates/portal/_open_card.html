@@ -16,7 +16,7 @@
   </dl>
   <div class="mt-auto pt-4">
     {% if card.registered %}
-      <p class="flex items-center gap-2 text-sm font-semibold text-green-800">{% include "components/icon.html" with name="circle-check" class="size-4.5" %}Already registered</p>
+      <p class="flex items-center gap-2 text-sm font-semibold text-success">{% include "components/icon.html" with name="circle-check" class="size-4.5" %}Already registered</p>
       <a href="{% url 'startups:portal_registrations_page' %}" class="link mt-2 inline-block text-sm">See my registrations</a>
     {% else %}
       <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">

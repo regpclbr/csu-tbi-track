@@ -8,7 +8,7 @@ closes. Errors come back here. The activity itself is saved only with the activi
       method="post" action="{{ add_url }}" enctype="multipart/form-data" novalidate class="space-y-4">
   {% csrf_token %}
   <input type="hidden" id="add-signatory-slot" name="slot" value="{{ values.slot|default:'left' }}">
-  {% if added %}<p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="status">{{ added }} was added and chosen.</p>{% endif %}
+  {% if added %}<p class="rounded-xl bg-success-soft px-3 py-2 text-sm text-success" role="status">{{ added }} was added and chosen.</p>{% endif %}
   {% if errors.file %}<p class="field-error" role="alert">{{ errors.file }}</p>{% endif %}
   <div>
     <label for="add-signatory-name" class="text-sm font-semibold text-ink">Name as printed</label>

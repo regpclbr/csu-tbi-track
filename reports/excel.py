@@ -3,7 +3,7 @@
 Sheets: "Report info", then one sheet per section in report order, with short names (SHEET_NAMES). Every sheet:
 - a compact title block (5 rows + 1 blank): report name, the TBI, the sheet's subtitle, the period, who generated
   it and when (Manila time); merged across the table width (the only merged cells besides the notes);
-- each data table is a real Excel table (header #1D4ED8 with white bold text, banded rows, filter buttons), the
+- each data table is a real Excel table (header #204654 Teal Waters with white bold text, banded rows, filter buttons), the
   panes frozen below the first table's header; a totals row (Table.total, from metrics.period_summary) and notes go
   BELOW the table range, never inside it;
 - an empty section or table is one row of text instead of an empty table;
@@ -65,10 +65,10 @@ UNIVERSITY_LINE = "Technology Business Incubator, Caraga State University"
 EMPTY_TABLE = "Nothing to show for this period."
 FOOTER = "Page &P of &N"
 
-BLUE = "1D4ED8"
+TEAL_WATERS = "204654"  # the palette's brand colour (ASSUMPTIONS 412); white bold text on it 10.2:1
 HEADER_FONT = Font(bold=True, color="FFFFFF")
-HEADER_FILL = PatternFill("solid", fgColor=BLUE)
-TABLE_STYLE = "TableStyleMedium2"  # banded rows; the header colour is set on the cells (#1D4ED8)
+HEADER_FILL = PatternFill("solid", fgColor=TEAL_WATERS)
+TABLE_STYLE = "TableStyleMedium2"  # banded rows; the header colour is set on the cells (#204654)
 TITLE_FONTS = [
     Font(bold=True, size=14, color="1E3A8A"),
     Font(size=10, color="475569"),

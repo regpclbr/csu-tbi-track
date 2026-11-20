@@ -319,7 +319,7 @@ def test_group_header_shows_what_the_user_needs_to_do(director, view_only, login
         assert states["Approved Demo"][1].startswith(f"Approved by {director.name}")
         html = response.content.decode()
         assert html.count("Needs approval") == 1 and html.count(services.ALL_ISSUED_NOTE) == 1
-        assert re.search(r'text-green-800" data-approval-state="all_issued"', html)
+        assert re.search(r'text-success" data-approval-state="all_issued"', html)  # palette token (412)
         assert re.search(r'text-slate-600" data-approval-state="not_approved"', html)
         assert re.search(r'text-amber-800" data-approval-state="needs_approval"', html)
         assert "Approve certificates for this activity" not in html

@@ -27,6 +27,10 @@ from .models import Document, DocumentType
 ACTIONS = ("return", "replace", "delete")  # the actions that ask something first (a reason, a file, "are you sure")
 
 
+# One-line descriptions of the no-JavaScript action pages (ASSUMPTIONS 411).
+ACTION_SUBTITLES = {"return": "Return this document to its uploader with a reason",
+                    "replace": "Upload a new file for this document", "delete": "Delete this document"}
+
 def _document(document_id: int) -> Document:
     """Any document: an activity document or certificate evidence (the services apply the same rules to both)."""
     queryset = with_searchable(Document.objects.all()).select_related(
@@ -41,6 +45,7 @@ def _document(document_id: int) -> Document:
 def _list_context(request: HttpRequest, tab: str) -> dict:
     return {
         "page_title": "Documents",
+        "page_subtitle": "Required documents of every activity: missing, waiting for review, returned or approved",
         "list_tab": tab,
         "review_count": services.review_queue(request.user).count(),  # the same number as the sidebar badge
         "can_review": has_permission(request.user, Permission.APPROVE_DOCUMENTS),  # shows the review tab
@@ -102,7 +107,7 @@ def preview(request: HttpRequest, document_id: int) -> HttpResponse:
     }
     if is_htmx(request):
         return render(request, "documents/_preview.html", context)
-    return render(request, "documents/preview_page.html", {"page_title": document.title, **context})
+    return render(request, "documents/preview_page.html", {"page_title": document.title, "page_subtitle": "Preview of the uploaded file", **context})
 
 
 # --- Upload (any active staff member) ------------------------------------------------------------------------
@@ -155,7 +160,8 @@ def action_form(request: HttpRequest, document_id: int, action: str) -> HttpResp
         return redirect("documents:detail", document_id=document_id)
     document = _document(document_id)
     context = {"document": document, "action": action, "next": pages.safe_next(request, ""), "errors": {},
-               "limits": pages.upload_limits(), "reason_max": services.RETURN_REASON_MAX_LENGTH, "page_title": document.title}
+               "limits": pages.upload_limits(), "reason_max": services.RETURN_REASON_MAX_LENGTH, "page_title": document.title,
+               "page_subtitle": ACTION_SUBTITLES[action]}
     template = "documents/_action_form.html" if is_htmx(request) else "documents/action_page.html"
     return render(request, template, context)
 
@@ -164,7 +170,7 @@ def _form_again(request: HttpRequest, document: Document, action: str, errors: d
     """The action's form with the service's errors under its field: inside the modal (HTMX) or as its own page."""
     context = {"document": document, "action": action, "next": pages.safe_next(request, ""), "errors": errors,
                "reason": reason, "limits": pages.upload_limits(), "reason_max": services.RETURN_REASON_MAX_LENGTH,
-               "page_title": document.title}
+               "page_title": document.title, "page_subtitle": ACTION_SUBTITLES[action]}
     if is_htmx(request):
         return render(request, "documents/_action_form.html", context)  # 200: HTMX swaps it into the modal
     return render(request, "documents/action_page.html", context, status=400)

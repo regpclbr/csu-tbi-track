@@ -2,13 +2,13 @@
 One System status item (accounts.system_status.StatusItem): green (ok), amber (warning, with its one-line fix) or blue
 (info: development mode). The text names the state too, so colour is never the only signal.
 {% endcomment %}
-<li class="flex gap-4 rounded-2xl border px-4 py-4 {% if item.tone == 'ok' %}border-green-200 bg-green-50/60{% elif item.tone == 'info' %}border-blue-200 bg-blue-50/70{% else %}border-amber-200 bg-amber-50/70{% endif %}" id="status-{{ item.key }}">
-  <span class="flex size-9 shrink-0 items-center justify-center rounded-full {% if item.tone == 'ok' %}bg-green-100 text-green-800{% elif item.tone == 'info' %}bg-blue-100 text-blue-800{% else %}bg-amber-100 text-amber-800{% endif %}">
+<li class="flex gap-4 rounded-2xl border px-4 py-4 {% if item.tone == 'ok' %}border-success-line bg-success-soft/60{% elif item.tone == 'info' %}border-info-line bg-info-soft/70{% else %}border-amber-200 bg-amber-50/70{% endif %}" id="status-{{ item.key }}">
+  <span class="flex size-9 shrink-0 items-center justify-center rounded-full {% if item.tone == 'ok' %}bg-success-soft text-success{% elif item.tone == 'info' %}bg-primary-tint text-info{% else %}bg-amber-100 text-amber-800{% endif %}">
     {% if item.tone == "ok" %}{% include "components/icon.html" with name="circle-check" class="size-5" %}{% elif item.tone == "info" %}{% include "components/icon.html" with name="info" class="size-5" %}{% else %}{% include "components/icon.html" with name="triangle-alert" class="size-5" %}{% endif %}
   </span>
   <div class="min-w-0 flex-1">
     <p class="flex flex-wrap items-center gap-x-2 font-semibold text-ink">{{ item.label }}
-      <span class="text-xs font-semibold {% if item.tone == 'ok' %}text-green-800{% elif item.tone == 'info' %}text-blue-800{% else %}text-amber-900{% endif %}">({% if item.tone == "ok" %}OK{% elif item.tone == "info" %}Development{% else %}Needs attention{% endif %})</span></p>
+      <span class="text-xs font-semibold {% if item.tone == 'ok' %}text-success{% elif item.tone == 'info' %}text-info{% else %}text-amber-900{% endif %}">({% if item.tone == "ok" %}OK{% elif item.tone == "info" %}Development{% else %}Needs attention{% endif %})</span></p>
     <p class="mt-0.5 text-sm text-slate-800">{{ item.summary }}</p>
     {% if item.details %}
       <dl class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-700">

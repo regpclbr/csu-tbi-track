@@ -26,7 +26,7 @@ from .content import DATE, DECIMAL, INT, NO_ACTIVITIES, PERCENT, Cell, Chart, Co
 EMPTY = "—"
 
 # Chart look (reference palette: series slot 1, text inks, recessive baseline).
-BAR_COLOR = "#2a78d6"
+BAR_COLOR = "#204654"  # Teal Waters (ASSUMPTIONS 412): dark enough to print as a solid dark grey in black and white
 TEXT_PRIMARY = "#0b0b0b"
 TEXT_SECONDARY = "#52514e"
 BASELINE = "#c9c8c3"

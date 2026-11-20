@@ -237,7 +237,8 @@ def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, 
     assert "1 activity needs certificate approval" in titles
     assert tones.index("danger") < tones.index("warning") < tones.index("primary")
     html = login(head).get(URL).content.decode()
-    assert "btn-danger" in html and "btn-warning" in html
+    # Row actions are secondary buttons; the red / amber icon chip shows how urgent a row is (ASSUMPTIONS 411)
+    assert "chip-red" in html and "chip-amber" in html and "btn-danger" not in html and "btn-warning" not in html
 
 
 def test_needs_attention_links_go_to_the_right_place(make_member, login, data, add_document) -> None:

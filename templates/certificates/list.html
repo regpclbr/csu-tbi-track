@@ -7,9 +7,10 @@ other filters (services.certificate_status_counts). The search, the filters, the
 swap only #certificate-results (HTMX; the search box keeps its focus because its id stays) and stay in the URL. View
 only: actions are on each activity's Certificates tab.
 {% endcomment %}
+{# The title and description are in the page header; the Signatories page is its secondary action (ASSUMPTIONS 411). #}
+{% block page_actions %}{% if signatories_link %}<a href="{{ signatories_link }}" class="btn btn-secondary">{% include "components/icon.html" with name="pen-line" class="size-4" %}Signatories</a>{% endif %}{% endblock %}
 {% block content %}
-<section class="card p-6" aria-labelledby="certificates-title">
-  {% include "components/section_header.html" with id="certificates-title" title="Certificates" subtitle="All certificates of all activities, the most recent activity first. They are created automatically; approve, preview and reissue them on each activity's Certificates tab." link_url=signatories_link link_label="Signatories" %}
+<section class="card p-6" aria-label="Certificates">
   {% include "certificates/_results.html" %}
 </section>
 {% endblock %}

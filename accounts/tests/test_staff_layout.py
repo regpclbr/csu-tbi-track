@@ -224,7 +224,7 @@ def test_every_sign_in_page_has_the_animated_panel(client, url_name) -> None:
     assert ILLUSTRATION_LABEL in html and 'role="img"' in html  # inline SVG keeps the design's label
     assert html.count('class="li-enter') == 5  # four cards + the connector enter one by one
     assert html.count('class="li-enter li-card anim"') == 4  # the four cards also lift on hover
-    assert html.count('class="rise block"') == 2 and 'class="rise block text-[#5EEAD4]"' in html
+    assert html.count('class="rise block"') == 2 and 'class="rise block text-glacial-sky"' in html  # Glacial Sky (412)
 
 
 def test_illustration_drops_the_leftover_background_circles() -> None:
@@ -317,7 +317,7 @@ STATIC = Path(settings.BASE_DIR) / "static"
 
 def test_built_css_and_vendor_files_exist() -> None:
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
-    assert "--color-sidebar:#22378f" in css.lower().replace(" ", "")  # run: python manage.py tailwind build
+    assert "--color-sidebar:#204654" in css.lower().replace(" ", "")  # Teal Waters (412); run: python manage.py tailwind build
     for name in ("vendor/htmx-2.0.11.min.js", "vendor/alpine-3.17.4.min.js", "fonts/InterVariable.woff2",
                  "img/favicon-32.png", "img/apple-touch-icon-180.png", "img/logo-96.png"):
         assert (STATIC / name).exists(), name
@@ -356,13 +356,17 @@ def test_every_select_in_our_templates_uses_the_shared_select_style() -> None:
 def test_select_and_date_input_styles_in_the_built_css() -> None:
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").replace(" ", "")
     rule = ";".join(re.findall(r"\.field-select\{([^}]*)\}", css))  # the minifier may split it in two
-    assert "appearance:none" in rule and "stroke='%2364748B'" in rule
+    assert "appearance:none" in rule and "stroke='%2362767D'" in rule  # slate-500, re-tinted toward Teal Waters (412)
     assert "background-position:right.875remcenter" in rule  # the same place on every select
-    # selects, date and time inputs share one height (time inputs since ASSUMPTIONS 345)
-    assert re.search(r"select\.field-input,input\[type=\"?date\"?\]\.field-input,input\[type=\"?time\"?\]\.field-input\{[^}]*height:2\.625rem", css)
+    # selects, date and time inputs share one height with the buttons: 40 px (time inputs since 345, 40 px since 411)
+    assert re.search(r"select\.field-input,input\[type=\"?date\"?\]\.field-input,input\[type=\"?time\"?\]\.field-input\{[^}]*height:calc\(var\(--spacing\)\*10\)", css)
+    # ASSUMPTIONS 411, 412: input borders #738890 (3.7:1 on white, 3.6:1 on the panel; slate-300 was 1.5:1, below 3:1)
+    assert "--color-line-strong:#738890" in css.lower()
+    assert "border-color:var(--color-line-strong)" in ";".join(re.findall(r"\.field-input\{([^}]*)\}", css))
     # The glass inputs set only the colour, so the chevron of a select on a glass card stays.
     glass = re.search(r"\.auth-card\.field-input,\.public-card\.field-input\{([^}]*)\}", css).group(1)
     assert "background-color:#ffffffd9" in glass.lower() and "background:" not in glass
+    assert "border-color:var(--color-line-strong)" in glass  # 412: a real 3:1 input border on the glass too
 
 
 def test_hover_styles_exist_and_motion_stops_for_reduced_motion() -> None:
@@ -378,30 +382,181 @@ def test_hover_styles_exist_and_motion_stops_for_reduced_motion() -> None:
 
 
 def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -> None:
-    """ASSUMPTIONS 257: one gradient #22378F -> #60CDEE behind the whole page, a frosted glass card (white 70% + blur,
-    white 92% without backdrop-filter), dark text in the card and on the footer pill."""
+    """ASSUMPTIONS 257: one gradient behind the whole page (Teal Waters since 412: #204654 -> #2F6170, no bright end), a
+    frosted glass card (white 88% + blur, white 92% without backdrop-filter), dark text in the card and on the footer pill."""
     html = client.get(reverse("accounts:login")).content.decode()
     assert 'class="auth-bg ' in html and "auth-panel" not in html
     assert re.search(r'class="rise auth-card [^"]*"', html) and "auth-footnote" in html
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
-    assert re.search(r"\.auth-bg\{background:linear-gradient\(135deg,#22378f[^}]*#60cdee 100%\)\}", css)
+    assert re.search(r"\.auth-bg\{background:linear-gradient\(135deg,#204654[^}]*#2f6170 100%\)\}", css)
+    for old in ("#60cdee", "#1f2f6e", "#41598c", "#22378f"):  # the blue gradients are gone (ASSUMPTIONS 411, 412)
+        assert old not in css
     card = re.search(r"\.auth-card(?:,\.public-card)?\{([^}]*)\}", css).group(1)  # F3: the public pages share the glass
     assert "background:#ffffffeb" in card and "border-radius:24px" in card  # the fallback: white 92%
     glass = css[css.index("@supports ((-webkit-backdrop-filter:blur(1px))"):]
     glass = glass[:glass.index("}")]
     assert "-webkit-backdrop-filter:blur(20px)" in glass and ";backdrop-filter:blur(20px)" in glass
-    assert "background:#ffffffb3" in glass  # white 70%
+    assert "background:#ffffffe0" in glass  # white 88% (412: muted text 5.6:1 or more anywhere on the teal gradient)
 
 
 
 def test_app_shell_is_a_gradient_frame_with_a_rounded_panel_and_pill_buttons(director) -> None:
-    """ASSUMPTIONS 258: the sidebar sits on the login gradient; the content is a light rounded panel."""
+    """ASSUMPTIONS 258: the sidebar sits on the login gradient (Teal Waters since 412); the content is a light rounded panel."""
     html = logged_in(director).get(HOME).content.decode()
     assert re.search(r'<body class="h-full app-bg', html)
     assert 'id="content-panel"' in html and "lg:rounded-[28px]" in html and "sidebar-glass" in html
     active = re.search(r'<a href="/"\s+class="([^"]*)"\s+aria-current="page"', html).group(1)
     assert "bg-white/18" in active and "shadow-[inset_3px_0_0_#FFFFFF]" in active
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
-    assert re.search(r"\.app-bg\{background:linear-gradient\(135deg,#22378f[^}]*#60cdee 100%\)\}", css)
+    assert re.search(r"\.app-bg\{background:linear-gradient\(135deg,#204654[^}]*#2f6170 100%\)\}", css)
+    assert "--color-panel:#fafbed" in css  # Morning Mist 60% behind the white cards (412)
     assert ".app-shell .btn{border-radius:9999px}" in css
-    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#22378f14" in css  # card radius + soft shadow
+    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#20465412" in css  # card radius + soft teal shadow
+
+
+def test_page_header_holds_the_title_once_and_the_primary_action(director) -> None:
+    """ASSUMPTIONS 411: the page title (h1) and the page's own description are in the page header, not in the top bar
+    (so the title never appears twice); the page's one primary action is on its right; Ask AI is a secondary button."""
+    html = logged_in(director).get(HOME).content.decode()
+    topbar = html[html.index('<header class="sticky top-0'):html.index("</header>")]
+    assert "<h1" not in topbar and 'class="btn btn-secondary hidden sm:inline-flex"' in topbar  # Ask AI
+    header = re.search(r'<div class="page-header">(.*?)<div class="page-header-actions">(.*?)</div>', html, re.S)
+    assert '<h1 class="page-title' in header.group(1) and ">Dashboard</h1>" in header.group(1)
+    assert "Here&#x27;s what&#x27;s happening at CSU-TBI" in header.group(1) or "Here's what's happening" in header.group(1)
+    assert 'class="btn btn-primary"' in header.group(2) and "New activity" in header.group(2)
+    assert html.count("<h1") == 1
+
+
+def test_every_staff_page_has_its_own_description(director) -> None:
+    """ASSUMPTIONS 411: no page shows the Dashboard's line ("Here's what's happening at CSU-TBI")."""
+    client = logged_in(director)
+    seen = set()
+    for name in ("activities:list", "activities:create", "documents:list", "certificates:list", "reports:list",
+                 "assistant:chat", "notifications:list", "startups:list", "search", "accounts:profile"):
+        html = client.get(reverse(name)).content.decode()
+        description = re.search(r'<p class="page-description">(.*?)</p>', html, re.S).group(1).strip()
+        assert description and "happening at CSU-TBI" not in description, name
+        assert description not in seen, name
+        seen.add(description)
+
+
+def test_only_the_primary_button_is_solid_primary_on_the_dashboard(director) -> None:
+    """ASSUMPTIONS 411: the welcome card and the spotlight are white cards (a thin brand line / a tinted icon), their
+    buttons are secondary; Needs attention and Recent changes share a row; upcoming activities join the charts grid."""
+    html = logged_in(director).get(HOME).content.decode()
+    assert 'class="welcome-banner card' in html and "on-dark" not in html.split('id="main"')[1]
+    assert html.count("btn-primary") == 1  # "New activity" in the page header
+    assert 'title="Recent changes"' not in html or "View all" in html
+    attention = html.index('id="needs-attention"')
+    assert attention < html.index('id="changes-title"') < html.index('id="upcoming-title"') < html.index('id="categories-title"')
+    css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
+    assert re.search(r"\.spotlight\{background:#fff\}", css) and "linear-gradient(90deg,#204654 0%,#a9e0f1 100%) top/100% 3px" in css
+
+
+# --- Colour palette (ASSUMPTIONS 412) ------------------------------------------------------------------------------
+
+SOURCE_CSS = Path(settings.BASE_DIR) / "frontend" / "tailwind" / "app.css"
+
+
+def theme_tokens() -> dict[str, str]:
+    """The `--color-*` tokens of the @theme block in the Tailwind source (the one place colours are defined)."""
+    theme = re.search(r"@theme \{(.*?)\n\}", SOURCE_CSS.read_text(encoding="utf-8"), re.S).group(1)
+    return {name: value.upper() for name, value in re.findall(r"--color-([a-z0-9-]+):\s*(#[0-9A-Fa-f]{6});", theme)}
+
+
+def contrast(foreground: str, background: str) -> float:
+    """WCAG 2 contrast ratio of two #RRGGBB colours."""
+    def luminance(colour: str) -> float:
+        channels = [int(colour[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+    light, dark = sorted([luminance(foreground), luminance(background)], reverse=True)
+    return (light + 0.05) / (dark + 0.05)
+
+
+def test_the_four_palette_colours_are_the_brand_tokens() -> None:
+    tokens = theme_tokens()
+    assert tokens["teal-waters"] == "#204654" and tokens["glacial-sky"] == "#A9E0F1"
+    assert tokens["morning-mist"] == "#F7F9E1" and tokens["spring-meadow"] == "#CAFFA6"
+    assert tokens["primary"] == tokens["sidebar"] == tokens["heading"] == tokens["teal-waters"]
+    assert tokens["page"] == tokens["morning-mist"] and tokens["panel"] == "#FAFBED"  # owner: the lighter mix
+
+
+@pytest.mark.parametrize("foreground, background, minimum", [
+    ("ink", "panel", 4.5), ("muted", "panel", 4.5), ("helper", "panel", 4.5), ("muted", "page", 4.5),
+    ("primary", "panel", 4.5), ("link", "panel", 4.5), ("link", "primary-soft", 4.5), ("primary", "primary-soft", 4.5),
+    ("heading", "panel", 4.5), ("sidebar-muted", "sidebar", 4.5), ("info", "info-soft", 4.5),
+    ("success", "success-soft", 4.5), ("warning", "warning-soft", 4.5), ("danger", "danger-soft", 4.5),
+    ("teal-waters", "spring-meadow", 4.5), ("glacial-sky", "brand-calm", 4.5),
+    ("line-strong", "panel", 3.0), ("line-strong", "page", 3.0), ("focus", "panel", 3.0),
+])
+def test_palette_pairs_pass_wcag_aa(foreground, background, minimum) -> None:
+    """Rule 4 of the palette change: every text / background pair passes AA, input borders and the focus ring 3:1."""
+    tokens = theme_tokens()
+    assert contrast(tokens[foreground], tokens[background]) >= minimum
+
+
+@pytest.mark.parametrize("token", ["ink", "muted", "helper", "primary", "link", "danger", "line-strong", "focus"])
+def test_text_and_borders_also_pass_on_white_cards(token) -> None:
+    minimum = 3.0 if token in ("line-strong", "focus") else 4.5
+    assert contrast(theme_tokens()[token], "#FFFFFF") >= minimum
+
+
+def test_white_text_passes_on_the_whole_gradient_and_the_solid_buttons() -> None:
+    tokens = theme_tokens()
+    for background in ("teal-waters", "brand-calm", "primary-hover", "primary-pressed", "danger", "success"):
+        assert contrast("#FFFFFF", tokens[background]) >= 4.5, background
+
+
+def test_links_stay_apart_from_body_text() -> None:
+    """A link in Teal Waters looked like body text (found in the palette preview): links use their own colour."""
+    tokens = theme_tokens()
+    assert tokens["link"] not in (tokens["ink"], tokens["primary"]) and contrast(tokens["link"], tokens["ink"]) > 2
+    css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
+    assert re.search(r"\.link\{[^}]*color:var\(--color-link\)", css)
+
+
+def test_spring_meadow_only_as_small_accents(director) -> None:
+    """Spring Meadow is never a large background, a button or a gradient end: the sidebar count, the "happening now"
+    dot (with a dark ring, the lime alone is 1.1:1 on white) and the Approved tint (a light mix of it)."""
+    source = SOURCE_CSS.read_text(encoding="utf-8")
+    assert not re.search(r"(?i)gradient\([^;]*(#CAFFA6|spring-meadow)", source)  # never a gradient end
+    assert not re.search(r"\.btn[^{]*\{[^}]*spring-meadow", source)  # never a button
+    used = set()
+    for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+        if "spring-meadow" in path.read_text(encoding="utf-8"):
+            used.add(path.name)
+    assert used <= {"nav_item.html", "_body.html"}, used  # the count badge and the dashboard's ping halo
+    html = logged_in(director).get(HOME).content.decode()
+    assert "bg-spring-meadow" not in html.split('id="main"')[1].replace("bg-spring-meadow opacity-75", "")
+
+
+def test_missing_documents_stay_grey() -> None:
+    """Owner decision (412): Missing keeps the neutral grey badge, so it stays apart from the red Overdue by colour."""
+    from documents.pages import MISSING_LABEL
+
+    assert MISSING_LABEL == ("Missing", "neutral")
+
+
+def test_no_rounded_vertical_scroll_box_inside_the_panel() -> None:
+    """A vertical scroll box with its own rounded corners inside the scrolling content panel made Chromium draw a small
+    square over the panel's rounded top-left corner (activity page, resource-person list; ASSUMPTIONS 412). Round a
+    wrapper instead and let a square list scroll inside its padding."""
+    offenders = []
+    for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+        if path.parts[-2] in ("layouts",):  # the panel itself
+            continue
+        for classes in re.findall(r'class="([^"]*)"', path.read_text(encoding="utf-8")):
+            names = classes.split()
+            if "overflow-y-auto" in names and any(n.startswith("rounded") for n in names):
+                offenders.append(f"{path.name}: {classes}")
+    assert not offenders, offenders
+
+
+def test_the_logo_tiles_are_teal_waters() -> None:
+    from PIL import Image
+
+    for name, size in (("img/logo-96.png", 96), ("img/favicon-32.png", 32), ("img/apple-touch-icon-180.png", 180)):
+        image = Image.open(STATIC / name).convert("RGB")
+        assert image.size == (size, size) and image.getpixel((0, 0)) == (0x20, 0x46, 0x54), name
+    assert (Path(settings.BASE_DIR) / "docs" / "design" / "logo-navy-old.png").exists()  # the old tile, for reference

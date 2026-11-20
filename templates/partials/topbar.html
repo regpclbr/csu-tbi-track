@@ -1,22 +1,20 @@
 {% load ui %}
-{# Top bar, inside the content panel: page title + Manila date, global search (/search/), Ask AI, notification bell (HTMX dropdown). #}
-<header class="sticky top-0 z-20 flex min-h-20 items-center gap-4 bg-panel/85 px-5 backdrop-blur-md sm:px-6 xl:px-7">
+{# Top bar, inside the content panel: the review label, global search (/search/), Ask AI (secondary: never louder than the page's primary) and the notification bell (HTMX dropdown). The page title is in the page header (layouts/app.html, ASSUMPTIONS 411). #}
+<header class="sticky top-0 z-20 flex min-h-16 items-center gap-4 bg-panel/85 px-4 backdrop-blur-md sm:px-6 xl:px-8">
   <button type="button" class="-ml-2 rounded-full p-2 text-muted hover:bg-slate-200/60 lg:hidden" @click="menuOpen = true" aria-label="Open the menu" aria-controls="sidebar" :aria-expanded="menuOpen.toString()">
     {% include "components/icon.html" with name="menu" class="size-6" %}
   </button>
   <div class="min-w-0 flex-1">
-    {% if review_version_label %}<p class="mb-0.5"><span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900" title="A copy for checking the system, not the final production deployment">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}{{ review_version_label }}</span></p>{% endif %}
-    <h1 class="truncate text-2xl font-bold tracking-tight text-ink">{{ page_title }}</h1>
-    <p class="mt-0.5 truncate text-sm text-muted">{% if page_subtitle %}{{ page_subtitle }}{% else %}{{ layout.today|long_date }} · Here's what's happening at CSU-TBI{% endif %}</p>
+    {% if review_version_label %}<p><span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900" title="A copy for checking the system, not the final production deployment">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}{{ review_version_label }}</span></p>{% endif %}
   </div>
 
   <form action="{% url 'search' %}" method="get" role="search" class="relative hidden w-64 md:block xl:w-72">
     <label for="topbar-search" class="sr-only">Search activities, documents and startups</label>
     <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-muted">{% include "components/icon.html" with name="search" class="size-4.5" %}</span>
-    <input id="topbar-search" type="search" name="q" value="{{ q|default:'' }}" maxlength="100" placeholder="Search…" class="field-input rounded-full border-slate-200 py-2.5 pl-10 shadow-card">
+    <input id="topbar-search" type="search" name="q" value="{{ q|default:'' }}" maxlength="100" placeholder="Search…" class="field-input rounded-full pl-10 shadow-card">
   </form>
 
-  <a href="{% url 'assistant:chat' %}" class="btn btn-primary hidden sm:inline-flex">
+  <a href="{% url 'assistant:chat' %}" class="btn btn-secondary hidden sm:inline-flex">
     {% include "components/icon.html" with name="sparkles" class="size-4" %}
     Ask AI
   </a>

@@ -16,7 +16,7 @@ column. View only.
         <span class="inline-flex items-center gap-1 whitespace-nowrap">{% include "components/icon.html" with name="clock" class="size-3.5" %}{{ activity|time_range }}</span>
       </p>
       {# services.approval_state (ASSUMPTIONS 373): approved / all_issued = green (the Issued badge's), needs_approval = orange (a task), not_approved = grey note #}
-      <p class="mt-2 flex items-center gap-1.5 text-sm {% if group.approval_state == 'approved' or group.approval_state == 'all_issued' %}font-medium text-green-800{% elif group.approval_state == 'needs_approval' %}font-medium text-amber-800{% else %}text-slate-600{% endif %}" data-approval-state="{{ group.approval_state }}">
+      <p class="mt-2 flex items-center gap-1.5 text-sm {% if group.approval_state == 'approved' or group.approval_state == 'all_issued' %}font-medium text-success{% elif group.approval_state == 'needs_approval' %}font-medium text-amber-800{% else %}text-slate-600{% endif %}" data-approval-state="{{ group.approval_state }}">
         {% if group.approval_state == 'approved' or group.approval_state == 'all_issued' %}{% include "components/icon.html" with name="circle-check" class="size-4 shrink-0" %}{% elif group.approval_state == 'needs_approval' %}{% include "components/icon.html" with name="clock" class="size-4 shrink-0" %}{% else %}{% include "components/icon.html" with name="info" class="size-4 shrink-0" %}{% endif %}<span>{{ group.approval }}</span></p>
       {% if group.approval_note %}<p class="mt-0.5 pl-5.5 text-xs text-slate-600">{{ group.approval_note }}</p>{% endif %}
     </div>

@@ -7,7 +7,7 @@ the service's messages under the inputs and the focus on the first one. `editor`
       action="{% if card.editing == "new" %}{% url 'registrations:field_add' card.form.pk %}{% else %}{% url 'registrations:field_update' card.editing %}{% endif %}"
       hx-post="{% if card.editing == "new" %}{% url 'registrations:field_add' card.form.pk %}{% else %}{% url 'registrations:field_update' card.editing %}{% endif %}"
       hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML"
-      class="space-y-3 rounded-2xl border-2 border-primary/30 bg-blue-50/40 p-4"
+      class="space-y-3 rounded-2xl border-2 border-primary/30 bg-info-soft/40 p-4"
       x-data="{ type: '{{ editor.field_type }}', choiceTypes: [{% for value in choice_types %}'{{ value }}'{% if not forloop.last %}, {% endif %}{% endfor %}] }"
       x-init="$nextTick(() => { const first = $el.querySelector('[aria-invalid=true]') || $el.querySelector('input[name=field_label]'); first.focus(); })"
       @keydown.escape="$refs.cancel.click()">

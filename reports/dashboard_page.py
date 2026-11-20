@@ -32,7 +32,10 @@ ATTENTION_SHOWN = 5  # "Needs attention" items shown before "Show N more"
 ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs attention" item
 
 # Donut and legend colours, in order. Categories are master data (never a fixed number): the colours repeat.
-CATEGORY_COLORS = ["#1D4ED8", "#14B8A6", "#93C5FD", "#F59E0B", "#7C3AED", "#64748B", "#EC4899", "#84CC16"]
+# From the palette (ASSUMPTIONS 412): Teal Waters, a deeper Glacial Sky, green, ochre, then muted violet / grey / clay and
+# Glacial Sky. Every pair stays apart also with red-green colour blindness (simulated, smallest difference dE 14); the
+# legend and the text table carry the numbers.
+CATEGORY_COLORS = ["#204654", "#5BA7C2", "#4F8F2E", "#E2B65A", "#7B6FA6", "#8A9AA0", "#C47A6A", "#A9E0F1"]
 DONUT_STROKE = 7  # the ring's width in the donut's SVG units (circumference 100)
 DONUT_GAP = 1.5  # space between two segments, same units
 

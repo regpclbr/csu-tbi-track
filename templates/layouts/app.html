@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% load ui %}
 {% comment %}
-The staff layout: the login gradient as a frame, the sidebar directly on it, and a light rounded panel (#F7F9FC)
-with the top bar and the page. Every staff page extends this.
-Context: page_title (the top bar heading and the <title>), optional page_subtitle (default: the
-Manila date and "Here's what's happening at CSU-TBI").
-Block: content (the page itself).
+The staff layout: the login gradient as a frame (Teal Waters, ASSUMPTIONS 412), the sidebar directly on it, and a light
+rounded panel (#FAFBED, Morning Mist 60%) with the top bar (search, Ask AI, notifications) and the page. Every staff page extends this.
+Context: page_title (the page header's h1 and the <title>), page_subtitle (the page's own one-line description under it;
+every page sets one, the Dashboard overrides block page_description with the Manila date).
+Blocks: page_actions (the page's buttons, right of the title: secondary ones first, the ONE primary last), page_header
+(replace the whole header, e.g. the activity page's own), content (the page itself).
 `layout` comes from config.frontend.staff_layout (nav items, counts, initials).
 From 1024 px (lg) the frame fills the screen and only the panel scrolls (the sidebar and the gradient stay put).
 Below 1024 px the sidebar slides in from the menu button and the window scrolls.
@@ -33,7 +35,17 @@ lg:overflow-y-auto: the panel scrolls) and main_class (default padding). Every o
   {# The content panel: floats on the gradient (16 px from the edges); the top bar stays at its top while the page scrolls. #}
   <div id="content-panel" class="app-panel relative min-w-0 flex-1 bg-panel lg:my-4 lg:mr-4 lg:rounded-[28px] {% block panel_scroll %}lg:overflow-y-auto{% endblock %}">
     {% include "partials/topbar.html" %}
-    <main id="main" class="{% block main_class %}px-5 pt-5 pb-10 sm:px-6 xl:px-7{% endblock %}" tabindex="-1">
+    {# Page padding (ASSUMPTIONS 411, spacing scale): 16 px on phones, 24 px, 32 px from 1280 px; 8 px below the top bar. #}
+    <main id="main" class="{% block main_class %}px-4 pt-2 pb-10 sm:px-6 xl:px-8{% endblock %}" tabindex="-1">
+      {% block page_header %}
+        <div class="page-header">
+          <div class="min-w-0">
+            <h1 class="page-title [overflow-wrap:anywhere]">{{ page_title }}</h1>
+            <p class="page-description">{% block page_description %}{{ page_subtitle }}{% endblock %}</p>
+          </div>
+          <div class="page-header-actions">{% block page_actions %}{% endblock %}</div>
+        </div>
+      {% endblock %}
       {% block content %}{% endblock %}
     </main>
   </div>

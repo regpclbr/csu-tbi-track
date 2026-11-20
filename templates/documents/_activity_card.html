@@ -5,7 +5,9 @@ it opens and closes without JavaScript: open when something is missing, waiting 
 closed when complete. Lines: the required types in the checklist's order (each upload, or "Missing" with Upload), then
 the other documents. No table: below 1280 px the actions move under the text, so they are never cut off.
 Layout (ASSUMPTIONS 408): from 1280 px ONE grid (the wrapper) holds the header and every line through `grid-cols-subgrid`,
-so the columns line up and the Actions column is as wide as the widest line's buttons (`max-content`): the buttons can
+so the columns line up inside a card. The Actions column has a FIXED width (21rem: Download, Preview, Approve and Return
+on one line), so the columns also line up from one activity card to the next (ASSUMPTIONS 411; with `max-content` a card
+with only "Upload" had wider text columns than one with Approve / Return). More buttons wrap inside that column: they can
 never overlap the State badges, which wrap inside their own 9–11rem column. Below 1280 px the actions sit on the right
 and wrap (or go under the text below 640 px).
 {% endcomment %}
@@ -25,7 +27,7 @@ and wrap (or go under the text below 640 px).
         {% if card.required %}
           <div class="min-w-0 flex-1">
             <p class="mb-1.5 text-xs whitespace-nowrap text-slate-700">
-              <span class="font-semibold text-ink tabular-nums">{{ card.approved }} of {{ card.required }}</span> approved{% if card.missing %} · <span class="font-semibold text-red-700 tabular-nums">{{ card.missing }}</span> missing{% endif %}{% if card.complete %} · <span class="font-semibold text-green-800">Complete</span>{% endif %}
+              <span class="font-semibold text-ink tabular-nums">{{ card.approved }} of {{ card.required }}</span> approved{% if card.missing %} · <span class="font-semibold text-red-700 tabular-nums">{{ card.missing }}</span> missing{% endif %}{% if card.complete %} · <span class="font-semibold text-success">Complete</span>{% endif %}
             </p>
             {% include "components/progress_bar.html" with percent=card.percent label=card.progress_label %}
           </div>
@@ -38,7 +40,7 @@ and wrap (or go under the text below 640 px).
 
     <div class="border-t border-line">
       {% if card.lines %}
-      <div class="xl:grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(9rem,11rem)_max-content]" data-document-lines>
+      <div class="xl:grid xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_minmax(0,1fr)_minmax(9rem,11rem)_21rem]" data-document-lines>
         <div class="hidden gap-4 bg-slate-50 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase xl:col-span-5 xl:grid xl:grid-cols-subgrid" aria-hidden="true">
           <span>Type</span><span>Title</span><span>Uploaded</span><span>State</span><span class="text-right">Actions</span>
         </div>

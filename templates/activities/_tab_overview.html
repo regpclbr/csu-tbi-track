@@ -1,12 +1,16 @@
 {% load ui %}
-{% comment %}Overview tab: all details, the registration summary, the Share card (links + QR codes, not for Draft) and the resource persons.{% endcomment %}
-<div class="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-  <section class="card p-6" aria-labelledby="details-title">
-    {% include "components/section_header.html" with id="details-title" title="Details" %}
-    {% include "activities/_detail_rows.html" %}
-  </section>
+{% comment %}Overview tab: all details and the resource persons (left), the registration summary, the Share card (links + QR codes, not for
+Draft) and participants by category (right). Two stacked columns, so neither leaves a big blank area next to the other (ASSUMPTIONS 411).{% endcomment %}
+<div class="grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+  <div class="space-y-6">
+    <section class="card p-6" aria-labelledby="details-title">
+      {% include "components/section_header.html" with id="details-title" title="Details" %}
+      {% include "activities/_detail_rows.html" %}
+    </section>
+    {% include "activities/_resource_persons.html" %}
+  </div>
 
-  <div class="space-y-5">
+  <div class="space-y-6">
     <section class="card p-6" aria-labelledby="registration-title">
       {% include "components/section_header.html" with id="registration-title" title="Registration" %}
       <p class="flex items-baseline gap-2"><span class="text-3xl font-bold tracking-tight text-ink tabular-nums">{{ registration.registered }}/{{ registration.max_slots }}</span><span class="text-sm text-muted">registered</span></p>
@@ -16,7 +20,7 @@
       </div>
       <div class="mt-4">
         {% if registration.open %}
-          <p class="flex items-center gap-2 text-sm font-semibold text-green-800">{% include "components/icon.html" with name="circle-check" class="size-4.5" %}Open for registration</p>
+          <p class="flex items-center gap-2 text-sm font-semibold text-success">{% include "components/icon.html" with name="circle-check" class="size-4.5" %}Open for registration</p>
         {% elif registration.notice %}
           {% include "activities/_registration_notice.html" %}
         {% else %}
@@ -41,5 +45,3 @@
     </section>
   </div>
 </div>
-
-{% include "activities/_resource_persons.html" %}

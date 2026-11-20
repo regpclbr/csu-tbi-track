@@ -4,17 +4,18 @@ value: a number or text (already formatted). icon: a components/icon.html name, 
 (chip: blue | amber | teal | violet | green). pill_tone: success | warning | neutral | danger | info.
 note: small text under the value (optional). static: no hover effect (a card that is not clickable next to cards
 that are, as in activities/_stat_cards.html).
-Compact (ASSUMPTIONS 325): icon and label on one row, the number below. In a narrow card (portal on a phone: three
+Compact (ASSUMPTIONS 325; 16 px padding, the number in ink, one structure: ASSUMPTIONS 411): icon and label on one row, the number below. In a narrow card (portal on a phone: three
 cards side by side) the label wraps under the icon instead of overflowing.
 {% endcomment %}
-<div class="kpi-card {% if not static %}hover-lift {% endif %}flex h-full flex-col gap-2 p-3.5">
-  <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+{# One structure for every KPI card (ASSUMPTIONS 411): icon + label (a row at least 36 px high, so 1- and 2-line labels take the same room), the number + badge on one baseline, then the optional note. Cards in a row stretch to the same height. #}
+<div class="kpi-card {% if not static %}hover-lift {% endif %}flex h-full flex-col p-4">
+  <div class="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1.5">
     {% if icon %}<span class="chip chip-{{ chip|default:'blue' }} size-8 rounded-lg">{% include "components/icon.html" with name=icon class="size-4" %}</span>{% endif %}
     <p class="min-w-0 flex-1 basis-16 text-[13px] leading-snug font-medium break-words text-muted">{{ label }}</p>
   </div>
-  <div class="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1">
+  <div class="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
     <p class="text-2xl leading-none font-bold tracking-tight text-kpi tabular-nums">{{ value }}</p>
     {% if pill %}<span class="badge badge-{{ pill_tone|default:'neutral' }} rounded-full leading-tight whitespace-nowrap">{{ pill }}</span>{% endif %}
   </div>
-  {% if note %}<p class="text-xs text-muted">{{ note }}</p>{% endif %}
+  {% if note %}<p class="mt-1.5 text-xs leading-snug text-muted">{{ note }}</p>{% endif %}
 </div>

@@ -11,8 +11,8 @@ Optional:
 Handles text-like inputs (text, email, password, date, number), select and textarea widgets.
 {% endcomment %}
 <div>
-  <div class="mb-1.5 flex items-baseline justify-between gap-3">
-    <label for="{{ field.id_for_label }}" class="text-sm font-semibold text-ink">{{ field.label }}</label>
+  <div class="mb-2 flex items-baseline justify-between gap-3">
+    <label for="{{ field.id_for_label }}" class="text-sm font-medium text-ink">{{ field.label }}</label>
     {% if aside_url %}<a href="{{ aside_url }}" class="link text-sm">{{ aside_label }}</a>{% endif %}
   </div>
   {% if field.field.widget.input_type == "select" %}

@@ -9,7 +9,7 @@
 {% if notifications %}
   <ul class="max-h-96 divide-y divide-line overflow-y-auto">
     {% for notification in notifications %}
-      <li class="{% if not notification.is_read %}bg-blue-50/60{% endif %}">
+      <li class="{% if not notification.is_read %}bg-info-soft/60{% endif %}">
         {# A POST (it marks the notification as read), then the page it is about: the activity, its Documents tab for documents. #}
         <form method="post" action="{% url 'notifications:open' notification.pk %}">
           {% csrf_token %}

@@ -36,7 +36,8 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
     <div class="relative overflow-x-auto rounded-2xl border border-line">
       <table class="w-full text-left text-sm">
         <caption class="sr-only">Roles and their permissions</caption>
-        <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
+        {# Headers wrap (never wider than the card at 1366 px: the last column's "Turn on" was hidden, ASSUMPTIONS 411). #}
+        <thead class="bg-slate-50 align-bottom text-xs font-semibold tracking-wide text-muted uppercase">
           <tr>
             <th scope="col" class="px-4 py-2.5">Role</th>
             <th scope="col" class="px-4 py-2.5">Create and edit activities</th>
@@ -58,7 +59,7 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
                     {% csrf_token %}
                     {% if role.can_create_activity %}
                       <input type="hidden" name="enabled" value="false">
-                      <button type="submit" class="btn btn-ghost btn-sm" aria-label="Turn off creating and editing activities for {{ role.role_name }}">Turn off</button>
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn off creating and editing activities for {{ role.role_name }}">Turn off</button>
                     {% else %}
                       <input type="hidden" name="enabled" value="true">
                       <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on creating and editing activities for {{ role.role_name }}">Turn on</button>
@@ -74,7 +75,7 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
                     {% csrf_token %}
                     {% if role.can_approve_documents %}
                       <input type="hidden" name="enabled" value="false">
-                      <button type="submit" class="btn btn-ghost btn-sm" aria-label="Turn off document approval for {{ role.role_name }}">Turn off</button>
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn off document approval for {{ role.role_name }}">Turn off</button>
                     {% else %}
                       <input type="hidden" name="enabled" value="true">
                       <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on document approval for {{ role.role_name }}">Turn on</button>
@@ -89,7 +90,7 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
                     {% csrf_token %}
                     {% if role.can_approve_certificates %}
                       <input type="hidden" name="enabled" value="false">
-                      <button type="submit" class="btn btn-ghost btn-sm" aria-label="Turn off certificate approval for {{ role.role_name }}">Turn off</button>
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn off certificate approval for {{ role.role_name }}">Turn off</button>
                     {% else %}
                       <input type="hidden" name="enabled" value="true">
                       <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on certificate approval for {{ role.role_name }}">Turn on</button>
@@ -104,7 +105,7 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
                     {% csrf_token %}
                     {% if role.can_delete_activities %}
                       <input type="hidden" name="enabled" value="false">
-                      <button type="submit" class="btn btn-ghost btn-sm" aria-label="Turn off deleting activities for {{ role.role_name }}">Turn off</button>
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn off deleting activities for {{ role.role_name }}">Turn off</button>
                     {% else %}
                       <input type="hidden" name="enabled" value="true">
                       <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on deleting activities for {{ role.role_name }}">Turn on</button>

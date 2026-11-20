@@ -8,8 +8,8 @@ with can_manage_users (the view checks it again).
 <section class="card p-6" aria-labelledby="startups-title">
   <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
     <div>
-      <h2 id="startups-title" class="card-title">Startups</h2>
-      <p class="card-subtitle">Navigatu data is read-only here. It is synced automatically every morning.</p>
+      <h2 id="startups-title" class="sr-only">Startups</h2>
+      <p class="text-sm text-muted">Navigatu data is read-only here. It is synced automatically every morning.</p>
     </div>
     {% if can_manage %}
       <form method="post" action="{% url 'startups:sync' %}" x-data="{ busy: false }" @submit="busy = true">

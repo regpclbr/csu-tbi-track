@@ -6,23 +6,22 @@ can_approve_documents (can_review) and shows the same count as the sidebar badge
 summary cards, the view switch and the pager swap only #document-repository (HTMX) and stay in the URL; without
 JavaScript they are plain links and the Apply button submits the filters (ASSUMPTIONS 352).
 {% endcomment %}
+{# The page header (layouts/app.html) holds the title and, on its right, the switch between the two lists (ASSUMPTIONS 411). #}
+{% block page_actions %}
+  <nav class="segmented" aria-label="Document lists">
+    <a href="{% url 'documents:list' %}"{% if list_tab == "all" %} aria-current="page"{% endif %}
+       class="segmented-item {% if list_tab == 'all' %}is-selected{% endif %}">
+      {% include "components/icon.html" with name="folder" class="size-4" %}Repository</a>
+    {% if can_review %}
+    <a href="{% url 'documents:review' %}"{% if list_tab == "review" %} aria-current="page"{% endif %}
+       class="segmented-item {% if list_tab == 'review' %}is-selected{% endif %}">
+      {% include "components/icon.html" with name="file-check" class="size-4" %}Waiting for my review
+      <span class="rounded-full px-1.5 text-xs font-bold {% if review_count %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ review_count }}<span class="sr-only"> documents</span></span></a>
+    {% endif %}
+  </nav>
+{% endblock %}
 {% block content %}
-<section class="card p-6" aria-labelledby="documents-title">
-  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-    <h2 id="documents-title" class="card-title">Documents</h2>
-    <nav class="inline-flex rounded-full border border-line bg-slate-50 p-1" aria-label="Document lists">
-      <a href="{% url 'documents:list' %}"{% if list_tab == "all" %} aria-current="page"{% endif %}
-         class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if list_tab == 'all' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
-        {% include "components/icon.html" with name="folder" class="size-4" %}Repository</a>
-      {% if can_review %}
-      <a href="{% url 'documents:review' %}"{% if list_tab == "review" %} aria-current="page"{% endif %}
-         class="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold {% if list_tab == 'review' %}bg-white text-primary shadow-card{% else %}text-slate-600 hover:text-ink{% endif %}">
-        {% include "components/icon.html" with name="file-check" class="size-4" %}Waiting for my review
-        <span class="rounded-full px-1.5 text-xs font-bold {% if review_count %}bg-primary text-white{% else %}bg-slate-200 text-slate-700{% endif %}">{{ review_count }}<span class="sr-only"> documents</span></span></a>
-      {% endif %}
-    </nav>
-  </div>
-
+<section class="card p-6" aria-label="Documents">
   {% if list_tab == "all" %}
     <div id="document-repository" class="htmx-dim">{% include "documents/_repository.html" %}</div>
   {% else %}

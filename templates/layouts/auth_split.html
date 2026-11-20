@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% load static %}
 {% comment %}
 The staff sign-in pages (docs/design/login.png): login, forgot password, reset password and the first-sign-in
-password change. The whole page is one gradient (#22378F top left -> #60CDEE bottom right, CSS .auth-bg) with two
+password change. The whole page is one gradient (#204654 top left -> #2F6170 bottom right, CSS .auth-bg) with two
 columns: logo, headline, sentence and illustration on the left; the frosted glass card (.auth-card) on the right.
 Only the card changes from page to page. Blocks: card_heading, card_text (the helper line under the heading), card (the form),
 below_card (a small link under the card); the startup portal login (F6) also changes headline, panel_text and home_url.
@@ -34,10 +34,10 @@ Never put hx-headers or another per-request value here (the forgot-password page
           {% block headline %}
           <span class="rise block" style="--d: 0ms">Track activities.</span>
           <span class="rise block" style="--d: 80ms">Monitor documents.</span>
-          <span class="rise block text-[#5EEAD4]" style="--d: 160ms">All in one place.</span>
+          <span class="rise block text-glacial-sky" style="--d: 160ms">All in one place.</span>
           {% endblock %}
         </p>
-        <p class="rise mt-4 max-w-[530px] text-[15px] leading-relaxed text-blue-100 lg:mt-5 lg:text-base" style="--d: 240ms">{% block panel_text %}Sign in to continue with the Technology Business Incubator at Caraga State University.{% endblock %}</p>
+        <p class="rise mt-4 max-w-[530px] text-[15px] leading-relaxed text-glacial-sky lg:mt-5 lg:text-base" style="--d: 240ms">{% block panel_text %}Sign in to continue with the Technology Business Incubator at Caraga State University.{% endblock %}</p>
       </div>
 
       <div class="mt-auto hidden pt-6 lg:block">

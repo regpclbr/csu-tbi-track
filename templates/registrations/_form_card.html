@@ -44,7 +44,7 @@ Registration form of an activity created with its documents (ASSUMPTIONS 409): u
         {% endif %}
       </div>
     {% elif card.ready_at %}
-      <p class="mb-4 flex items-center gap-2 text-sm text-green-800">{% include "components/icon.html" with name="circle-check" class="size-4" %}Marked ready on {{ card.ready_at|date:"M j, Y g:i A" }}.</p>
+      <p class="mb-4 flex items-center gap-2 text-sm text-success">{% include "components/icon.html" with name="circle-check" class="size-4" %}Marked ready on {{ card.ready_at|date:"M j, Y g:i A" }}.</p>
     {% endif %}
     {% if card.locked %}
       <div class="mb-4 flex gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3 text-sm text-slate-700" role="note">

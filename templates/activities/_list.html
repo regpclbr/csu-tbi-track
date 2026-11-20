@@ -14,7 +14,7 @@ activities/_list_row.html.
       {% for section in sections %}
         <section aria-labelledby="group-{{ section.key }}">
           <h3 id="group-{{ section.key }}" class="mb-2.5 flex items-center gap-2 text-sm font-semibold tracking-wide text-ink uppercase">
-            {% if section.key == "now" %}<span class="size-2 rounded-full bg-green-600" aria-hidden="true"></span>{% elif section.key == "follow_up" %}{% include "components/icon.html" with name="triangle-alert" class="size-4 text-amber-700" %}{% endif %}
+            {% if section.key == "now" %}<span class="live-dot size-2 rounded-full" aria-hidden="true"></span>{% elif section.key == "follow_up" %}{% include "components/icon.html" with name="triangle-alert" class="size-4 text-amber-700" %}{% endif %}
             {{ section.label }} <span class="badge badge-neutral tabular-nums normal-case">{{ section.total|number }}</span>
           </h3>
           {% if section.key == "follow_up" %}

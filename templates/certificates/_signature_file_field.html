@@ -11,7 +11,7 @@ optional=True: "(optional, can be added later)" in the label.
   <input id="{{ prefix }}-file" type="file" name="file" accept="image/png,image/jpeg"{% if required %} required{% endif %} aria-describedby="{{ prefix }}-file-help"
          hx-post="{% url 'certificates:signature_preview' %}" hx-trigger="change" hx-encoding="multipart/form-data"
          hx-target="#{{ prefix }}-preview" hx-swap="innerHTML" hx-indicator="#{{ prefix }}-spinner"
-         class="mt-1.5 block w-full max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-primary-soft file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-blue-100">
+         class="mt-1.5 block w-full max-w-full text-sm text-slate-700 file:mr-3 file:rounded-full file:border-0 file:bg-primary-soft file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary hover:file:bg-primary-tint">
   <p id="{{ prefix }}-file-help" class="field-help">PNG or JPG, up to {{ max_mb }} MB. A white background is made transparent automatically; check the preview before saving.</p>
   <label class="mt-2 flex items-start gap-2 text-sm text-slate-700">
     <input type="checkbox" name="keep_background" value="true" class="mt-0.5 size-4 rounded border-line"

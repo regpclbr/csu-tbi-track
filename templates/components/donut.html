@@ -6,7 +6,7 @@ are in the legend text and the aria-label, never in the colour only. Display onl
 <div class="flex flex-col items-center gap-6">
   <div class="relative size-44 shrink-0" role="img" aria-label="{{ chart.aria_label }}">
     <svg viewBox="0 0 42 42" class="size-full" aria-hidden="true">
-      <circle cx="21" cy="21" r="15.915" fill="none" stroke="#EEF2F7" stroke-width="{{ chart.stroke }}"></circle>
+      <circle cx="21" cy="21" r="15.915" fill="none" stroke="#EDF2F2" stroke-width="{{ chart.stroke }}"></circle>
       {% for segment in chart.segments %}
         <circle cx="21" cy="21" r="15.915" fill="none" stroke="{{ segment.color }}" stroke-width="{{ chart.stroke }}" stroke-linecap="round"
                 stroke-dasharray="{{ segment.length|stringformat:'f' }} {{ segment.gap|stringformat:'f' }}" stroke-dashoffset="{{ segment.offset|stringformat:'f' }}"></circle>

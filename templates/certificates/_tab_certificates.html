@@ -31,9 +31,9 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     <div class="flex min-w-0 items-start gap-3">
       {# services.approval_state (ASSUMPTIONS 373): approved = green, needs_approval = orange, all_issued = the Issued badge's green, no_certificates / not_approved = grey #}
       {% if approval.state == "approved" %}
-        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
       {% elif approval.state == "all_issued" %}
-        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-800">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
       {% elif approval.state == "needs_approval" %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">{% include "components/icon.html" with name="award" class="size-5" %}</span>
       {% else %}
@@ -238,8 +238,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         </div>
       </div>
       <p class="mb-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm" role="note" x-show="items[i].issued_note"
-         :class="items[i].outdated ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900'"
-         class="{% if shown.outdated %}bg-amber-50 text-amber-900{% else %}bg-emerald-50 text-emerald-900{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
+         :class="items[i].outdated ? 'bg-amber-50 text-amber-900' : 'bg-success-soft text-success'"
+         class="{% if shown.outdated %}bg-amber-50 text-amber-900{% else %}bg-success-soft text-success{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span x-text="items[i].issued_note">{{ shown.issued_note }}</span></p>
       <p class="mb-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note" x-show="!items[i].name_final"{% if shown.name_final %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-primary" %}<span>The final name comes from the evaluation.</span></p>

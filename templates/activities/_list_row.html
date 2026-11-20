@@ -4,7 +4,7 @@ group (row.actions set) it also shows row.note (the Needs attention item about a
 actions from activities.pages._follow_up_actions (the view and the service check the permission again). The text keeps at
 least 18rem on a follow-up card (basis-72): when the row is too narrow, the buttons wrap under it instead of squeezing the title.{% endcomment %}
 {% with activity=row.activity %}
-<li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white p-3.5 hover:border-slate-300">
+<li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white p-4 hover:border-slate-300">
   {% include "components/date_tile.html" with activity=activity gradient=True %}
   <div class="min-w-0 flex-1{% if row.actions %} basis-72{% endif %}">
     <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -35,7 +35,7 @@ least 18rem on a follow-up card (basis-72): when the row is too narrow, the butt
     {% include "components/progress_bar.html" with percent=row.percent label="Slots registered" %}
   </div>
   {% if row.actions.mark_attendance or row.actions.mark_conducted %}
-    <div class="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+    <div class="ml-auto flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2">
       {% if row.actions.mark_attendance %}
         <a href="{% url 'activities:detail' activity.pk %}?tab=registrations" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="users" class="size-4" %}Mark attendance<span class="sr-only"> for {{ activity.title }}</span></a>
       {% endif %}
