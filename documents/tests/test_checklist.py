@@ -25,7 +25,7 @@ def by_name(checklist: dict) -> dict:
 
 def test_due_dates_from_the_seeded_rules(activity) -> None:
     items = by_name(services.document_checklist(activity, now=TEST_NOW))
-    assert items["Activity Design"].due_date == START - timedelta(days=10)
+    assert items["Activity Design"].due_date == START - timedelta(days=5)  # NAVIGATU's 5-day rule (ASSUMPTIONS 416)
     assert items["Request Letter"].due_date == START - timedelta(days=5)
     assert "Invitation Letter" not in items and "Accomplishment Report" not in items  # optional (ASSUMPTIONS 386)
     assert items["Attendance Sheet"].due_date == END

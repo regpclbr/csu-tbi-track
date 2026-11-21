@@ -8,6 +8,7 @@ from django.core.management import CommandError, call_command
 from django.db import connection
 from django.utils import timezone
 
+from activities import attention
 from activities.models import Activity
 from documents.models import Document
 from registrations.models import EvaluationSubmission, Registration
@@ -54,6 +55,17 @@ def test_demo_creates_prototype_activities(demo_settings) -> None:
     assert Startup.objects.filter(is_active=True).count() == 9
     assert Document.objects.filter(status__status_name="For Review").exists()
     assert Document.objects.filter(status__status_name="Approved").exists()
+
+
+@pytest.mark.django_db
+def test_demo_shows_an_upcoming_activity_with_an_overdue_activity_design(demo_settings) -> None:
+    """ASSUMPTIONS 416: the Activity Design is due 5 days before the start; the demo keeps one overdue example."""
+    run_demo()
+    workshop = Activity.objects.get(title="Product Development Workshop")
+    assert workshop.status.name == "Scheduled" and workshop.start_date > timezone.localdate()
+    texts = [item.text for item in attention.activity_attention(workshop)]
+    overdue = next(text for text in texts if text.startswith("Overdue required documents:"))
+    assert "Activity Design" in overdue
 
 
 @pytest.mark.django_db

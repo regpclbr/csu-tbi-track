@@ -10,7 +10,7 @@
 6. Participants get a Certificate of Participation by email. Resource persons get a Certificate of Appreciation in hard copy. *(Step 9: items 180, 186.)*
 7. One certificate design is used for all activities. Admin manages it.
 8. Documents that are uploaded must be reviewed and approved before they count as approved (For Review, then Approved).
-9. Required documents for every activity: invitation letter, activity design, request letter, attendance sheet, accomplishment report. Due dates are placeholders until the TBI confirms them. *(2026-11-16, item 386: the invitation letter and the accomplishment report are optional now; activity design, request letter and attendance sheet stay required.)*
+9. Required documents for every activity: invitation letter, activity design, request letter, attendance sheet, accomplishment report. Due dates are placeholders until the TBI confirms them. *(2026-11-16, item 386: the invitation letter and the accomplishment report are optional now; activity design, request letter and attendance sheet stay required.)* *(2026-11-21, item 416: NAVIGATU's 5-day rule: the activity design is due 5 days before the start date (was 10), like the request letter; the attendance sheet's due date is still a placeholder.)*
 10. Missing-document reminders go to the person who created the activity, inside the app.
 11. Navigatu startup data is read-only and reached through one mock provider for now. Startups are identified by email. *(Refined in Step 7, item 135: matched by Navigatu ID first, then by email.)*
 12. Any TBI staff member can see every startup.
@@ -1251,7 +1251,7 @@ Still 34 tables.
      - **Never missing or overdue once uploaded:** for these two types on flagged activities, overdue = past the due date AND
        nothing uploaded (`documents.services._required_item`, `is_creation_type`); a waiting or returned file shows "Waiting
        for review" / "Returned", never Overdue (an activity created 3 days before its start would otherwise be overdue at once:
-       the Activity Design is due at start - 10). The same rule in SQL: `reports.metrics._overdue` (S3, the dashboard's Needs
+       the Activity Design was due at start - 10; start - 5 since item 416). The same rule in SQL: `reports.metrics._overdue` (S3, the dashboard's Needs
        attention, the compliance report; parity test). Reminders, Needs attention and the Documents page follow the
        checklist. Every other type, and every activity without the flag, keeps "past the due date and not Approved".
      - **Delete:** the only Activity Design or Request Letter of a flagged activity that is not a Draft cannot be deleted
@@ -1584,3 +1584,27 @@ Still 34 tables.
      - The UAT database (Docker Compose project `csu_tbi_uat`) and its backups stay on the laptop until testers ask for
        deletion (item 414); the privacy notice's "kept on the researchers' computer" stays true, so its wording is unchanged.
      - Docs only (DEPLOY.md, CLAUDE.md, this file, TBI_QUESTIONS): no code, setting, database or ERD change.
+
+## Activity Design due 5 days before the start (2026-11-21)
+
+416. **NAVIGATU's 5-day rule** (NAVIGATU, 2026-11-21; answers the Activity Design part of item 9): the Activity Design is
+     due **5 days before the start date** (was 10), the same as the Request Letter. The Attendance Sheet (end date) is still
+     a placeholder.
+     - **Where the rule lives:** only in the DOCUMENT_TYPE row (`due_reference` = start_date, `due_offset_days` = -5). Every
+       due date is calculated from it (`documents.services.due_date()`, the checklist, the reminders, Needs attention, the
+       SQL counts in `reports.metrics`, the compliance report); no code assumed 10 days. `scheduling_refused_reason` (item
+       405) only checks that both documents are uploaded and has no date rule.
+     - **Seed:** `accounts/seed.py` creates the type with -5. It stays create-only (item 386): a rerun never overwrites a
+       value set in the Django admin.
+     - **Existing databases:** the owner changed the row by hand in the Django admin (-10 -> -5). Data migration
+       `documents/0005_activity_design_due_five_days` does the same for any other database (the UAT database, teammates'
+       copies), but ONLY when the row is still exactly start_date / -10; any other value is an admin choice and is left
+       alone, and nothing happens without the row. Reverse: start_date / -5 -> -10 (same guard; note that it would also
+       move a row set to -5 by hand). Due dates are never stored, so no document, activity or notification changes.
+       Reminders already sent stay as they are; the next daily run uses the new date. No schema or ERD change.
+     - **Effect:** both documents now fall due on the same day, so Needs attention and the reminders name them together
+       ("Required documents due soon and not uploaded: Activity Design, Request Letter."). An activity starting 6 to 10
+       days from now no longer shows an overdue Activity Design.
+     - **Demo:** `seed_demo`'s "Product Development Workshop" now starts in 4 days (was 7), so its Activity Design (For
+       Review) and Request Letter (missing) are overdue and the demo still shows an overdue Activity Design in Needs
+       attention (tested). It applies to a new demo database; a rerun does not move an existing demo activity.

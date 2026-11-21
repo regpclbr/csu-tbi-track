@@ -18,8 +18,8 @@ from .conftest import at
 
 pytestmark = pytest.mark.django_db
 
-START = date(2026, 11, 10)  # Activity Design due Oct 31, Request Letter Nov 5 (Invitation Letter, Accomplishment
-# Report: optional, item 386)
+START = date(2026, 11, 10)  # Activity Design and Request Letter due Nov 5 (5-day rule, item 416; Invitation Letter,
+# Accomplishment Report: optional, item 386)
 REQUIRED_TYPES = 3  # Activity Design, Request Letter, Attendance Sheet
 
 
@@ -41,12 +41,13 @@ def activity(make_activity):
 
 
 def test_due_soon_within_the_window(activity, director) -> None:
-    # Oct 31: Activity Design due today (0 days), Request Letter in 5 (outside the 3-day window).
+    # Oct 31: both due in 5 days (outside the 3-day window).
     result = services.send_document_reminders(now=at(date(2026, 10, 31)))
-    assert types_of(Notification.DOCUMENT_DUE_SOON) == {"Activity Design"}
-    assert result["due_soon"] == 1 and result["overdue"] == 0
-    # Nov 2: Request Letter in 3 days.
-    services.send_document_reminders(now=at(date(2026, 11, 2)))
+    assert not reminders().exists() and result["due_soon"] == 0 and result["overdue"] == 0
+    # Nov 2: both due in 3 days (the last day of the window).
+    result = services.send_document_reminders(now=at(date(2026, 11, 2)))
+    assert types_of(Notification.DOCUMENT_DUE_SOON) == {"Activity Design", "Request Letter"}
+    assert result["due_soon"] == 2 and result["overdue"] == 0
     reminder = reminders(Notification.DOCUMENT_DUE_SOON).get(document_type__name="Request Letter")
     assert reminder.member == director and reminder.activity == activity
     assert "Nov 5, 2026" in reminder.message and not reminder.is_read

@@ -73,7 +73,7 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
         t.name: (t.due_reference, t.due_offset_days) for t in DocumentType.objects.filter(is_required=True)
     }
     assert required == {  # the Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386)
-        "Activity Design": ("start_date", -10),
+        "Activity Design": ("start_date", -5),  # NAVIGATU's 5-day rule (ASSUMPTIONS 416)
         "Request Letter": ("start_date", -5),
         "Attendance Sheet": ("end_date", 0),
     }

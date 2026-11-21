@@ -96,7 +96,7 @@ def test_document_rows_wrap_by_words(live_server, tmp_path, monkeypatch, directo
     required = upload(director, activity, title="Request letter to the Vice President for Research, Development "
                                                 "and Extension for the use of the function hall")
     # Uploaded by someone else: the Director (an approver) gets Approve AND Return next to "Waiting for review" and
-    # "Overdue" (the activity started on Nov 10, 2026; the Activity Design was due 10 days before): the UAT case.
+    # "Overdue" (the activity started on Nov 10, 2026; the Activity Design was due 5 days before, ASSUMPTIONS 416): the UAT case.
     upload(head, activity, document_type=DocumentType.objects.get(name="Activity Design"),
            title="Activity design of the Regional Technology Business Incubation Summit")
     client = Client()

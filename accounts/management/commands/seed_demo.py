@@ -107,7 +107,9 @@ DEMO_ACTIVITIES = [
                  "CSU Audio-Visual Room", [2]),
     DemoActivity("Mentoring Session", "Mentoring", ["Incubatees"], "Ongoing", 0, 1, 15, 12, "5000.00",
                  "TBI Meeting Room", [4]),
-    DemoActivity("Product Development Workshop", "Workshop", ["MSMEs"], "Scheduled", 7, 2, 25, 14, "20000.00",
+    # Starts in 4 days: its Activity Design (For Review) and Request Letter were due yesterday (start - 5, ASSUMPTIONS
+    # 416), so Needs attention shows an overdue Activity Design.
+    DemoActivity("Product Development Workshop", "Workshop", ["MSMEs"], "Scheduled", 4, 2, 25, 14, "20000.00",
                  "CSU Engineering Laboratory", [1]),
     DemoActivity("Market Research Training", "Training", ["MSMEs"], "Scheduled", 14, 1, 30, 9, "15000.00",
                  "TBI Co-working Space", [4]),

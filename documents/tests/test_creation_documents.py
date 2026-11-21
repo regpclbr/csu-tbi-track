@@ -21,7 +21,7 @@ from .conftest import TEST_NOW, make_file
 pytestmark = pytest.mark.django_db
 
 DESIGN, REQUEST = "Activity Design", "Request Letter"
-SOON = date(2026, 10, 23)  # starts 3 days after TEST_NOW: both types are past their due dates (start - 10, start - 5)
+SOON = date(2026, 10, 23)  # starts 3 days after TEST_NOW: both types are past their due date (start - 5, ASSUMPTIONS 416)
 
 
 def type_named(name: str) -> DocumentType:

@@ -35,7 +35,7 @@ all of them are to be validated with the TBI too.
 
 ## Documents
 
-- **Item 9:** When is each required document due? (Current placeholders: Activity Design 10 days before the start date, Request Letter 5 days before, Attendance Sheet on the end date.)
+- **Item 9:** When is each required document due? *Partly answered (2026-11-21, NAVIGATU's 5-day rule, item 416):* the Activity Design and the Request Letter are both due 5 days before the start date. Still a placeholder: the Attendance Sheet on the end date. Is that right, or is it due some days after the activity?
 - **Item 386 (for NAVIGATU):** The Invitation Letter and the Accomplishment Report are now optional documents: they are no longer counted as missing or overdue, they are not in the document compliance report, and no reminders are sent for them (uploaded ones are kept and listed under "Other documents"). Can NAVIGATU confirm that neither the Invitation Letter nor the Accomplishment Report is required for every activity? Should any other document type be optional too, or should some activity types still require one of them? (Still required: Activity Design, Request Letter, Attendance Sheet.) (Staff can also upload files of the new type "Other", for example an MOA, with a title of their own.)
 - **Item 118 (upload):** Should any TBI staff member be allowed to upload a document for any activity, or only certain roles or the activity's organizer?
 - **Item 344 (review):** Only the Director approves or returns documents now (the System Administrator can give this to another role in the Admin Console). Is that right?

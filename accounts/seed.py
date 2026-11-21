@@ -51,10 +51,11 @@ END = DocumentType.DueReference.END_DATE
 # name: (is_required, due_reference, due_offset_days). Due dates are placeholders until the TBI confirms them.
 # Used only when a type is CREATED: later changes (Django admin) are never undone by a rerun (ASSUMPTIONS 386).
 # The Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386; migrations documents/0003 and
-# 0004 for databases seeded before).
+# 0004 for databases seeded before). The Activity Design is due 5 days before the start, like the Request Letter
+# (NAVIGATU's 5-day rule, ASSUMPTIONS 416; migration documents/0005 for databases still on the old -10).
 DOCUMENT_TYPES: dict[str, tuple[bool, str | None, int | None]] = {
     "Invitation Letter": (False, None, None),
-    "Activity Design": (True, START, -10),
+    "Activity Design": (True, START, -5),
     "Request Letter": (True, START, -5),
     "Attendance Sheet": (True, END, 0),
     "Accomplishment Report": (False, None, None),

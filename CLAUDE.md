@@ -263,6 +263,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `share.BUILD_FORM_FIRST` and no link / QR (404).
 - `document_checklist()` is the only "what is missing" check (Step 8 reuses it). Due dates are
   computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
+  The due rule lives ONLY in the DOCUMENT_TYPE row (`due_reference` + `due_offset_days`); never hard-code a number of days.
+  Activity Design and Request Letter: start_date - 5 (NAVIGATU's 5-day rule, ASSUMPTIONS 416; data migration documents/0005
+  moves only a row still on start_date / -10); Attendance Sheet: end_date + 0 (placeholder).
 - "Required" is only `DOCUMENT_TYPE.is_required` (per type, never per activity); every count reads it (ASSUMPTIONS 386).
   The Invitation Letter and the Accomplishment Report are OPTIONAL (data migrations documents/0003 and 0004, one row
   each; uploaded ones stay, listed under Other documents). Still required: Activity Design, Request Letter, Attendance Sheet.
@@ -818,6 +821,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   version ran on Azure (414). Text only.
 - No deployment (2026-11-21, team): all further testing and the defense demo run only on the researchers' laptop; no
   Azure, no Cloudflare tunnel, no public address; DEPLOY.md's guides labelled "not used" (415). Docs only.
+- Activity Design 5-day rule (2026-11-21, NAVIGATU): due 5 days before the start (was 10), like the Request Letter; seed -5
+  (create-only), guarded data migration documents/0005 (only start_date / -10 -> -5, reversible), demo workshop starts in
+  4 days so an overdue Activity Design still shows (416). No schema or ERD change.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the

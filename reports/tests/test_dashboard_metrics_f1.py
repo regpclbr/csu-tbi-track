@@ -52,23 +52,25 @@ def test_the_dashboard_card_carries_within_30_days(make_activity) -> None:
 
 @pytest.fixture
 def document_cases(make_activity, add_document):
-    """Activities around TEST_NOW (Oct 23, 2026) with the seeded placeholder due rules:
-    Activity Design start-10, Request Letter start-5, Attendance Sheet end+0, Accomplishment Report end+7 (the
-    Invitation Letter is optional, ASSUMPTIONS 386: never due soon or overdue)."""
+    """Activities around TEST_NOW (Oct 23, 2026) with the seeded due rules: Activity Design and Request Letter
+    start-5 (NAVIGATU's 5-day rule, ASSUMPTIONS 416), Attendance Sheet end+0 (the Invitation Letter and the
+    Accomplishment Report are optional, ASSUMPTIONS 386: never due soon or overdue)."""
     soon = make_activity("Starts Oct 31", ActivityStatus.SCHEDULED, start=TODAY + timedelta(days=8))
-    # Request due Oct 26 (due soon, the last day of the window),
-    # Activity Design due Oct 21 (overdue), Attendance/Accomplishment later (nothing).
+    # Activity Design and Request Letter due Oct 26 (due soon, the last day of the window), Attendance later (nothing).
     uploaded = make_activity("Uploaded already", ActivityStatus.SCHEDULED, start=TODAY + timedelta(days=8))
     add_document(uploaded, "Invitation Letter", DocumentStatus.FOR_REVIEW)  # optional: never counted
-    add_document(uploaded, "Activity Design", DocumentStatus.FOR_REVIEW)  # uploaded but not Approved: still overdue
+    add_document(uploaded, "Activity Design", DocumentStatus.FOR_REVIEW)  # uploaded: never "due soon"
+    # Starts Oct 27: both due Oct 22 (overdue); an uploaded but not Approved Activity Design is still overdue.
+    late_design = make_activity("Starts Oct 27", ActivityStatus.SCHEDULED, start=TODAY + timedelta(days=4))
+    add_document(late_design, "Activity Design", DocumentStatus.FOR_REVIEW)
     make_activity("Draft", ActivityStatus.DRAFT, start=TODAY + timedelta(days=8))  # Drafts never count
     ongoing = make_activity("Ends today", ActivityStatus.ONGOING, start=TODAY - timedelta(days=1), end=TODAY)
     add_document(ongoing, "Invitation Letter")
     add_document(ongoing, "Activity Design")
     add_document(ongoing, "Request Letter")
-    # Attendance Sheet due today (due soon, 0 days); Accomplishment Report due Oct 30 (7 days: outside the window)
+    # Attendance Sheet due today (due soon, 0 days); the Accomplishment Report is optional (nothing)
     late = make_activity("Ended Oct 20", ActivityStatus.CONDUCTED, start=TODAY - timedelta(days=3))
-    return {"soon": soon, "uploaded": uploaded, "ongoing": ongoing, "late": late}
+    return {"soon": soon, "uploaded": uploaded, "late_design": late_design, "ongoing": ongoing, "late": late}
 
 
 def pairs(rows: list[dict]) -> set[tuple[int, str]]:
@@ -78,13 +80,15 @@ def pairs(rows: list[dict]) -> set[tuple[int, str]]:
 def test_due_soon_and_overdue_rows(document_cases) -> None:
     rows = metrics.document_attention(YEAR_2026, TEST_NOW)
     soon, uploaded, ongoing = document_cases["soon"].pk, document_cases["uploaded"].pk, document_cases["ongoing"].pk
+    late_design = document_cases["late_design"].pk
     assert pairs(rows["due_soon"]) == {
-        (soon, "Request Letter"), (uploaded, "Request Letter"), (ongoing, "Attendance Sheet"),
+        (soon, "Activity Design"), (soon, "Request Letter"), (uploaded, "Request Letter"), (ongoing, "Attendance Sheet"),
     }
     assert not any(row["document_type"] == "Invitation Letter" for row in rows["due_soon"] + rows["overdue"])
     overdue = {(row["activity_id"], row["document_type"]): row for row in rows["overdue"]}
-    assert (soon, "Activity Design") in overdue and overdue[(soon, "Activity Design")]["state"] == metrics.MISSING
-    assert overdue[(uploaded, "Activity Design")]["state"] == metrics.FOR_REVIEW
+    assert not any(activity_id in (soon, uploaded) for activity_id, _ in overdue)  # due Oct 26: not yet
+    assert overdue[(late_design, "Request Letter")]["state"] == metrics.MISSING
+    assert overdue[(late_design, "Activity Design")]["state"] == metrics.FOR_REVIEW
     assert all(row["due_date"] < TODAY for row in rows["overdue"])
     assert [row["due_date"] for row in rows["overdue"]] == sorted(row["due_date"] for row in rows["overdue"])
 
