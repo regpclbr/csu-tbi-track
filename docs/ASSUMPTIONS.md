@@ -700,7 +700,7 @@
      - `apply_automatic_statuses(now=None)` (every candidate) and `refresh_status(activity)` (one) lock each row with `SELECT … FOR UPDATE SKIP LOCKED` (a row being edited is left for the next run) and use the same transition code as `change_status` (`_move_status`); one run can make both moves (two audit rows). The audit row has `changed_by` empty = **System** (ERD change, migration `activities/0006`); History, the dashboard's recent changes, the audit API and the Django admin show "System" (`formatting.changed_by_name`).
      - Runs: the Django-Q2 schedule "Activity statuses and evaluation links" every `ACTIVITY_STATUS_INTERVAL_MINUTES` (5; `config/schedules.py` now has a "minutes" kind, `MinutesSchedule`; `setup_schedules` creates it and System status lists it as "Every 5 min"), on every activity page load (`refresh_status`) and Activities list load (`apply_automatic_statuses`). **Page loads only change statuses and never send emails.**
 347. **Needs attention** (`activities/attention.py`). `activity_attention(activity, now)` (the amber box below the activity title, each item linking to its tab or the edit page; a small green "All set" when empty) and `attention_counts(activities, now)` (the warning icon with the count on the Activities list, `role="img"` with an aria-label) share one function that turns loaded facts into items, so they always agree (parity test); the facts for any number of activities take five queries (test). Items reuse existing rules only: set the start and end time (not Conducted); Draft whose start date is within `ATTENTION_DRAFT_DAYS_BEFORE` (7) days or past; Ongoing with no attendance ("Activity is ongoing: mark attendance on the Registrations tab." / after the end: "Activity ended but no attendance recorded. Mark attendance or change the status."); registration form missing (Draft/Scheduled); evaluation form missing (until the evaluation deadline); required documents overdue or due soon and not uploaded (the daily reminders' rule, `documents.services.reminder_kind`, on `document_checklist`'s items via `required_items`), with their names; documents waiting for approval and returned to the uploader (the review states); Conducted with attendees but no certificates; certificates waiting for review (Generated), for sign-off (Pending Sign-off, not both signed), for approval (both signed); resource-person certificates Approved but not handed over; Issued email certificates not sent; evaluation link emails failed or not sent yet (Conducted, a form, the window open). *(2026-11-08: two more items, item 356.)* *(2026-11-12, item 362: the certificate line counts only ready certificates.)*
-348. **Evaluation links are sent automatically** (items 115, 216, 276). REGISTRATION gets `evaluation_link_sent_at` and `evaluation_link_failed_at` (ERD change, migration `registrations/0006`). The 5-minute job (`activities.tasks.run_activity_automation`: first the statuses, then `registrations.services.send_automatic_evaluation_links`) sends the link once to each attendee who has not evaluated and has neither date set, only for Conducted activities with an evaluation form and an open window (`automatic_link_activities`). It runs inside qcluster and locks each row (SKIP LOCKED), so nobody gets two emails. Sent clears failed and vice versa; failed sends are not retried automatically; staff resend on the Evaluation tab.
+348. **Evaluation links are sent automatically** (items 115, 216, 276). REGISTRATION gets `evaluation_link_sent_at` and `evaluation_link_failed_at` (ERD change, migration `registrations/0006`). The 5-minute job (`activities.tasks.run_activity_automation`: first the statuses, then `registrations.services.send_automatic_evaluation_links`) sends the link once to each attendee who has not evaluated and has neither date set, only for Conducted activities with an evaluation form and an open window (`automatic_link_activities`). It runs inside qcluster and locks each row (SKIP LOCKED), so nobody gets two emails. Sent clears failed and vice versa; failed sends are not retried automatically; staff resend on the Evaluation tab. *(2026-11-21, item 419: also while the activity is still Ongoing, from `EVALUATION_LINK_HOURS_BEFORE_END` (3) hours before the end inside the evaluation window; one History row by System per run that sent links, shown on the Evaluation tab.)*
 349. **Who marked attendance and when.** REGISTRATION gets `attendance_marked_at` and `attendance_marked_by` (FK to TBI_MEMBER, PROTECT, nullable; ERD change, migration `registrations/0006`), set by `set_attendance` (also from the Django admin actions, which call it with the signed-in member) and cleared with the method on undo. Every mark and undo is logged at INFO on `registrations.audit` with the activity, registration and member IDs only (never names or emails). Not written to ACTIVITY_AUDIT_LOG (item 111). Old attended rows have no marker ("Marked by" is not shown for them).
 350. **Upload box text:** "It starts as “Waiting for review”. The Director (a member with approval rights) approves it." (item 344: only members whose role has `can_approve_documents` approve).
 
@@ -1710,3 +1710,39 @@ Still 34 tables.
        `certificates/tests/test_signatory_management_permission.py` (every service and URL: 403 for both Project Heads,
        Admin Staff, the System Administrator and View Only; the Director allowed; what the tab, the activity form and the
        Certificates page show; approvers still see the images; choosing signatories and approving unchanged).
+
+## Evaluation links before the end (2026-11-21)
+
+419. **The first evaluation links go out automatically from 3 hours before the end** (NAVIGATU, UAT: participants should
+     get the link while the event is closing; owner decisions 2026-11-21). **Amends item 348.** No database, ERD, URL or
+     permission change, no migration.
+     - **Setting:** `EVALUATION_LINK_HOURS_BEFORE_END` (default 3, `.env` may override it).
+     - **The rule:** `registrations.services.automatic_link_activities(now)` now takes Conducted activities (as before) AND
+       Ongoing activities once `now >= automatic_link_moment(activity)` = the end minus that many hours; both still need an
+       evaluation form and an open evaluation window (`evaluation_links_closed_reason`: opens 00:00 Manila on the end date,
+       closes at the deadline). So a several-day activity, or one ending shortly after midnight, gets nothing before 00:00
+       on its end date even when end - 3 h is earlier.
+     - **Activities without an end time** (old rows only) count as ending at **23:59 of the end date** (links from 20:59).
+       This is deliberately different from `activities.services.activity_start_end()`, which uses 00:00 of the next day for
+       the automatic status moves (item 346); that function is unchanged, so an activity without times still becomes
+       Conducted after midnight. Only `automatic_link_moment` uses 23:59.
+     - **Unchanged:** the same `deliver_evaluation_link(first_time_only=True)`, once per attendee who has not evaluated and
+       has neither sent nor failed set (SKIP LOCKED), no automatic retry; people marked as attended later (still Ongoing,
+       or after Conducted) get theirs on the next 5-minute run; page loads never send emails; sending never changes the
+       status (Ongoing -> Conducted stays item 346's rule); staff "Resend to all who haven't answered" / "Resend link".
+     - **"Sent automatically" without a new column (owner decision):** REGISTRATION cannot tell an automatic send from a
+       staff resend (both set `evaluation_link_sent_at`). Each run that sent at least one link for an activity writes ONE
+       History row by System: "Evaluation Links": "Sent automatically to N attendees"
+       (`activities.services.write_evaluation_link_history`, label `EVALUATION_LINKS_LABEL`; failed sends are not counted).
+       `registrations.services.automatic_link_sends(activity)` reads only those rows (System, that label, that wording).
+     - **Evaluation tab:** a green note at the top of the "Evaluation links" card (`registrations.pages.automatic_send_notice`):
+       "Evaluation links were sent automatically on Nov 21, 2026 2:00 PM to 12 attendees." + for later runs "Later, 2 more
+       attendees got theirs automatically (latest …)." + "You don't need to send them. Use “Resend link” only for someone
+       who didn't get theirs." The explanation line now says from when the links go out (the moment, "3 hours before the
+       end, once the evaluation is open") or after Conducted. The counts, the Failed badges and the Resend buttons are
+       unchanged.
+     - Tests: `registrations/tests/test_evaluation_links_before_end.py` (the `clock` fixture: before the window, one-day at
+       end - 3 h, whole-day 23:59 rule vs `activity_start_end`, several days waiting for 00:00, last day, the setting, never
+       twice / no retry / staff resend respected, later attendees while Ongoing and after Conducted, no form, the task,
+       page loads never send, the tab's note and buttons, no note for staff sends);
+       `test_evaluation_links_auto.py` now checks Ongoing before end - 3 h.

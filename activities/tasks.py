@@ -17,8 +17,9 @@ def run_activity_automation() -> dict[str, int]:
     3. Certificate PDFs that should have been rendered more than 10 minutes ago and were not (ASSUMPTIONS 368: a
        task never queued or lost) are queued again; the ready certificates of approved activities are approved
        (ASSUMPTIONS 369: a catch-up, an evaluation already does it).
-    4. The first evaluation link to each attendee of a Conducted activity (ASSUMPTIONS 348): sent here, inside
-       qcluster, one locked registration at a time, so nobody gets two emails.
+    4. The first evaluation link to each attendee of a Conducted activity (ASSUMPTIONS 348), or of an Ongoing one from
+       EVALUATION_LINK_HOURS_BEFORE_END hours before its end once the evaluation is open (ASSUMPTIONS 419): sent here,
+       inside qcluster, one locked registration at a time, so nobody gets two emails.
     Page loads only do step 1 (with its certificates); emails are sent only by this task."""
     from certificates.services import (
         approve_pending_certificates,

@@ -1,5 +1,6 @@
 """Evaluation links (ASSUMPTIONS 348): sent automatically once per attendee after the activity is Conducted, marked
-sent or failed, never retried automatically, resent by staff on the Evaluation tab."""
+sent or failed, never retried automatically, resent by staff on the Evaluation tab. Sending before the end while still
+Ongoing (ASSUMPTIONS 419): test_evaluation_links_before_end.py."""
 
 from datetime import timedelta
 
@@ -43,7 +44,8 @@ def test_only_conducted_with_a_form_and_an_open_window(attended, scheduled, dire
     attended(1)
     now = opens_at(scheduled) + timedelta(hours=20)
     mail.outbox.clear()
-    assert services.send_automatic_evaluation_links(now)["sent"] == 0  # still Ongoing
+    # still Ongoing and more than 3 hours before the 5:00 PM end (ASSUMPTIONS 419: from 2:00 PM it would be sent)
+    assert services.send_automatic_evaluation_links(opens_at(scheduled) + timedelta(hours=13))["sent"] == 0
     activity_services.change_status(director, scheduled, "Conducted")
     assert services.send_automatic_evaluation_links(scheduled.evaluation_deadline + timedelta(minutes=1))["sent"] == 0  # closed
     FormTemplate.objects.filter(activity=scheduled, form_type=FormType.EVALUATION).delete()

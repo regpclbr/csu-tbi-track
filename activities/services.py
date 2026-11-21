@@ -72,6 +72,7 @@ STATUS_LABEL = "Status"
 RESOURCE_PERSON_ADDED = "Resource Person Added"
 RESOURCE_PERSON_REMOVED = "Resource Person Removed"
 CERTIFICATES_LABEL = "Certificates"  # created automatically / deleted with an undone attendance (ASSUMPTIONS 362)
+EVALUATION_LINKS_LABEL = "Evaluation Links"  # sent automatically by the 5-minute job (ASSUMPTIONS 419)
 
 DEFAULT_PAGE_SIZE = 20
 
@@ -288,6 +289,12 @@ def write_certificate_history(activity: Activity, member: TBIMember | None, old:
     """One History row about the activity's certificates (certificates.services): "3 created automatically (...)" by
     System (member None), or a certificate deleted because its attendance was undone (by the member)."""
     _write_audit(activity, member, [(CERTIFICATES_LABEL, old, new)])
+
+
+def write_evaluation_link_history(activity: Activity, sent: int) -> None:
+    """One History row by System when the automatic job emailed evaluation links (registrations.services,
+    ASSUMPTIONS 419): "Evaluation Links": "" -> "Sent automatically to 12 attendees". The Evaluation tab reads these rows."""
+    _write_audit(activity, None, [(EVALUATION_LINKS_LABEL, "", f"Sent automatically to {sent} attendee{'' if sent == 1 else 's'}")])
 
 
 def write_registration_form_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:

@@ -5,8 +5,9 @@ Views stay thin and call the functions in this module.
 
 import json
 import logging
+import re
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from django.conf import settings
 from django.core import signing
@@ -1067,33 +1068,71 @@ def _delivery(address: str) -> str:
     return Delivery.PRINTED_DEMO if is_blocked_address(address) else Delivery.SENT
 
 
+def automatic_link_moment(activity: Activity) -> datetime:
+    """From when an Ongoing activity's attendees get their first evaluation link automatically (ASSUMPTIONS 419):
+    the end minus EVALUATION_LINK_HOURS_BEFORE_END hours. Without an end time the activity counts as ending at 23:59
+    of the end date (NOT activity_start_end()'s 00:00 of the next day, which the status moves use). The evaluation
+    window still applies on top: nothing is sent before 00:00 on the end date."""
+    end_time = activity.end_time if activity.end_time is not None else time(23, 59)
+    end = timezone.make_aware(datetime.combine(activity.end_date, end_time))
+    return end - timedelta(hours=settings.EVALUATION_LINK_HOURS_BEFORE_END)
+
+
 def automatic_link_activities(now: datetime | None = None) -> list[Activity]:
-    """Activities whose attendees get their first evaluation link automatically now: Conducted, an evaluation
-    form exists and the evaluation window is open (evaluation_links_closed_reason is None)."""
+    """Activities whose attendees get their first evaluation link automatically now: Conducted, or Ongoing from
+    automatic_link_moment() on (ASSUMPTIONS 419); in both cases an evaluation form exists and the evaluation window
+    is open (evaluation_links_closed_reason is None)."""
     now = now or timezone.now()
     candidates = (
-        Activity.objects.filter(status__name=ActivityStatus.CONDUCTED, evaluation_deadline__gte=now)
+        Activity.objects.filter(
+            status__name__in=(ActivityStatus.ONGOING, ActivityStatus.CONDUCTED), evaluation_deadline__gte=now
+        )
         .filter(form_templates__form_type=FormType.EVALUATION)
         .select_related("status")
         .order_by("pk")
     )
-    return [activity for activity in candidates if evaluation_links_closed_reason(activity, now) is None]
+    return [
+        activity for activity in candidates
+        if (activity.status.name == ActivityStatus.CONDUCTED or now >= automatic_link_moment(activity))
+        and evaluation_links_closed_reason(activity, now) is None
+    ]
 
 
 def send_automatic_evaluation_links(now: datetime | None = None) -> dict[str, int]:
     """The 5-minute job (activities.tasks): send the link ONCE to each attendee of automatic_link_activities() who
     has not evaluated, has not been sent a link and whose link has not failed. A failed send is not retried
-    automatically (staff resend it on the Evaluation tab). Returns the counts by result."""
+    automatically (staff resend it on the Evaluation tab). Each activity with at least one link sent gets one
+    History row by System ("Sent automatically to N attendees", ASSUMPTIONS 419). Returns the counts by result."""
+    from activities.services import write_evaluation_link_history
+
     now = now or timezone.now()
     counts = {"sent": 0, "failed": 0, "skipped": 0}
     for activity in automatic_link_activities(now):
         never_sent = evaluation_link_recipients(activity).filter(
             evaluation_link_sent_at__isnull=True, evaluation_link_failed_at__isnull=True
         )
+        sent_here = 0
         for registration_id in list(never_sent.order_by("pk").values_list("pk", flat=True)):
             result = deliver_evaluation_link(registration_id, first_time_only=True, now=now)
             counts[result if result in counts else "skipped"] += 1
+            sent_here += result == "sent"
+        if sent_here:
+            write_evaluation_link_history(activity, sent_here)
     return counts
+
+
+AUTOMATIC_SEND_PATTERN = re.compile(r"^Sent automatically to (\d+) attendees?$")
+
+
+def automatic_link_sends(activity: Activity) -> list[tuple[datetime, int]]:
+    """The automatic sends of this activity's evaluation links, oldest first: (when, how many), read from the History
+    rows send_automatic_evaluation_links writes (by System). Staff resends are not in it (ASSUMPTIONS 419)."""
+    from activities.services import EVALUATION_LINKS_LABEL
+
+    rows = activity.audit_logs.filter(field_changed=EVALUATION_LINKS_LABEL, changed_by__isnull=True).order_by(
+        "changed_at", "pk").values_list("changed_at", "new_value")
+    return [(changed_at, int(match[1])) for changed_at, value in rows
+            if (match := AUTOMATIC_SEND_PATTERN.match(value or ""))]
 
 
 def evaluation_link_counts(activity: Activity) -> dict[str, int]:

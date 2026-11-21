@@ -207,8 +207,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `evaluation_answers`; ASSUMPTIONS 402). Everyone else gets the evaluation summary without names (ASSUMPTIONS 401).
 - Evaluation links: sent only through `deliver_evaluation_link` (row lock, sets `evaluation_link_sent_at` or `_failed_at`,
   one clears the other). First send is automatic, once per attendee, inside the 5-minute job
-  (`send_automatic_evaluation_links`: Conducted + evaluation form + open window); failures are never retried
-  automatically; staff resend with `send_evaluation_links(..., registration_ids=None)` (ASSUMPTIONS 348).
+  (`send_automatic_evaluation_links` / `automatic_link_activities`: evaluation form + open window AND Conducted, or Ongoing
+  from `automatic_link_moment()` = end - `EVALUATION_LINK_HOURS_BEFORE_END` (3) h, no end time = 23:59 of the end date,
+  NOT `activity_start_end()`'s 00:00; ASSUMPTIONS 419); people marked later get theirs on the next run; failures are never
+  retried automatically; staff resend with `send_evaluation_links(..., registration_ids=None)` (ASSUMPTIONS 348). Each run
+  that sent links writes one History row by System ("Evaluation Links": "Sent automatically to N attendees",
+  `write_evaluation_link_history`); the Evaluation tab's green note reads only those (`automatic_link_sends`,
+  `pages.automatic_send_notice`): staff resends are never counted as automatic.
 - REGISTRATION.participant_category must be one of the activity's categories (auto when only one); the forms use
   `components/category_choice.html` (one category: a preselected radio; several: required, no default).
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
@@ -855,6 +860,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   screen switch, audit line, amber note; never with can_manage_users) for the signatory list, signature images, defaults,
   the Signatories page and "Add a person"; choosing an activity's signatories and approving unchanged (418).
   Database: accounts 0009 (column) + 0010 (guarded data step); ERD: ROLE.can_manage_signatories; still 34 tables.
+- Evaluation links before the end (2026-11-21, NAVIGATU UAT): the 5-minute job also sends the first links while the
+  activity is Ongoing, from `EVALUATION_LINK_HOURS_BEFORE_END` (3) hours before the end inside the evaluation window; a
+  History row by System per run that sent links; the Evaluation tab says "Evaluation links were sent automatically on …
+  to N attendees", Resend stays (419). No database, ERD or migration change.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the
@@ -903,7 +912,7 @@ python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun; one account per role
 python manage.py changepassword director@demo.example.com   # give a demo account a password (typed, never stored)
-python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links
+python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links (also 3 h before the end)
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
 python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
 python manage.py index_documents          # index approved documents not indexed yet (--document <id>: redo one)

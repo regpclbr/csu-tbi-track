@@ -228,7 +228,9 @@ def link_explanation(activity: Activity) -> list[str]:
     opens, closes = services.evaluation_window(activity)
     lines = [
         "Who gets the link: everyone marked as attended who has not answered the evaluation yet.",
-        f"It is emailed automatically, once per person, after the activity becomes Conducted (checked every "
+        f"It is emailed automatically, once per person, from {format_datetime(services.automatic_link_moment(activity))} "
+        f"({_hours(settings.EVALUATION_LINK_HOURS_BEFORE_END)} before the end, once the evaluation is open), or after "
+        f"the activity becomes Conducted; people marked as attended later get theirs too (checked every "
         f"{settings.ACTIVITY_STATUS_INTERVAL_MINUTES} minutes while qcluster is running). A failed email is not "
         "retried automatically: resend it below.",
         f"The evaluation opens on {format_datetime(opens)} and closes on {format_datetime(closes)}.",
@@ -236,6 +238,31 @@ def link_explanation(activity: Activity) -> list[str]:
     if services.get_form(activity, FormType.EVALUATION) is None:
         lines.append("There is no evaluation form yet: create it on the Forms tab. No link is sent without it.")
     return lines
+
+
+def _hours(count: int) -> str:
+    return f"{count} hour{'' if count == 1 else 's'}"
+
+
+def _attendees(count: int) -> str:
+    return f"{count} attendee{'' if count == 1 else 's'}"
+
+
+def automatic_send_notice(activity: Activity) -> dict | None:
+    """The green note at the top of the Evaluation links card (ASSUMPTIONS 419), from services.automatic_link_sends()
+    (the System's History rows): when the links first went out automatically and to how many, plus the later
+    automatic sends (people marked as attended afterwards). None when nothing was sent automatically."""
+    sends = services.automatic_link_sends(activity)
+    if not sends:
+        return None
+    (first_at, first_count), later = sends[0], sends[1:]
+    lines = [f"Evaluation links were sent automatically on {format_datetime(first_at)} to {_attendees(first_count)}."]
+    if later:
+        more = sum(count for _, count in later)
+        lines.append(f"Later, {more} more attendee{'' if more == 1 else 's'} got theirs automatically "
+                     f"(latest {format_datetime(later[-1][0])}).")
+    return {"lines": lines, "at": first_at,
+            "note": "You don't need to send them. Use “Resend link” only for someone who didn't get theirs."}
 
 
 def link_state(registration: Registration) -> dict:
@@ -300,6 +327,7 @@ def evaluation_links(member, activity: Activity, params) -> dict:
     page = Paginator(recipients, LINK_ROWS_PER_PAGE).get_page((params.get("page") or "1").strip())
     return {
         "explanation": link_explanation(activity),
+        "automatic_send": automatic_send_notice(activity),
         "console_mode": prints_emails(),
         "link_counts": services.evaluation_link_counts(activity),
         "link_requests": link_requests(activity),

@@ -5,7 +5,8 @@ who have not answered, by link state, plus the evaluations answered. Resend need
 (services.evaluation_links_closed_reason, the same check as services.send_evaluation_links). The attendees table names only
 people who have NOT answered. "Link requests" (registrations.pages.link_requests, ASSUMPTIONS 354) names registered people
 who typed their email on the general link, with the outcome, which can be "already evaluated" (staff see that on the
-Registrations tab anyway); never ratings, comments or answers.
+Registrations tab anyway); never ratings, comments or answers. The green note (registrations.pages.automatic_send_notice,
+ASSUMPTIONS 419) says when the links went out automatically and to how many (the System's History rows).
 {% endcomment %}
 <section class="card p-6" aria-labelledby="links-title">
   <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -21,6 +22,16 @@ Registrations tab anyway); never ratings, comments or answers.
       </form>
     {% endif %}
   </div>
+
+  {% if automatic_send %}
+    <div class="notice notice-success mb-4 flex gap-3" role="status" data-automatic-send>
+      {% include "components/icon.html" with name="circle-check" class="mt-1 size-4 shrink-0 text-success" %}
+      <div class="text-sm text-ink">
+        {% for line in automatic_send.lines %}<p class="{% if forloop.first %}font-semibold{% endif %}">{{ line }}</p>{% endfor %}
+        <p class="text-slate-700">{{ automatic_send.note }}</p>
+      </div>
+    </div>
+  {% endif %}
 
   <ul class="mb-4 space-y-2 text-sm text-slate-700">
     {% for line in explanation %}

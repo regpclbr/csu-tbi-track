@@ -256,6 +256,9 @@ DOCUMENT_TYPES_REQUIRED_AT_CREATION = ["Activity Design", "Request Letter"]
 # --- Activities: automatic statuses and evaluation links (ASSUMPTIONS 346, 348) -------------
 # How often the Django-Q2 task moves Scheduled -> Ongoing -> Conducted and sends the first evaluation links.
 ACTIVITY_STATUS_INTERVAL_MINUTES = 5
+# The first evaluation links also go out while the activity is still Ongoing, from this many hours before its end
+# (never before the evaluation opens at 00:00 on the end date; ASSUMPTIONS 419, NAVIGATU UAT).
+EVALUATION_LINK_HOURS_BEFORE_END = env_int("EVALUATION_LINK_HOURS_BEFORE_END", 3)
 # "Needs attention": a Draft whose start date is this many days away (or past) is flagged.
 ATTENTION_DRAFT_DAYS_BEFORE = 7
 

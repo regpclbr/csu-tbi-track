@@ -30,7 +30,7 @@ all of them are to be validated with the TBI too.
 - **Item 111:** When attendance is "confirmed by email", what exactly happens: does the participant reply to an email and a staff member then marks them present? (There is no self check-in now.)
 - **Item 111 (check-in):** Should participants check themselves in through a link (for example a QR code at the venue)? (Now only staff mark attendance.)
 - **Item 3 (walk-ins):** Should walk-in participants be able to register on the day of the activity? (Now registration closes when the activity starts, and walk-ins are not recorded.)
-- **Item 348:** The evaluation link is now emailed automatically once the activity is Conducted. A failed email is not retried automatically; staff can resend it. Is that acceptable?
+- **Items 348, 419:** The evaluation link is now emailed automatically to everyone marked as attended from 3 hours before the activity ends (never before midnight of its last day; NAVIGATU UAT, 2026-11-21), and to people marked as attended later. A failed email is not retried automatically; staff can resend it, and the Evaluation tab shows when the links went out. Is 3 hours before the end the right moment?
 - **Item 354:** When someone types their email on the general evaluation link, staff now see on the Evaluation tab that this registered person asked for their link and whether it was sent (or why not). Emails of people who did not register are never stored. Is that acceptable for data privacy?
 
 ## Documents
