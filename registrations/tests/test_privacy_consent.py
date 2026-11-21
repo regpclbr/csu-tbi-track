@@ -46,13 +46,18 @@ def test_privacy_page_is_public_and_has_the_review_text(client) -> None:
     text = response.content.decode()
     assert "Privacy notice" in text and "Data Privacy Act of 2012" in text
     assert "PLACEHOLDER" not in text
-    assert "User Acceptance Testing" in text and "deleted no later than November 30, 2026" in text
-    assert "Regine S. Paclibar and Chrizza Patricia E. Mandap" in text and "Version November 17, 2026." in text
+    assert "User Acceptance Testing" in text
+    assert "Data entered in this review version is kept on the researchers' computer until you ask for it to be deleted." in text
+    assert "To ask, contact the researchers listed below." in text
+    assert "November 30, 2026" not in text and "Version November 17, 2026." not in text
+    assert "Regine S. Paclibar and Chrizza Patricia E. Mandap" in text and "Version November 21, 2026." in text
 
 
 def test_consent_summary_has_the_review_text(client, scheduled) -> None:
     text = client.get(reverse("register", args=[scheduled.pk])).content.decode()
-    assert "PLACEHOLDER" not in text and "deleted no later than November 30, 2026" in text
+    assert "PLACEHOLDER" not in text and "November 30, 2026" not in text
+    assert ("In this review version, the data you enter is kept on the researchers' computer until you ask for it to be "
+            "deleted, and it is not shared outside CSU and NAVIGATU.") in text
     assert "User Acceptance Testing" in text and "Regine S. Paclibar" in text
 
 

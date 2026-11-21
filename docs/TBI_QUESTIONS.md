@@ -104,16 +104,18 @@ all of them are to be validated with the TBI too.
 - **Item 390:** Members now choose a position (job title) on their profile; it is only shown under their name and gives no rights. Which positions (job titles) does the TBI use, so the System Administrator can add them?
 - **Item 204:** Who should be allowed to generate reports? Now: staff whose role can create activities. Any staff member can see the dashboard and download reports. Should some roles not see them?
 
-## Hosted client review version (for NAVIGATU)
+## Client review version and UAT data (for NAVIGATU)
 
-- **Items 391, 394 (approval for real data):** The client review version runs on a small cloud server (Microsoft Azure, Southeast Asia) so NAVIGATU staff can check the system with real accounts. It is a copy for review, not the final deployment. May we use real staff accounts and real participant data (names, emails, evaluation answers) on it during the review, or only test data? Who approves this for NAVIGATU?
+- **Item 415 (no deployment):** *Decided (2026-11-21, team):* the system is not deployed anywhere. All further testing and the defense demo run only on the researchers' laptop (no cloud server, no public link). The November 17, 2026 UAT ran once on that laptop through a temporary Cloudflare link; it never ran on a cloud server such as Azure.
+- **Items 391, 394 (approval for real data):** Was it acceptable to use real staff accounts and real participant data (names, emails, evaluation answers) on the researchers' laptop during the November 17 UAT, and may further testing on the laptop use real data, or only test data? Who approves this for NAVIGATU?
 - **Item 394 (privacy notice text):** The public registration, startup portal registration and evaluation pages now show a short privacy notice with a required "I agree" checkbox, and a full notice at /privacy/. Can NAVIGATU (or the CSU Data Protection Officer) approve or correct the text?
 - **Item 394 (contact person):** Who is the contact person (or Data Protection Officer) for privacy questions and requests, and which email address should the notice show?
 - **Item 394 (retention period):** How long should participant data (registrations, attendance, evaluations, certificates) be kept after an activity, and what happens to it afterwards (deleted or anonymized)?
+- **Item 414 (retention in the review version, please confirm):** *Decided by the team (2026-11-21), pending NAVIGATU:* the notice now says "In this review version, the data you enter is kept on the researchers' computer until you ask for it to be deleted, and it is not shared outside CSU and NAVIGATU" (it replaced "deleted no later than November 30, 2026"). The Data Privacy Act of 2012 (RA 10173, Sec. 11(e)) says personal data should be kept only as long as needed for its purpose, and this wording has no end date. Can NAVIGATU (or the CSU Data Protection Officer) confirm this retention, or give an end date (for example after the defense or after the study is graded) after which the review data is deleted?
 - **Item 394 (two checkboxes):** *Decided (2026-11-16, owner):* the default registration form no longer has its own "Data Privacy consent" question; every public form has the fixed privacy checkbox instead. Is one checkbox linked to the full notice enough for the TBI?
 - **Item 395 (accounts):** Who should get accounts on the review version, with which roles, and for how long? Should the accounts be deactivated when the review ends?
 - **Item 398 (sender address):** During the review, emails come from the researchers' Gmail address. For the real deployment, which official TBI or CSU email address (and mail server) should send invitations, evaluation links and certificates?
-- **Items 391, 397 (review period):** How long will the review run? The server is free for a limited time (Azure for Students); after the defense it will be backed up and deleted unless NAVIGATU decides otherwise.
+- **Items 391, 397 (review period):** *Answered by item 415:* there is no hosted review any more; testing and the defense demo run only on the researchers' laptop. What happens to the UAT data: see item 414 above.
 
 ## General assumptions (items 1–14)
 

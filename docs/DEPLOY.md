@@ -1,17 +1,23 @@
-# Hosting the client review version on Azure
+# Hosting the client review version (not used)
 
-> **This is a client review version, not the final production deployment.**
-> It is a hosted copy of CSU-TBI Track (hosted UAT) so NAVIGATU staff can check the system with real accounts.
-> Full live deployment is out of scope of the study. Everything runs on **one** small Azure virtual machine
-> (Azure for Students) with Docker Compose. Details and reasons: `docs/ASSUMPTIONS.md` items 391–398.
+> **No deployment (team decision, 2026-11-21).** All further testing and the defense demo run **only on the
+> researchers' laptop**: no Azure server, no Cloudflare tunnel, no public address. Nothing in this file is needed for
+> that. Full live deployment is out of scope of the study.
+>
+> History: the November 17, 2026 UAT ran once on the laptop (Docker Compose project `csu_tbi_uat`) through a Cloudflare
+> quick tunnel; it never ran on Azure. The UAT database and its backups (testers' personal data) are still on the
+> laptop: the **Back up**, deletion and **Remove everything** steps of
+> [Laptop review version with a Cloudflare tunnel (not used)](#laptop-review-version-with-a-cloudflare-tunnel-not-used)
+> still apply to them (privacy notice, ASSUMPTIONS 414).
+>
+> Both guides below are kept only as optional reference: **sections 1–16 (one Azure virtual machine, Azure for
+> Students): not used**; **the Cloudflare tunnel section: not used** (not since the November 17 UAT).
+> Details and reasons: `docs/ASSUMPTIONS.md` items 391–398, 414, 415.
 
 Commands marked **PowerShell** run on your Windows laptop. Commands marked **server** run on the Azure machine after
 you connect with `ssh` (step 3). Never paste a password, App Password or secret key into a chat, a commit or a screenshot.
 
-**No Azure server?** See [Laptop review version (fallback)](#laptop-review-version-fallback) at the end: the same
-production setup on your own laptop, reached through a Cloudflare quick tunnel.
-
-## Before the review starts (checklist)
+## Before the review starts (checklist; Azure server: not used)
 
 - [ ] NAVIGATU approved using real data on the hosted version (TBI_QUESTIONS, "Hosted client review version").
 - [ ] Privacy placeholders filled in: contact person, retention period, approval date
@@ -319,9 +325,14 @@ worker, the schedules (the startup sync shows "Turned off"), email and the PDF c
 
 **Logs:** `sudo sh deploy/compose.sh logs -f web worker` (Ctrl+C stops). Personal link tokens are shown as `<hidden>`.
 
-## Laptop review version (fallback)
+## Laptop review version with a Cloudflare tunnel (not used)
 
-Used when no Azure server is available (Nov 17, 2026 UAT). The same production setup (`docker-compose.prod.yml`) runs
+**Not used any more** (team decision, 2026-11-21: further testing and the defense demo run only on the laptop, without
+a tunnel or any public address). It was used once, for the November 17, 2026 UAT (no Azure server was used). The UAT
+database (`csu_tbi_uat`) and the backups stay on the laptop: **Back up**, the deletion rule and **Remove everything**
+below still apply to them.
+
+The same production setup (`docker-compose.prod.yml`) runs
 on the laptop under its own project `csu_tbi_uat` (own volumes, fresh database). `docker-compose.laptop.yml` adds two
 changes: Caddy listens on `127.0.0.1:8080` only, and it uses `Caddyfile.laptop`. A **Cloudflare quick tunnel** gives
 testers an `https://<random>.trycloudflare.com` address:
@@ -379,7 +390,9 @@ uat exec -T web tar czf /tmp/uat-media.tar.gz -C /app media
 uat cp web:/tmp/uat-media.tar.gz "C:\Users\Admin\tbi-backups\uat-media-$stamp.tar.gz"
 uat exec -T web rm /tmp/uat-media.tar.gz
 ```
-The backups contain testers' personal data: delete them by November 30, 2026 (the privacy notice's promise).
+The backups contain testers' personal data. They are kept on the researchers' computer (this folder) until a tester
+asks for their data to be deleted; then delete that person's data from the database, make a fresh backup and delete
+the older ones (the privacy notice's promise, ASSUMPTIONS 414).
 
 **Updating to a new version** (for example the November 19 corrections, which add migrations `activities/0009` and
 `registrations/0008`): make
@@ -423,5 +436,5 @@ The `pgvector/pgvector:pg17` image stays (the development database uses it).
 | `deploy/server-setup.sh` | One-time server preparation. |
 | `deploy/update.sh` | Update after a commit. |
 | `deploy/backup.sh` / `restore.sh` | Daily backup and restore. |
-| `deploy/docker-compose.laptop.yml` / `Caddyfile.laptop` | The laptop review version behind a Cloudflare quick tunnel. |
+| `deploy/docker-compose.laptop.yml` / `Caddyfile.laptop` | The laptop review version behind a Cloudflare quick tunnel (November 17 UAT only; not used). |
 | `deploy/fonts/gelasio/` | The certificate font for Linux (SIL Open Font License). |

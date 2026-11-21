@@ -969,11 +969,15 @@
      - Tests: `accounts/tests/test_profile.py`.
      - **Tables: 31 → 34** (POSITION, ACTIVITY_DELETION, CERTIFICATE_NUMBER_SEQUENCE); new columns ROLE.can_delete_activities, TBI_MEMBER.position_id.
 
-## Hosted client review version on one Azure server (2026-11-16)
+## Hosted client review version: Docker Compose setup, written for one Azure server (2026-11-16; the UAT ran on the laptop)
 
 A hosted copy for NAVIGATU staff to check the system with real accounts (hosted UAT). **Full live deployment is out of
-scope of the study**; this is not the final production deployment. Everything runs on ONE Azure virtual machine (Azure
-for Students, B2ats v2, about 1 GB of memory, Ubuntu 24.04 LTS) with Docker Compose. No Railway (not free); no earlier
+scope of the study**; this is not the final production deployment. The setup was written for ONE Azure virtual machine
+(Azure for Students, B2ats v2, about 1 GB of memory, Ubuntu 24.04 LTS) with Docker Compose. **That server was never
+used**: the review version and the November 17, 2026 UAT run on the researchers' laptop with the same production setup
+(Docker Compose project `csu_tbi_uat`, `deploy/docker-compose.laptop.yml`, a Cloudflare quick tunnel; DEPLOY.md "Laptop
+review version", item 414). The Azure items below describe the optional server guide. **Since 2026-11-21 neither is
+used** (item 415): all further testing and the defense demo run only on the researchers' laptop. No Railway (not free); no earlier
 deployment work existed, so nothing host-specific had to be removed. Step-by-step guide: `docs/DEPLOY.md`.
 **No database or ERD change** (no migration, no new column; `docs/design/erd.png` unchanged).
 
@@ -1030,9 +1034,9 @@ deployment work existed, so nothing host-specific had to be removed. Step-by-ste
        attendance, evaluation answers, certificate name and email); why: "This is a review version of CSU-TBI Track: what
        you enter here is used for testing and evaluating CSU-TBI Track during the researchers' capstone study (User Acceptance Testing)", and within that test to run the activity, attendance, evaluation link and
        certificate, activity reports with totals; who sees it (authorized TBI staff; never other participants; not shared
-       outside CSU and NAVIGATU unless the law requires it); retention: "In this review version, data entered in this review version is kept only until the end of the study and deleted no later than November 30, 2026"; rights
+       outside CSU and NAVIGATU unless the law requires it); retention (*replaced by item 414 on 2026-11-21*): "In this review version, data entered in this review version is kept only until the end of the study and deleted no later than November 30, 2026"; rights
        under the Data Privacy Act of 2012 (RA 10173), contact: "Regine S. Paclibar and Chrizza Patricia E. Mandap, BSIT, CCIS, Caraga State University, through the project email shown in the invitation emails"; "Version November 17, 2026".
-       The checkbox's summary: "The CSU Technology Business Incubator collects the details on this form, in this review
+       The checkbox's summary (its retention sentence replaced by item 414): "The CSU Technology Business Incubator collects the details on this form, in this review
        version for testing and evaluating CSU-TBI Track during the researchers' capstone study (User Acceptance Testing), to run this activity, record attendance, send your evaluation link and certificate, and
        report on its programs. In this review version, data entered in this review version is kept only until the end of the study and deleted no later than November 30, 2026; they are not shared outside CSU and NAVIGATU.
        Questions or requests: Regine S. Paclibar and Chrizza Patricia E. Mandap, BSIT, CCIS, Caraga State University, through the project email shown in the invitation emails."
@@ -1544,3 +1548,39 @@ Still 34 tables.
        (the Documents page switch scrolled the page sideways by 4 px at 390 px).
      - Tests: `test_spacing_scale_in_every_template` (every class attribute and the `main_class` blocks) and
        `test_spacing_scale_in_the_component_classes` (the `@apply` rules) in `accounts/tests/test_staff_layout.py`.
+
+## Privacy notice: retention wording (2026-11-21)
+
+414. **Review version: kept on the researchers' computer until the person asks for deletion** (team decision,
+     2026-11-21; *pending confirmation by NAVIGATU*). Replaces the retention wording of item 394 ("kept only until the
+     end of the study and deleted no later than November 30, 2026").
+     - Consent summary (`templates/public/_privacy_consent.html`): "In this review version, the data you enter is kept on
+       the researchers' computer until you ask for it to be deleted, and it is not shared outside CSU and NAVIGATU."
+     - Full notice (`templates/public/privacy.html`, "How long we keep it"): "Data entered in this review version is kept
+       on the researchers' computer until you ask for it to be deleted. To ask, contact the researchers listed below."
+       Version date: "Version November 21, 2026." (was November 17).
+     - **Why "on the researchers' computer"** (not "on the system's server managed by the researchers"): the review
+       version never ran on Azure. The November 17, 2026 UAT ran on the researchers' laptop (Docker Compose project
+       `csu_tbi_uat`, `deploy/docker-compose.laptop.yml`); the Cloudflare quick tunnel only passes the traffic through. The
+       database, the uploaded files and the backups are on that laptop. If the review version ever moves to a server
+       (DEPLOY.md sections 1–15), the sentence must change to "on the system's server managed by the researchers".
+     - A deletion request: delete that person's data, make a fresh backup and delete the older backups (DEPLOY.md,
+       "Laptop review version", Back up).
+     - **Open point:** the Data Privacy Act of 2012 (RA 10173, Sec. 11(e)) says personal data is kept only as long as
+       needed for its purpose; this wording has no end date. NAVIGATU (or the CSU Data Protection Officer) should confirm
+       it or give an end date (docs/TBI_QUESTIONS.md, item 414).
+     - Same day: DEPLOY.md, CLAUDE.md, the heading of items 391–398 and TBI_QUESTIONS no longer say the review version runs
+       on Azure; the Azure guide stays as an optional section, "not used for the UAT".
+     - Text only: no logic, URL, permission, database or ERD change. Tests: `registrations/tests/test_privacy_consent.py`
+       (new wording, new version date, "November 30, 2026" gone).
+
+## No deployment: testing and the defense on the laptop only (2026-11-21)
+
+415. **No deployment any more** (team decision, 2026-11-21). All further testing and the defense demo run **only on the
+     researchers' laptop**: no Azure server, no Cloudflare tunnel, no other hosting, no public address.
+     - The Azure guide (items 391–398, DEPLOY.md sections 1–16) was never used; the Cloudflare quick tunnel was used once,
+       for the November 17, 2026 UAT. Both stay in `docs/DEPLOY.md` only as optional sections labelled "not used". The
+       deployment files (`Dockerfile`, `deploy/`) and their tests stay unchanged.
+     - The UAT database (Docker Compose project `csu_tbi_uat`) and its backups stay on the laptop until testers ask for
+       deletion (item 414); the privacy notice's "kept on the researchers' computer" stays true, so its wording is unchanged.
+     - Docs only (DEPLOY.md, CLAUDE.md, this file, TBI_QUESTIONS): no code, setting, database or ERD change.

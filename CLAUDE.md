@@ -211,7 +211,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
   honeypot field `website`) before `register()`; the service itself is never rate limited.
 - An evaluation link that is submitted or past its window shows only the closed reason.
-- Privacy notice (ASSUMPTIONS 394): `/privacy/` + `public/_privacy_consent.html` (required checkbox `privacy_consent`) on the
+- Privacy notice (ASSUMPTIONS 394; retention wording 414): `/privacy/` + `public/_privacy_consent.html` (required checkbox `privacy_consent`) on the
   public registration page, the portal registration page and the evaluation review step. The one rule is
   `services.check_privacy_consent`, called by every public entry point (HTML, `/api/register/`, `/api/evaluate/`, portal page
   and API) before `register()` / `submit_evaluation()`; the services themselves never ask. Nothing is stored (no column).
@@ -780,7 +780,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Delete activity + My profile (2026-11-16): can_delete_activities (System Administrator), refused with real records,
   ACTIVITY_DELETION record, certificate number sequence; My profile (name, position, password), POSITION table (389–390).
   Database: accounts 0007–0008, activities 0008, certificates 0015–0016; 34 tables.
-- Client review version (2026-11-16): Docker Compose on one Azure VM (Caddy HTTPS, gunicorn, qcluster, pgvector), release
+- Client review version (2026-11-16): Docker Compose production setup, written for one Azure VM but never used there (only
+  the Nov 17 UAT used it, once, on the laptop through a Cloudflare quick tunnel) (Caddy HTTPS, gunicorn, qcluster, pgvector), release
   step, deploy checks, token-free logs, noindex/robots, "Review version" label, privacy notice + required consent checkbox,
   startup sync switch, create_first_admin / create_review_startup, Gelasio font, backups, docs/DEPLOY.md (391–398).
   No database or ERD change.
@@ -812,9 +813,19 @@ owner is a student, so explain important decisions briefly and keep the code sim
   neutral grey panel, softer status colours, type scale, red-text destructive buttons, one primary per page or card,
   Needs attention / pending approvals with an accent bar (413, Part 1). Part 2: every template on the spacing scale
   (650 off-scale uses in 146 files) + template scan tests. No database change.
+- Privacy retention (2026-11-21, team decision): data "kept on the researchers' computer until you ask for it to be
+  deleted" replaces "deleted no later than November 30"; notice version November 21, 2026; docs no longer say the review
+  version ran on Azure (414). Text only.
+- No deployment (2026-11-21, team): all further testing and the defense demo run only on the researchers' laptop; no
+  Azure, no Cloudflare tunnel, no public address; DEPLOY.md's guides labelled "not used" (415). Docs only.
 
-## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
-- NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.
+## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
+- NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the
+  researchers' laptop; no Azure, no Cloudflare tunnel, no public address. The Nov 17 UAT ran once on the laptop (Docker
+  project `csu_tbi_uat`, `deploy/docker-compose.laptop.yml`, `Caddyfile.laptop`) behind a Cloudflare quick tunnel; its
+  database and backups stay on the laptop (privacy notice, 414). The Azure VM guide (Azure for Students, B2ats v2, ~1 GB)
+  and the tunnel guide stay in DEPLOY.md as optional sections labelled "not used". No Railway. The files below still
+  exist and are tested; keep them working, but never suggest deploying.
 - `Dockerfile` (requirements.txt only; Pango, DejaVu, Gelasio from `deploy/fonts/gelasio/`, tzdata; user `app`) and
   `deploy/docker-compose.prod.yml` (db never published, release → web (gunicorn) + worker (qcluster), caddy = HTTPS + /static/).
   Always run compose through `deploy/compose.sh` (server `.env` at `/opt/csu-tbi/.env`, root only). Scripts in `deploy/`

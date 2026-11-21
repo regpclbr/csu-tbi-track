@@ -1,8 +1,10 @@
 {% extends "layouts/public.html" %}
 {% comment %}
-/privacy/ (registrations.public_views.privacy_notice, ASSUMPTIONS 394): the privacy notice the registration and evaluation
-pages ask people to agree to. The text of the review version (UAT), approved by the owners on 2026-11-17; the final
-text still needs NAVIGATU and the TBI's approval (docs/TBI_QUESTIONS.md, Data Privacy Act of 2012). Keep it short and plain.
+/privacy/ (registrations.public_views.privacy_notice, ASSUMPTIONS 394, 414): the privacy notice the registration and evaluation
+pages ask people to agree to. The text of the review version (UAT), approved by the owners on 2026-11-17; on 2026-11-21 the
+team replaced the fixed deletion date with "kept on the researchers' computer until you ask for it to be deleted"
+(ASSUMPTIONS 414, version November 21, 2026). The final text still needs NAVIGATU and the TBI's approval
+(docs/TBI_QUESTIONS.md, Data Privacy Act of 2012). Keep it short and plain.
 {% endcomment %}
 {% block title %}Privacy notice · CSU-TBI Track{% endblock %}
 {% block content %}
@@ -25,13 +27,13 @@ text still needs NAVIGATU and the TBI's approval (docs/TBI_QUESTIONS.md, Data Pr
     </section>
     <section>
       <h2 class="font-bold text-ink">How long we keep it</h2>
-      <p class="mt-1">In this review version, data entered in this review version is kept only until the end of the study and deleted no later than November 30, 2026.</p>
+      <p class="mt-1">Data entered in this review version is kept on the researchers' computer until you ask for it to be deleted. To ask, contact the researchers listed below.</p>
     </section>
     <section>
       <h2 class="font-bold text-ink">Your rights</h2>
       <p class="mt-1">Under the Data Privacy Act of 2012 (Republic Act No. 10173) you may ask to see, correct or delete your details, or withdraw your consent. Contact: Regine S. Paclibar and Chrizza Patricia E. Mandap, BSIT, CCIS, Caraga State University, through the project email shown in the invitation emails.</p>
     </section>
   </div>
-  <p class="mt-6 text-xs text-slate-700">Version November 17, 2026.</p>
+  <p class="mt-6 text-xs text-slate-700">Version November 21, 2026.</p>
 </article>
 {% endblock %}
