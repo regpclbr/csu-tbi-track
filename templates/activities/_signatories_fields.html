@@ -1,7 +1,7 @@
 {% comment %}
 "Who signs the certificates" on the activity create / edit form (ASSUMPTIONS 365; activities.pages.signatory_form_section).
 Two dropdowns pre-filled with the defaults (new activity) or the activity's people (edit), "Name · Position" for active
-people, plus "Add a person…" for can_approve_certificates (opens #add-signatory-dialog; the new person is added to both
+people, plus "Add a person…" for can_manage_signatories (ASSUMPTIONS 418) (opens #add-signatory-dialog; the new person is added to both
 dropdowns and chosen here). Next to each, the optional "Title on this certificate" (its placeholder follows the chosen
 person's usual position). A chosen slot has no empty option: it can be switched, never emptied. The rules are checked by
 certificates.services (assign_default_signatories / set_activity_signatories); errors appear under the fields.

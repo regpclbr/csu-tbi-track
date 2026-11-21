@@ -1,9 +1,10 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/accounts/console/roles/: the roles and their five flags. "Create and edit activities" (can_create_activity), "Approve
-and return documents" (can_approve_documents), "Approve certificates" (can_approve_certificates) and "Delete activities"
-(can_delete_activities) are switched here with a small POST form per row (accounts.services.set_role_activity_creation /
-set_role_document_approval / set_role_certificate_approval / set_role_activity_deletion, ASSUMPTIONS 344, 357, 388, 389). "Manage users" is changed only in the Django admin (ASSUMPTIONS
+/accounts/console/roles/: the roles and their six flags. "Create and edit activities" (can_create_activity), "Approve
+and return documents" (can_approve_documents), "Approve certificates" (can_approve_certificates), "Manage signatories"
+(can_manage_signatories) and "Delete activities" (can_delete_activities) are switched here with a small POST form per row
+(accounts.services.set_role_activity_creation / set_role_document_approval / set_role_certificate_approval /
+set_role_signatory_management / set_role_activity_deletion, ASSUMPTIONS 344, 357, 388, 389, 418). "Manage users" is changed only in the Django admin (ASSUMPTIONS
 224), where it goes through accounts.services.update_role_permissions.
 {% endcomment %}
 {% block content %}
@@ -32,6 +33,10 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
       {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can approve certificates. Generated certificates will wait for approval until a role with active members can approve them.</p>
   {% endif %}
+  {% if no_signatory_manager %}
+    <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can manage certificate signatories. Nobody can add signatories, signature images or the default signatories until a role with active members can manage them.</p>
+  {% endif %}
   {% if roles %}
     <div class="relative overflow-x-auto rounded-2xl border border-line">
       <table class="w-full text-left text-sm">
@@ -44,6 +49,7 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
             <th scope="col" class="px-4 py-3">Manage users (Admin Console)</th>
             <th scope="col" class="px-4 py-3">Approve and return documents</th>
             <th scope="col" class="px-4 py-3">Approve certificates</th>
+            <th scope="col" class="px-4 py-3">Manage signatories</th>
             <th scope="col" class="px-4 py-3">Delete activities</th>
             <th scope="col" class="px-4 py-3">Active members</th>
           </tr>
@@ -100,6 +106,21 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
               </td>
               <td class="px-4 py-3">
                 <div class="flex flex-wrap items-center gap-2">
+                  {% if role.can_manage_signatories %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}
+                  <form method="post" action="{% url 'accounts:console_role_signatory_management' role.pk %}">
+                    {% csrf_token %}
+                    {% if role.can_manage_signatories %}
+                      <input type="hidden" name="enabled" value="false">
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn off managing signatories for {{ role.role_name }}">Turn off</button>
+                    {% else %}
+                      <input type="hidden" name="enabled" value="true">
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on managing signatories for {{ role.role_name }}">Turn on</button>
+                    {% endif %}
+                  </form>
+                </div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap items-center gap-2">
                   {% if role.can_delete_activities %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}
                   <form method="post" action="{% url 'accounts:console_role_activity_deletion' role.pk %}">
                     {% csrf_token %}
@@ -122,6 +143,6 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
   {% else %}
     {% include "components/empty_state.html" with icon="shield" title="No roles yet" text="Run python manage.py seed_data to create them." %}
   {% endif %}
-  <p class="mt-4 text-xs text-muted">Roles are never renamed or deleted. At least one active member must always be able to manage users. A role that manages users cannot also create activities or approve documents (it may approve certificates and delete activities).</p>
+  <p class="mt-4 text-xs text-muted">Roles are never renamed or deleted. At least one active member must always be able to manage users. A role that manages users cannot also create activities, approve documents or manage signatories (it may approve certificates and delete activities).</p>
 </section>
 {% endblock %}

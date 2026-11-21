@@ -4,9 +4,10 @@ Resend, signatures, the certificate text), the Certificate text page, the previe
 certificates.services (and documents.services for evidence); certificates/pages.py prepares what the templates show.
 
 Viewing, previews, downloads and evidence uploads: any active staff member. Apply the current design, hand over and
-resend: can_create_activity. Approve, signature images, the Signatories page and reissue: can_approve_certificates (the
-Director, both Project Heads and the System Administrator). An activity's two signatories: can_create_activity or
-can_approve_certificates (ASSUMPTIONS 363, 364). Certificates are created by the System (no Generate).
+resend: can_create_activity. Approve and reissue: can_approve_certificates (the Director, both Project Heads, Admin Staff
+and the System Administrator). Signature images, "Add a person" and the Signatories page: can_manage_signatories (the
+Director only, ASSUMPTIONS 418). An activity's two signatories: can_create_activity or can_approve_certificates
+(ASSUMPTIONS 363, 364). Certificates are created by the System (no Generate).
 
 Every action ends on the activity's Certificates tab (/activities/<id>/?tab=certificates, a redirect after the POST);
 a GET on an action address goes there too (config.links.post_only_or_tab). Refusals are kept for that one page view
@@ -105,7 +106,7 @@ def certificate_list(request: HttpRequest) -> HttpResponse:
                "filters": filters, **pages.certificate_list(filters), **pages.filter_choices()}
     if is_htmx(request):
         return render(request, "certificates/_results.html", context)
-    if has_permission(request.user, Permission.APPROVE_CERTIFICATES):  # the Signatories page (ASSUMPTIONS 363)
+    if has_permission(request.user, Permission.MANAGE_SIGNATORIES):  # the Signatories page (ASSUMPTIONS 363, 418)
         context["signatories_link"] = reverse("certificates:signatories")
     return render(request, "certificates/list.html", context)
 
@@ -312,7 +313,7 @@ def signatory_current_version(request: HttpRequest, activity_id: int, slot: str)
     return redirect(pages.tab_url(activity.pk))
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @post_only_or_tab("certificates")
 def signature_upload(request: HttpRequest, activity_id: int, slot: str) -> HttpResponse:
     """POST file: add or replace the signature image of the person on `slot` (services.upload_signature). A replaced
@@ -437,7 +438,7 @@ def certificate_text_preview(request: HttpRequest) -> HttpResponse:
     return render(request, "certificates/_text_preview.html", {"preview": services.wording_preview(None, kind, values)})
 
 
-# --- The Signatories page (can_approve_certificates, ASSUMPTIONS 363) ---------------------------------------------
+# --- The Signatories page (can_manage_signatories, ASSUMPTIONS 363, 418) -----------------------------------------
 
 
 def _signatories_page(request: HttpRequest, *, errors: dict | None = None, values: dict | None = None,
@@ -457,13 +458,13 @@ def _flat(error: ValidationError) -> dict:
     return {"__all__": " ".join(error.messages)}
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_GET
 def signatories(request: HttpRequest) -> HttpResponse:
     return _signatories_page(request)
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_add(request: HttpRequest) -> HttpResponse:
     """POST name, position, file (optional); from the Certificates tab also activity + slot (the new person then signs
@@ -492,7 +493,7 @@ def signatory_add(request: HttpRequest) -> HttpResponse:
     return redirect(_back(request))
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_edit(request: HttpRequest, signatory_id: int) -> HttpResponse:
     """POST name, position: in place when no certificate uses the person, else a new version (services.edit_signatory)."""
@@ -519,7 +520,7 @@ def _plural(count: int, one: str, many: str) -> str:
     return f"{count} {one if count == 1 else many}"
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_image(request: HttpRequest, signatory_id: int) -> HttpResponse:
     """POST file: add or replace the person's signature image (services.replace_signature)."""
@@ -537,7 +538,7 @@ def signatory_image(request: HttpRequest, signatory_id: int) -> HttpResponse:
     return redirect(_back(request))
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_remove_background(request: HttpRequest, signatory_id: int) -> HttpResponse:
     """"Remove white background" on the Signatories page (services.remove_signature_background: a new version)."""
@@ -552,7 +553,7 @@ def signatory_remove_background(request: HttpRequest, signatory_id: int) -> Http
     return redirect(_back(request))
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signature_preview(request: HttpRequest) -> HttpResponse:
     """HTMX, from the upload dialogs: the chosen image as it will be stored (white background removed unless "Keep
@@ -567,7 +568,7 @@ def signature_preview(request: HttpRequest) -> HttpResponse:
     return render(request, "certificates/_signature_preview.html", context)
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_add_inline(request: HttpRequest) -> HttpResponse:
     """HTMX, from the activity form's "Add a person…" (ASSUMPTIONS 365): add the person (services.add_signatory) and
@@ -588,7 +589,7 @@ def signatory_add_inline(request: HttpRequest) -> HttpResponse:
     return response
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_deactivate(request: HttpRequest, signatory_id: int) -> HttpResponse:
     person = get_object_or_404(CertificateSignatory, pk=signatory_id)
@@ -602,7 +603,7 @@ def signatory_deactivate(request: HttpRequest, signatory_id: int) -> HttpRespons
     return redirect(_back(request))
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 def signatory_defaults(request: HttpRequest) -> HttpResponse:
     """POST left, right (signatory IDs): the people a new activity starts with (services.set_default_signatory)."""

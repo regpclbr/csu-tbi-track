@@ -72,7 +72,7 @@ class RoleAdminForm(forms.ModelForm):
     class Meta:
         model = Role
         fields = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates",
-                  "can_delete_activities")
+                  "can_delete_activities", "can_manage_signatories")
 
     def clean(self) -> dict:
         cleaned = super().clean()
@@ -82,6 +82,7 @@ class RoleAdminForm(forms.ModelForm):
                 can_manage_users=bool(cleaned.get("can_manage_users")),
                 can_approve_documents=bool(cleaned.get("can_approve_documents")),
                 can_approve_certificates=bool(cleaned.get("can_approve_certificates")),
+                can_manage_signatories=bool(cleaned.get("can_manage_signatories")),
             )
             if self.instance.can_manage_users and not cleaned.get("can_manage_users"):
                 services.ensure_admins_remain_without_role(self.instance)
@@ -92,15 +93,15 @@ class RoleAdminForm(forms.ModelForm):
 
 @admin.register(Role)
 class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
-    """Roles: only the five flags (can_create_activity, can_manage_users, can_approve_documents,
-    can_approve_certificates, can_delete_activities) can be edited.
+    """Roles: only the six flags (can_create_activity, can_manage_users, can_approve_documents,
+    can_approve_certificates, can_delete_activities, can_manage_signatories) can be edited.
     No adding, renaming or deleting: the code relies on the five fixed role names."""
 
     form = RoleAdminForm
     list_display = ("role_name", "can_create_activity", "can_manage_users", "can_approve_documents",
-                    "can_approve_certificates", "can_delete_activities", "created_at")
+                    "can_approve_certificates", "can_delete_activities", "can_manage_signatories", "created_at")
     fields = ("role_name", "description", "can_create_activity", "can_manage_users", "can_approve_documents",
-              "can_approve_certificates", "can_delete_activities", "created_at")
+              "can_approve_certificates", "can_delete_activities", "can_manage_signatories", "created_at")
     readonly_fields = ("role_name", "description", "created_at")
 
     def has_add_permission(self, request) -> bool:
@@ -116,6 +117,7 @@ class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
             can_approve_documents=form.cleaned_data["can_approve_documents"],
             can_approve_certificates=form.cleaned_data["can_approve_certificates"],
             can_delete_activities=form.cleaned_data["can_delete_activities"],
+            can_manage_signatories=form.cleaned_data["can_manage_signatories"],
         )
 
 

@@ -1,4 +1,4 @@
-{% comment %}The activity form's "Add a person…" dialog (can_approve_certificates; ASSUMPTIONS 365). Outside the activity
+{% comment %}The activity form's "Add a person…" dialog (can_manage_signatories; ASSUMPTIONS 365, 418). Outside the activity
 <form> (forms cannot be nested); its own form posts with HTMX (certificates/_add_person_inline_form.html).{% endcomment %}
 <dialog id="add-signatory-dialog" class="modal" aria-labelledby="add-signatory-dialog-title" onclick="if (event.target === this) this.close()">
   <div class="p-6">

@@ -3,8 +3,8 @@
 Every step calls the same services as the JSON API (no shortcuts), acting as --member <email> or, by default, the
 first active member allowed to do that step: the System Administrator for "design" (can_manage_users), for "approve" a
 member with can_approve_certificates, the Director first (ASSUMPTIONS 361), a member who can create activities for every
-other step
-(separation of duties, ASSUMPTIONS 339). Refuses to run when DEBUG is False.
+other step (separation of duties, ASSUMPTIONS 339). "design" adds the two signatories and the defaults as a member with
+can_manage_signatories (the Director, ASSUMPTIONS 418). Refuses to run when DEBUG is False.
 
     python manage.py certificate_walkthrough design <folder with the sample PNGs>
     python manage.py certificate_walkthrough activity
@@ -89,6 +89,7 @@ class Command(BaseCommand):
         members = TBIMember.objects.filter(is_active=True).select_related("role")
         flag = ({"role__can_manage_users": True} if step == "design"
                 else {"role__can_approve_certificates": True} if step == "approve"
+                else {"role__can_manage_signatories": True} if step == "signatories"
                 else {"role__can_create_activity": True})
         if email:
             member = members.filter(email__iexact=email).first()
@@ -111,9 +112,9 @@ class Command(BaseCommand):
         folder = Path(folder)
         read = lambda name: SimpleUploadedFile(name, (folder / name).read_bytes())  # noqa: E731
         template = services.upload_template(self.member, "Walkthrough sample design", read("sample-template.png"), activate=True)
-        # The signatory list and the defaults: a member who can approve certificates (ASSUMPTIONS 363).
-        approver = (self.member if self.member.role.can_approve_certificates
-                    else self.find_member(None, "approve"))
+        # The signatory list and the defaults: a member who manages signatories (the Director, ASSUMPTIONS 363, 418).
+        approver = (self.member if self.member.role.can_manage_signatories
+                    else self.find_member(None, "signatories"))
         director = services.add_signatory(approver, "Engr. Sample Director", "Director, CSU Technology Business Incubator",
                                           read("sample-signature-director.png"))
         vp = services.add_signatory(approver, "Dr. Sample Vice President",

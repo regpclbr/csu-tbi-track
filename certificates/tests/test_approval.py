@@ -149,7 +149,7 @@ def test_a_file_that_is_not_a_png_or_jpg_counts_as_missing(generated, design, di
 def test_choosing_another_signatory_unblocks_approval(evaluated, design, director, admin_member) -> None:
     activity, _ = evaluated
     remove_signature_file(design[1])
-    new_vp = services.add_signatory(admin_member, "Dr. New Vice Pres", "Vice President", upload("vp.png", image_bytes()))
+    new_vp = services.add_signatory(director, "Dr. New Vice Pres", "Vice President", upload("vp.png", image_bytes()))
     assert services.approval_closed_reason(activity) == MISSING_VP  # adding a person changes no activity
     services.set_activity_signatory(director, activity, "right", new_vp)  # the activity's choice (ASSUMPTIONS 363)
     assert set(Certificate.objects.values_list("right_signatory", flat=True)) == {new_vp.pk}

@@ -1,5 +1,5 @@
 {% comment %}Inside the Signatures section's "Replace signature" / "Add signature" dialog (certificates/_tab_certificates.html,
-can_approve_certificates only; ASSUMPTIONS 363). `slot` comes from the loop. A replaced image is a new version of the
+can_manage_signatories only; ASSUMPTIONS 363, 418). `slot` comes from the loop. A replaced image is a new version of the
 person: slot.impact (services.version_impact_text) says how many activities and certificates it changes. POST to
 activities:certificates_signature (services.upload_signature checks everything again).{% endcomment %}
 <form method="post" action="{{ slot.upload_url }}" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ busy: false }" @submit="busy = true">

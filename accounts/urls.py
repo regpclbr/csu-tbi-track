@@ -29,6 +29,8 @@ urlpatterns = [
     path("console/roles/<int:role_id>/document-approval/", console_views.role_document_approval, name="console_role_approval"),
     path("console/roles/<int:role_id>/certificate-approval/", console_views.role_certificate_approval,
          name="console_role_certificate_approval"),
+    path("console/roles/<int:role_id>/signatory-management/", console_views.role_signatory_management,
+         name="console_role_signatory_management"),
     path("console/positions/", console_views.positions, name="console_positions"),  # ASSUMPTIONS 390
     path("console/positions/add/", console_views.position_add, name="console_position_add"),
     path("console/positions/<int:position_id>/rename/", console_views.position_rename, name="console_position_rename"),

@@ -17,8 +17,9 @@ The life of a certificate (status rules in set_certificate_status; ASSUMPTIONS 3
   wait again. Apply the current design, hand over, resend: can_create_activity.
 - The wording (ASSUMPTIONS 370): CERTIFICATE_TEXT rows (a default per type, optional custom text per activity),
   versioned; each certificate keeps the row it was printed with (certificates.wording fills the placeholders).
-- Signatories (ASSUMPTIONS 363): a list of people (CERTIFICATE_SIGNATORY) managed by can_approve_certificates; each
-  activity chooses a left and a right one (ACTIVITY_SIGNATORY; a new activity starts with the defaults). A row that a
+- Signatories (ASSUMPTIONS 363, 418): a list of people (CERTIFICATE_SIGNATORY) managed ONLY by can_manage_signatories
+  (the Director by default: add, edit, signature images, deactivate, defaults); each activity chooses a left and a right
+  one from it (can_create_activity or can_approve_certificates, unchanged) (ACTIVITY_SIGNATORY; a new activity starts with the defaults). A row that a
   certificate uses never changes: a new image or a name/position edit is a new version (new row) that every activity
   moves to. Changing an activity's slot or a new version refreshes the certificates that are not Issued (the PDF is
   rendered again, Approved ones wait for approval again).
@@ -210,8 +211,8 @@ def prepare_signature_file(file: UploadedFile | None, keep_background: bool = Fa
 
 def signature_preview(member: TBIMember, file: UploadedFile | None, keep_background: bool = False) -> dict:
     """The upload dialog's preview, before saving (nothing is stored): {"data_uri": the image as it will be stored,
-    "note": what happened, "outcome"}. can_approve_certificates."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    "note": what happened, "outcome"}. can_manage_signatories (ASSUMPTIONS 418)."""
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     stored, outcome = prepare_signature_file(file, keep_background)
     stored.seek(0)
     content = stored.read()
@@ -274,7 +275,7 @@ def deactivate_template(member: TBIMember, template: CertificateTemplate) -> Cer
     return template
 
 
-# --- The signatory list (can_approve_certificates; ASSUMPTIONS 363) --------------------------------
+# --- The signatory list (can_manage_signatories; ASSUMPTIONS 363, 418) ---------------------------
 # A row that a certificate uses never changes (Issued certificates keep exactly what they were printed with): a new
 # image or a name/position edit creates a new version of the person (a new row) and every activity moves to it.
 # Nobody is deleted (PROTECT); people are deactivated.
@@ -319,7 +320,7 @@ def add_signatory(member: TBIMember, name: str, position: str, file: UploadedFil
                   keep_background: bool = False) -> CertificateSignatory:
     """Add a person to the list (active), with their signature image (PNG or JPG; a white background is made
     transparent unless keep_background: prepare_signature_file) or without it (added later)."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     name, position = _clean_person(name, position)
     if file is not None:
         file, _outcome = prepare_signature_file(file, keep_background)
@@ -346,7 +347,7 @@ def deactivate_closed_reason(signatory: CertificateSignatory) -> str | None:
 @transaction.atomic
 def deactivate_signatory(member: TBIMember, signatory: CertificateSignatory) -> CertificateSignatory:
     """Remove a person from the dropdowns. Activities that already use them keep them ("(inactive)" on the tab)."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     locked = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if reason := deactivate_closed_reason(locked):
         raise CertificateError(reason)
@@ -363,7 +364,7 @@ def set_default_signatories(member: TBIMember, left: CertificateSignatory, right
     defaults are no longer defaults. A slot someone already chose never changes; EMPTY slots of activities without
     certificates are filled from the new defaults (fill_empty_slots_from_defaults, ASSUMPTIONS 366).
     Returns {"filled": slots filled}."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     if left.pk == right.pk:
         raise CertificateError("The same person cannot be the default on both sides.")
     locked = {s.pk: s for s in CertificateSignatory.objects.select_for_update()
@@ -493,7 +494,7 @@ def edit_signatory(member: TBIMember, signatory: CertificateSignatory, name: str
     """Change a person's name or position. Not used by any certificate yet: changed in place. Used: a new version
     (_new_version; the image stays). Returns {"action": "unchanged" | "edited" | "new_version", "signatory": ...,
     "activities", "updated", "outdated", "outdated_activities"}."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     name, position = _clean_person(name, position)
     current = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if not current.is_active:
@@ -520,7 +521,7 @@ def replace_signature(member: TBIMember, signatory: CertificateSignatory, file: 
     keep_background: prepare_signature_file). No image yet: stored on that row (every certificate using it gets it).
     Already an image: a new version with the new image (_new_version), so Issued certificates keep the old one.
     Returns {"action": "added" | "replaced", "signatory", "activities", "updated", "outdated", "outdated_activities"}."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     current = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if not current.is_active:
         raise CertificateError("Inactive people (and earlier versions) cannot get a new signature.")
@@ -566,7 +567,7 @@ def remove_signature_background(member: TBIMember, signatory: CertificateSignato
     """The Signatories page's "Remove white background" for an existing image (ASSUMPTIONS 366): a new version of
     the person with the cleaned PNG (like Replace: _new_version), so Issued certificates keep the old image. Refused
     for an image that is already transparent. Returns replace_signature's dict with action "background_removed"."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     current = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if not current.is_active:
         raise CertificateError("Inactive people (and earlier versions) cannot get a new signature.")
@@ -1613,8 +1614,8 @@ def upload_signature(member: TBIMember, activity: Activity, slot: str, file: Upl
                      now: datetime | None = None, keep_background: bool = False) -> dict:
     """The activity's Certificates tab: add or replace the signature image of the person on `slot`
     (replace_signature: a replaced image is a new version for every activity that uses the person; a white
-    background is made transparent unless keep_background)."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    background is made transparent unless keep_background). can_manage_signatories (ASSUMPTIONS 418)."""
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
     if slot not in SLOTS:
         raise ValidationError({"slot": ["Choose left or right."]})
     signatory = activity_signatories(activity)[slot]

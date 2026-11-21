@@ -22,10 +22,11 @@ class Permission(StrEnum):
     """Role flags that grant access. The value is the ROLE column name."""
 
     CREATE_ACTIVITY = "can_create_activity"  # create or edit activities
-    MANAGE_USERS = "can_manage_users"  # Admin Console: users, roles, master data, certificate design/signatories
+    MANAGE_USERS = "can_manage_users"  # Admin Console: users, roles, master data, certificate design
     APPROVE_DOCUMENTS = "can_approve_documents"  # approve or return documents (ASSUMPTIONS 344)
     APPROVE_CERTIFICATES = "can_approve_certificates"  # approve certificates (ASSUMPTIONS 357)
     DELETE_ACTIVITIES = "can_delete_activities"  # delete activities without real records (ASSUMPTIONS 389)
+    MANAGE_SIGNATORIES = "can_manage_signatories"  # the signatory list, signature images, defaults (ASSUMPTIONS 418)
 
 
 PERMISSION_LABELS = {
@@ -34,6 +35,7 @@ PERMISSION_LABELS = {
     Permission.APPROVE_DOCUMENTS: "approve or return documents",
     Permission.APPROVE_CERTIFICATES: "approve certificates",
     Permission.DELETE_ACTIVITIES: "delete activities",
+    Permission.MANAGE_SIGNATORIES: "manage certificate signatories",
 }
 
 

@@ -13,7 +13,7 @@ from django.http import HttpRequest, QueryDict
 from django.conf import settings
 from django.urls import reverse
 
-from accounts.permissions import Permission, has_permission
+from accounts.permissions import Permission, has_any_permission, has_permission
 from activities.models import Activity
 from config.links import activity_tab_url, is_internal_path
 from config.mail import prints_emails
@@ -240,10 +240,11 @@ def text_panel(member, activity: Activity, values: dict | None = None, errors: d
 
 
 def signature_image_url(signatory: CertificateSignatory | None, member) -> str:
-    """The thumbnail URL (signature images: can_manage_users or can_approve_certificates only), or ""."""
+    """The thumbnail URL (signature images: can_manage_users, can_approve_certificates or can_manage_signatories only,
+    the rule of views.signature_image), or ""."""
     if signatory is None or not signatory.signature_image_path:
         return ""
-    if has_permission(member, Permission.APPROVE_CERTIFICATES) or has_permission(member, Permission.MANAGE_USERS):
+    if has_any_permission(member, Permission.APPROVE_CERTIFICATES, Permission.MANAGE_USERS, Permission.MANAGE_SIGNATORIES):
         return reverse("certificates:signature_image", args=[signatory.pk])
     return ""
 
@@ -251,12 +252,13 @@ def signature_image_url(signatory: CertificateSignatory | None, member) -> str:
 def signatures_panel(member, activity: Activity) -> dict:
     """The Signatures section (ASSUMPTIONS 363, 365, 367): the left and right slot with the activity's signatory, the
     title printed for them (services.printed_title: "Title on this certificate", else the position), "(inactive)",
-    whether the image is there; a dropdown of active people (+ "Add a person…" for approvers) and the title field for
-    can_create_activity / can_approve_certificates; for an inactive person an amber note with "Use the current
-    version" when a newer active version exists (services.inactive_slots); the image form (with the impact of a new
-    version, services.version_impact) and "Add a person" for can_approve_certificates. Without these flags: view only."""
+    whether the image is there; a dropdown of active people (+ "Add a person…" for can_manage_signatories) and the title
+    field for can_create_activity / can_approve_certificates (unchanged); for an inactive person an amber note with "Use
+    the current version" when a newer active version exists (services.inactive_slots); the image form (with the impact
+    of a new version, services.version_impact), "Add a person" and "All signatories" for can_manage_signatories only
+    (ASSUMPTIONS 418). Without these flags: view only."""
     can_choose = services.can_choose_signatories(member)
-    can_upload = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    can_upload = has_permission(member, Permission.MANAGE_SIGNATORIES)
     rows = services.activity_slots(activity)
     inactive = services.inactive_slots(activity)
     people = list(services.active_signatories()) if can_choose else []
@@ -650,7 +652,7 @@ def evidence(request: HttpRequest, certificate: Certificate, errors: dict | None
     }
 
 
-# --- The Signatories page (/certificates/signatories/, can_approve_certificates; ASSUMPTIONS 363) ------------------
+# --- The Signatories page (/certificates/signatories/, can_manage_signatories; ASSUMPTIONS 363, 418) --------------
 
 
 def safe_next(request: HttpRequest, raw: str | None, default: str) -> str:

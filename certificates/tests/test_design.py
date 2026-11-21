@@ -109,8 +109,9 @@ def test_signatory_needs_a_name_and_a_position(director) -> None:
     assert set(error.value.message_dict) == {"name", "position"}
 
 
-def test_only_certificate_approvers_manage_signatories(make_member, director) -> None:
-    staff = make_member(VIEW_ONLY_ROLE, email="staff.sig@example.com")
+@pytest.mark.parametrize("role_name", [VIEW_ONLY_ROLE, "Incubation Project Head"])  # an approver too (ASSUMPTIONS 418)
+def test_only_signatory_managers_manage_signatories(make_member, director, role_name) -> None:
+    staff = make_member(role_name, email="staff.sig@example.com")
     person = services.add_signatory(director, "VP", "Vice President", None)
     other = services.add_signatory(director, "P", "President", None)
     for call in (
@@ -156,9 +157,9 @@ def test_an_active_default_cannot_be_deactivated(director) -> None:
 
 
 @pytest.fixture
-def stored(admin_member):
+def stored(admin_member, director):
     template = services.upload_template(admin_member, "Design", template_upload(), activate=True)
-    signatory = services.add_signatory(admin_member, "VP", "Vice President", upload("sig.png", image_bytes()))
+    signatory = services.add_signatory(director, "VP", "Vice President", upload("sig.png", image_bytes()))  # ASSUMPTIONS 418
     return template, signatory
 
 
@@ -190,11 +191,8 @@ def test_signature_images_are_never_public(client, director, make_member, stored
 
 def test_admin_console_api(client, admin_member, director, make_member) -> None:
     client.force_login(admin_member)
-    response = client.post(
-        reverse("certificates:api_signatories"), {"name": "VP", "position": "Vice President", "file": upload("s.png", image_bytes())}
-    )
-    assert response.status_code == 201 and response.json()["signatory"]["is_active"]
-    assert response.json()["signatory"]["position"] == "Vice President"
+    post = {"name": "VP", "position": "Vice President", "file": upload("s.png", image_bytes())}
+    assert client.post(reverse("certificates:api_signatories"), post).status_code == 403  # the Director's (ASSUMPTIONS 418)
     response = client.post(reverse("certificates:api_templates"), {"name": "Design", "file": template_upload(), "activate": "true"})
     assert response.status_code == 201
     template_id = response.json()["template"]["certificate_template_id"]
@@ -203,7 +201,14 @@ def test_admin_console_api(client, admin_member, director, make_member) -> None:
     assert bad.status_code == 400 and "file" in bad.json()["errors"]
     client.force_login(director)
     assert client.get(reverse("certificates:api_templates")).status_code == 403
-    assert client.get(reverse("certificates:api_signatories")).status_code == 200  # approvers manage the list
+    assert client.get(reverse("certificates:api_signatories")).status_code == 200  # can_manage_signatories (ASSUMPTIONS 418)
+    response = client.post(
+        reverse("certificates:api_signatories"), {"name": "VP", "position": "Vice President", "file": upload("s.png", image_bytes())}
+    )
+    assert response.status_code == 201 and response.json()["signatory"]["is_active"]
+    assert response.json()["signatory"]["position"] == "Vice President"
+    client.force_login(make_member("Admin Staff", email="staff.approver@example.com"))  # approves certificates, not this
+    assert client.get(reverse("certificates:api_signatories")).status_code == 403
     client.force_login(make_member(VIEW_ONLY_ROLE, email="staff.api@example.com"))
     assert client.get(reverse("certificates:api_signatories")).status_code == 403
 

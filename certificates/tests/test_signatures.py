@@ -162,12 +162,15 @@ def test_activity_creators_choose_signatories_but_never_upload(generated, design
     assert 'name="signatory"' in signatures and 'name="file"' not in signatures and "Add a person" not in signatures
 
 
-def test_system_administrator_adds_signatures_but_cannot_apply_the_design(generated, admin_member) -> None:
+def test_system_administrator_neither_adds_signatures_nor_applies_the_design(generated, admin_member, director) -> None:
+    """Since ASSUMPTIONS 418 only can_manage_signatories (the Director) adds signatures; the System Administrator still
+    approves certificates (test_approvers_approve_all_for_the_activity)."""
     activity, _ = generated
     with pytest.raises(PermissionDenied):
         services.regenerate_certificates(admin_member, activity=activity)
-    result = services.upload_signature(admin_member, activity, "left", png())
-    assert result["action"] == "replaced"
+    with pytest.raises(PermissionDenied, match="manage certificate signatories"):
+        services.upload_signature(admin_member, activity, "left", png())
+    assert services.upload_signature(director, activity, "left", png())["action"] == "replaced"
 
 
 def test_system_administrator_role_may_combine_manage_users_and_certificate_approval(roles, admin_member) -> None:
@@ -500,7 +503,7 @@ def test_admin_console_shows_the_defaults_read_only(design, admin_member, make_m
     _, vp, head = design
     html = client_for(admin_member).get(reverse("accounts:console_certificates")).content.decode()
     assert "Default signatories" in html and vp.name in html and head.name in html
-    assert reverse("certificates:signatories") in html  # the System Administrator approves certificates too
+    assert reverse("certificates:signatories") not in html  # only can_manage_signatories (ASSUMPTIONS 418)
     assert "console/certificates/signatories" not in html  # no add / deactivate forms any more
 
 

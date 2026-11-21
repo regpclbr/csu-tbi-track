@@ -81,14 +81,14 @@ def role_from(value: str | None) -> Role | None:
 
 def certificate_design(member=None) -> dict:
     """Templates (newest first) and, read only, the default signatories (ASSUMPTIONS 363: the signatory list and the
-    defaults are managed on the Signatories page by members with can_approve_certificates)."""
+    defaults are managed on the Signatories page by members with can_manage_signatories, ASSUMPTIONS 418)."""
     templates = list(CertificateTemplate.objects.select_related("uploaded_by").order_by("-is_active", "-created_at"))
     defaults = certificate_services.default_signatories()
     return {
         "templates": templates,
         "active_template": next((t for t in templates if t.is_active), None),
         "default_signatories": [(certificate_services.SLOT_LABELS[slot], defaults[slot]) for slot in certificate_services.SLOTS],
-        "can_manage_signatories": member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES),
+        "can_manage_signatories": member is not None and has_permission(member, Permission.MANAGE_SIGNATORIES),
     }
 
 

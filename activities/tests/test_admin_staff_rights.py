@@ -63,8 +63,9 @@ def test_the_activity_page_offers_changes_to_admin_staff_and_not_to_a_role_witho
     assert client_for(view_only).get(reverse("activities:create")).status_code == 403
 
 
-def test_admin_staff_open_the_signatories_page_but_not_the_admin_console(staff, view_only) -> None:
-    assert client_for(staff).get(reverse("certificates:signatories")).status_code == 200
+def test_admin_staff_open_neither_the_signatories_page_nor_the_admin_console(staff, view_only) -> None:
+    """Admin Staff approve certificates (ASSUMPTIONS 388) but only the Director manages signatories (ASSUMPTIONS 418)."""
+    assert client_for(staff).get(reverse("certificates:signatories")).status_code == 403
     assert client_for(view_only).get(reverse("certificates:signatories")).status_code == 403
     assert client_for(staff).get(reverse("accounts:console")).status_code == 403
 

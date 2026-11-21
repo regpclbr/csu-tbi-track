@@ -1,6 +1,6 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/certificates/signatories/ (certificates.page_views.signatories, can_approve_certificates; ASSUMPTIONS 363): the list of
+/certificates/signatories/ (certificates.page_views.signatories, can_manage_signatories; ASSUMPTIONS 363, 418): the list of
 people who sign certificates, built by certificates.pages.signatories_page. Every change goes through
 certificates.services: add_signatory, edit_signatory (in place while no certificate uses the person, otherwise a new
 version), replace_signature (a replaced image is a new version; a white background is made transparent, with a preview),

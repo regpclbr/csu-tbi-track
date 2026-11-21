@@ -374,12 +374,14 @@ def update_role_permissions(
     can_approve_documents: bool | None = None,
     can_approve_certificates: bool | None = None,
     can_delete_activities: bool | None = None,
+    can_manage_signatories: bool | None = None,
 ) -> Role:
     """Change a role's permission flags (roles are never renamed or deleted). Used by the Django admin and the
-    Admin Console roles screen. can_approve_documents / can_approve_certificates = None keeps the current value.
+    Admin Console roles screen. A flag passed as None keeps its current value.
 
-    Refused if the role would get can_manage_users together with another flag (separation of duties,
+    Refused if the role would get can_manage_users together with a flag it may not have (separation of duties,
     check_role_flags) or if taking can_manage_users away from this role would leave no active System Administrator.
+    Every changed flag is one line on accounts.audit.
     """
     require_permission(acting_member, Permission.MANAGE_USERS)
     if can_approve_documents is None:
@@ -388,21 +390,25 @@ def update_role_permissions(
         can_approve_certificates = role.can_approve_certificates
     if can_delete_activities is None:
         can_delete_activities = role.can_delete_activities
+    if can_manage_signatories is None:
+        can_manage_signatories = role.can_manage_signatories
     check_role_flags(
         can_create_activity=can_create_activity,
         can_manage_users=can_manage_users,
         can_approve_documents=can_approve_documents,
         can_approve_certificates=can_approve_certificates,
+        can_manage_signatories=can_manage_signatories,
     )
     if role.can_manage_users and not can_manage_users:
         ensure_admins_remain_without_role(role)
     flags = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates",
-             "can_delete_activities")
+             "can_delete_activities", "can_manage_signatories")
     old = {flag: getattr(role, flag) for flag in flags}
     role.can_create_activity, role.can_manage_users = can_create_activity, can_manage_users
     role.can_approve_documents = can_approve_documents
     role.can_approve_certificates = can_approve_certificates
     role.can_delete_activities = can_delete_activities
+    role.can_manage_signatories = can_manage_signatories
     role.save(update_fields=list(flags))
     for flag, before in old.items():
         if before != getattr(role, flag):
@@ -470,6 +476,26 @@ def set_role_activity_deletion(acting_member: TBIMember, role: Role, enabled: bo
     )
 
 
+@transaction.atomic
+def set_role_signatory_management(acting_member: TBIMember, role: Role, enabled: bool) -> Role:
+    """Admin Console roles screen: turn can_manage_signatories on or off for one role (ASSUMPTIONS 418). Refused for a
+    role that manages users (separation of duties, check_role_flags). No last-member guard (like the approvals): the
+    roles screen warns when no active member can manage signatories."""
+    role = Role.objects.select_for_update().get(pk=role.pk)
+    return update_role_permissions(
+        acting_member,
+        role,
+        can_create_activity=role.can_create_activity,
+        can_manage_users=role.can_manage_users,
+        can_manage_signatories=enabled,
+    )
+
+
+def active_signatory_managers():
+    """Active members whose role can manage the certificate signatories (the roles screen warning)."""
+    return TBIMember.objects.filter(is_active=True, role__can_manage_signatories=True)
+
+
 def active_activity_deleters():
     """Active members whose role can delete activities (the roles screen warning)."""
     return TBIMember.objects.filter(is_active=True, role__can_delete_activities=True)
@@ -498,20 +524,27 @@ APPROVE_AND_MANAGE_REFUSED = (
     "A role cannot both manage users and approve documents (separation of duties). "
     "Turn one of the two flags off."
 )
+SIGNATORIES_AND_MANAGE_REFUSED = (
+    "A role cannot both manage users and manage certificate signatories (separation of duties). "
+    "Turn one of the two flags off."
+)
 
 
 def check_role_flags(
     *, can_create_activity: bool, can_manage_users: bool, can_approve_documents: bool = False,
-    can_approve_certificates: bool = False,
+    can_approve_certificates: bool = False, can_manage_signatories: bool = False,
 ) -> None:
-    """Separation of duties (ASSUMPTIONS 339, 344): a role with can_manage_users may have neither
-    can_create_activity nor can_approve_documents. can_approve_certificates is allowed with it (ASSUMPTIONS 361):
-    the System Administrator approves certificates and adds signatures, but never generates them. can_delete_activities
+    """Separation of duties (ASSUMPTIONS 339, 344, 418): a role with can_manage_users may have neither
+    can_create_activity, nor can_approve_documents, nor can_manage_signatories (whoever manages accounts and role
+    flags never also decides whose signature is printed). can_approve_certificates is allowed with it (ASSUMPTIONS 361):
+    the System Administrator approves certificates, but never generates them or adds signatures. can_delete_activities
     is allowed with every flag (ASSUMPTIONS 389)."""
     if can_create_activity and can_manage_users:
         raise MemberManagementError(BOTH_FLAGS_REFUSED)
     if can_approve_documents and can_manage_users:
         raise MemberManagementError(APPROVE_AND_MANAGE_REFUSED)
+    if can_manage_signatories and can_manage_users:
+        raise MemberManagementError(SIGNATORIES_AND_MANAGE_REFUSED)
 
 
 @transaction.atomic

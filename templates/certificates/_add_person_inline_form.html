@@ -1,5 +1,5 @@
 {% comment %}
-"Add a person…" from the activity form (ASSUMPTIONS 365; can_approve_certificates). Posted with HTMX to
+"Add a person…" from the activity form (ASSUMPTIONS 365, 418; can_manage_signatories). Posted with HTMX to
 certificates:signatory_add_inline, which adds the person (services.add_signatory) and sends the event
 "signatory-added": the activity form adds the option to both dropdowns and selects it in `values.slot`; the dialog
 closes. Errors come back here. The activity itself is saved only with the activity form.

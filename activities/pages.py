@@ -376,7 +376,7 @@ def history(activity: Activity, page) -> tuple[services.PageResult, list[dict]]:
 def signatory_form_options(member, activity: Activity | None = None) -> dict:
     """The activity form's "Who signs the certificates" (ASSUMPTIONS 365): who is shown first per slot (the activity's
     saved person; on a new activity the active default, or nobody) and whether "Add a person…" is offered
-    (can_approve_certificates)."""
+    (can_manage_signatories, ASSUMPTIONS 418)."""
     from certificates import services as certificate_services
 
     if activity is not None:
@@ -384,7 +384,7 @@ def signatory_form_options(member, activity: Activity | None = None) -> dict:
     else:
         current = {slot: person if person is not None and person.is_active else None
                    for slot, person in certificate_services.default_signatories().items()}
-    return {"current_signatories": current, "can_add_person": has_permission(member, Permission.APPROVE_CERTIFICATES)}
+    return {"current_signatories": current, "can_add_person": has_permission(member, Permission.MANAGE_SIGNATORIES)}
 
 
 def create_as_section(form) -> dict:
@@ -407,7 +407,7 @@ def create_as_section(form) -> dict:
 def signatory_form_section(form, member) -> dict:
     """What the form template shows for "Who signs the certificates": per slot the bound select and title fields,
     each option's usual position (the title's placeholder follows the chosen person) and the amber note for an
-    inactive person; the "Add a person…" dialog for can_approve_certificates."""
+    inactive person; the "Add a person…" dialog for can_manage_signatories (ASSUMPTIONS 418)."""
     from certificates import services as certificate_services
 
     slots = []
@@ -434,7 +434,7 @@ def signatory_form_section(form, member) -> dict:
         })
     return {
         "slots": slots,
-        "can_add": has_permission(member, Permission.APPROVE_CERTIFICATES),
+        "can_add": has_permission(member, Permission.MANAGE_SIGNATORIES),  # "Add a person…" (ASSUMPTIONS 418)
         "add_url": reverse("certificates:signatory_add_inline"),
         "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
         "no_defaults": all(slot["field"].value() in (None, "") for slot in slots),

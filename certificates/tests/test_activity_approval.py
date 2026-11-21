@@ -134,7 +134,7 @@ def test_the_automation_task_runs_the_catch_up(generated, director, evaluate, ru
 
 def test_changing_a_signatory_cancels_the_approval(approved_early, director, admin_member) -> None:
     activity, _ = approved_early
-    other = services.add_signatory(admin_member, "Dr. Other", "Chancellor", upload("o.png", image_bytes()))
+    other = services.add_signatory(director, "Dr. Other", "Chancellor", upload("o.png", image_bytes()))
     result = services.set_activity_signatory(director, activity, "right", other)
     assert result["cancelled"] == 1
     assert not approved(activity)
@@ -176,7 +176,7 @@ def test_issued_certificates_never_change_when_the_approval_is_cancelled(approve
         evaluate(people[0])
     issued = certificate_of(people[0])
     assert issued.status == S.ISSUED
-    other = services.add_signatory(admin_member, "Dr. Other", "Chancellor", upload("o.png", image_bytes()))
+    other = services.add_signatory(director, "Dr. Other", "Chancellor", upload("o.png", image_bytes()))
     services.set_activity_signatory(director, activity, "right", other)
     again = certificate_of(people[0])
     assert again.status == S.ISSUED and again.right_signatory_id == issued.right_signatory_id
@@ -186,7 +186,7 @@ def test_issued_certificates_never_change_when_the_approval_is_cancelled(approve
 def test_after_cancelling_a_later_evaluation_waits_for_approval(approved_early, director, admin_member, evaluate,
                                                                 django_capture_on_commit_callbacks) -> None:
     activity, people = approved_early
-    other = services.add_signatory(admin_member, "Dr. Other", "Chancellor", upload("o.png", image_bytes()))
+    other = services.add_signatory(director, "Dr. Other", "Chancellor", upload("o.png", image_bytes()))
     services.set_activity_signatory(director, activity, "right", other)
     with django_capture_on_commit_callbacks(execute=True):
         evaluate(people[0])

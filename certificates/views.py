@@ -3,11 +3,12 @@
 - Any active staff member: list, detail, download the PDF, preview, list/download evidence, upload
   evidence (Step 6 rule).
 - can_create_activity: regenerate (Apply the current design), hand over, resend. can_approve_certificates (the
-  Director, both Project Heads, the System Administrator): approve an activity's certificates (ASSUMPTIONS 369), reissue
-  outdated ones (364), the signatory list (363). Certificates are created by the System (no generate endpoint).
+  Director, both Project Heads, Admin Staff, the System Administrator): approve an activity's certificates (ASSUMPTIONS
+  369), reissue outdated ones (364). can_manage_signatories (the Director): the signatory list (363, 418).
+  Certificates are created by the System (no generate endpoint).
   Evidence review: can_approve_documents (the Step 6 rules).
-- can_manage_users (Admin Console): templates and their images. Signature images: can_manage_users or
-  can_approve_certificates.
+- can_manage_users (Admin Console): templates and their images. Signature images (viewing): can_manage_users,
+  can_approve_certificates or can_manage_signatories.
 Files are never served from /media/: only through these views, as attachments (inline only for the certificate
 preview: the rendered preview, or an Issued certificate's final PDF).
 """
@@ -25,7 +26,8 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from config.json import JsonResponse  # date-times in Manila time
 
-from accounts.permissions import Permission, has_permission, permission_required, require_permission, staff_login_required
+from accounts.permissions import (Permission, has_any_permission, has_permission, permission_required, require_permission,
+                                  staff_login_required)
 from activities.models import Activity
 from config.parsing import parse_bool
 from documents import services as document_services
@@ -333,7 +335,7 @@ def evidence_download(request: HttpRequest, document_id: int) -> FileResponse:
     return _file_response(document.file_path, document.file_name)
 
 
-# --- Admin Console: templates (can_manage_users); signatories (can_approve_certificates) --------
+# --- Admin Console: templates (can_manage_users); signatories (can_manage_signatories) ---------
 
 
 @permission_required(Permission.MANAGE_USERS)
@@ -363,7 +365,7 @@ def template_action_api(request: HttpRequest, template_id: int, action: str) -> 
     return JsonResponse({"template": template_json(template)})
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_http_methods(["GET", "POST"])
 @api_errors
 def signatories_api(request: HttpRequest) -> JsonResponse:
@@ -376,7 +378,7 @@ def signatories_api(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"signatory": signatory_json(signatory)}, status=201)
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@permission_required(Permission.MANAGE_SIGNATORIES)
 @require_POST
 @api_errors
 def signatory_deactivate_api(request: HttpRequest, signatory_id: int) -> JsonResponse:
@@ -394,10 +396,11 @@ def template_image(request: HttpRequest, template_id: int) -> FileResponse:
 @staff_login_required
 @require_GET
 def signature_image(request: HttpRequest, signatory_id: int) -> FileResponse:
-    """Signature images are never public: members who manage users (Admin Console) or approve certificates (the
-    Signatures section of the Certificates tab, ASSUMPTIONS 361). 404 while no image was added."""
-    if not (has_permission(request.user, Permission.MANAGE_USERS)
-            or has_permission(request.user, Permission.APPROVE_CERTIFICATES)):
+    """Signature images are never public: members who manage users (Admin Console), approve certificates (they check
+    the signatures before approving, ASSUMPTIONS 361) or manage signatories (ASSUMPTIONS 418). 404 while no image was
+    added."""
+    if not has_any_permission(request.user, Permission.MANAGE_USERS, Permission.APPROVE_CERTIFICATES,
+                              Permission.MANAGE_SIGNATORIES):
         require_permission(request.user, Permission.APPROVE_CERTIFICATES)  # 403 with the usual message
     signatory = get_object_or_404(CertificateSignatory, pk=signatory_id)
     if not signatory.signature_image_path:

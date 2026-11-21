@@ -284,7 +284,8 @@ def roles() -> dict[str, Role]:
     load_lookups()
     Role.objects.get_or_create(role_name=VIEW_ONLY_ROLE, defaults={
         "can_create_activity": False, "can_manage_users": False, "can_approve_documents": False,
-        "can_approve_certificates": False, "description": "Test only: every permission flag off."})
+        "can_approve_certificates": False, "can_delete_activities": False, "can_manage_signatories": False,
+        "description": "Test only: every permission flag off."})
     return {role.role_name: role for role in Role.objects.all()}
 
 

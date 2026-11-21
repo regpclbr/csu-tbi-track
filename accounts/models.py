@@ -8,14 +8,15 @@ from django.db.models.functions import Lower, Trim
 
 
 class Role(models.Model):
-    """A staff role. Never deleted. Permissions come only from the five flags, never from the name.
+    """A staff role. Never deleted. Permissions come only from the six flags, never from the name.
 
     SYSTEM_ADMINISTRATOR is the role create_superuser and seed_data give the system administrator: it manages users
     and does not create activities (separation of duties, ASSUMPTIONS 85 and 339).
     """
 
     SYSTEM_ADMINISTRATOR = "System Administrator"
-    # Used only to choose who is told about a new activity (ASSUMPTIONS 361), never for a permission.
+    # Used only to choose who is told (new activity, ASSUMPTIONS 361; Draft reminders, 417) and by the one-time data
+    # migration accounts/0010 (ASSUMPTIONS 418), never for a permission.
     DIRECTOR = "Director"
 
     role_id = models.BigAutoField(primary_key=True)
@@ -32,6 +33,10 @@ class Role(models.Model):
     # Delete an activity that has no Issued certificate and no Approved document (ASSUMPTIONS 389): System
     # Administrator by default; switched in the Admin Console. Allowed together with can_manage_users (cleaning up).
     can_delete_activities = models.BooleanField(default=False, db_default=False)
+    # Manage the certificate signatory list: add, edit, signature images (new versions), deactivate, the defaults
+    # (ASSUMPTIONS 418, NAVIGATU: only the TBI Director). Director only by default; switched in the Admin Console. Never
+    # together with can_manage_users (separation of duties, check_role_flags).
+    can_manage_signatories = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

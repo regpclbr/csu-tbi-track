@@ -12,9 +12,9 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
 - Certificate text (pages.text_panel, ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
   fields of both types with the placeholders and a live preview (HTMX, activities:certificates_text_preview).
 - Signatures (pages.signatures_panel, ASSUMPTIONS 363, 365, 367): the left and right slot; can_create_activity or
-  can_approve_certificates choose the person (dropdown of active people, "Add a person…" for approvers) and the
+  can_approve_certificates choose the person (dropdown of active people, "Add a person…" for can_manage_signatories) and the
   "Title on this certificate"; an inactive person gets an amber note ("Use the current version" when a newer active
-  version exists); approvers add or replace the image (the dialog shows the impact of a new version and a preview with
+  version exists); can_manage_signatories (ASSUMPTIONS 418) add or replace the image (the dialog shows the impact of a new version and a preview with
   the white background removed) and "Add a person". Without these flags: view only.
 - The Sent column: while an Approved certificate has no PDF, the reason (pages.PDF_STATE_LABELS, ASSUMPTIONS 368);
   "PDF failed — Retry" shows the error and, for approvers, Retry.
@@ -196,7 +196,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
               {% endwith %}
             </div>
           {% elif slot.signatory and not slot.present %}
-            <p class="mt-3 text-sm text-slate-700">A member with approval rights adds the signature.</p>
+            <p class="mt-3 text-sm text-slate-700">Only staff who manage signatories can add or replace signature images.</p>
           {% endif %}
         </div>
       {% endfor %}

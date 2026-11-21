@@ -12,7 +12,7 @@ urlpatterns = [
     path("<int:certificate_id>/preview/dialog/", page_views.preview_dialog, name="preview_dialog"),
     path("<int:certificate_id>/evidence/", page_views.evidence, name="evidence"),
     path("<int:certificate_id>/evidence/upload/", page_views.evidence_upload, name="evidence_upload"),
-    # The signatory list (can_approve_certificates, ASSUMPTIONS 363). No delete URL, ever.
+    # The signatory list (can_manage_signatories, ASSUMPTIONS 363, 418). No delete URL, ever.
     path("signatories/", page_views.signatories, name="signatories"),
     path("signatories/add/", page_views.signatory_add, name="signatory_add"),
     path("signatories/add-inline/", page_views.signatory_add_inline, name="signatory_add_inline"),  # activity form
@@ -39,7 +39,7 @@ urlpatterns = [
     path("api/<int:certificate_id>/evidence/", views.evidence_api, name="api_evidence"),
     path("api/evidence/<int:document_id>/<str:action>/", views.evidence_action_api, name="api_evidence_action"),
     path("evidence/<int:document_id>/download/", views.evidence_download, name="evidence_download"),
-    # Admin Console (can_manage_users): designs. Signatories: can_approve_certificates (ASSUMPTIONS 363).
+    # Admin Console (can_manage_users): designs. Signatories: can_manage_signatories (ASSUMPTIONS 363, 418).
     path("api/admin/templates/", views.templates_api, name="api_templates"),
     path("api/admin/templates/<int:template_id>/<str:action>/", views.template_action_api, name="api_template_action"),
     path("api/admin/signatories/", views.signatories_api, name="api_signatories"),

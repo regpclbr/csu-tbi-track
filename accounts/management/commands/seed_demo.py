@@ -458,16 +458,16 @@ class Command(BaseCommand):
     def demo_design(self) -> bool:
         """Use the active design and the default signatories (ASSUMPTIONS 363); add invented ones only when missing:
         the design as the first active System Administrator, two people and the defaults as the first active member
-        who can approve certificates."""
+        who can manage signatories (the Director, ASSUMPTIONS 418)."""
         defaults = certificate_services.default_signatories()
         if certificate_services.active_template() is not None and all(defaults.values()):
             return True
         admin = TBIMember.objects.filter(role__can_manage_users=True, is_active=True).order_by("pk").first()
-        approver = TBIMember.objects.filter(role__can_approve_certificates=True, is_active=True).order_by("pk").first()
-        if admin is None or approver is None:
+        manager = TBIMember.objects.filter(role__can_manage_signatories=True, is_active=True).order_by("pk").first()
+        if admin is None or manager is None:
             self.stdout.write(self.style.WARNING(
                 "  certificates skipped: no active design or default signatories, and no active System Administrator "
-                "or certificate approver to add them (run seed_data)."
+                "or member who manages signatories to add them (run seed_data)."
             ))
             return False
 
@@ -480,11 +480,11 @@ class Command(BaseCommand):
             certificate_services.upload_template(admin, "[DEMO] Sample design", png(draw_template), activate=True)
         if not all(defaults.values()):
             left = defaults["left"] or certificate_services.add_signatory(
-                approver, "[DEMO] TBI Director", "Director, CSU Technology Business Incubator", png(draw_signature, 11))
+                manager, "[DEMO] TBI Director", "Director, CSU Technology Business Incubator", png(draw_signature, 11))
             right = defaults["right"] or certificate_services.add_signatory(
-                approver, "[DEMO] Dr. Vice President", "Vice President for Research, Development and Extension",
+                manager, "[DEMO] Dr. Vice President", "Vice President for Research, Development and Extension",
                 png(draw_signature, 3))
-            certificate_services.set_default_signatories(approver, left, right)
+            certificate_services.set_default_signatories(manager, left, right)
         self.stdout.write("  certificate design: invented demo design and/or default signatories added (none was set)")
         return True
 

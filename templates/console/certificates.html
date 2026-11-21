@@ -3,7 +3,7 @@
 /accounts/console/certificates/ (accounts.console_views.certificate_design): certificate designs through
 certificates.services (image checks; a new design is a new row, files never change; one active design). Nothing here is
 ever deleted (there is no delete URL): rows are deactivated. The default signatories are shown read only (ASSUMPTIONS
-363: the list and the defaults are managed on /certificates/signatories/ by members with can_approve_certificates).
+363: the list and the defaults are managed on /certificates/signatories/ by members with can_manage_signatories, ASSUMPTIONS 418).
 Thumbnails come from the Admin-only view certificates:template_image (never /media/).
 Errors of a refused upload appear under their fields (template_errors), with that form open.
 {% endcomment %}
@@ -88,7 +88,7 @@ Errors of a refused upload appear under their fields (template_errors), with tha
     {% if can_manage_signatories %}
       <a href="{% url 'certificates:signatories' %}" class="btn btn-secondary btn-arrow mt-4">{% include "components/icon.html" with name="pen-line" class="size-4" %}Manage signatories{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
     {% else %}
-      <p class="mt-4 text-sm text-slate-700">Members who can approve certificates manage the signatory list and the defaults on the Signatories page.</p>
+      <p class="mt-4 text-sm text-slate-700">Members who manage signatories (the Director) keep the signatory list, the signature images and the defaults on the Signatories page.</p>
     {% endif %}
   </section>
 </div>

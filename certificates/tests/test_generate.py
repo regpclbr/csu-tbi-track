@@ -88,12 +88,12 @@ def test_without_anything_the_design_is_named_first(conducted, director) -> None
         services.generate_missing_certificates(conducted[0])
 
 
-def test_existing_certificates_keep_their_signatories(generated, admin_member) -> None:
+def test_existing_certificates_keep_their_signatories(generated, director) -> None:
     from conftest import image_bytes
 
     from .conftest import upload
 
-    services.add_signatory(admin_member, "New VP", "vp", upload("n.png", image_bytes()))
+    services.add_signatory(director, "New VP", "vp", upload("n.png", image_bytes()))
     assert set(Certificate.objects.values_list("right_signatory__name", flat=True)) == {"Dr. Vice Pres"}
 
 
