@@ -493,69 +493,66 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (`config/tests/test_template_comments.py`).
 
 ## Frontend (Phase F1 onwards)
-- Design reference: `docs/design/dashboard.png` and `logo.png` (the identity), made calmer after the UAT: see
-  `docs/design/ui-revision/` (README + `final-*.png`, ASSUMPTIONS 411). Colours since ASSUMPTIONS 412 (README section 8,
-  `palette-*.png`): the owner's four-colour palette, defined ONLY in the `@theme` block of `frontend/tailwind/app.css`:
-  **Teal Waters #204654** (frame, sidebar, the solid primary button, headings, focus ring), **Glacial Sky #A9E0F1** (light
-  tints only: current tab / pill, selected states, info badge, icon chips; `primary-soft` #E5F5FB, `info-soft` #EAF7FC),
-  **Morning Mist #F7F9E1** (page; the panel is the lighter mix #FAFBED) and **Spring Meadow #CAFFA6** (small accents ONLY:
-  sidebar count badge, `.live-dot` "happening now" dot with a dark ring, the Approved tint `success-soft` #F1FFE6; never a
-  large background, a button or a gradient end). Text links use `link` #1B6580 (Teal Waters is too close to the ink to mark
-  a link). Tailwind's `slate-*` scale is re-tinted toward teal at the same lightness in `@theme`; use the tokens (`info`,
-  `success`, `primary-soft`, ...) instead of Tailwind `blue-*` / `green-*` / `emerald-*` (none left in the templates).
-  Report PDFs (bars, headings, table header) and the Excel header use Teal Waters too. The logo tiles (`static/img/`) are the
-  `docs/design/logo.png` artwork on Teal Waters (old navy tiles: `docs/design/*-navy-old.png`). Desktop-first staff pages (1280 px+, usable at
+- Design (ASSUMPTIONS 413, after the UAT "too bright, spacing inconsistent, important buttons hard to find, no hierarchy"):
+  the ORIGINAL identity (`docs/design/dashboard.png`, `login.png`, `logo.png`: navy -> blue gradient frame around a rounded
+  light panel, frosted glass sign-in / public cards, pill buttons, Inter, the navy logo tile, the Dashboard's filled
+  banner + "Next activity" card) made calmer. The teal / cream palette of 412 was rejected: never bring it back.
+  Colours: **option B** (`docs/design/options/`), only between `OPTION START` / `OPTION END` in the `@theme` block of
+  `frontend/tailwind/app.css`: frame `#1E2F73` -> `#3B8AA6`, primary `#2A4494`, link `#2C5AA8`, light text on the gradient
+  `on-dark-muted` `#D3E8F0`, headline accent `on-dark-accent`. Everything else refers to them (sidebar, focus ring,
+  shadows, `.app-bg`, `.auth-bg`, `.welcome-banner`, `.spotlight`, `.date-tile-gradient`). Panel `#F4F6F9` (neutral light
+  grey) with white cards; Tailwind's own slate scale. Status tokens `info` / `warning` / `success` / `danger` / `neutral`
+  (+ `-soft`, `-line`); use them, not Tailwind `amber-50/200`, `red-50/200`, `blue-*`, `green-*`. Report PDFs and the Excel
+  header use `#2A4494`; logo tiles (`static/img/`) = `docs/design/logo.png` on `#1E2F73` (originals: `*-navy-old.png`).
+  Chart colours (status bar, `reports.dashboard_page.CATEGORY_COLORS`) are checked for colour blindness (dE >= 15).
+  Measure every new colour pair (text 4.5:1, large text / icons / input borders / accent bars 3:1);
+  `accounts/tests/test_staff_layout.py` recomputes them from the tokens. Desktop-first staff pages (1280 px+, usable at
   1024 px; below that the sidebar hides behind a menu button). Public pages (F3) must also work on phones.
 - Pages are server-rendered views that call the existing services; HTMX only for partial updates (an HTMX request
   gets a partial template, `accounts.permissions.is_htmx()`). Never repeat a business rule in a template or in JS.
 - Staff pages extend `templates/layouts/app.html` and pass `page_title` AND `page_subtitle` (the page's own one-line
   description; never a copy of another page's); sign-in and password pages extend `layouts/auth_split.html` (design
   `docs/design/login.png`); error pages extend `layouts/auth.html`.
-  Login pages: one full-screen gradient #204654 → #2F6170 (`.auth-bg`; Teal Waters since ASSUMPTIONS 412, was #1F2F6E →
-  #41598C, before that #22378F → #60CDEE) and a frosted glass card (`.auth-card`: white 88% + 20px blur, white 92% without
-  backdrop-filter; inputs on it with the `line-strong` border), dark text inside; white text on the gradient (6.9:1 even at
-  the light end); at 1366×768 and 1440×900 the login page fits without scrolling (ASSUMPTIONS 257).
+  Sign-in pages: one full-screen gradient (`.auth-bg`, the frame tokens) and a frosted glass card (`.auth-card`: white 88% +
+  20px blur, white 92% without backdrop-filter; inputs with the `line-strong` border), dark text inside; white text only
+  on the gradient's dark part; at 1366×768 and 1440×900 the login page fits without scrolling (ASSUMPTIONS 257).
   The university is Caraga State University. The illustration is inline (`partials/login_illustration.html`;
-  `docs/design/login-illustration.svg` is the unchanged reference); its CSS animations end with the final picture as the
-  natural state and are all off under `prefers-reduced-motion` (classes `anim`, `rise`; ASSUMPTIONS 253).
-- App shell (`layouts/app.html`, ASSUMPTIONS 258, colours 412): the login gradient is the frame (`.app-bg`, 135°,
-  #204654 to 30% → #2F6170, so the whole sidebar stays on the dark part); the sidebar sits on it (white text, active = white
-  18% pill + white left indicator, hover = white 10%, member in a `.sidebar-glass` card); the content is a light panel
-  (`bg-panel` #FAFBED, 28px corners, 16px from the edges) that scrolls on its own, with the top bar inside it (review label,
-  search, Ask AI as a secondary button, bell; never the page title). Buttons are pill-shaped in the shell (`.app-shell .btn`).
+  `docs/design/login-illustration.svg` is the unchanged reference, its bright accents calmed); its CSS animations end with
+  the final picture as the natural state and are all off under `prefers-reduced-motion` (classes `anim`, `rise`; ASSUMPTIONS 253).
+- App shell (`layouts/app.html`, ASSUMPTIONS 258, 413): the sign-in gradient is the frame (`.app-bg`, 135°, dark to 30%, so
+  the whole sidebar stays on the dark part); the sidebar sits on it (white text, active = white 18% pill + white left
+  indicator, hover = white 10%, count badge white with primary text, member in a `.sidebar-glass` card); the content is a
+  light panel (`bg-panel`, 28px corners, 16px from the edges) that scrolls on its own, with the top bar inside it (review
+  label, search, Ask AI as a secondary button, bell; never the page title). Buttons are pill-shaped (`.app-shell .btn`).
   Never give a vertical scroll box inside the panel its own rounded corners (Chromium drew a square over the panel's
   corner, ASSUMPTIONS 412): round a wrapper, scroll a square list inside it (a test scans the templates).
-  Cards: 24px corners (`.card`), KPI cards 20px (`.kpi-card`), soft shadow `shadow-card` (0 10px 30px rgb(32 70 84/.07)),
-  `.hover-lift` on hover. White text only on the dark frame (sidebar); the dashboard welcome card and spotlight are white cards (411);
-  measure it when changing a gradient.
-- UI revision after the UAT (ASSUMPTIONS 411; keep the identity above, never a flat redesign):
-  - Tokens only in the `@theme` block of `frontend/tailwind/app.css` (palette 412: primary #204654, link #1B6580, danger
-    #B42318, input borders `line-strong` #738890 = 3.5:1+, focus ring `focus` #204654, KPI numbers in ink); never hard-code a
-    new bright colour; measure every new colour pair (text 4.5:1, large text and input borders 3:1; README section 8 lists
-    them, `accounts/tests/test_staff_layout.py` recomputes the main ones from the tokens).
-  - Only a page's primary button is solid primary: current tabs, selected options, count badges, bubbles, tiles and file
-    buttons use `bg-primary-soft text-primary` or an outline (data such as chart bars may stay coloured).
-  - No big blank areas: two-column layouts stack cards per column so the columns end close together; cards in one row
-    stretch to the same height (Dashboard: Needs attention | Recent changes, then a 2 x 2 grid; Overview: Details +
-    Resource persons | Registration + Share + Participants).
-  - Spacing scale 4 · 8 · 12 · 16 · 24 · 32 px: page padding 16/24/32 px, card padding 24 px (KPI cards and list rows 16 px),
-    24 px between cards and below the page header, 16 px card header → content and between form fields, 8 px label → input
-    and between buttons.
-  - Page header (`layouts/app.html`): h1 + `page_subtitle`; `{% block page_actions %}` = the page's buttons (secondary
-    first, the ONE primary last, rare / destructive ones in a "⋯" menu); `{% block page_header %}` replaces it (activity
-    page, document page, New / Edit activity); `{% block page_description %}` (Dashboard: the date). A card never repeats
-    the page title.
-  - Buttons: pills, 40 px (`btn-sm` 32 px), four levels: `btn-primary` ONE per page or card; `btn-secondary` other actions
-    and a list row's main action; `btn-ghost` (= `btn-tertiary`, `btn-icon` for icon-only) minor actions; `btn-danger` red
-    outline, solid only in a confirm dialog (`.modal`) or `btn-danger-solid`, never right next to the primary. Don't use
-    `btn-warning` (retired).
-  - Badges: tint + same-hue border; the five document states (Missing grey, Overdue red + icon, Waiting Glacial blue,
-    Returned amber, Approved dark green on the Spring Meadow tint) must stay distinguishable by colour (owner, 412: Missing
-    stays grey, never red). Segmented controls `.segmented` / `.segmented-item` (+ `is-selected` or
-    `aria-pressed`, pill); notices `.notice notice-warning|danger|info|success`. KPI cards: one structure
-    (`components/kpi_card.html`: label row, number + badge on one baseline, optional note).
-  - Opt-in browser check after layout changes: `documents/tests/test_page_buttons_browser.py` (no overlapping or
-    hidden buttons at 1366 / 1280 / 1024 / 390 px).
+  Cards: 24px corners (`.card`), KPI cards 20px (`.kpi-card`), soft navy shadow `shadow-card`, `.hover-lift` on hover.
+  White text only on the dark frame and the Dashboard's gradient blocks; buttons on those blocks are `btn-on-dark`.
+- Type scale (413): page title 24 px bold (`.page-title`, one h1), section / card heading 18 px semibold (`.card-title` =
+  `.section-title`), body 14 px (`text-sm`), caption 12 px (`.caption` / `text-xs`). No `text-[11px]` / `[13px]` / `[15px]`
+  on staff pages (test). Big numbers are data; sign-in / public hero headlines are display text; public and portal body 16 px.
+- Spacing scale 4 · 8 · 12 · 16 · 24 · 32 px: page padding 16/24/32 px, card padding 24 px (KPI cards and list rows 16 px),
+  24 px between cards and below the page header, 16 px card header → content and between form fields, 8 px label → input
+  and between buttons. (The sweep of every template onto it is Part 2 of 413.)
+- Page header (`layouts/app.html`): h1 + `page_subtitle`; `{% block page_actions %}` = the page's buttons (secondary first,
+  the ONE primary last, rare / destructive ones in a "⋯" menu); `{% block page_header %}` replaces it (activity page,
+  document page, New / Edit activity); `{% block page_description %}` (Dashboard: the date). A card never repeats the page title.
+- Buttons (413): pills, 40 px (`btn-sm` 32 px), four levels: `btn-primary` ONE per page or card (the main action: page
+  header top right, the bottom of a form, or a tab card's header); `btn-secondary` (outline) other actions and a list row's
+  main action; `btn-ghost` (= `btn-tertiary`, `btn-icon` icon-only) minor actions; `btn-danger` = RED TEXT for Delete /
+  Return / Remove / Deactivate, never filled, never the biggest button; solid red only to confirm (`.modal .btn-danger`, or
+  `btn-danger-solid` on a confirm page). `btn-warning` is retired (a test forbids it). The activity page's Edit is
+  secondary (each tab's main action is the primary). Page table: `docs/design/ui-revision/README.md` section 9.
+- Needs attention / pending approvals stand out (413): `.has-accent` + `.accent-danger|warning|info` (4 px inset bar) on the
+  Dashboard's Needs attention card (first after the filters; `DashboardPage.attention_tone`, its one primary =
+  `attention_primary_index`, the first Review / Approve), the activity page's notice (+ count badge) and the approval KPI
+  cards (`kpi_card.html` `alert=`) while something waits.
+- Badges: tint + same-hue border; the five document states (Missing grey, Overdue red + icon, Waiting blue, Returned
+  amber, Approved green) must stay distinguishable by colour (Missing stays grey, never red). Segmented controls
+  `.segmented` / `.segmented-item` (+ `is-selected` or `aria-pressed`, pill); notices `.notice notice-warning|danger|info|success`.
+  KPI cards: one structure (`components/kpi_card.html`: label row, number + badge on one baseline, optional note).
+- Opt-in browser check after layout changes: `documents/tests/test_page_buttons_browser.py` (no overlapping or
+  hidden buttons at 1366 / 1280 / 1024 / 390 px).
 - `layout` (sidebar items, badges, unread count, Manila date) comes from `config.frontend`
   (one list of nav items, each with an optional `Permission`).
 - Reuse the components in `templates/components/` (kpi_card, section_header + `.card`, badge, status_badge, button
@@ -802,10 +799,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
   border contrast, Members row, Roles switches and headers, Documents columns, 390 px overflow (411). A flat redesign was
   tried and rejected by the owner the same day; then the frame got darker (#1F2F6E → #41598C), the dashboard blocks became
   white cards, only primary buttons stay solid, and the Dashboard / Overview grids were rebalanced. No database, URL or permission change.
-- Colour palette after UAT (2026-11-20, owner; defense Dec 9): Teal Waters / Glacial Sky / Morning Mist / Spring Meadow replace
+- Colour palette after UAT (2026-11-20, owner; defense Dec 9; REPLACED by 413 on 2026-11-21): Teal Waters / Glacial Sky / Morning Mist / Spring Meadow replace
   the blue (412): tokens in `@theme`, gradient #204654 → #2F6170, a separate link colour, softer badges (Missing stays grey),
   chart colours checked for colour blindness, logo tiles re-exported on Teal Waters, report PDF / Excel in Teal Waters, the
   panel-corner square on the activity page fixed. Same layout; no database, URL or permission change.
+- Back to the original design, calmer (2026-11-21, owner after the UAT): the teal / cream palette (412) removed; the
+  original gradient frame, filled dashboard blocks and navy logo in option B (`#1E2F73` -> `#3B8AA6`, primary `#2A4494`),
+  neutral grey panel, softer status colours, type scale, red-text destructive buttons, one primary per page or card,
+  Needs attention / pending approvals with an accent bar (413, Part 1). Part 2: the spacing sweep. No database change.
 
 ## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
 - NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.

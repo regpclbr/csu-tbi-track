@@ -9,7 +9,7 @@ the TBI sends a new set-password link. The link under the card goes back to the 
 {% block headline %}
   <span class="rise block" style="--d: 0ms">Startup portal.</span>
   <span class="rise block" style="--d: 80ms">Register for activities.</span>
-  <span class="rise block text-glacial-sky" style="--d: 160ms">Get your certificates.</span>
+  <span class="rise block text-on-dark-accent" style="--d: 160ms">Get your certificates.</span>
 {% endblock %}
 {% block panel_text %}For incubatees of the Technology Business Incubator at Caraga State University.{% endblock %}
 {% block card_heading %}Startup portal{% endblock %}
@@ -18,14 +18,14 @@ the TBI sends a new set-password link. The link under the card goes back to the 
   <form method="post" class="mt-7 space-y-5" novalidate>
     {% csrf_token %}
     {% if error %}
-      <div class="flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+      <div class="flex gap-3 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-red-800" role="alert">
         {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4.5" %}<p>{{ error }}</p>
       </div>
     {% endif %}
     {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=email autocomplete="username" required=True focus="email" %}
     {% include "public/_input.html" with name="password" label="Password" type="password" autocomplete="current-password" required=True reveal=True %}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-[15px]">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
+    <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-base">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
     <p class="text-sm text-slate-700">Forgot your password? Ask the TBI to send you a new link: <a href="mailto:{{ contact_email }}" class="font-semibold text-link underline underline-offset-2">{{ contact_email }}</a></p>
   </form>
 {% endblock %}

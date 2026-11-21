@@ -33,11 +33,11 @@ moves to it); success answers HX-Redirect. Without JavaScript it is a normal POS
     <span id="document-action-loading" class="htmx-indicator mr-auto items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Saving…</span>
     <button type="button" class="btn btn-secondary"{% if action == "delete" %} autofocus{% endif %} onclick="var d = this.closest('dialog'); if (d) d.close(); else window.location = '{{ next|default:detail_url|escapejs }}'">Cancel</button>
     {% if action == "return" %}
-      <button type="submit" class="btn btn-warning">{% include "components/icon.html" with name="undo-2" class="size-4" %}Return document</button>
+      <button type="submit" class="btn btn-danger btn-danger-solid">{% include "components/icon.html" with name="undo-2" class="size-4" %}Return document</button>
     {% elif action == "replace" %}
       <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="upload" class="size-4" %}Replace file</button>
     {% else %}
-      <button type="submit" class="btn btn-danger">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
+      <button type="submit" class="btn btn-danger btn-danger-solid">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
     {% endif %}
   </div>
 </form>

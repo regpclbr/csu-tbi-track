@@ -15,9 +15,9 @@ They close by themselves after 6 seconds, or with the close button. Text is show
      role="status" aria-live="polite">
   <template x-for="toast in toasts" :key="toast.id">
     <div class="pointer-events-auto flex items-start gap-3 rounded-xl border bg-white px-4 py-3 text-sm shadow-lg"
-         :class="toast.level === 'error' ? 'border-red-200' : (toast.level === 'warning' ? 'border-amber-200' : 'border-line')">
+         :class="toast.level === 'error' ? 'border-danger-line' : (toast.level === 'warning' ? 'border-warning-line' : 'border-line')">
       <span class="mt-1.5 size-2 shrink-0 rounded-full" aria-hidden="true"
-            :class="toast.level === 'error' ? 'bg-danger' : (toast.level === 'warning' ? 'bg-amber-500' : (toast.level === 'success' ? 'bg-success' : 'bg-primary'))"></span>
+            :class="toast.level === 'error' ? 'bg-danger' : (toast.level === 'warning' ? 'bg-warning' : (toast.level === 'success' ? 'bg-success' : 'bg-primary'))"></span>
       <p class="flex-1 text-ink" x-text="toast.text"></p>
       <button type="button" class="-m-1 rounded p-1 text-muted hover:text-ink" @click="remove(toast.id)" aria-label="Close this message">
         {% include "components/icon.html" with name="x" class="size-4" %}

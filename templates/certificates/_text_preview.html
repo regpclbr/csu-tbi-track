@@ -1,7 +1,7 @@
 {% comment %}The live preview of certificate wording (certificates.services.wording_preview, ASSUMPTIONS 370): the four lines
 filled in (plain text, escaped here) or the errors saving would give. Nothing is saved.{% endcomment %}
 {% if preview.errors %}
-  <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="status">
+  <div class="rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm text-red-800" role="status">
     <p class="font-semibold">Not saved like this:</p>
     <ul class="mt-1 list-disc space-y-0.5 pl-5">{% for field, message in preview.errors.items %}<li>{{ message }}</li>{% endfor %}</ul>
   </div>

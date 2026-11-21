@@ -13,7 +13,7 @@ Every action is a POST to the services (accounts.services); refusals (last Admin
         <span class="card-title block">Invite a member</span>
         <span class="card-subtitle block">They get an email with a temporary password and must change it at the first sign-in.</span>
       </span>
-      <span class="btn btn-primary btn-sm">{% include "components/icon.html" with name="user-plus" class="size-4" %}Invite</span>
+      <span class="btn btn-primary btn-sm group-open:hidden">{% include "components/icon.html" with name="user-plus" class="size-4" %}Invite</span>{# hidden while open: the form's "Send invitation" is then the one primary (ASSUMPTIONS 413) #}
     </summary>
     <form method="post" action="{% url 'accounts:console_invite' %}" novalidate x-data="{ busy: false }" @submit="busy = true" class="grid gap-4 border-t border-line px-6 pt-5 pb-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_14rem_auto] md:items-start">
       {% csrf_token %}

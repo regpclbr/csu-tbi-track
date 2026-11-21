@@ -9,7 +9,7 @@
     {% url 'accounts:password_forgot' as forgot_url %}
     {% include "components/form_field.html" with field=form.password icon="lock" placeholder="Your password" autocomplete="current-password" reveal=True aside_url=forgot_url aside_label="Forgot password?" %}
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-[15px]">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
+    <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-sm">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
   </form>
 {% endblock %}
 {% block below_card %}

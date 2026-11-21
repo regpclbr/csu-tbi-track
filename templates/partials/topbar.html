@@ -5,7 +5,7 @@
     {% include "components/icon.html" with name="menu" class="size-6" %}
   </button>
   <div class="min-w-0 flex-1">
-    {% if review_version_label %}<p><span class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900" title="A copy for checking the system, not the final production deployment">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}{{ review_version_label }}</span></p>{% endif %}
+    {% if review_version_label %}<p><span class="inline-flex items-center gap-1 rounded-full border border-warning-line bg-warning-soft px-2.5 py-0.5 text-xs font-semibold text-amber-900" title="A copy for checking the system, not the final production deployment">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}{{ review_version_label }}</span></p>{% endif %}
   </div>
 
   <form action="{% url 'search' %}" method="get" role="search" class="relative hidden w-64 md:block xl:w-72">

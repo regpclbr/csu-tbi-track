@@ -4,8 +4,8 @@ POST to certificates:signatory_edit (services.edit_signatory).{% endcomment %}
 <form method="post" action="{% url 'certificates:signatory_edit' person.pk %}" novalidate class="space-y-4">
   {% csrf_token %}
   {% if row.impact %}
-    <p class="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>Saving creates a new version of {{ person.name }}. {{ row.impact }}</span></p>
+    <p class="flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>Saving creates a new version of {{ person.name }}. {{ row.impact }}</span></p>
   {% endif %}
   <div>
     <label for="edit-{{ person.pk }}-name" class="text-sm font-semibold text-ink">Name as printed</label>

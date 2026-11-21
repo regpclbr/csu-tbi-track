@@ -2,8 +2,8 @@
 One System status item (accounts.system_status.StatusItem): green (ok), amber (warning, with its one-line fix) or blue
 (info: development mode). The text names the state too, so colour is never the only signal.
 {% endcomment %}
-<li class="flex gap-4 rounded-2xl border px-4 py-4 {% if item.tone == 'ok' %}border-success-line bg-success-soft/60{% elif item.tone == 'info' %}border-info-line bg-info-soft/70{% else %}border-amber-200 bg-amber-50/70{% endif %}" id="status-{{ item.key }}">
-  <span class="flex size-9 shrink-0 items-center justify-center rounded-full {% if item.tone == 'ok' %}bg-success-soft text-success{% elif item.tone == 'info' %}bg-primary-tint text-info{% else %}bg-amber-100 text-amber-800{% endif %}">
+<li class="flex gap-4 rounded-2xl border px-4 py-4 {% if item.tone == 'ok' %}border-success-line bg-success-soft/60{% elif item.tone == 'info' %}border-info-line bg-info-soft/70{% else %}border-warning-line bg-warning-soft/60{% endif %}" id="status-{{ item.key }}">
+  <span class="flex size-9 shrink-0 items-center justify-center rounded-full {% if item.tone == 'ok' %}bg-success-soft text-success{% elif item.tone == 'info' %}bg-primary-tint text-info{% else %}bg-warning-soft text-amber-800{% endif %}">
     {% if item.tone == "ok" %}{% include "components/icon.html" with name="circle-check" class="size-5" %}{% elif item.tone == "info" %}{% include "components/icon.html" with name="info" class="size-5" %}{% else %}{% include "components/icon.html" with name="triangle-alert" class="size-5" %}{% endif %}
   </span>
   <div class="min-w-0 flex-1">
@@ -38,6 +38,6 @@ One System status item (accounts.system_status.StatusItem): green (ok), amber (w
         </table>
       </div>
     {% endif %}
-    {% if item.fix %}<p class="mt-2 text-sm text-slate-800"><span class="font-semibold">{% if item.tone == "warning" %}Fix:{% else %}Tip:{% endif %}</span> <code class="rounded bg-white/80 px-1 py-0.5 text-[13px] break-words">{{ item.fix }}</code></p>{% endif %}
+    {% if item.fix %}<p class="mt-2 text-sm text-slate-800"><span class="font-semibold">{% if item.tone == "warning" %}Fix:{% else %}Tip:{% endif %}</span> <code class="rounded bg-white/80 px-1 py-0.5 text-sm break-words">{{ item.fix }}</code></p>{% endif %}
   </div>
 </li>

@@ -3,18 +3,57 @@
 Everything that changes with the filters. Swapped by HTMX when a filter changes. `page` is reports.dashboard_page.DashboardPage:
 the numbers are page.data (= the dashboard API, reports.metrics) plus the existing services; nothing is counted here.
 The top-level parts are placed in dashboard/index.html's grid (#dashboard-body is display: contents):
-KPI cards (full width), Needs attention (main column) beside Recent changes (same height), next activity (beside the
-welcome card), then upcoming activities + the three charts in a 2 x 2 grid (ASSUMPTIONS 411).
+Needs attention (main column, first: ASSUMPTIONS 413) beside Recent changes (same height), the KPI cards (full width),
+next activity (beside the welcome banner, a filled block like the banner: ASSUMPTIONS 413), then upcoming activities + the three charts in a 2 x 2 grid (ASSUMPTIONS 411).
 {% endcomment %}
 {% with cards=page.cards conducted=page.cards.activities_conducted.value %}
 {% if partial %}{% include "dashboard/_banner_summary.html" with oob=True %}{% endif %}
 
-{# --- KPI cards (full width) ------------------------------------------------------------------- #}
-<div class="xl:col-span-2 xl:row-start-3">
+{# --- Needs attention (main column, first after the filters: ASSUMPTIONS 413) ---------------------------------------- #}
+{# Stands out: an accent bar in the most urgent colour (red overdue / amber due soon / blue only approvals), a count badge, rows tinted by urgency; the first approval or review the member can do is the card's one solid button. #}
+<section id="needs-attention" class="card has-accent accent-{{ page.attention_tone }} scroll-mt-24 p-6 xl:col-start-1 xl:row-start-3" aria-labelledby="attention-title">
+  <div class="mb-4 flex items-center justify-between gap-4">
+    <h2 id="attention-title" class="card-title flex items-center gap-2">
+      {% if page.attention %}<span class="chip chip-{% if page.attention_tone == 'danger' %}red{% elif page.attention_tone == 'warning' %}amber{% else %}blue{% endif %} size-8 rounded-lg" aria-hidden="true">{% include "components/icon.html" with name="triangle-alert" class="size-4" %}</span>{% endif %}Needs attention</h2>
+    {% if page.attention %}<span class="badge badge-{{ page.attention_tone }} rounded-full px-2.5 py-1 text-sm">{{ page.attention_count_text }}</span>{% endif %}
+  </div>
+  {% if page.attention %}
+    <ul class="space-y-2" x-data="{ all: false }">
+      {% for item in page.attention %}
+        <li class="hover-row flex items-center gap-4 rounded-2xl border px-4 py-3 {% if item.tone == 'danger' %}border-danger-line bg-danger-soft/60{% elif item.tone == 'warning' %}border-warning-line bg-warning-soft/60{% else %}border-info-line bg-info-soft/60{% endif %}"
+            {% if forloop.counter > page.attention_shown %}x-show="all" x-cloak{% endif %}>
+          <span class="chip size-10 rounded-xl {% if item.tone == 'danger' %}chip-red{% elif item.tone == 'warning' %}chip-amber{% else %}chip-blue{% endif %} bg-white" aria-hidden="true">
+            {% if item.tone == "danger" %}{% include "components/icon.html" with name="triangle-alert" %}{% elif item.tone == "warning" %}{% include "components/icon.html" with name="clock" %}{% else %}{% include "components/icon.html" with name="file-check" %}{% endif %}
+          </span>
+          <div class="min-w-0 flex-1 [overflow-wrap:anywhere]">
+            <p class="font-semibold text-ink">
+              {% if item.tone == "danger" %}<span class="sr-only">Overdue: </span>{% elif item.tone == "warning" %}<span class="sr-only">Due soon: </span>{% else %}<span class="sr-only">Waiting for approval: </span>{% endif %}{{ item.title }}
+            </p>
+            {% if item.detail %}<p class="mt-1 text-sm {% if item.tone == 'warning' %}text-amber-900{% else %}text-muted{% endif %}">{{ item.detail }}</p>{% endif %}
+          </div>
+          {% if item.action_url %}
+            <a href="{{ item.action_url }}" class="btn {% if forloop.counter0 == page.attention_primary_index %}btn-primary{% else %}btn-secondary{% endif %} btn-sm shrink-0">{{ item.action_label }}</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+      {% if page.attention|length > page.attention_shown %}
+        <li class="pt-1 text-center">
+          <button type="button" class="link text-sm" @click="all = !all" :aria-expanded="all.toString()"
+                  x-text="all ? 'Show fewer' : 'Show {{ page.attention_hidden }} more'">Show {{ page.attention_hidden }} more</button>
+        </li>
+      {% endif %}
+    </ul>
+  {% else %}
+    {% include "components/empty_state.html" with icon="circle-check" title="Nothing needs attention" text="No overdue or soon-due required documents, nothing waiting for your review and no certificates ready for approval." %}
+  {% endif %}
+</section>
+
+{# --- KPI cards (full width, below Needs attention) ------------------------------------------------------------------- #}
+<div class="xl:col-span-2 xl:row-start-4">
   <p class="sr-only" role="status">Dashboard for {{ page.range_text }}{% if page.filters.activity_type_id %}, one activity type{% endif %}.</p>
 
   {% if page.errors %}
-    <div class="mb-5 flex gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+    <div class="mb-6 flex gap-3 rounded-2xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-red-800" role="alert">
       {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4.5" %}
       <div>
         {% for error in page.errors %}<p>{{ error }}</p>{% endfor %}
@@ -23,21 +62,21 @@ welcome card), then upcoming activities + the three charts in a 2 x 2 grid (ASSU
     </div>
   {% endif %}
 
-  <div class="grid grid-cols-2 gap-3.5 sm:grid-cols-3 xl:grid-cols-5">
+  <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
     {% with upcoming=cards.upcoming_activities %}
       {% include "components/kpi_card.html" with label="Upcoming activities" value=upcoming.within_30_days|number icon="calendar" chip="blue" pill="30 days" pill_tone="success" %}
     {% endwith %}
     {# S5 counts ACTIVITIES that need certificate approval (ASSUMPTIONS 369); the pill says how many certificates #}
     {% with waiting=cards.certificates_waiting_for_approval %}
       {% if waiting.value %}
-        {% include "components/kpi_card.html" with label="Certificate approval" value=waiting.value|number icon="award" chip="amber" pill=page.certificates_pill pill_tone="warning" note=page.certificates_note %}
+        {% include "components/kpi_card.html" with label="Certificate approval" value=waiting.value|number icon="award" chip="amber" pill=page.certificates_pill pill_tone="warning" note=page.certificates_note alert=True %}
       {% else %}
         {% include "components/kpi_card.html" with label="Certificate approval" value=waiting.value|number icon="award" chip="amber" note="activities" %}
       {% endif %}
     {% endwith %}
     {% if page.review.mine %}
       {% if page.review.oldest_text %}
-        {% include "components/kpi_card.html" with label="Documents to review" value=page.review.count|number icon="file-check" chip="teal" pill=page.review.oldest_text pill_tone="success" %}
+        {% include "components/kpi_card.html" with label="Documents to review" value=page.review.count|number icon="file-check" chip="teal" pill=page.review.oldest_text pill_tone="warning" alert=page.review.count %}
       {% else %}
         {% include "components/kpi_card.html" with label="Documents to review" value=page.review.count|number icon="file-check" chip="teal" %}
       {% endif %}
@@ -55,67 +94,34 @@ welcome card), then upcoming activities + the three charts in a 2 x 2 grid (ASSU
   </div>
 </div>
 
-{# --- Needs attention (main column) -------------------------------------------------------------- #}
-<section id="needs-attention" class="card hover-lift scroll-mt-24 p-6 xl:col-start-1 xl:row-start-4" aria-labelledby="attention-title">
-  {% include "components/section_header.html" with id="attention-title" title="Needs attention" aside=page.attention_count_text %}
-  {% if page.attention %}
-    <ul class="space-y-2.5" x-data="{ all: false }">
-      {% for item in page.attention %}
-        <li class="hover-row flex items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3 {% if item.tone == 'warning' %}border-amber-200 bg-amber-50/40 hover:border-amber-300{% endif %}"
-            {% if forloop.counter > page.attention_shown %}x-show="all" x-cloak{% endif %}>
-          <span class="chip size-11 rounded-xl {% if item.tone == 'danger' %}chip-red{% elif item.tone == 'warning' %}chip-amber{% else %}chip-blue{% endif %}" aria-hidden="true">
-            {% if item.tone == "danger" %}{% include "components/icon.html" with name="triangle-alert" %}{% elif item.tone == "warning" %}{% include "components/icon.html" with name="clock" %}{% else %}{% include "components/icon.html" with name="file-check" %}{% endif %}
-          </span>
-          <div class="min-w-0 flex-1 [overflow-wrap:anywhere]">
-            <p class="font-semibold text-ink">
-              {% if item.tone == "danger" %}<span class="sr-only">Overdue: </span>{% elif item.tone == "warning" %}<span class="sr-only">Due soon: </span>{% endif %}{{ item.title }}
-            </p>
-            {% if item.detail %}<p class="mt-0.5 text-sm {% if item.tone == 'warning' %}text-amber-800{% else %}text-muted{% endif %}">{{ item.detail }}</p>{% endif %}
-          </div>
-          {% if item.action_url %}
-            <a href="{{ item.action_url }}" class="btn btn-secondary btn-sm shrink-0">{{ item.action_label }}</a>{# a row's action is secondary: the icon chip shows how urgent it is (ASSUMPTIONS 411) #}
-          {% endif %}
-        </li>
-      {% endfor %}
-      {% if page.attention|length > page.attention_shown %}
-        <li class="pt-1 text-center">
-          <button type="button" class="link text-sm" @click="all = !all" :aria-expanded="all.toString()"
-                  x-text="all ? 'Show fewer' : 'Show {{ page.attention_hidden }} more'">Show {{ page.attention_hidden }} more</button>
-        </li>
-      {% endif %}
-    </ul>
-  {% else %}
-    {% include "components/empty_state.html" with icon="circle-check" title="Nothing needs attention" text="No overdue or soon-due required documents, nothing waiting for your review and no certificates ready for approval." %}
-  {% endif %}
-</section>
-
 {% with next=page.next_activity %}
 {# --- Spotlight beside the banner: "Happening now" or "Next activity" (reports.services.dashboard_spotlight) --- #}
 {% if next %}
   {% with activity=next.activity %}
   <div class="xl:col-start-2 xl:row-start-1">
-    <section class="spotlight card hover-lift relative h-full overflow-hidden p-5" aria-labelledby="next-title">
+    <section class="spotlight on-dark hover-lift relative isolate h-full overflow-hidden rounded-[24px] p-6 text-white" aria-labelledby="next-title">
+      <div class="pointer-events-none absolute -right-12 -bottom-16 -z-10 size-44 rounded-full bg-white/[0.06]" aria-hidden="true"></div>
       <div class="flex flex-wrap items-center justify-between gap-2">
         {% if next.ongoing %}
-          <h2 id="next-title" class="flex items-center gap-2 text-xs font-semibold tracking-wider text-success uppercase">
+          <h2 id="next-title" class="flex items-center gap-2 text-xs font-semibold tracking-wider text-white uppercase">
             <span class="relative flex size-2.5" aria-hidden="true">
-              <span class="absolute inline-flex size-full rounded-full bg-spring-meadow opacity-75 motion-safe:animate-ping"></span>
+              <span class="absolute inline-flex size-full rounded-full bg-[#6FCF97] opacity-75 motion-safe:animate-ping"></span>
               <span class="live-dot relative inline-flex size-2.5 rounded-full"></span>
             </span>Happening now</h2>
-          {% if next.more_ongoing %}<a href="{{ next.more_url }}" class="link text-xs">+{{ next.more_ongoing }} more ongoing</a>{% endif %}
+          {% if next.more_ongoing %}<a href="{{ next.more_url }}" class="rounded-full bg-white/15 px-2 py-1 text-xs font-semibold text-white hover:bg-white/25">+{{ next.more_ongoing }} more ongoing</a>{% endif %}
         {% else %}
-          <h2 id="next-title" class="flex items-center gap-2 text-xs font-semibold tracking-wider text-muted uppercase"><span class="chip chip-blue size-6 rounded-full">{% include "components/icon.html" with name="calendar" class="size-3.5" %}</span>Next activity</h2>
+          <h2 id="next-title" class="text-xs font-semibold tracking-wider text-on-dark-muted uppercase">Next activity</h2>
         {% endif %}
       </div>
       <div class="mt-2 flex items-start gap-4">
         <div class="min-w-0 flex-1">
-          <p class="flex items-center gap-2 text-sm font-medium text-muted">
+          <p class="flex items-center gap-2 text-sm font-medium text-on-dark-muted">
             {% include "components/icon.html" with name="calendar" class="size-4" %}
             <span class="whitespace-nowrap">{{ activity|date_span }}</span>
           </p>
-          <h3 class="mt-1 text-lg leading-snug font-bold [overflow-wrap:anywhere] text-ink">{{ activity.title }}</h3>
+          <h3 class="mt-1 text-lg leading-snug font-bold [overflow-wrap:anywhere]">{{ activity.title }}</h3>
           {# Compact (ASSUMPTIONS 411): the time and the venue share one line when they fit #}
-          <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-muted">
+          <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-on-dark-muted">
             {% if next.ongoing %}<span class="flex items-center gap-1.5 whitespace-nowrap">{% include "components/icon.html" with name="clock" class="size-4" %}{{ activity|time_range }}</span>{% endif %}
             <span class="flex min-w-0 items-center gap-1.5">{% include "components/icon.html" with name="map-pin" class="size-4" %}<span class="truncate">{{ activity.venue }}</span></span>
           </p>
@@ -125,50 +131,50 @@ welcome card), then upcoming activities + the three charts in a 2 x 2 grid (ASSU
         <div class="flex shrink-0 flex-col items-center gap-1.5" role="img" aria-label="{{ next.attended }} of {{ next.registered }} registered marked attended">
           <div class="relative size-16">
             <svg viewBox="0 0 42 42" class="size-full -rotate-90" aria-hidden="true">
-              <circle cx="21" cy="21" r="15.915" fill="none" stroke="#DFE9EC" stroke-width="4.5"></circle>
-              {% if next.percent %}<circle cx="21" cy="21" r="15.915" fill="none" stroke="#204654" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="{{ next.percent }} 100"></circle>{% endif %}
+              <circle cx="21" cy="21" r="15.915" fill="none" stroke="rgb(255 255 255 / 0.2)" stroke-width="4.5"></circle>
+              {% if next.percent %}<circle cx="21" cy="21" r="15.915" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="{{ next.percent }} 100"></circle>{% endif %}
             </svg>
-            <span class="absolute inset-0 flex items-center justify-center text-base font-bold text-ink tabular-nums" aria-hidden="true">{{ next.attended }}/{{ next.registered }}</span>
+            <span class="absolute inset-0 flex items-center justify-center text-base font-bold tabular-nums" aria-hidden="true">{{ next.attended }}/{{ next.registered }}</span>
           </div>
-          <span class="text-xs text-muted" aria-hidden="true">attended</span>
+          <span class="text-xs text-on-dark-muted" aria-hidden="true">attended</span>
         </div>
         {% else %}
         <div class="flex shrink-0 flex-col items-center gap-1.5" role="img" aria-label="{{ next.registered }} of {{ activity.max_slots }} slots registered">
           <div class="relative size-16">
             <svg viewBox="0 0 42 42" class="size-full -rotate-90" aria-hidden="true">
-              <circle cx="21" cy="21" r="15.915" fill="none" stroke="#DFE9EC" stroke-width="4.5"></circle>
-              {% if next.percent %}<circle cx="21" cy="21" r="15.915" fill="none" stroke="#204654" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="{{ next.percent }} 100"></circle>{% endif %}
+              <circle cx="21" cy="21" r="15.915" fill="none" stroke="rgb(255 255 255 / 0.2)" stroke-width="4.5"></circle>
+              {% if next.percent %}<circle cx="21" cy="21" r="15.915" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" stroke-dasharray="{{ next.percent }} 100"></circle>{% endif %}
             </svg>
-            <span class="absolute inset-0 flex items-center justify-center text-base font-bold text-ink tabular-nums" aria-hidden="true">{{ next.registered }}/{{ activity.max_slots }}</span>
+            <span class="absolute inset-0 flex items-center justify-center text-base font-bold tabular-nums" aria-hidden="true">{{ next.registered }}/{{ activity.max_slots }}</span>
           </div>
-          <span class="text-xs text-muted" aria-hidden="true">registered</span>
+          <span class="text-xs text-on-dark-muted" aria-hidden="true">registered</span>
         </div>
         {% endif %}
       </div>
       <ul class="mt-3 flex flex-wrap gap-1.5" aria-label="Type and participant categories">
-        <li class="tag tag-type">{{ activity.activity_type.name }}</li>
-        {% for category in next.categories %}<li class="tag">{{ category }}</li>{% endfor %}
+        <li class="rounded-md bg-white px-2 py-1 text-xs font-semibold text-primary">{{ activity.activity_type.name }}</li>
+        {% for category in next.categories %}<li class="rounded-md border border-white/40 bg-white/10 px-2 py-1 text-xs font-medium text-white">{{ category }}</li>{% endfor %}
       </ul>
       {% if next.ongoing %}
-        <a href="{% url 'activities:detail' activity.pk %}?tab=registrations" class="btn btn-secondary btn-sm btn-arrow mt-4">{% include "components/icon.html" with name="check-check" class="size-4" %}Mark attendance {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+        <a href="{% url 'activities:detail' activity.pk %}?tab=registrations" class="btn btn-on-dark btn-sm btn-arrow mt-4">{% include "components/icon.html" with name="check-check" class="size-4" %}Mark attendance {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
       {% else %}
-        <a href="{% url 'activities:detail' activity.pk %}" class="btn btn-secondary btn-sm btn-arrow mt-4">Open activity {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+        <a href="{% url 'activities:detail' activity.pk %}" class="btn btn-on-dark btn-sm btn-arrow mt-4">Open activity {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
       {% endif %}
     </section>
   </div>
   {% endwith %}
 {% else %}
   {# Keeps the place beside the banner filled (also after a type filter with nothing scheduled) #}
-  <section class="spotlight card relative overflow-hidden p-6 xl:col-start-2 xl:row-start-1" aria-labelledby="next-title">
-    <h2 id="next-title" class="text-xs font-semibold tracking-wider text-muted uppercase">Next activity</h2>
-    <p class="mt-3 text-lg font-semibold text-ink">Nothing scheduled yet</p>
-    <p class="mt-1 text-sm text-muted">Scheduled activities starting today or later appear here.</p>
-    {% if page.can_create_activity %}<a href="{% url 'activities:create' %}" class="btn btn-secondary btn-sm mt-4">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}
+  <section class="spotlight on-dark relative overflow-hidden rounded-[24px] p-6 text-white xl:col-start-2 xl:row-start-1" aria-labelledby="next-title">
+    <h2 id="next-title" class="text-xs font-semibold tracking-wider text-on-dark-muted uppercase">Next activity</h2>
+    <p class="mt-3 text-lg font-semibold">Nothing scheduled yet</p>
+    <p class="mt-1 text-sm text-on-dark-muted">Scheduled activities starting today or later appear here.</p>
+    {% if page.can_create_activity %}<a href="{% url 'activities:create' %}" class="btn btn-on-dark btn-sm mt-4">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}
   </section>
 {% endif %}
 
 {# --- Right column: recent changes, as tall as Needs attention (the row stretches both cards) ---------- #}
-<div class="flex flex-col xl:col-start-2 xl:row-start-4">
+<div class="flex flex-col xl:col-start-2 xl:row-start-3">
 
 
   <section class="card hover-lift flex-1 p-6" aria-labelledby="changes-title">
@@ -210,7 +216,7 @@ welcome card), then upcoming activities + the three charts in a 2 x 2 grid (ASSU
           <li class="hover-row flex gap-3.5 rounded-2xl border border-transparent p-2.5 hover:bg-slate-50">
             {% include "components/date_tile.html" with activity=activity gradient=True %}
             <div class="min-w-0 flex-1">
-              <h3 class="line-clamp-2 text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink" title="{{ activity.title }}"><a href="{% url 'activities:detail' activity.pk %}" class="hover:text-primary hover:underline">{{ activity.title }}</a></h3>
+              <h3 class="line-clamp-2 text-sm leading-snug font-semibold [overflow-wrap:anywhere] text-ink" title="{{ activity.title }}"><a href="{% url 'activities:detail' activity.pk %}" class="hover:text-primary hover:underline">{{ activity.title }}</a></h3>
               <div class="mt-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
                 <p class="text-xs whitespace-nowrap text-muted">{{ activity|date_span }}</p>
                 {% include "components/status_badge.html" with status=activity.status.name %}
@@ -287,7 +293,7 @@ welcome card), then upcoming activities + the three charts in a 2 x 2 grid (ASSU
     {% if not conducted %}
       {% include "components/empty_state.html" with icon="chart-column" title="No conducted activities in this period." %}
     {% else %}
-      <dl class="divide-y divide-line text-[15px]">
+      <dl class="divide-y divide-line text-sm">
         <div class="flex items-center justify-between gap-3 py-3">
           <dt class="text-slate-700">Attendance rate</dt>
           <dd class="badge badge-success rounded-full px-2.5 py-1 text-sm">{{ cards.registrations.attendance_rate|percent }}</dd>

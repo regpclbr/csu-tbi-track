@@ -17,7 +17,7 @@ Alpine; without JavaScript one empty row is shown. Browsers clear chosen files a
     {% include "components/section_header.html" with id="section-documents" title="Documents (optional)" subtitle="Upload documents you already have. Each one waits for review like any upload; you can also add documents later on the activity's Documents tab." %}
   {% endif %}
   {% if docs.choose_again %}
-    <div class="mb-4 flex gap-3 rounded-2xl border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
+    <div class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
       {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}
       <p>Nothing was saved yet. For security, your browser cleared the chosen files: please choose the file{{ docs.rows|length|pluralize }} again before creating the activity.</p>
     </div>

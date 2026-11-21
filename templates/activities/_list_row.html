@@ -8,7 +8,7 @@ least 18rem on a follow-up card (basis-72): when the row is too narrow, the butt
   {% include "components/date_tile.html" with activity=activity gradient=True %}
   <div class="min-w-0 flex-1{% if row.actions %} basis-72{% endif %}">
     <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      <h3 class="min-w-0 text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink">
+      <h3 class="min-w-0 text-sm leading-snug font-semibold [overflow-wrap:anywhere] text-ink">
         <a href="{% url 'activities:detail' activity.pk %}" class="hover:text-primary hover:underline">{{ activity.title }}</a>
       </h3>
       {% include "components/status_badge.html" with status=activity.status.name %}
@@ -27,7 +27,7 @@ least 18rem on a follow-up card (basis-72): when the row is too narrow, the butt
       {% for category in row.categories %}<li class="tag">{{ category }}</li>{% endfor %}
     </ul>
     {% if row.actions and row.note %}
-      <p class="mt-2 flex items-start gap-1.5 text-sm text-amber-900">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 shrink-0 text-amber-700" %}<span>{{ row.note }}</span></p>
+      <p class="mt-2 flex items-start gap-1.5 text-sm text-amber-900">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 shrink-0 text-warning" %}<span>{{ row.note }}</span></p>
     {% endif %}
   </div>
   <div class="hidden w-44 shrink-0 md:block">
@@ -40,7 +40,7 @@ least 18rem on a follow-up card (basis-72): when the row is too narrow, the butt
         <a href="{% url 'activities:detail' activity.pk %}?tab=registrations" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="users" class="size-4" %}Mark attendance<span class="sr-only"> for {{ activity.title }}</span></a>
       {% endif %}
       {% if row.actions.mark_conducted %}
-        {% with pk_text=activity.pk|stringformat:"s" %}{% include "components/modal.html" with id="conduct-"|add:pk_text title="Mark as Conducted?" body="activities/_conduct_form.html" trigger_label="Mark as Conducted" trigger_icon="circle-check" trigger_class="btn btn-primary btn-sm" trigger_sr="for "|add:activity.title %}{% endwith %}
+        {% with pk_text=activity.pk|stringformat:"s" %}{% include "components/modal.html" with id="conduct-"|add:pk_text title="Mark as Conducted?" body="activities/_conduct_form.html" trigger_label="Mark as Conducted" trigger_icon="circle-check" trigger_class="btn btn-secondary btn-sm" trigger_sr="for "|add:activity.title %}{% endwith %}
       {% endif %}
     </div>
   {% else %}

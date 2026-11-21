@@ -9,7 +9,7 @@ from activities.pages.registration_summary (registrations.services.registration_
 {% block page_header %}{% endblock %}
 {% block content %}
 <div class="space-y-5">
-  <section class="card p-6" aria-labelledby="activity-title">
+  <section class="card p-6" aria-labelledby="activity-title" data-page-header>
     <a href="{% url 'activities:list' %}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}All activities</a>
     <div class="mt-3 flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0 flex-1">
@@ -35,7 +35,8 @@ from activities.pages.registration_summary (registrations.services.registration_
           {% include "components/modal.html" with id="status-modal" title="Change status" body="activities/_status_form.html" trigger_label="Change status" trigger_icon="refresh-cw" trigger_class="btn btn-secondary btn-sm" %}
         {% endif %}
         {% if can_edit %}
-          <a href="{% url 'activities:edit' activity.pk %}" class="btn btn-primary btn-sm">{% include "components/icon.html" with name="pencil" class="size-4" %}Edit</a>
+          {# Secondary (ASSUMPTIONS 413): each tab's main action (Upload, Mark selected as attended, Approve certificates, ...) is the page's one primary #}
+          <a href="{% url 'activities:edit' activity.pk %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="pencil" class="size-4" %}Edit</a>
         {% endif %}
         {% if can_delete %}{# can_delete_activities only (ASSUMPTIONS 389): a small menu, never a big button #}
           <div class="relative" x-data="{ menu: false }" @keydown.escape="if (menu) { menu = false; $refs.menuButton.focus() }" @click.outside="menu = false">
@@ -44,7 +45,7 @@ from activities.pages.registration_summary (registrations.services.registration_
               {% include "components/icon.html" with name="ellipsis" class="size-5" %}</button>
             <div x-cloak x-show="menu" role="menu" aria-label="More actions"
                  class="absolute top-10 right-0 z-20 w-48 rounded-xl border border-line bg-white py-1 text-sm shadow-card">
-              <a href="{% url 'activities:delete' activity.pk %}" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-danger hover:bg-red-50"
+              <a href="{% url 'activities:delete' activity.pk %}" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-danger hover:bg-danger-soft"
                  hx-get="{% url 'activities:delete' activity.pk %}" hx-target="#delete-dialog-body" hx-swap="innerHTML" hx-push-url="false"
                  hx-on::before-request="window.modalOpener = this.closest('[x-data]').querySelector('[x-ref=menuButton]')"
                  hx-on::after-request="if (event.detail.successful) document.getElementById('delete-dialog').showModal()"

@@ -35,7 +35,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       {% elif approval.state == "all_issued" %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
       {% elif approval.state == "needs_approval" %}
-        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">{% include "components/icon.html" with name="award" class="size-5" %}</span>
+        <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">{% include "components/icon.html" with name="award" class="size-5" %}</span>
       {% else %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">{% include "components/icon.html" with name="info" class="size-5" %}</span>
       {% endif %}
@@ -97,8 +97,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   {% endif %}
 
   {% if worker_stopped %}
-    <p class="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-amber-700" %}
+    <p class="flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="status">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-warning" %}
       <span><strong class="font-semibold">Certificates are waiting for the background worker.</strong> The approved certificates are being updated (PDF, email) as soon as qcluster runs. Start it in a new terminal: <code>python manage.py qcluster</code></span></p>
   {% endif %}
 
@@ -113,8 +113,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       {% endif %}
     </div>
     {% if signatures.missing_reason %}
-      <p class="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
-        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>{{ signatures.missing_reason }}</span></p>
+      <p class="mt-3 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>{{ signatures.missing_reason }}</span></p>
     {% endif %}
     <div class="mt-4 grid gap-4 md:grid-cols-2">
       {% for slot in signatures.slots %}
@@ -137,8 +137,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           {% endif %}
 
           {% if slot.inactive %}
-            <div class="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
-              {% include "components/icon.html" with name="triangle-alert" class="size-4 text-amber-700" %}
+            <div class="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+              {% include "components/icon.html" with name="triangle-alert" class="size-4 text-warning" %}
               {% if slot.newer %}
                 <span class="min-w-0 flex-1">{{ slot.signatory.name }} on this activity is an older, inactive version. The current version is {{ slot.newer.name }} · {{ slot.newer.position }}.</span>
                 {% if signatures.can_choose %}
@@ -225,7 +225,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           {% if can_approve %}
             <form method="post" :action="items[i].reissue_url" action="{{ shown.reissue_url }}" x-show="items[i].can_reissue"{% if not shown.can_reissue %} style="display: none"{% endif %}>
               {% csrf_token %}
-              <button type="submit" class="btn btn-primary btn-sm">
+              <button type="submit" class="btn btn-secondary btn-sm">{# the card's primary is "Approve certificates for this activity" (ASSUMPTIONS 413) #}
                 {% include "components/icon.html" with name="refresh-cw" class="size-4" %}Reissue with current signatures<span class="sr-only" x-text="' ' + items[i].number"></span></button>
             </form>
           {% endif %}
@@ -238,8 +238,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         </div>
       </div>
       <p class="mb-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm" role="note" x-show="items[i].issued_note"
-         :class="items[i].outdated ? 'bg-amber-50 text-amber-900' : 'bg-success-soft text-success'"
-         class="{% if shown.outdated %}bg-amber-50 text-amber-900{% else %}bg-success-soft text-success{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
+         :class="items[i].outdated ? 'bg-warning-soft text-amber-900' : 'bg-success-soft text-success'"
+         class="{% if shown.outdated %}bg-warning-soft text-amber-900{% else %}bg-success-soft text-success{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span x-text="items[i].issued_note">{{ shown.issued_note }}</span></p>
       <p class="mb-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note" x-show="!items[i].name_final"{% if shown.name_final %} style="display: none"{% endif %}>
         {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-primary" %}<span>The final name comes from the evaluation.</span></p>
@@ -255,18 +255,18 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     </div>
 
     {% if generation_reason and activity.status.name == "Conducted" %}
-      <p class="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
-        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>Certificates are not created yet: {{ generation_reason }}</span></p>
+      <p class="mb-4 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>Certificates are not created yet: {{ generation_reason }}</span></p>
     {% endif %}
 
     {% if emails_printed %}
-      <p class="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="note">
-        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-amber-700" %}
+      <p class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="note">
+        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-warning" %}
         <span><strong class="font-semibold">Emails are only printed in the qcluster terminal, not sent.</strong> Set EMAIL_REAL_SENDING=True in .env (and restart runserver and qcluster) to send real emails.</span></p>
     {% endif %}
 
     {% if problems %}
-      <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert" tabindex="-1" x-init="$el.focus()">
+      <div class="mb-4 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-red-800" role="alert" tabindex="-1" x-init="$el.focus()">
         <p class="flex items-center gap-2 font-semibold">{% include "components/icon.html" with name="circle-alert" class="size-4.5" %}Nothing was changed. These certificates were refused:</p>
         <ul class="mt-2 list-disc space-y-1 pl-6">{% for problem in problems %}<li>{{ problem }}</li>{% endfor %}</ul>
       </div>

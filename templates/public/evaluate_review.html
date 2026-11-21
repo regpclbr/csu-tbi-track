@@ -20,7 +20,7 @@ inputs; nothing is saved before the confirmation.
     <h1 class="mt-1 text-2xl leading-tight font-bold tracking-tight text-ink sm:text-[28px]">Is this correct?</h1>
     <p class="mt-1 text-sm break-words text-slate-700">{{ activity.title }}</p>
 
-    <div class="mt-6 space-y-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 sm:p-5">
+    <div class="mt-6 space-y-4 rounded-2xl border border-warning-line bg-warning-soft p-4 sm:p-5">
       <div>
         <p class="text-sm font-semibold text-amber-900">Your certificate will be issued to:</p>
         <p class="mt-1 text-2xl leading-tight font-bold break-words text-ink sm:text-3xl" id="review-name">{{ certificate_name }}</p>
@@ -37,9 +37,9 @@ inputs; nothing is saved before the confirmation.
     <h2 id="answers-heading" class="text-xl font-bold tracking-tight text-ink">Your answers</h2>
     <dl class="mt-4 divide-y divide-slate-300/60">
       {% for row in review %}
-        <div class="py-3"><dt class="text-sm font-semibold text-ink">{{ row.label }}</dt><dd class="mt-0.5 text-[15px] break-words {% if row.empty %}text-slate-700 italic{% else %}text-slate-800{% endif %}">{{ row.answer }}</dd></div>
+        <div class="py-3"><dt class="text-sm font-semibold text-ink">{{ row.label }}</dt><dd class="mt-0.5 text-base break-words {% if row.empty %}text-slate-700 italic{% else %}text-slate-800{% endif %}">{{ row.answer }}</dd></div>
       {% endfor %}
-      <div class="py-3"><dt class="text-sm font-semibold text-ink">Comments</dt><dd class="mt-0.5 text-[15px] break-words whitespace-pre-line {% if comments %}text-slate-800{% else %}text-slate-700 italic{% endif %}">{{ comments|default:"No comments" }}</dd></div>
+      <div class="py-3"><dt class="text-sm font-semibold text-ink">Comments</dt><dd class="mt-0.5 text-base break-words whitespace-pre-line {% if comments %}text-slate-800{% else %}text-slate-700 italic{% endif %}">{{ comments|default:"No comments" }}</dd></div>
     </dl>
   </section>
 

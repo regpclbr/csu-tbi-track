@@ -2,11 +2,11 @@
   CSU-TBI Track: Tailwind CSS v4 source (the design tokens live in @theme below; v4 has no tailwind.config.js).
   Build:  python manage.py tailwind build   -> static/css/app.css
   Watch:  python manage.py tailwind watch
-  Layout from docs/design/dashboard.png, made calmer after the UAT (ASSUMPTIONS 258 and 411): the gradient frame, floating
-  panel, glass and pill shapes, softer badges, one spacing scale (4 8 12 16 24 32 px) and four button levels. Colours: the
-  four-colour palette of ASSUMPTIONS 412 (Teal Waters #204654, Glacial Sky #A9E0F1, Morning Mist #F7F9E1, Spring Meadow
-  #CAFFA6); every other colour is derived from them in @theme below. Every pair was checked for contrast (>= 4.5:1 for
-  normal text, >= 3:1 for large text and input borders); see docs/design/ui-revision/README.md section 8.
+  Design: the original identity (docs/design/dashboard.png: navy -> blue gradient frame, floating rounded panel, frosted
+  glass sign-in and public cards, pill buttons, Inter, the navy logo tile) made calmer after the UAT (ASSUMPTIONS 413:
+  "the colors are too bright"): the same hue family, less saturated and darker, so the light end no longer glows; a
+  neutral light grey panel with white cards; one button hierarchy. Every colour lives in @theme below and every text pair
+  was measured (>= 4.5:1 normal text, >= 3:1 large text, icons and input borders); docs/design/ui-revision/README.md.
 */
 @import "tailwindcss" source(none);
 
@@ -40,74 +40,68 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* The four palette colours (ASSUMPTIONS 412). Every other colour below is derived from them. */
-  --color-teal-waters: #204654;        /* brand: frame, sidebar, primary button, headings */
-  --color-glacial-sky: #A9E0F1;        /* light tints only */
-  --color-morning-mist: #F7F9E1;       /* page background */
-  --color-spring-meadow: #CAFFA6;      /* small accents only: Approved tint, sidebar count, "happening now" dot */
+  /* --- Brand colours (ASSUMPTIONS 413): the calmer version of the original #22378F -> #60CDEE ------------------------ */
+  /* OPTION START */
+  /* Option B, chosen by the owner 2026-11-21 (docs/design/options/): navy -> muted cyan, the original's two hues toned down. */
+  --color-frame-dark: #1E2F73;         /* gradient start (sidebar side): white on it 12.3:1 */
+  --color-frame-light: #3B8AA6;        /* gradient end (behind the panel): white on it 3.9:1 (large text only; no text there) */
+  --color-primary: #2A4494;            /* solid primary button: white on it 8.9:1; as text 8.2:1 on the panel */
+  --color-primary-hover: #243A7E;      /* white on it 10.6:1 */
+  --color-primary-pressed: #1E316B;
+  --color-primary-soft: #EAECF4;       /* current tab, selected pill, icon chips: primary text on it 7.6:1 */
+  --color-primary-tint: #D9DDEC;       /* hover on a soft item, selected card */
+  --color-link: #2C5AA8;               /* text links: 6.7:1 on white, 6.2:1 on the panel */
+  --color-on-dark-muted: #D3E8F0;      /* secondary text on the gradient's dark part: 9.7:1 (7.0:1 on the primary) */
+  --color-on-dark-accent: #9AD4E4;     /* the sign-in headline's accent line (large text): 7.6:1 on the dark part */
+  /* OPTION END */
+  --color-sidebar: var(--color-frame-dark);   /* the slide-in sidebar below 1024 px (solid) */
+  --color-sidebar-hover: color-mix(in srgb, var(--color-frame-dark) 85%, #FFFFFF);
+  --color-sidebar-line: color-mix(in srgb, var(--color-frame-dark) 70%, #FFFFFF);
+  --color-sidebar-muted: var(--color-on-dark-muted);
+  --color-heading: #1E293B;            /* page and card titles = ink */
+  --color-focus: var(--color-primary); /* focus ring: 8:1 or more on white and on the panel */
+  --color-accent: var(--color-frame-light);  /* decoration only, never text */
 
-  /* Brand and layout */
-  --color-sidebar: #204654;            /* = Teal Waters: white on it 10.2:1 */
-  --color-sidebar-hover: #2A5866;
-  --color-sidebar-line: #3A6A78;
-  --color-sidebar-muted: #A9E0F1;      /* Glacial Sky: "WORKSPACE" label, role: 7.1:1 on the sidebar */
-  --color-brand-calm: #2F6170;         /* the light end of the frame gradient: decoration, white on it 6.9:1 */
-  --color-primary: #204654;            /* Teal Waters: white on it 10.2:1; as text 10.2:1 on white, 9.7:1 on the panel */
-  --color-primary-hover: #18363F;      /* white on it 12.8:1 */
-  --color-primary-pressed: #122A31;
-  --color-primary-soft: #E5F5FB;       /* Glacial Sky 30% on white: current tab, selected pill, icon chips; primary text 9.1:1 */
-  --color-primary-tint: #D4F0F8;       /* Glacial Sky 50%: hover on a soft item, selected card */
-  --color-link: #1B6580;              /* text links: 6.5:1 on white, 5.8:1 on primary-soft; clearly apart from body text */
-  --color-heading: #204654;            /* page and card titles */
-  --color-kpi: #1A2E35;                /* KPI numbers in ink */
-  --color-accent: #A9E0F1;             /* decoration only, never text */
-  --color-page: #F7F9E1;               /* Morning Mist */
-  --color-panel: #FAFBED;              /* Morning Mist 60% on white: the content panel behind the white cards */
-  --color-line: #DCE5E4;               /* card border (visible on the panel) */
-  --color-line-strong: #738890;        /* input / select borders: 3.7:1 on white, 3.6:1 on the panel */
-  --color-control-line: #C3D1D3;       /* secondary button border (the label identifies the button) */
-  --color-ink: #1A2E35;                /* 14.1:1 on white, 13.5:1 on the panel */
-  --color-muted: #4A5E65;              /* 6.8:1 on white, 6.5:1 on the panel */
-  --color-helper: #56696F;             /* 5.8:1 on white, 5.5:1 on the panel */
-  --color-focus: #204654;              /* focus ring: 10.2:1 on white, 9.7:1 on the panel */
-  --color-danger: #B42318;             /* unchanged: white on it 6.6:1, as text 6.6:1 */
+  /* --- Neutrals (shared by every option): Tailwind's own slate scale, unchanged -------------------------------------- */
+  --color-page: #EEF1F5;
+  --color-panel: #F4F6F9;              /* the content panel: soft neutral light grey (not white, not cream); cards are white */
+  --color-line: #E2E8F0;               /* card border */
+  --color-line-strong: #7B8798;        /* input / select borders: 3.7:1 on white, 3.4:1 on the panel */
+  --color-control-line: #CBD5E1;       /* secondary button border (the label identifies the button) */
+  --color-ink: #1E293B;                /* 14.6:1 on white */
+  --color-kpi: #1E293B;                /* KPI numbers in ink */
+  --color-muted: #475569;              /* 7.6:1 on white, 7.0:1 on the panel */
+  --color-helper: #56657A;             /* 5.9:1 on white, 5.5:1 on the panel */
+
+  /* --- Status (softened, still apart by hue): text on its tint, 1 px border of the same hue ------------------------- */
+  --color-danger: #B42318;             /* 6.6:1 on white, 6.0:1 on its tint; white on it 6.6:1 */
   --color-danger-hover: #912018;
-  --color-danger-soft: #FEF3F2;
-  --color-danger-line: #E5786D;
-  --color-warning: #8A5300;            /* 6.0:1 on its soft background */
-  --color-warning-soft: #FFF8E8;
-  --color-info: #1D5A73;               /* Waiting for review / Scheduled: 7.0:1 on its tint */
-  --color-info-soft: #EAF7FC;          /* Glacial Sky 25% */
-  --color-info-line: #A9E0F1;          /* Glacial Sky */
-  --color-success: #2E6A12;            /* Approved / Conducted: 6.3:1 on its tint, 6.6:1 on white */
-  --color-success-soft: #F1FFE6;       /* Spring Meadow 30% */
-  --color-success-line: #B7E894;
+  --color-danger-soft: #FDF1F0;
+  --color-danger-line: #F2C2BC;
+  --color-warning: #8F5A0A;            /* 5.4:1 on its tint */
+  --color-warning-soft: #FDF6E6;
+  --color-warning-line: #EED9A8;
+  --color-info: #2B59A8;               /* Scheduled / Waiting for review: 6.1:1 on its tint */
+  --color-info-soft: #EEF3FB;
+  --color-info-line: #C5D5EE;
+  --color-success: #26704A;            /* Conducted / Approved: 5.5:1 on its tint */
+  --color-success-soft: #EDF7F1;
+  --color-success-line: #BFDFCB;
+  --color-neutral: #475467;            /* Draft / Missing: 7.0:1 on its tint */
+  --color-neutral-soft: #F2F4F7;
+  --color-neutral-line: #DDE2E9;
 
-  /* Status chart colours (bars, legend dots; each chart also has a text table) */
-  --color-status-draft: #C3D1D3;
-  --color-status-scheduled: #5BA7C2;
-  --color-status-ongoing: #E2B65A;
-  --color-status-conducted: #4F8F2E;
-  --color-progress: #2F6170;
+  /* Status chart colours (bars, legend dots; each chart also has a text table). Every pair stays apart with simulated
+     protanopia, deuteranopia and tritanopia (smallest difference dE 15). */
+  --color-status-draft: #CBD5E1;
+  --color-status-scheduled: #5B84C4;
+  --color-status-ongoing: #E0A940;
+  --color-status-conducted: #2F7A50;
+  --color-progress: var(--color-primary);
 
-  /* Neutrals: Tailwind's slate scale re-tinted toward Teal Waters at the SAME lightness (every contrast stays within
-     0.2 of before), so the slate-* classes in the templates follow the palette without editing each one. */
-  --color-slate-50: #F8FAFB;
-  --color-slate-100: #F0F5F7;
-  --color-slate-200: #DFE9EC;
-  --color-slate-300: #C9D6DB;
-  --color-slate-400: #8FA5AC;
-  --color-slate-500: #62767D;
-  --color-slate-600: #45575C;
-  --color-slate-700: #314348;
-  --color-slate-800: #1C2A2F;
-  --color-slate-900: #0F191C;
-  --color-slate-950: #050708;
-
-
-  /* Cards: soft teal-tinted shadow */
-  --shadow-card: 0 10px 30px rgb(32 70 84 / 0.07);
-  --shadow-card-hover: 0 16px 40px rgb(32 70 84 / 0.13);
+  /* Cards: soft navy-tinted shadow */
+  --shadow-card: 0 10px 30px color-mix(in srgb, var(--color-frame-dark) 7%, transparent);
+  --shadow-card-hover: 0 16px 40px color-mix(in srgb, var(--color-frame-dark) 13%, transparent);
 }
 
 @layer base {
@@ -132,14 +126,15 @@
 }
 
 @layer components {
-  /* Buttons (ASSUMPTIONS 411): pill-shaped in the app shell and on public pages (.app-shell .btn, .public-shell .btn), one
-     height (40 px; btn-sm 32 px) and four levels:
-       btn-primary    solid: ONE per page view or card (the main action), or the submit of the form / dialog it is about
+  /* Buttons (ASSUMPTIONS 411, 413): pill-shaped in the app shell and on public pages (.app-shell .btn, .public-shell .btn),
+     one height (40 px; btn-sm 32 px) and four levels:
+       btn-primary    solid: ONE per page or card (the main action), top right of the page header or at the bottom of a form
        btn-secondary  outlined: other real actions; the main action of a list row
        btn-ghost      text only (= btn-tertiary): minor actions (Open, View, Download, Preview, Previous / Next, Show more)
-       btn-danger     destructive: red outline, kept apart from the primary; solid red only inside a confirm dialog
-                      (.modal) or with btn-danger-solid
-     btn-warning is retired (it now looks like btn-secondary). */
+       btn-danger     destructive (Delete, Return, Remove, Deactivate): red TEXT, never filled and never the biggest button,
+                      kept apart from the primary; solid red only to confirm, inside a confirm dialog (.modal) or with
+                      btn-danger-solid on a confirm page
+     btn-warning is retired (it looks like btn-secondary; no template uses it). */
   .btn {
     @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-transparent px-4 text-sm font-semibold whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform] duration-150 hover:shadow-md active:translate-y-0 active:shadow-none disabled:cursor-not-allowed disabled:opacity-60 motion-safe:hover:-translate-y-px;
   }
@@ -151,7 +146,7 @@
     transform: translateX(4px);
   }
   .btn-sm {
-    @apply h-8 px-3.5 text-[13px];
+    @apply h-8 px-3 text-sm;
   }
   .btn-primary {
     @apply border-primary bg-primary text-white hover:border-primary-hover hover:bg-primary-hover active:border-primary-pressed active:bg-primary-pressed;
@@ -163,7 +158,7 @@
     @apply text-primary hover:bg-primary-soft hover:shadow-none;
   }
   .btn-danger {
-    @apply border-danger-line bg-white text-danger hover:bg-danger-soft;
+    @apply border-transparent bg-transparent text-danger hover:bg-danger-soft hover:shadow-none;
   }
   .modal .btn-danger, .btn-danger-solid {
     @apply border-danger bg-danger text-white hover:border-danger-hover hover:bg-danger-hover;
@@ -207,8 +202,8 @@
   .notice {
     @apply rounded-2xl border px-4 py-3 text-sm text-ink;
   }
-  .notice-warning { @apply border-[#F3D99A] bg-warning-soft; }
-  .notice-danger { @apply border-[#FECDCA] bg-danger-soft; }
+  .notice-warning { @apply border-warning-line bg-warning-soft; }
+  .notice-danger { @apply border-danger-line bg-danger-soft; }
   .notice-info { @apply border-info-line bg-info-soft; }
   .notice-success { @apply border-success-line bg-success-soft; }
   .link {
@@ -236,13 +231,13 @@
     outline: none;
   }
   .stat-card-link:focus-visible {
-    box-shadow: 0 0 0 2px rgb(32 70 84 / 0.55);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
   }
   .stat-card-link[aria-pressed="true"] {
     box-shadow: 0 0 0 2px var(--color-primary);
   }
   .stat-card-link[aria-pressed="true"]:focus-visible {
-    box-shadow: 0 0 0 2px var(--color-primary), 0 0 0 5px rgb(32 70 84 / 0.25);
+    box-shadow: 0 0 0 2px var(--color-primary), 0 0 0 5px color-mix(in srgb, var(--color-focus) 25%, transparent);
   }
   .stat-card-link[aria-pressed="true"] .kpi-card {
     @apply border-transparent bg-primary-soft;
@@ -261,7 +256,7 @@
     outline: none;
   }
   .cert-link:focus-visible {
-    box-shadow: 0 0 0 2px rgb(32 70 84 / 0.55);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-focus) 60%, transparent);
   }
   .stat-cards-selected .stat-card-link[aria-pressed="false"] {
     @apply opacity-80 hover:opacity-100 focus-visible:opacity-100;
@@ -271,16 +266,22 @@
     @apply inline-flex shrink-0 items-center justify-center;
   }
   .chip-blue { @apply bg-primary-soft text-primary; }
-  .chip-amber { @apply bg-amber-50 text-amber-700; }
-  .chip-teal { @apply bg-info-soft text-info; }          /* 7.0:1 */
+  .chip-amber { @apply bg-warning-soft text-warning; }  /* 5.4:1 */
+  .chip-teal { @apply bg-info-soft text-info; }          /* 6.1:1 */
   .chip-violet { @apply bg-violet-50 text-violet-700; }
-  .chip-green { @apply bg-success-soft text-success; }   /* 6.3:1 */
-  .chip-red { @apply bg-red-50 text-red-700; }
-  .card-title {
-    @apply text-lg font-semibold text-heading;
+  .chip-green { @apply bg-success-soft text-success; }   /* 5.5:1 */
+  .chip-red { @apply bg-danger-soft text-danger; }       /* 6.0:1 */
+  /* Type scale (ASSUMPTIONS 413), four sizes: page title 24 px bold (.page-title, once per page), section / card heading
+     18 px semibold (.card-title = .section-title), body 14 px (text-sm), caption 12 px (.caption, text-xs). Large numbers
+     (KPI cards, donut totals) are data, and the sign-in / public hero headlines are display text: both stay larger. */
+  .card-title, .section-title {
+    @apply text-lg leading-7 font-semibold text-heading;
   }
   .card-subtitle {
     @apply mt-1 text-sm text-muted;
+  }
+  .caption {
+    @apply text-xs font-medium text-muted;
   }
 
   /* Hover feedback (reuse in later phases):
@@ -294,18 +295,18 @@
   }
 
   /* Badges and tags */
-  /* Softer badges (ASSUMPTIONS 411, palette 412): a light tint, a 1 px border of the same hue and dark text (6:1 or more).
-     The five document states stay apart by hue: Missing grey, Overdue red (+ icon), Waiting for review Glacial Sky blue,
-     Returned amber, Approved green on the Spring Meadow tint. */
+  /* Softer badges (ASSUMPTIONS 411, 413): a light tint, a 1 px border of the same hue and dark text (5.4:1 or more).
+     The five document states stay apart by hue: Missing grey, Overdue red (+ icon), Waiting for review blue, Returned
+     amber, Approved green. */
   .badge {
     @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
   }
-  .badge-draft, .badge-neutral { @apply border-[#DCE3E4] bg-[#F1F4F4] text-[#3D4F55]; }        /* 7.8:1 */
-  .badge-scheduled { @apply border-info-line bg-info-soft text-info; }                          /* 7.0:1 */
-  .badge-ongoing, .badge-warning { @apply border-[#F3D99A] bg-warning-soft text-warning; }      /* 6.0:1 */
-  .badge-conducted, .badge-success { @apply border-success-line bg-success-soft text-success; } /* 6.3:1 */
-  .badge-danger { @apply border-[#FECDCA] bg-danger-soft text-danger; }                          /* 6.0:1 */
-  .badge-info { @apply border-info-line bg-info-soft text-info; }                               /* 7.0:1 */
+  .badge-draft, .badge-neutral { @apply border-neutral-line bg-neutral-soft text-neutral; }       /* 7.0:1 */
+  .badge-scheduled { @apply border-info-line bg-info-soft text-info; }                          /* 6.1:1 */
+  .badge-ongoing, .badge-warning { @apply border-warning-line bg-warning-soft text-warning; }   /* 5.4:1 */
+  .badge-conducted, .badge-success { @apply border-success-line bg-success-soft text-success; } /* 5.5:1 */
+  .badge-danger { @apply border-danger-line bg-danger-soft text-danger; }                       /* 6.0:1 */
+  .badge-info { @apply border-info-line bg-info-soft text-info; }                               /* 6.1:1 */
   .tag {
     @apply inline-flex items-center rounded-md border border-line bg-white px-2 py-0.5 text-xs font-medium text-slate-700;
   }
@@ -328,12 +329,12 @@
      Never on list boxes (multiple / size): they have no arrow. */
   .field-select {
     @apply cursor-pointer appearance-none bg-no-repeat pr-10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2362767D' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-position: right 0.875rem center;
     background-size: 1rem 1rem;
   }
   .field-select:disabled {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23C9D6DB' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CBD5E1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
   /* One control height (40 px) for one-line inputs, selects, date and time inputs and buttons, so they line up. */
   select.field-input, input[type="date"].field-input, input[type="time"].field-input {
@@ -362,7 +363,7 @@
     @apply h-8;
   }
   .field-error {
-    @apply mt-1.5 text-sm text-red-700;
+    @apply mt-1.5 text-sm text-danger;
   }
   .field-help {
     @apply mt-1.5 text-sm text-helper;
@@ -393,7 +394,7 @@
     max-height: 85dvh;
   }
   .modal::backdrop {
-    background: rgb(13 36 44 / 0.5);
+    background: color-mix(in srgb, var(--color-frame-dark) 55%, transparent);
   }
 
   /* Text only for screen readers (chart equivalents, icon labels). */
@@ -403,28 +404,38 @@
 }
 
 /* --- Staff app shell (layouts/app.html) ------------------------------------------------------------------------------
-   The login gradient as a frame; the sidebar sits on it (white text), the content is a light rounded panel.
-   Contrast of the sidebar text over the gradient: docs/ASSUMPTIONS.md item 258. The angle keeps the whole sidebar
-   on the dark part: the light end is at the bottom right, behind the content panel.
-   Palette (ASSUMPTIONS 412, replaces the blue gradient of 411): Teal Waters #204654 -> a slightly lighter teal #2F6170,
-   dark and quiet, no bright colour at either end. White text: 10.2:1 on the dark part, 6.9:1 even at the light end. */
+   The sign-in gradient as a frame; the sidebar sits on it (white text), the content is a light rounded panel.
+   The angle keeps the whole sidebar on the dark part: the light end is at the bottom right, behind the content panel.
+   Colours (ASSUMPTIONS 413): --color-frame-dark -> --color-frame-light, the calmer version of the original #22378F ->
+   #60CDEE (same hues, less saturated and darker: the light end no longer glows). */
 .app-bg {
-  background: linear-gradient(135deg, #204654 0%, #204654 30%, #2F6170 100%);
+  background: linear-gradient(135deg, var(--color-frame-dark) 0%, var(--color-frame-dark) 30%, var(--color-frame-light) 100%);
 }
 @media (width >= 64rem) {
   .app-panel {
-    box-shadow: 0 20px 60px -20px rgb(13 36 44 / 0.45);
+    box-shadow: 0 20px 60px -20px color-mix(in srgb, var(--color-frame-dark) 45%, transparent);
   }
 }
 /* Buttons are pill-shaped everywhere in the app shell (the sign-in pages keep their own design). */
 .app-shell .btn {
   border-radius: 9999px;
 }
+/* A button on a dark gradient block (dashboard banner and spotlight): outlined in white, never solid, so the page's one
+   solid primary stays the only loud button (ASSUMPTIONS 413). White text 6:1 or more on every part of the blocks. */
+.btn-on-dark {
+  border-color: rgb(255 255 255 / 0.6);
+  background: rgb(255 255 255 / 0.1);
+  color: #FFFFFF;
+}
+.btn-on-dark:hover {
+  border-color: #FFFFFF;
+  background: rgb(255 255 255 / 0.2);
+}
 /* The member's card at the bottom of the sidebar: frosted glass with a dark tint, so the white text keeps its contrast. */
 .sidebar-glass {
   background: rgb(255 255 255 / 0.12);
   border: 1px solid rgb(255 255 255 / 0.25);
-  box-shadow: inset 0 0 0 999px rgb(13 36 44 / 0.18);
+  box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--color-frame-dark) 18%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
@@ -443,10 +454,11 @@
 .sidebar-glass[aria-current="page"] {
   background: rgb(255 255 255 / 0.22);
 }
-/* Dashboard welcome card (ASSUMPTIONS 411): a white card like the others; the brand gradient only as a 3 px line along
-   its top edge (the card's rounded corners clip it). Only a page's primary button is solid primary. */
+/* Dashboard welcome banner (the original filled block, ASSUMPTIONS 258, 413): the primary held to 55%, then the frame's
+   light end; the text sits on the left (primary) part: white 8:1 or more. */
 .welcome-banner {
-  background: linear-gradient(90deg, #204654 0%, #A9E0F1 100%) top / 100% 3px no-repeat, #FFFFFF;
+  background: linear-gradient(110deg, var(--color-primary) 0%, var(--color-primary) 55%, var(--color-frame-light) 100%);
+  box-shadow: 0 16px 40px -18px color-mix(in srgb, var(--color-frame-dark) 55%, transparent);
 }
 /* The illustration in the banner is a still picture: no entrance, float or flow. */
 .banner-illustration .anim, .banner-illustration .li-enter, .banner-illustration .li-float,
@@ -454,20 +466,33 @@
   animation: none !important;
 }
 .banner-illustration { pointer-events: none; }  /* decorative: no hover lift either */
-/* "Next activity" spotlight card: a white card (the accent is its green "happening now" dot or tinted calendar icon);
-   the upcoming date tiles: the primary on its soft tint (ASSUMPTIONS 411). */
+/* "Next activity" / "Happening now" spotlight card and the upcoming date tiles: the frame's dark navy to the primary,
+   white text (8:1 or more). */
 .spotlight {
-  background: #FFFFFF;
+  background: linear-gradient(150deg, var(--color-frame-dark) 0%, var(--color-primary) 100%);
+  box-shadow: 0 16px 40px -18px color-mix(in srgb, var(--color-frame-dark) 60%, transparent);
 }
-/* The "happening now" dot: Spring Meadow (one of its few small accents, ASSUMPTIONS 412) with a dark green ring, because
-   the lime alone is only 1.1:1 on white. */
+/* The "happening now" dot: a soft green with a white ring (on the dark spotlight and in lists). */
 .live-dot {
-  background: var(--color-spring-meadow);
-  box-shadow: 0 0 0 2px #3D7A1E;
+  background: #6FCF97;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9);
 }
 .date-tile-gradient {
-  background: var(--color-primary-soft);
+  background: linear-gradient(160deg, var(--color-frame-dark) 0%, var(--color-primary) 100%);
 }
+/* Needs attention and pending approvals stand out (ASSUMPTIONS 413): a 4 px bar along the left edge, drawn as an inset
+   shadow so it follows the rounded corners. accent-danger (overdue), accent-warning (due soon / waiting for you),
+   accent-info (only approvals wait). The card keeps its own shadow; no hover lift. */
+.has-accent, .has-accent:hover {
+  box-shadow: inset 4px 0 0 var(--accent, var(--color-warning)), var(--shadow-card);
+  transform: none;
+}
+.notice.has-accent, .notice.has-accent:hover {
+  box-shadow: inset 4px 0 0 var(--accent, var(--color-warning));
+}
+.accent-danger { --accent: var(--color-danger); }
+.accent-warning { --accent: #B87612; }  /* 3.7:1 on white, 3.5:1 on its tint */
+.accent-info { --accent: var(--color-info); }
 /* #dashboard-body is display: contents (its parts sit in the page grid), so the HTMX loading dim goes on its children. */
 .htmx-request.htmx-dim-items > * {
   opacity: 0.5;
@@ -521,16 +546,16 @@
 
 /* fill-mode backwards: after the entrance the element is back in its natural state, so hover effects can move it */
 .rise { animation: rise-in 500ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards; }
-/* The sign-in pages: one full-screen gradient, the same as the app frame (ASSUMPTIONS 257, 412): Teal Waters #204654
-   (top left, behind the logo, headline and sentence: white text, 10.2:1) to #2F6170 (bottom right; white 6.9:1). Below
+/* The sign-in pages: one full-screen gradient, the same as the app frame (ASSUMPTIONS 257, 413): the frame's dark navy
+   (top left, behind the logo, headline and sentence: white text 11:1 or more) to its light end (bottom right). Below
    1024 px the page is tall and narrow, so the gradient runs nearly top to bottom. The glass card is white 88% on it, so
-   its muted text keeps 5.6:1 or more wherever it sits. */
+   its muted text keeps 5.5:1 or more wherever it sits. */
 .auth-bg {
-  background: linear-gradient(170deg, #204654 0%, #204654 34%, #2F6170 100%);
+  background: linear-gradient(170deg, var(--color-frame-dark) 0%, var(--color-frame-dark) 34%, var(--color-frame-light) 100%);
 }
 @media (width >= 64rem) {
   .auth-bg {
-    background: linear-gradient(135deg, #204654 0%, #204654 22%, #2F6170 100%);
+    background: linear-gradient(135deg, var(--color-frame-dark) 0%, var(--color-frame-dark) 22%, var(--color-frame-light) 100%);
   }
 }
 /* The footer line: dark text on a small glass pill, so it passes wherever the gradient is mid-blue. */
@@ -545,7 +570,7 @@
   background: rgb(255 255 255 / 0.92);
   border: 1px solid rgb(255 255 255 / 0.5);
   border-radius: 24px;
-  box-shadow: 0 20px 50px -20px rgb(13 36 44 / 0.45);
+  box-shadow: 0 20px 50px -20px color-mix(in srgb, var(--color-frame-dark) 45%, transparent);
   transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 300ms ease, border-color 300ms ease;
 }
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -557,16 +582,16 @@
 }
 .auth-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 28px 60px -20px rgb(13 36 44 / 0.55);
+  box-shadow: 0 28px 60px -20px color-mix(in srgb, var(--color-frame-dark) 55%, transparent);
   border-color: rgb(255 255 255 / 0.8);
 }
-/* Inputs on the glass: white 85% with the input border (#738890: 3.0:1 or more on the glass, ASSUMPTIONS 412); focus
-   ring in Teal Waters. Unlayered, so the focus and error states are repeated here. */
+/* Inputs on the glass: white 85% with the input border (3:1 or more on the glass, ASSUMPTIONS 413); focus ring in the
+   primary. Unlayered, so the focus and error states are repeated here. */
 /* background-color, not the background shorthand: the shorthand would remove the chevron of .field-select. */
 .auth-card .field-input, .public-card .field-input {
   background-color: rgb(255 255 255 / 0.85);
   border-color: var(--color-line-strong);
-  box-shadow: 0 1px 2px rgb(13 36 44 / 0.08);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-frame-dark) 8%, transparent);
 }
 /* The glass is a little darker than white: links (the link colour) and placeholders (muted) keep 4.5:1 or more. */
 .auth-card .link, .public-card .link {
@@ -577,7 +602,7 @@
 }
 .auth-card .field-input:focus, .public-card .field-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgb(32 70 84 / 0.35);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 35%, transparent);
 }
 .auth-card .field-input[aria-invalid="true"], .public-card .field-input[aria-invalid="true"] {
   border-color: var(--color-danger);
@@ -612,7 +637,7 @@
 .login-illustration .li-enter { animation: li-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards; }
 /* Hover: a card of the illustration lifts and its shadow deepens */
 .login-illustration .li-card { transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1), filter 250ms ease; }
-.login-illustration .li-card:hover { transform: translateY(-6px); filter: drop-shadow(0 12px 14px rgb(13 36 44 / 0.35)); }
+.login-illustration .li-card:hover { transform: translateY(-6px); filter: drop-shadow(0 12px 14px color-mix(in srgb, var(--color-frame-dark) 35%, transparent)); }
 .login-illustration .li-float { animation: li-float var(--float, 6s) ease-in-out var(--float-d, 1.5s) infinite; }
 .login-illustration .li-draw { stroke-dasharray: 1; animation: li-draw 500ms ease-out var(--d, 0ms) both; }
 .login-illustration .li-ring { animation: li-ring 700ms cubic-bezier(0.33, 1, 0.68, 1) var(--d, 0ms) both; }

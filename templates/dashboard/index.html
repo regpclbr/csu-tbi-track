@@ -1,9 +1,9 @@
 {% extends "layouts/app.html" %}
 {% load ui %}
 {% comment %}
-The staff dashboard (reports.views.dashboard_page). From 1280 px (xl): the welcome card (about 2/3) beside the next
-activity; Overview + filters and the KPI cards across the full width; Needs attention (about 2/3) beside Recent changes,
-both stretched to the same height; then upcoming activities and the three charts in a 2 x 2 grid (ASSUMPTIONS 411: no
+The staff dashboard (reports.views.dashboard_page). From 1280 px (xl): the welcome banner (about 2/3) beside the next
+activity (both the original filled gradient blocks, calmer colours: ASSUMPTIONS 413); Overview + filters; Needs attention
+(about 2/3) beside Recent changes, both stretched to the same height; the KPI cards across the full width; then upcoming activities and the three charts in a 2 x 2 grid (ASSUMPTIONS 411: no
 column leaves a big gap). Below 1280 px everything stacks.
 The filter form sends an HTMX GET on every change; the response (dashboard/_body.html) replaces #dashboard-body and
 the URL keeps the filters (hx-push-url), so a reload or a shared link shows the same view. Without JavaScript the
@@ -16,18 +16,19 @@ summary line is refreshed with them (hx-swap-oob in _body.html).
 {% block content %}
 <div class="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
   {# --- Welcome banner ------------------------------------------------------------------------- #}
-  {# A white card like the others; the brand gradient only as its thin top line (ASSUMPTIONS 411). #}
-  <section class="welcome-banner card hover-lift relative flex flex-col justify-center overflow-hidden p-6 xl:col-start-1 xl:row-start-1" aria-labelledby="welcome-title">
+  {# The original filled block on the calmer gradient (ASSUMPTIONS 413); its button is outlined on the dark, so the page's one solid primary stays "New activity" in the page header. #}
+  <section class="welcome-banner on-dark relative isolate flex flex-col justify-center overflow-hidden rounded-[24px] p-6 text-white xl:col-start-1 xl:row-start-1" aria-labelledby="welcome-title">
+    <div class="pointer-events-none absolute -top-16 right-40 -z-10 size-48 rounded-full bg-white/[0.06]" aria-hidden="true"></div>
     <div class="flex items-center gap-6">
       <div class="min-w-0 flex-1">
-        <h2 id="welcome-title" class="text-2xl font-bold tracking-tight text-ink">{{ page.greeting }}, {{ page.first_name }}</h2>
+        <h2 id="welcome-title" class="text-2xl font-bold tracking-tight">{{ page.greeting }}, {{ page.first_name }}</h2>
         {% include "dashboard/_banner_summary.html" %}
         <div class="mt-4 flex flex-wrap gap-2">
-          <a href="#needs-attention" class="btn btn-secondary btn-sm btn-arrow">Review items {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+          <a href="#needs-attention" class="btn btn-on-dark btn-sm btn-arrow">Review items {% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
         </div>
       </div>
       {# A smaller, still copy of the sign-in illustration (decorative here) #}
-      <div class="banner-illustration hidden w-44 shrink-0 md:block 2xl:w-52" aria-hidden="true">
+      <div class="banner-illustration hidden w-48 shrink-0 md:block 2xl:w-56" aria-hidden="true">
         {% include "partials/login_illustration.html" %}
       </div>
     </div>

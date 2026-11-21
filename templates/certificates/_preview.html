@@ -9,7 +9,7 @@ standalone=True: its own page (Close becomes a link back to the Certificates tab
 <div class="flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
     <p class="text-xs font-semibold tracking-wide text-primary uppercase">Certificate of {{ kind }}</p>
-    <h2 id="certificate-preview-title" class="mt-1 text-xl leading-tight font-bold break-words text-ink">{{ certificate.certificate_number }} · {{ recipient }}</h2>
+    <h2 id="certificate-preview-title" class="mt-1 text-lg leading-tight font-bold break-words text-ink">{{ certificate.certificate_number }} · {{ recipient }}</h2>
     {% if registered_as %}<p class="mt-0.5 text-sm text-slate-700">Registered as {{ registered_as }}</p>{% endif %}
     <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
       {% include "components/badge.html" with text=status.label tone=status.tone %}
@@ -32,7 +32,7 @@ standalone=True: its own page (Close becomes a link back to the Certificates tab
   </div>
 </div>
 {% if item.issued_note %}
-  <p class="mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm {% if item.outdated %}bg-amber-50 text-amber-900{% else %}bg-success-soft text-success{% endif %}" role="note">
+  <p class="mt-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm {% if item.outdated %}bg-warning-soft text-amber-900{% else %}bg-success-soft text-success{% endif %}" role="note">
     {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span>{{ item.issued_note }}</span></p>
 {% elif not name_final %}
   <p class="mt-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note">

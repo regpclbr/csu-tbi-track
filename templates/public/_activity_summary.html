@@ -27,5 +27,5 @@ heading="h2": the title is an h2 (inside the portal layout, whose page title is 
       <ul class="mt-1.5 flex flex-wrap gap-1.5">{% for category in summary.participant_categories %}<li class="tag">{{ category.name }}</li>{% endfor %}</ul>
     </div>
   {% endif %}
-  {% if summary.description %}<div class="mt-4 space-y-2 text-[15px] leading-relaxed break-words text-slate-800">{{ summary.description|linebreaks }}</div>{% endif %}
+  {% if summary.description %}<div class="mt-4 space-y-2 text-base leading-relaxed break-words text-slate-800">{{ summary.description|linebreaks }}</div>{% endif %}
 {% endif %}

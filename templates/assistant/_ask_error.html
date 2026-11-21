@@ -4,7 +4,7 @@ unknown activity), or a friendly card with the service's message and a hint (the
 too slow: AssistantUnavailable). Nothing was saved in either case.
 {% endcomment %}
 {% if error %}
-  <div class="mb-3 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm {% if error.kind == 'refused' %}border-red-200 bg-red-50 text-red-800{% else %}border-amber-200 bg-amber-50 text-amber-900{% endif %}" role="alert">
+  <div class="mb-3 flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm {% if error.kind == 'refused' %}border-danger-line bg-danger-soft text-red-800{% else %}border-warning-line bg-warning-soft text-amber-900{% endif %}" role="alert">
     {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 shrink-0" %}
     <div>
       <p class="font-semibold">{% if error.kind == "refused" %}The question was refused{% elif error.kind == "timeout" %}The assistant took too long{% elif error.kind == "rate_limit" %}The AI service is busy{% elif error.kind == "not_configured" %}The AI assistant is not set up{% else %}The AI assistant is not available{% endif %}</p>

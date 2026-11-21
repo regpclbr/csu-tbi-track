@@ -7,7 +7,7 @@ standalone=True: its own page without JavaScript (Close becomes a link back to t
 <div class="flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
     <p class="text-xs font-semibold tracking-wide text-primary uppercase">{{ document.document_type.name }}</p>
-    <h2 id="document-preview-title" class="mt-1 text-xl leading-tight font-bold break-words text-ink">{{ document.title }}</h2>
+    <h2 id="document-preview-title" class="mt-1 text-lg leading-tight font-bold break-words text-ink">{{ document.title }}</h2>
     <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
       {% include "components/badge.html" with text=state.label tone=state.tone %}
       <span>{{ document.file_extension|upper }} · {{ document.file_size_kb }} KB</span>

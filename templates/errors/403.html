@@ -1,7 +1,7 @@
 {% extends "layouts/auth.html" %}
 {% block title %}No permission · CSU-TBI Track{% endblock %}
 {% block card %}
-  <span class="mb-4 flex size-11 items-center justify-center rounded-full bg-red-50 text-danger">{% include "components/icon.html" with name="lock" %}</span>
+  <span class="mb-4 flex size-11 items-center justify-center rounded-full bg-danger-soft text-danger">{% include "components/icon.html" with name="lock" %}</span>
   <p class="text-sm font-semibold text-danger">Error 403</p>
   <h1 class="mt-1 text-2xl font-bold tracking-tight">You can't open this page</h1>
   <p class="mt-2 text-sm text-muted">{{ message }}</p>

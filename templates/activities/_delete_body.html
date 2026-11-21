@@ -4,7 +4,7 @@ why it can't be deleted (an Issued certificate, an Approved document, a cited do
 goes with it) and a form that needs the activity's title typed exactly. A normal POST (works without JavaScript).
 {% endcomment %}
 {% if refused %}
-  <div class="flex gap-3 rounded-xl border border-amber-200 bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
+  <div class="flex gap-3 rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
     {% include "components/icon.html" with name="shield" class="mt-0.5 size-4.5 shrink-0" %}<p>{{ refused }}</p>
   </div>
   <div class="mt-5 flex justify-end">
@@ -32,7 +32,7 @@ goes with it) and a form that needs the activity's title typed exactly. A normal
     </div>
     <div class="flex flex-wrap justify-end gap-2">
       <a href="{% url 'activities:detail' activity.pk %}" class="btn btn-secondary" onclick="const d = this.closest('dialog'); if (d) { event.preventDefault(); d.close(); }">Cancel</a>
-      <button type="submit" class="btn btn-danger">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete activity</button>
+      <button type="submit" class="btn btn-danger btn-danger-solid">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete activity</button>
     </div>
   </form>
 {% endif %}

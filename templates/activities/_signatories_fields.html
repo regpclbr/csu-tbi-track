@@ -41,8 +41,8 @@ certificates.services (assign_default_signatories / set_activity_signatories); e
          @signatory-added.window="added($event.detail)">
   {% include "components/section_header.html" with id="section-signatories" title="Who signs the certificates" subtitle="The two people printed on this activity's certificates (left and right). New activities start with the default signatories; change them here or later on the Certificates tab." %}
   {% if signatories.no_defaults %}
-    <p class="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-amber-700" %}<span>There are no default signatories yet. Choose two people here, or later on the Certificates tab: certificates are created only once both are chosen.</span></p>
+    <p class="mb-4 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
+      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>There are no default signatories yet. Choose two people here, or later on the Certificates tab: certificates are created only once both are chosen.</span></p>
   {% endif %}
   <div class="grid gap-4 md:grid-cols-2">
     {% for slot in signatories.slots %}

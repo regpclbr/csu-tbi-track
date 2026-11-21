@@ -30,7 +30,7 @@ def today() -> date:
 def kpis(html: str) -> dict[str, str]:
     """KPI card label -> value as shown on the page (components/kpi_card.html)."""
     found = re.findall(
-        r'<p class="[^"]*text-\[13px\][^"]*text-muted">([^<]+)</p>\s*</div>\s*<div[^>]*>\s*<p class="text-2xl[^"]*">([^<]+)</p>', html
+        r'<p class="[^"]*font-medium[^"]*text-muted">([^<]+)</p>\s*</div>\s*<div[^>]*>\s*<p class="text-2xl[^"]*">([^<]+)</p>', html
     )
     return {label.strip(): value.strip() for label, value in found}
 
@@ -239,6 +239,13 @@ def test_needs_attention_lists_overdue_due_soon_review_and_signoff(make_member, 
     html = login(head).get(URL).content.decode()
     # Row actions are secondary buttons; the red / amber icon chip shows how urgent a row is (ASSUMPTIONS 411)
     assert "chip-red" in html and "chip-amber" in html and "btn-danger" not in html and "btn-warning" not in html
+    # ASSUMPTIONS 413: the card stands out (red accent: something is overdue) and the first approval / review the member
+    # can do ("Review") is the card's one solid button; the other rows stay secondary.
+    assert page.attention_tone == "danger" and 'class="card has-accent accent-danger' in html
+    first = page.attention_primary_index
+    assert page.attention[first].action_label == "Review"
+    section = html[html.index('id="needs-attention"'):html.index("</section>", html.index('id="needs-attention"'))]
+    assert section.count("btn-primary") == 1 and f'btn-primary btn-sm shrink-0">{page.attention[first].action_label}<' in section
 
 
 def test_needs_attention_links_go_to_the_right_place(make_member, login, data, add_document) -> None:

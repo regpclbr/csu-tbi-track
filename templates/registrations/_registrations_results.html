@@ -93,7 +93,7 @@ The table scrolls sideways inside the card on narrow screens.
                 <td class="px-3 py-2.5 text-right whitespace-nowrap">
                   {% if can_create and not attendance_reason %}
                     {% if not registration.attendance_confirmed %}
-                      <button type="submit" name="row_action" value="mark:{{ registration.pk }}" class="btn btn-primary btn-sm">Mark attended<span class="sr-only"> {{ registration.name }}</span></button>
+                      <button type="submit" name="row_action" value="mark:{{ registration.pk }}" class="btn btn-secondary btn-sm">Mark attended<span class="sr-only"> {{ registration.name }}</span></button>
                     {% elif row.undo_reason %}
                       <span class="text-xs text-muted">{{ row.undo_reason }}</span>
                     {% else %}

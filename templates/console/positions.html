@@ -36,7 +36,7 @@ deactivated position stays on the members who have it and is no longer offered).
               {% csrf_token %}
               {% if position.is_active %}
                 <input type="hidden" name="active" value="false">
-                <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ position.name }}</span></button>
+                <button type="submit" class="btn btn-danger btn-sm">Deactivate<span class="sr-only"> {{ position.name }}</span></button>
               {% else %}
                 <input type="hidden" name="active" value="true">
                 <button type="submit" class="btn btn-secondary btn-sm">Reactivate<span class="sr-only"> {{ position.name }}</span></button>

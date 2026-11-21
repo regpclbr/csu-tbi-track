@@ -14,7 +14,7 @@ Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back 
       {% if required %}
         <ul class="space-y-3">
           {% for item in required %}
-            <li class="rounded-2xl border {% if item.is_overdue %}border-red-200 bg-red-50/40{% else %}border-line{% endif %} px-4 py-3">
+            <li class="rounded-2xl border {% if item.is_overdue %}border-danger-line bg-danger-soft/60{% else %}border-line{% endif %} px-4 py-3">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div class="min-w-0">
                   <h3 class="font-semibold text-ink">{{ item.document_type.name }}</h3>
@@ -68,7 +68,7 @@ Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back 
   <section id="upload" class="card h-fit scroll-mt-24 p-6" aria-labelledby="upload-title">
     {% include "components/section_header.html" with id="upload-title" title="Upload a document" subtitle="It starts as “Waiting for review”. The Director (a member with approval rights) approves it." %}
     {% if upload.errors %}
-      <div class="mb-4 flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+      <div class="mb-4 flex gap-3 rounded-xl border border-danger-line bg-danger-soft px-4 py-3 text-sm text-red-800" role="alert">
         {% include "components/icon.html" with name="circle-alert" class="mt-0.5 size-4.5" %}<p>The document was not uploaded. Please check the {% if upload.errors|length == 1 %}field{% else %}fields{% endif %} below.</p>
       </div>
     {% endif %}

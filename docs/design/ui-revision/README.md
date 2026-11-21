@@ -1,10 +1,10 @@
 # UI revision after the UAT (Phase 1: audit and proposal)
 
-> **Status (2026-11-20):** sections 1–3 are the Phase 1 audit and the first proposal. The flat look of that proposal
-> (`after-*.png`, `phase2-*.png`) was rejected by the owner as too big a change; the **current layout is sections 6 and 7**
-> (`final-*.png`): the original identity (gradient frame, floating panel, glass, pills), the spacing scale, the button
-> hierarchy and the page header. **The current colours are section 8** (`palette-*.png`, ASSUMPTIONS 412): the
-> four-colour palette replaces the blue of sections 2.1, 6 and 7.
+> **Status (2026-11-21): the current design is section 9** (ASSUMPTIONS 413, `b-*.png`): the original identity again
+> (navy -> blue gradient frame, rounded panel, glass, pills, navy logo, the Dashboard's filled banner and spotlight) in
+> the calmer colours of option B (`../options/`), a neutral grey panel, the type scale, red-text destructive buttons, one
+> primary per page or card, and Needs attention / pending approvals with an accent bar. Sections 1–8 are history: the
+> audit (1–3), the rejected flat look (5), the blue revisions (6–7) and the rejected teal / cream palette (8).
 
 NAVIGATU tester, UAT 2026-11-17: *"The colors are too bright. The spacing is inconsistent. Finding the important buttons
 is hard, and there is no hierarchy on the level of importance on every page."*
@@ -437,3 +437,107 @@ lightness; now the closest pair is ΔE 14 for normal, deutan and protan vision. 
 
 Screenshots (1366 px, the real build): `palette-dashboard-top.png`, `palette-dashboard-scrolled.png`,
 `palette-activity-overview.png`, `palette-documents.png`, `palette-reports.png`, `palette-signin.png`.
+
+---
+
+## 9. Back to the original design, calmer (current, 2026-11-21, ASSUMPTIONS 413)
+
+Owner: "We don't like the new design" (section 8, teal / cream). Back to the original identity, calmer, with spacing and
+hierarchy fixed. Part 1 (before the defense): colours, type scale, button levels, one primary per page, Needs attention.
+Part 2 (next): the spacing sweep across every template.
+
+### 9.1 Colours (option B of `../options/README.md`)
+
+| Token | Value | Measured |
+|---|---|---|
+| Frame gradient | `#1E2F73` → `#3B8AA6` (135°, dark to 30%) | white 12.3:1 on the dark part; 3.9:1 at the light end (behind the panel, no text) |
+| Primary (solid button, focus ring) | `#2A4494` (hover `#243A7E`, pressed `#1E316B`) | white on it 8.9 / 10.6 / 12.3:1; as text 8.2:1 on the panel |
+| Primary soft (current tab, chips) | `#EAECF4` | primary text on it 7.6:1 |
+| Link | `#2C5AA8` | 6.7:1 on white, 6.2:1 on the panel, 5.7:1 on primary soft |
+| Light text on the gradient | `#D3E8F0` (headline accent `#9AD4E4`) | 9.7:1 on the dark part, 7.0:1 on the primary (accent 7.6:1, large text) |
+| Panel / page | `#F4F6F9` / `#EEF1F5`, white cards | ink `#1E293B` 14.6:1 on white; muted `#475569` 7.0:1 on the panel |
+| Input border | `#7B8798` | 3.7:1 on white, 3.4:1 on the panel, 3.2:1 on the page |
+| Accent bars | red `#B42318`, amber `#B87612`, blue `#2B59A8` | 6.6 / 3.7 / 6.8:1 on white; amber 3.5:1 on its tint |
+| Status badges | see `../options/README.md` | 5.4:1 or more, five states apart by hue |
+| Charts | status `#CBD5E1 #5B84C4 #E0A940 #2F7A50`; categories `#2A4494 #5AAFC8 #2F7A50 #EDC06A #8C6BB1 #6B7686 #D98B7A #C7DCF2` | smallest dE 15 under simulated protanopia, deuteranopia, tritanopia |
+| Report PDF / Excel header, logo tile | `#2A4494` / `#1E2F73` | white bold on the header 8.9:1 |
+
+### 9.2 Type scale
+
+| Level | Size / weight | Class |
+|---|---|---|
+| Page title (one per page) | 24 px bold | `.page-title` (h1) |
+| Section / card heading | 18 px semibold | `.card-title` = `.section-title` |
+| Body | 14 px regular | `text-sm` |
+| Caption, labels | 12 px medium | `.caption` / `text-xs` |
+
+Moved onto the scale: `text-[15px]` (27 uses; staff → 14 px, public / portal → 16 px), `text-[13px]` (KPI label, sidebar
+public tagline, `btn-sm`), `text-[11px]` (date tile month), 20 px dialog / preview headings → 18 px. Display text that
+stays larger: KPI and donut numbers, the sign-in and public hero headlines.
+
+### 9.3 Button levels
+
+| Level | Class | Use |
+|---|---|---|
+| Primary | `btn-primary` (solid) | ONE per page or card: the main action. Page header top right, bottom of a form, or a tab card's header |
+| Secondary | `btn-secondary` (outline) | Other real actions; a list row's main action |
+| Tertiary | `btn-ghost` (text) | Minor actions: Open, View, Download, Preview, Previous / Next |
+| Destructive | `btn-danger` (**red text**, no fill) | Delete, Return, Remove, Deactivate; solid red only to confirm (inside `.modal` or `btn-danger-solid`) |
+| On a gradient block | `btn-on-dark` (white outline) | Dashboard banner and "Next activity" card |
+
+Changed in Part 1: activity page "Edit" → secondary (each tab's main action is the primary); Activities list follow-up
+"Mark as Conducted" → secondary; Registrations row "Mark attended" → secondary (bulk "Mark selected as attended" is the
+tab's primary); certificate preview "Reissue with current signatures" → secondary (the card's primary is the approval);
+Members "Invite" hides while its form is open; Return (document rows) and Deactivate (Signatories, Positions, Certificate
+design, Members) → red text; the Return / Delete confirmations → solid red.
+
+### 9.4 Every page and its primary action (checked in Chromium at 1366 × 768: visible solid buttons counted)
+
+| Group | Page | Primary action | Where | Check |
+|---|---|---|---|---|
+| Staff | Dashboard | New activity | page header, top right | ✓ (+ the Needs attention card's own one: the first "Review" / "Approve") |
+| Staff | Activities (list / calendar) | New activity | page header, top right | ✓ (follow-up rows were 6 more solid buttons: fixed) |
+| Staff | New activity | Create activity | bottom of the form | ✓ |
+| Staff | Edit activity | Save changes | bottom of the form | ✓ |
+| Staff | Activity: Overview, History, Forms | — (Edit and Change status are secondary in the header) | — | ✓ no main action on these tabs; Forms: "Create from defaults" / "Open registration" when they apply, one per form card |
+| Staff | Activity: Registrations | Mark selected as attended | the list card's header | ✓ (row "Mark attended" was solid: fixed) |
+| Staff | Activity: Evaluation | Resend to all who haven't answered | the links card's header | ✓ |
+| Staff | Activity: Documents | Upload | bottom of the upload form | ✓ (Edit was a second solid button: fixed) |
+| Staff | Activity: Certificates | Approve certificates for this activity | the approval card, right | ✓ (Reissue in the preview was solid: fixed) |
+| Staff | Documents (by activity / review queue) | — (row actions: Approve secondary, Return red text) | — | ✓ |
+| Staff | Document page | — (Approve secondary, Return red text) | — | ✓ |
+| Staff | Certificates | — (view only; Signatories secondary in the header) | — | ✓ |
+| Staff | Signatories | Save defaults (defaults card), Add (add-a-person card) | bottom of each card's form | ✓ one per card; Deactivate red text |
+| Staff | Certificate text | Save the default text | bottom of each certificate type's card | ✓ one per card |
+| Staff | Reports | Generate report (the prompt's send button / "Generate report" in More settings) | the request card | ✓ |
+| Staff | Startups, startup page, Notifications | — | — | ✓ |
+| Staff | AI Assistant | Send | the message box | ✓ (Rename "Save" is in its own dialog) |
+| Staff | Search results | Search | the search form | ✓ |
+| Staff | My profile | Save profile | bottom of the profile form | ✓ ("Change password" in its own card is secondary) |
+| Admin Console | Members | Invite (then Send invitation) | the invite card | ✓ (both were visible together: fixed); Deactivate red text |
+| Admin Console | Roles | — (Turn on / Turn off secondary) | — | ✓ |
+| Admin Console | Positions | Add position | the add form | ✓; Deactivate red text |
+| Admin Console | Certificate design | Upload design | the upload card | ✓; Deactivate red text |
+| Admin Console | Deleted activities, System status | — | — | ✓ |
+| Admin Console | Delete activity | Delete activity (solid red, confirm page) | bottom of the form | ✓ the only destructive solid button, a confirmation |
+| Portal | Overview, Open activities, My registrations, My certificates, Notifications, Profile | — (Register / Download are secondary row actions) | — | ✓ |
+| Public | Sign in (staff, startup portal) | Sign in | bottom of the card | ✓ |
+| Public | Forgot password | Email me a link | bottom of the card | ✓ |
+| Public + Portal | Registration, evaluation, set password forms | the form's submit (Register, Review my answers, Submit, Set password) | bottom of the form | ✓ |
+| Public | Open for registration, Privacy notice | — | — | ✓ |
+| Public | Evaluation request (closed) | See open activities | the notice card | ✓ |
+
+### 9.5 Needs attention and pending approvals
+
+A 4 px accent bar along the left edge (an inset shadow, so it follows the rounded corners): red when something is
+overdue, amber when something is due soon or waits for the member, blue when only approvals wait.
+
+- **Dashboard:** Needs attention comes right after the filters, beside Recent changes, before the KPI cards (its items
+  follow the activity-type filter). It has a count badge and rows tinted by urgency, and the first "Review" / "Approve"
+  is the card's one solid button. "Certificate approval" and "Documents to review" KPI cards get the amber bar while
+  something waits.
+- **Activity page:** the Needs attention notice gets the bar and its count as a badge.
+
+Screenshots (1366 × 768, demo data, Demo Director): `b-dashboard.png`, `b-dashboard-attention.png`,
+`b-activity-overview.png`, `b-activity-certificates.png`, `b-activity-documents.png`, `b-activities.png`,
+`b-documents.png`, `b-signin.png`, `b-public-phone.png` (390 × 844); also `../dashboard.png` and `../login.png`.

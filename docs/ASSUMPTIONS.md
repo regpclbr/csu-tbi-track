@@ -1343,7 +1343,8 @@ Still 34 tables.
 
 ## Corrections after UAT: UI revision (2026-11-20)
 
-411. **Calmer colours, one spacing scale and a button hierarchy, same design identity** (NAVIGATU tester at the UAT,
+411. *(Colours replaced by item 413 on 2026-11-21; the spacing scale, page header, button levels and fixes stay.)*
+     **Calmer colours, one spacing scale and a button hierarchy, same design identity** (NAVIGATU tester at the UAT,
      2026-11-17: "the colors are too bright, the spacing is inconsistent, finding the important buttons is hard, and there
      is no hierarchy on the level of importance on every page"). Visual and layout only: no business rule, URL,
      permission or database change; every button keeps its link / form / behaviour. Audit and screenshots:
@@ -1418,7 +1419,8 @@ Still 34 tables.
 
 ## Corrections after UAT: colour palette (2026-11-20)
 
-412. **The four-colour palette replaces the blue gradient of item 411** (owner, correction after the UAT; defense
+412. *(Replaced by item 413 on 2026-11-21: the owner rejected the teal / cream design; nothing of this palette is left.)*
+     **The four-colour palette replaces the blue gradient of item 411** (owner, correction after the UAT; defense
      Dec 9, freeze Dec 3). Visual only: no business rule, URL, permission or database change; the layout, pill shapes,
      frosted cards, spacing scale and button hierarchy of item 411 stay. Details, the token table (old → new), every
      contrast ratio and the screenshots: `docs/design/ui-revision/README.md` section 8 and `palette-*.png`.
@@ -1460,3 +1462,66 @@ Still 34 tables.
      - Tests: the colour assertions (`accounts/tests/test_staff_layout.py`, `documents/tests/test_overview.py`,
        `reports/tests/test_excel_layout.py`), new tests for the palette tokens, the contrast pairs (recomputed from the
        tokens), the link colour, Spring Meadow's small uses, Missing grey, the rounded scroll boxes and the logo tiles.
+
+## Corrections after UAT: back to the original design, calmer (2026-11-21)
+
+413. **The original design again, made calmer, with a clear button hierarchy** (owner, after the UAT; replaces the colours
+     of items 411 and 412). The UAT comment (Community Development Project Head, written on the questionnaire): "the colors
+     are too bright. The spacing is inconsistent. Finding the important buttons is hard, and there is no hierarchy on the
+     level of importance on every page." The teal / cream design of item 412 (uncommitted, kept on the `ui-revision`
+     branch backup commit) was rejected by the owner. Visual only: no business rule, URL, permission or database change.
+     - **Identity restored** (items 254, 257, 258): the navy -> blue gradient frame around a rounded light panel, frosted
+       glass sign-in / public cards, pill buttons, Inter, the navy logo tile, and on the Dashboard the two filled gradient
+       blocks (welcome banner, "Next activity" / "Happening now" card) and the dark date tiles.
+     - **Colours: option B** of three measured options (`docs/design/options/`, README + screenshots), chosen by the owner:
+       gradient `#1E2F73` -> `#3B8AA6` (the original `#22378F` -> `#60CDEE` hues, 228° -> 196°, saturation 59% / 48% instead
+       of 62% / 81%, the light end at 44% lightness instead of 65%: it no longer glows). Primary `#2A4494` (white on it
+       8.9:1), link `#2C5AA8`, light text on the gradient `#D3E8F0` (9.7:1). The only place the option values live is
+       between `OPTION START` / `OPTION END` in the `@theme` block of `frontend/tailwind/app.css`; every other colour
+       (sidebar, focus ring, shadows, the frame, banner, spotlight and date-tile gradients) refers to them.
+     - **Panel and neutrals**: the content panel is a soft neutral light grey `#F4F6F9` with white cards (not white, not
+       cream); Tailwind's own slate scale (the teal re-tint of 412 is gone); ink `#1E293B`, muted `#475569`, input borders
+       `#7B8798` (3.7:1 on white, 3.4:1 on the panel).
+     - **Status colours softened, still apart**: Scheduled / Waiting for review blue `#2B59A8` on `#EEF3FB` (6.1:1),
+       Ongoing / Returned amber `#8F5A0A` on `#FDF6E6` (5.4:1), Conducted / Approved green `#26704A` on `#EDF7F1` (5.5:1),
+       Overdue red `#B42318` on `#FDF1F0` (6.0:1), Draft / Missing grey `#475467` on `#F2F4F7` (7.0:1); each with a 1 px
+       border of its hue. Notices and boxes use the same tokens (the bright Tailwind amber-200 / red-200 borders are gone).
+     - **Charts**: status bar Draft `#CBD5E1`, Scheduled `#5B84C4`, Ongoing `#E0A940`, Conducted `#2F7A50`; category donut
+       `#2A4494 #5AAFC8 #2F7A50 #EDC06A #8C6BB1 #6B7686 #D98B7A #C7DCF2` (smallest difference dE 15 with simulated
+       protanopia, deuteranopia and tritanopia). Report PDFs (headings, bars, table header) and the Excel header use the
+       primary `#2A4494`.
+     - **Logo**: `logo-96`, `favicon-32`, `apple-touch-icon-180` re-exported from `docs/design/logo.png` on `#1E2F73`, the
+       artwork at the same size and place as the tiles before (fitted to them; mean difference under 2 levels).
+     - **Type scale** (staff pages): page title 24 px bold (`.page-title`, one h1 per page), section / card heading 18 px
+       semibold (`.card-title` = `.section-title`), body 14 px, caption 12 px (`.caption`). The odd sizes (11, 13, 15 px,
+       20 px dialog headings) moved onto the scale. Big numbers (KPI, donut) are data; the sign-in and public hero
+       headlines are display text. Public and portal pages use 16 px body text (phones).
+     - **Button levels**: ONE solid `btn-primary` per page or card for the main action (top right of the page header, at
+       the bottom of a form, or in the card's header for a tab's main action); `btn-secondary` (outline) for other actions;
+       `btn-ghost` text links for minor ones; `btn-danger` = **red text** (Delete, Return, Remove, Deactivate), never filled
+       and never the biggest button; solid red only to confirm (inside `.modal`, or `btn-danger-solid` on a confirm page).
+       `btn-on-dark` (white outline) on the dashboard's gradient blocks. Changed: the activity page's "Edit" is secondary
+       (each tab's main action is the primary: Upload, Mark selected as attended, Approve certificates for this activity,
+       Resend evaluation links); Activities list follow-up "Mark as Conducted" and Registrations row "Mark attended" are
+       secondary; the certificate preview's "Reissue with current signatures" is secondary (the card's primary is the
+       approval); Members: "Invite" hides while its form is open ("Send invitation" is then the one); Return on document
+       rows and Deactivate on Signatories / Positions / Certificate design / Members are red text. The page table with each
+       page's primary: `docs/design/ui-revision/README.md` section 9.
+     - **Needs attention and pending approvals stand out**: a 4 px accent bar along the left edge (inset shadow, follows the
+       rounded corners; red when something is overdue, amber `#B87612` (3.5:1 or more) when due soon, blue when only
+       approvals wait) on the Dashboard's Needs attention card, the activity page's Needs attention notice (+ a count badge)
+       and the "Certificate approval" / "Documents to review" KPI cards while something waits. On the Dashboard, Needs
+       attention moved up: right after the filters, beside Recent changes, before the KPI cards (its items follow the
+       activity-type filter, so it stays below the filter bar); rows are tinted by urgency (red / amber / blue) and the
+       first approval or review the member can do ("Review" / "Approve") is the card's one solid button
+       (`DashboardPage.attention_tone`, `attention_primary_index`, display only).
+     - **Kept**: `:focus-visible` rings (primary, white on the dark frame; never the browser's black outline), desktop-first
+       staff pages, phones for public and portal pages, Manila dates, ₱, every functional fix of items 411 and 412 (page
+       descriptions, Members row, Roles switches, Documents columns, no sideways scroll at 390 px, the rounded scroll-box
+       rule, the New activity description).
+     - **Screenshots**: demo data only (Demo Director, demo activities; activity #12 and #14's resource-person pick list and
+       the real accounts are never captured; a script checks the captured text for real names and certificate numbers).
+     - Tests: `accounts/tests/test_staff_layout.py` (option B tokens, contrast pairs, gradients, filled dashboard blocks,
+       accent bars, red-text danger buttons, type scale, one primary on the activity page / list, no teal left, logo tiles),
+       `reports/tests/test_dashboard_page.py` (accent + the card's one primary), the PDF / Excel / focus colour assertions.
+     - **Part 2 (next)**: the spacing scale sweep across every template (142 files use off-scale steps) and a template scan.

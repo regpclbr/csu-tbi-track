@@ -32,10 +32,10 @@ ATTENTION_SHOWN = 5  # "Needs attention" items shown before "Show N more"
 ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs attention" item
 
 # Donut and legend colours, in order. Categories are master data (never a fixed number): the colours repeat.
-# From the palette (ASSUMPTIONS 412): Teal Waters, a deeper Glacial Sky, green, ochre, then muted violet / grey / clay and
-# Glacial Sky. Every pair stays apart also with red-green colour blindness (simulated, smallest difference dE 14); the
-# legend and the text table carry the numbers.
-CATEGORY_COLORS = ["#204654", "#5BA7C2", "#4F8F2E", "#E2B65A", "#7B6FA6", "#8A9AA0", "#C47A6A", "#A9E0F1"]
+# Calm colours of the brand family (ASSUMPTIONS 413): the primary navy, a muted cyan, green, soft amber, then violet, grey,
+# clay and a light blue. Every pair stays apart also with simulated protanopia, deuteranopia and tritanopia (smallest
+# difference dE 15); the legend and the text table carry the numbers.
+CATEGORY_COLORS = ["#2A4494", "#5AAFC8", "#2F7A50", "#EDC06A", "#8C6BB1", "#6B7686", "#D98B7A", "#C7DCF2"]
 DONUT_STROKE = 7  # the ring's width in the donut's SVG units (circumference 100)
 DONUT_GAP = 1.5  # space between two segments, same units
 
@@ -155,6 +155,22 @@ class DashboardPage:
     def attention_count_text(self) -> str:
         count = len(self.attention)
         return f"{count} item" if count == 1 else f"{count} items"
+
+    @property
+    def attention_tone(self) -> str:
+        """The Needs attention card's accent (display only, ASSUMPTIONS 413): red when something is overdue, amber when
+        something is due soon, else blue (only approvals / reviews wait)."""
+        tones = {item.tone for item in self.attention}
+        return "danger" if "danger" in tones else "warning" if "warning" in tones else "info"
+
+    @property
+    def attention_primary_index(self) -> int | None:
+        """The one solid button of the Needs attention card (ASSUMPTIONS 413): the first approval or review the member can
+        do (action "Approve" / "Review"); every other row's button is secondary. None when there is none."""
+        for index, item in enumerate(self.attention):
+            if item.tone == "primary" and item.action_label in ("Approve", "Review"):
+                return index
+        return None
 
 
 def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None) -> DashboardPage:

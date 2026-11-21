@@ -26,7 +26,7 @@ row's URLs and title from data attributes; the rules are in assistant.services (
             <button type="button" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-ink hover:bg-slate-50"
                     @click="menu = false; $dispatch('chat-rename', { url: $root.dataset.renameUrl, title: $root.dataset.title, opener: $refs.menuButton })">
               {% include "components/icon.html" with name="pencil" class="size-4" %}Rename</button>
-            <button type="button" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-danger hover:bg-red-50"
+            <button type="button" role="menuitem" class="flex w-full items-center gap-2 px-3 py-2 text-left text-danger hover:bg-danger-soft"
                     @click="menu = false; $dispatch('chat-delete', { url: $root.dataset.deleteUrl, opener: $refs.menuButton })">
               {% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
           </div>

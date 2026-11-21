@@ -2,7 +2,7 @@
 calendar. The chip appears only for a preset (a card dialog's "Show all in the list"). An HTMX list response also
 refreshes the hidden preset out of band (oob), as a filter may drop it.{% endcomment %}
 {% if filters.errors %}
-  <div class="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+  <div class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
     {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}
     <div>{% for error in filters.errors %}<p>{{ error }}</p>{% endfor %}</div>
   </div>

@@ -4,10 +4,11 @@ left edge, links in the primary colour (ASSUMPTIONS 411), like the registration 
 with an old signature, ASSUMPTIONS 364) are listed but not counted (attention_count = attention.warning_count).
 {% endcomment %}
 {% if attention %}
-  <div class="notice notice-warning" role="region" aria-labelledby="attention-title">
+  {# Stands out (ASSUMPTIONS 413): an amber accent bar along the left edge and the count as a badge. #}
+  <div class="notice notice-warning has-accent accent-warning pl-5" role="region" aria-labelledby="attention-title">
     <p id="attention-title" class="flex items-center gap-2 font-semibold">
-      {% include "components/icon.html" with name="triangle-alert" class="size-4.5 text-amber-700" %}{% if attention_count %}Needs attention ({{ attention_count }}){% else %}For your information{% endif %}</p>
-    <ul class="mt-2 list-disc space-y-1 pl-11 marker:text-muted">
+      {% include "components/icon.html" with name="triangle-alert" class="size-4 text-warning" %}{% if attention_count %}Needs attention <span class="badge badge-warning rounded-full">{{ attention_count }}</span>{% else %}For your information{% endif %}</p>
+    <ul class="mt-2 list-disc space-y-1 pl-10 marker:text-muted">
       {% for item in attention %}
         <li>
           {% if item.tab == "edit" %}

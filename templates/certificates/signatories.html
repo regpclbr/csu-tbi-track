@@ -53,12 +53,12 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
                 {% include "components/modal.html" with id=row.background_id title="Remove the white background?" body="certificates/_remove_background_form.html" trigger_label="Remove white background" trigger_icon="eraser" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
               {% endif %}
               {% if row.deactivate_reason %}
-                <button type="button" class="btn btn-ghost btn-sm" disabled title="{{ row.deactivate_reason }}" aria-describedby="deactivate-reason-{{ person.pk }}">Deactivate<span class="sr-only"> {{ person.name }}</span></button>
+                <button type="button" class="btn btn-danger btn-sm" disabled title="{{ row.deactivate_reason }}" aria-describedby="deactivate-reason-{{ person.pk }}">Deactivate<span class="sr-only"> {{ person.name }}</span></button>
                 <span id="deactivate-reason-{{ person.pk }}" class="sr-only">{{ row.deactivate_reason }}</span>
               {% else %}
                 <form method="post" action="{% url 'certificates:signatory_deactivate' person.pk %}">
                   {% csrf_token %}
-                  <button type="submit" class="btn btn-ghost btn-sm">Deactivate<span class="sr-only"> {{ person.name }}</span></button>
+                  <button type="submit" class="btn btn-danger btn-sm">Deactivate<span class="sr-only"> {{ person.name }}</span></button>
                 </form>
               {% endif %}
             </div>

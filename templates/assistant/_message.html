@@ -34,7 +34,7 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
                     <p class="text-slate-700">This file is no longer available.</p>
                   {% else %}
                     <div class="flex items-start gap-2">
-                      {% for number in card.numbers %}<span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-[11px] font-bold text-primary" aria-label="Source {{ number }}">{{ number }}</span>{% endfor %}
+                      {% for number in card.numbers %}<span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-bold text-primary" aria-label="Source {{ number }}">{{ number }}</span>{% endfor %}
                       <div class="min-w-0 flex-1">
                         <p class="truncate font-semibold text-ink" title="{{ card.title }}">{{ card.title }}</p>
                         <p class="truncate text-slate-700">{{ card.type }} · <a href="{{ card.activity_url }}" class="text-link hover:underline">{{ card.activity }}</a></p>

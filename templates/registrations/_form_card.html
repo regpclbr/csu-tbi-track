@@ -33,7 +33,7 @@ Registration form of an activity created with its documents (ASSUMPTIONS 409): u
     </div>
   {% else %}
     {% if card.needs_ready %}
-      <div class="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-warning-soft px-4 py-3 text-sm text-amber-900" role="note" data-form-not-ready>
+      <div class="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="note" data-form-not-ready>
         {% include "components/icon.html" with name="triangle-alert" class="size-4.5 shrink-0" %}
         <p class="min-w-0 grow basis-60"><strong>Registration stays closed.</strong> Check the fields below{% if card.form.generated_from_default %} (they started from the defaults){% endif %}, then open registration. Nobody can register before that.</p>
         {% if can_create %}

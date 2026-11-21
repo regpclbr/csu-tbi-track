@@ -194,6 +194,6 @@ def test_activity_page_shows_the_box_or_all_set(client, director, new_activity, 
     client.force_login(director)
     url = reverse("activities:detail", args=[new_activity.pk])
     html = client.get(url).content.decode()
-    assert "Needs attention (3)" in html and "Registration form not built yet." in html and "?tab=forms" in html
+    assert 'Needs attention <span class="badge badge-warning rounded-full">3</span>' in html and 'has-accent accent-warning' in html and "Registration form not built yet." in html and "?tab=forms" in html
     monkeypatch.setattr(attention, "activity_attention", lambda activity, now=None: [])
     assert "All set" in client.get(url).content.decode()

@@ -282,7 +282,7 @@ def test_email_console_mode_without_debug_is_amber_with_the_fix(admin, settings)
     item = system_status.email_status()
     assert item.tone == system_status.WARNING and "EMAIL_REAL_SENDING=True" in item.fix
     html = admin.get(reverse("accounts:console_system")).content.decode()
-    assert "border-amber-200" in html.split('id="status-email"')[0].rsplit("<li", 1)[1]
+    assert "border-warning-line" in html.split('id="status-email"')[0].rsplit("<li", 1)[1]
 
 
 def test_gemini_without_a_key_is_amber(settings) -> None:

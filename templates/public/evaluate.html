@@ -9,7 +9,7 @@ step=review: the server checks everything (services.check_evaluation, nothing sa
 <section class="public-card p-5 sm:p-8">
   <p class="text-xs font-semibold tracking-wide text-primary-hover uppercase">Activity evaluation</p>
   <h1 class="mt-1 text-2xl leading-tight font-bold tracking-tight break-words text-ink sm:text-[28px]">{{ activity.title }}</h1>
-  <p class="mt-2 text-[15px] text-slate-700">Thank you for attending. Your answers help the TBI improve its activities. You will check everything on the next page before it is sent.</p>
+  <p class="mt-2 text-base text-slate-700">Thank you for attending. Your answers help the TBI improve its activities. You will check everything on the next page before it is sent.</p>
 </section>
 
 <form method="post" action="" novalidate class="mt-4 space-y-4" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">

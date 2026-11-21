@@ -12,7 +12,7 @@ page is the same neutral message (services.EVALUATION_REQUEST_SENT); only an inv
 
 <section class="public-card mt-4 p-5 sm:p-8" aria-labelledby="form-heading">
   <h2 id="form-heading" class="text-xl font-bold tracking-tight text-ink">Evaluate this activity</h2>
-  <p class="mt-1 mb-5 text-[15px] leading-relaxed text-slate-700">Enter the email address you used to register. If you attended, we'll email you your personal evaluation link.</p>
+  <p class="mt-1 mb-5 text-base leading-relaxed text-slate-700">Enter the email address you used to register. If you attended, we'll email you your personal evaluation link.</p>
   {% include "public/_form_alerts.html" %}
 
   <form method="post" action="{% url 'evaluation_request' activity.pk %}" novalidate class="space-y-5" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">

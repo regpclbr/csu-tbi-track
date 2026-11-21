@@ -16,7 +16,7 @@ and wrap (or go under the text below 640 px).
   <details class="group card overflow-hidden" {% if card.open %}open{% endif %}>
     <summary class="flex cursor-pointer list-none flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4 hover:bg-slate-50/70 [&::-webkit-details-marker]:hidden">
       <div class="min-w-0 flex-1 basis-72">
-        <h3 class="text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink">{{ activity.title }}</h3>
+        <h3 class="text-sm leading-snug font-semibold [overflow-wrap:anywhere] text-ink">{{ activity.title }}</h3>
         <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
           <span class="inline-flex items-center gap-1 whitespace-nowrap">{% include "components/icon.html" with name="calendar" class="size-3.5" %}{{ activity|date_span }}</span>
           {% include "components/status_badge.html" with status=activity.status.name %}
