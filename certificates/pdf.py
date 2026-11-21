@@ -81,11 +81,13 @@ def _name_size(name: str) -> str:
     return "name-long" if len(name) > 45 else "name-medium" if len(name) > 30 else "name-short"
 
 
-def certificate_html(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False) -> str:
+def certificate_html(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False,
+                     values: dict[str, str] | None = None) -> str:
     """The certificate as print HTML: the same for the preview and the final PDF (ASSUMPTIONS 358). `mark` adds a small
-    "PREVIEW" in a corner (a preview of a certificate still waiting for approval)."""
+    "PREVIEW" in a corner (a preview of a certificate still waiting for approval). `values`: the placeholder values of
+    an unsaved sample certificate (the preview before Conducted, ASSUMPTIONS 420); default: placeholder_values()."""
     # The wording stored on the certificate (ASSUMPTIONS 370): an Issued certificate keeps the text it was sent with.
-    text = wording.fill_all(certificate.certificate_text, placeholder_values(certificate, name))
+    text = wording.fill_all(certificate.certificate_text, values or placeholder_values(certificate, name))
     context = {
         "text": text,
         "name": name,
@@ -128,8 +130,9 @@ def placeholder_values(certificate: Certificate, name: str, activity=None) -> di
     }
 
 
-def render_certificate_pdf(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False) -> bytes:
-    html = certificate_html(certificate, name=name, mark=mark, missing_signature_ok=missing_signature_ok)
+def render_certificate_pdf(certificate: Certificate, *, name: str, mark: bool = False, missing_signature_ok: bool = False,
+                           values: dict[str, str] | None = None) -> bytes:
+    html = certificate_html(certificate, name=name, mark=mark, missing_signature_ok=missing_signature_ok, values=values)
     pdf = get_renderer().render(html)
     if not pdf.startswith(b"%PDF-"):
         raise NotAPdf("The PDF renderer returned something that is not a PDF.")

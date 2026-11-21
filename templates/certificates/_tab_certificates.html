@@ -9,6 +9,10 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
   activity" behind a confirm dialog, or the disabled button with the reason (services.approval_closed_reason). All
   issued / no certificates: no button and no reason. Members without the flag
   see no approve button at all. One approval per activity: no Approve per certificate.
+- Before Conducted (ASSUMPTIONS 420): "Prepared — needs approval" (the approve button for approvers), "Approved by … on …"
+  + "Certificates will be created when the activity is Conducted." or "Not prepared — …" with "Prepare the certificates
+  now" (secondary, confirm dialog; can_create_activity or can_approve_certificates). The sample preview card
+  (pages.sample_preview: Participation / Appreciation with a sample name) replaces the certificate preview until then.
 - Certificate text (pages.text_panel, ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
   fields of both types with the placeholders and a live preview (HTMX, activities:certificates_text_preview).
 - Signatures (pages.signatures_panel, ASSUMPTIONS 363, 365, 367): the left and right slot; can_create_activity or
@@ -34,16 +38,21 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
       {% elif approval.state == "all_issued" %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-soft text-success">{% include "components/icon.html" with name="circle-check" class="size-5" %}</span>
-      {% elif approval.state == "needs_approval" %}
+      {% elif approval.state == "needs_approval" or approval.state == "prepared" %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-warning-soft text-warning">{% include "components/icon.html" with name="award" class="size-5" %}</span>
       {% else %}
         <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600">{% include "components/icon.html" with name="info" class="size-5" %}</span>
       {% endif %}
       <div class="min-w-0">
         <h2 id="approval-title" class="card-title">Certificate approval</h2>
-        <p class="mt-1 text-sm {% if approval.state == 'not_approved' or approval.state == 'no_certificates' %}font-medium text-slate-600{% else %}font-semibold text-ink{% endif %}" data-testid="approval-state" data-approval-state="{{ approval.state }}">{{ approval.text }}</p>
+        <p class="mt-1 text-sm {% if approval.state == 'not_approved' or approval.state == 'no_certificates' or approval.state == 'not_prepared' %}font-medium text-slate-600{% else %}font-semibold text-ink{% endif %}" data-testid="approval-state" data-approval-state="{{ approval.state }}">{{ approval.text }}</p>
         {% if approval.note %}
           <p class="text-sm text-slate-600">{{ approval.note }}</p>
+          {% if approval.early %}<p class="text-sm text-slate-700">Then each participant's certificate is emailed as soon as they submit their evaluation; resource persons' certificates are ready to print. A change to a signatory, a title, the design, the certificate text or the activity's title, dates, venue or resource persons cancels this approval.</p>{% endif %}
+        {% elif approval.state == "prepared" %}
+          <p class="text-sm text-slate-700">{{ approval.prepared_text }}. Check the sample preview below, then approve them once for the whole activity: they will be created already approved when the activity is Conducted.</p>
+        {% elif approval.state == "not_prepared" %}
+          <p class="text-sm text-slate-700">They wait for approval then, as usual.{% if approval.can_prepare %} To have them approved earlier, check the signatories, the text and the sample preview below, then choose “Prepare the certificates now”: the Director is asked to review them.{% endif %}</p>
         {% elif approval.approved %}
           <p class="text-sm text-slate-700">Each participant's certificate is emailed as soon as they submit their evaluation; resource persons' certificates are ready to print. A change to a signatory, a title, the design or the certificate text cancels this approval.</p>
         {% elif approval.state == "not_approved" %}
@@ -53,6 +62,9 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         {% endif %}
       </div>
     </div>
+    {% if approval.can_prepare %}
+      {% include "components/modal.html" with id="prepare-certificates-dialog" title="Prepare the certificates now?" body="certificates/_prepare_form.html" trigger_label="Prepare the certificates now" trigger_icon="file-check" trigger_class="btn btn-secondary" %}
+    {% endif %}
     {% if approval.can_approve %}
       {% if approval.closed_reason %}
         <button type="button" class="btn btn-primary" disabled aria-describedby="approval-reason">
@@ -61,7 +73,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
         {% include "components/modal.html" with id="approve-activity-dialog" title="Approve the certificates of this activity?" body="certificates/_approve_activity_form.html" trigger_label="Approve certificates for this activity" trigger_icon="circle-check" trigger_class="btn btn-primary" %}
       {% endif %}
     {% endif %}
-    {% if approval.closed_reason and approval.has_certificates %}
+    {% if approval.closed_reason and approval.has_certificates or approval.closed_reason and approval.early %}
       <p id="approval-reason" class="flex w-full items-start gap-2 text-sm text-slate-700">
         {% include "components/icon.html" with name="info" class="mt-1 size-4 text-muted" %}{{ approval.closed_reason }}</p>
     {% elif approval.closed_reason %}
@@ -204,6 +216,24 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   </section>
 
   {% include "certificates/_text_section.html" %}
+
+  {% if sample %}
+    <section id="sample-preview" class="card p-6" aria-labelledby="sample-title" x-data="{ src: '{{ sample.types.0.url }}' }">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h2 id="sample-title" class="card-title">Certificate preview</h2>
+          <p class="card-subtitle">A sample with this activity's signatories, text and the current design, and a sample name. The certificates themselves are created when the activity is Conducted.</p>
+        </div>
+        <div class="segmented max-w-full flex-wrap" role="radiogroup" aria-label="Which certificate">
+          {% for kind in sample.types %}
+            <button type="button" role="radio" :aria-checked="(src === '{{ kind.url }}').toString()" @click="src = '{{ kind.url }}'"
+                    class="segmented-item{% if forloop.first %} is-selected{% endif %}" :class="src === '{{ kind.url }}' ? 'is-selected' : ''">{{ kind.label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      <iframe :src="src" src="{{ sample.types.0.url }}" title="Sample certificate preview" class="mt-4 h-[70vh] w-full rounded-xl border border-line bg-slate-50"></iframe>
+    </section>
+  {% endif %}
 
   {% if previews %}
     {{ previews|json_script:"certificate-previews" }}

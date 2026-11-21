@@ -83,7 +83,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   sign-off, VP or Director columns).
 - ACTIVITY has `certificates_approved_by` / `certificates_approved_at` (ASSUMPTIONS 369): the one approval of the activity's
   certificates. Set / cleared ONLY by `certificates.services.approve_activity_certificates` / `cancel_certificate_approval`
-  (never `update_activity`, the form or the admin).
+  (never `update_activity`, the form or the admin). ACTIVITY `certificates_prepared_by` / `certificates_prepared_at`
+  (ASSUMPTIONS 420, migration activities/0010): "Prepare the certificates now", set ONLY by
+  `certificates.services.prepare_activity_certificates` (once; never cleared).
 - CERTIFICATE_TEXT (ASSUMPTIONS 370): the wording (title, line before the name, main sentence, closing line) per type
   (participation / appreciation); `activity` empty = the default; versioned (`is_current`; a row a certificate uses never
   changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 34 tables (ASSUMPTIONS 389,
@@ -117,7 +119,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `conftest.VIEW_ONLY_ROLE` ("View Only (test)", fixture `view_only`), never Admin Staff.
 - `Role.DIRECTOR` ("Director") is used only to choose who is told (`notifications.services.active_directors`: the
   new-activity notification `notify_directors_of_new_activity` and the Draft creation-document reminders, ASSUMPTIONS 417),
-  never for a permission.
+  never for a permission. Prepared certificates (ASSUMPTIONS 420) use FLAGS instead: `certificate_reviewers()` = active
+  members with can_manage_signatories AND can_approve_certificates (`notify_certificate_reviewers`, type
+  `certificates_prepared`, never the preparer).
 - CERTIFICATE_SIGNATORY is a list of people (ASSUMPTIONS 363): name, free-text position, nullable signature image,
   is_active, `default_slot` (left/right, one per slot: who a new activity starts with), `previous_version` (the row it
   replaced, ASSUMPTIONS 367). A row a certificate uses never changes: a new image or a name/position edit is a NEW row
@@ -159,9 +163,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Activities
 - Every activity change goes through `activities/services.py` (create, update, change_status,
-  add/remove resource person), also from the Django admin and the demo seed. The create/edit form's "Who signs the
-  certificates" goes in the same call (`signatories=` on `create_activity` / `create_activity_with_documents` /
-  `update_activity`; ASSUMPTIONS 365). Never call
+  add/remove resource person), also from the Django admin and the demo seed. The edit form's "Who signs the
+  certificates" goes in the same call (`signatories=` on `update_activity`; ASSUMPTIONS 365). The NEW form has the
+  optional, unticked "Prepare the certificates now" instead (ASSUMPTIONS 420, `activities/_prepare_certificates.html`,
+  `pages.prepare_section`): ticked = `signatories=`, `certificate_texts=` and `prepare_certificates=True` on
+  `create_activity` / `create_activity_with_documents` (same transaction); not ticked = the defaults (the service drops
+  `signatories` / `certificate_texts`, the form does not validate them: `signatories_used`). Never call
   `Activity.objects.create()` / `.save()` directly for user edits: the audit log would be skipped.
 - Moves: Draft→Scheduled→Ongoing→Conducted, plus Scheduled→Draft when nobody has registered. Conducted is final and
   read-only. Staff move by hand (`change_status`); the system also moves Scheduled→Ongoing at the start and
@@ -423,6 +430,16 @@ owner is a student, so explain important decisions briefly and keep the code sim
   while certificates wait; agrees with `needs_approval_q`) / "All certificates issued (N)" (green + short note) /
   "Certificates are created automatically when the activity is Conducted." / grey "Not approved — …" (old data).
   `offers_approval` False (all issued, none yet) = no approve button at all and no reason line.
+- Before Conducted (ASSUMPTIONS 420): "Prepare the certificates now" (`prepare_activity_certificates`, can_create_activity
+  or can_approve_certificates, New form or tab `activities:certificates_prepare`; History row; reviewers told once) makes
+  early approval possible (`approval_closed_reason`: not prepared = `NOT_PREPARED`; prepared = the usual design /
+  signature checks). States before Conducted (no certificates): approved + `EARLY_APPROVED_NOTE`, `prepared`,
+  `not_prepared` (`approval_state`); after Conducted item 373's five states. Sample preview (never stored, PREVIEW +
+  number SAMPLE, "Juan Dela Cruz"): `activity_sample_preview_pdf` (`activities:certificates_sample_preview`, any staff) and
+  `draft_sample_preview_pdf` (`certificates:draft_sample_preview`, can_create_activity, GET of the typed fields only).
+  An early approval is ALSO cancelled by `update_activity` changing `PRINTED_FIELDS` (title, dates, venue), adding /
+  removing a resource person and activating / deactivating a design (`cancel_early_approvals`); `save_default_text`
+  cancels early-approved activities on the default. Counts unchanged (a prepared activity is never counted).
 - Approval is per ACTIVITY (ASSUMPTIONS 369): `approve_activity_certificates` (can_approve_certificates, "Approve
   certificates for this activity" + confirm dialog; refused with `approval_closed_reason`) stores who/when on the activity
   and History; then `approve_ready_certificates` (System) approves each certificate when it is ready: at the approval,
@@ -655,7 +672,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   at the first row or `?preview=<id>`; no Approve button); the list (no checkboxes): Preview, Mark handed over, Resend,
   Retry, PDF, Evidence. S5 and the dashboard count ACTIVITIES that need certificate approval ("2 activities need
   certificate approval"); Needs attention: the signature reason or "Certificates need approval.". When approved work
-  waits and qcluster is down, the tab says so (`pages.worker_notice`).
+  waits and qcluster is down, the tab says so (`pages.worker_notice`). Before Conducted (ASSUMPTIONS 420) the card shows the early states with
+  "Prepare the certificates now" (secondary) or the approve button, and a sample preview card (`pages.sample_preview`)
+  replaces the certificate preview.
 - Activity page links (ASSUMPTIONS 362): every tab link, pager and in-tab link starts with `activity_url` (never `?tab=`
   alone). POST-only actions under `/activities/<id>/…` use `config.links.post_only_or_tab(tab)` instead of `require_POST`
   (a GET goes to that tab); every action ends on `/activities/<id>/?tab=<tab>` (`config.links.activity_tab_url`).
@@ -664,7 +683,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Document preview (ASSUMPTIONS 329–330): Preview in `documents/_actions.html` opens the shared `#document-preview` dialog (HTMX,
   `documents.page_views.preview`): PDF iframe / image / "not available" + Download, kind from `preview_kind()` (confirmed stored type,
   never the name). The file comes only from `documents:view` (Download's login rule, inline, nosniff, stored bytes checked again), one of
-  the TWO `xframe_options_sameorigin` views (with `certificates:preview`, ASSUMPTIONS 358); everything else stays
+  the `xframe_options_sameorigin` views (with `certificates:preview`, ASSUMPTIONS 358, and the two sample previews
+  `activities:certificates_sample_preview` / `certificates:draft_sample_preview`, ASSUMPTIONS 420); everything else stays
   `X-Frame-Options: DENY`. No CSP is set; adding one must allow it.
 - Reports, Assistant, Startups, Notifications and search pages (F5, ASSUMPTIONS 301–311): `reports/page_views.py` + `reports/pages.py`
   (form: quick dates, sections preset by type, the AI switch adds `ai_summary`; a pending history row polls `reports:row` every 4 s and
@@ -864,6 +884,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   activity is Ongoing, from `EVALUATION_LINK_HOURS_BEFORE_END` (3) hours before the end inside the evaluation window; a
   History row by System per run that sent links; the Evaluation tab says "Evaluation links were sent automatically on …
   to N attendees", Resend stays (419). No database, ERD or migration change.
+- Prepare certificates before Conducted (2026-11-21, NAVIGATU UAT): the New form's optional "Prepare the certificates now"
+  (closed by default; signatories, titles, custom text, sample preview with "Juan Dela Cruz"), the Director (can_manage_signatories
+  + can_approve_certificates) told once, early approval from the tab, certificates created already approved at Conducted,
+  cancel rules also for the activity's printed details, resource persons and the design (420; notes on 365, 369, 373).
+  Database: activities 0010 (`ACTIVITY.certificates_prepared_by` / `_at`); ERD: those two columns; still 34 tables.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the

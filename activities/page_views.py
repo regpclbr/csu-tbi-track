@@ -125,19 +125,28 @@ def activity_create(request: HttpRequest) -> HttpResponse:
     form = ActivityPageForm(request.POST or None, **pages.signatory_form_options(request.user))
     required = document_pages.required_document_rows(request)
     rows = document_pages.new_document_rows(request) if request.method == "POST" else []
+    text_errors: dict = {}
     if request.method == "POST":
         given = [row for row in required if row.is_filled_in]  # an untouched fixed row is simply not sent (417)
         all_rows = [*given, *rows]
         uploads = document_pages.new_documents_for_service(all_rows)
         if form.is_valid():
+            # "Prepare the certificates now" (ASSUMPTIONS 420): not ticked = the defaults (the service ignores the rest).
+            prepare = form.certificate_preparation()
             signatories = form.signatory_choices()
             status = form.creation_status()
+            texts = pages.posted_certificate_texts(request.POST) if prepare else None
             try:
-                activity = document_services.create_activity_with_documents(request.user, form.cleaned_data, uploads,
-                                                                            signatories=signatories, status=status)
+                activity = document_services.create_activity_with_documents(
+                    request.user, form.cleaned_data, uploads, signatories=signatories, status=status,
+                    prepare_certificates=prepare, certificate_texts=texts)
             except document_services.NewActivityError as error:
                 if error.activity_error:
-                    _put_errors_on_fields(form, error.activity_error)
+                    text_errors = pages.split_text_errors(error.activity_error)
+                    if error.activity_error.message_dict:
+                        _put_errors_on_fields(form, error.activity_error)
+                    if text_errors:
+                        form.add_error(None, "Please correct the certificate text marked below.")
                 document_pages.put_row_errors(all_rows, error.row_errors)
                 if error.status_error:
                     form.add_error("create_as", error.status_error)
@@ -149,6 +158,8 @@ def activity_create(request: HttpRequest) -> HttpResponse:
                 count = len(uploads)
                 extra = f" with {count} document{'s' if count != 1 else ''} waiting for review" if count else ""
                 created = f'"{activity.title}" was created as {activity.status.name}{extra}.'
+                if prepare:
+                    created += " Its certificates are prepared and wait for the Director's approval."
                 if activity.status.name == ActivityStatus.SCHEDULED:
                     # ASSUMPTIONS 409: the next step is the registration form (Forms tab).
                     messages.success(request, f"{created} {REGISTRATION_NEXT_STEP}")
@@ -160,7 +171,8 @@ def activity_create(request: HttpRequest) -> HttpResponse:
         if any(row.errors for row in all_rows):
             form.add_error(None, "Please correct the documents marked below.")
     context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows, required),
-               "signatories": pages.signatory_form_section(form, request.user), "create_as": pages.create_as_section(form)}
+               "signatories": pages.signatory_form_section(form, request.user), "create_as": pages.create_as_section(form),
+               "prepare": pages.prepare_section(form, request.POST if request.method == "POST" else None, text_errors)}
     return render(request, "activities/form.html", context)
 
 

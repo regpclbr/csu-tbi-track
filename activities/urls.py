@@ -1,6 +1,7 @@
 from django.urls import path
 
 from certificates import page_views as certificate_page_views
+from certificates import views as certificate_views
 from documents import page_views as document_page_views
 
 from . import page_views, views
@@ -32,6 +33,11 @@ urlpatterns = [
     path("<int:activity_id>/certificates/approve/", certificate_page_views.approve_activity,
          name="certificates_approve_activity"),
     path("<int:activity_id>/certificates/text/", certificate_page_views.text_save, name="certificates_text"),
+    # Before Conducted (ASSUMPTIONS 420): "Prepare the certificates now" and the sample preview.
+    path("<int:activity_id>/certificates/prepare/", certificate_page_views.prepare,
+         name="certificates_prepare"),
+    path("<int:activity_id>/certificates/sample-preview/", certificate_views.activity_sample_preview,
+         name="certificates_sample_preview"),
     path("<int:activity_id>/certificates/text/preview/", certificate_page_views.text_preview,
          name="certificates_text_preview"),
     path("<int:activity_id>/certificates/apply-design/", certificate_page_views.apply_design,

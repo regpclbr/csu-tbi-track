@@ -813,7 +813,7 @@
 
 ## Who signs and what they sign as, white backgrounds, inactive signatories, PDFs that never came (2026-11-14)
 
-365. **Staff choose who signs and the title printed for them, starting from the defaults** (owner change request; extends item 363). *(Pending validation by the TBI, see TBI_QUESTIONS.)*
+365. **Staff choose who signs and the title printed for them, starting from the defaults** (owner change request; extends item 363). *(Pending validation by the TBI, see TBI_QUESTIONS.)* *(2026-11-21, item 420: on the NEW activity form the fields are inside the optional "Prepare the certificates now"; not ticked = the defaults. The Edit form and the tab are unchanged.)*
      - **Where:** a "Who signs the certificates" section on the activity create / edit form (two dropdowns, "Name · Position" for active people, pre-filled with the defaults on a new activity and with the activity's people on edit; plus "Add a person…" for `can_approve_certificates`, which adds the person over HTMX (`certificates:signatory_add_inline`) and selects them without leaving the form), and the Signatures section on the Certificates tab (as before, now with the title field and "Add a person…" in the dropdown). Who: `can_create_activity` or `can_approve_certificates`; Admin Staff view only. The form needs `can_create_activity` (the System Administrator, who approves but never creates, uses the tab). Conducted activities are read-only, so for them only the tab works.
      - **Title on this certificate:** new column **`ACTIVITY_SIGNATORY.position_on_certificate`** (text, nullable, max 255; spaces only = empty). When filled it prints instead of the person's position, for this activity only (`services.printed_title`). Choosing another person clears it unless the same form sends one. A change follows the refresh rules of a slot change: one History row ("Certificate signatory (left)": "Name (old title)" → "Name (new title)"), not-issued certificates re-rendered, Approved ones back to waiting, Issued ones "Issued with an old signature" (reissue possible).
      - **Issued certificates keep their printed title (owner-approved option):** new columns **`CERTIFICATE.left_signatory_title` / `right_signatory_title`** (text, required, max 255): the titles printed. Filled from the slots whenever a certificate is created, refreshed, regenerated or reissued (`services.design_fields`); the PDF prints them. `services.outdated_q()` now compares the signatory row **and** the stored title with the activity's current ones. Migrations `certificates/0009` (columns), `0010` (data: every certificate gets the position of the signatory it uses = what was printed; no PDF changes, nothing becomes outdated), `0011` (required). `Certificate.save()` fills an empty title from the signatory's position (a safety net for rows made outside the services, e.g. test fixtures).
@@ -843,6 +843,10 @@
      - **Removed:** the preview's Approve button, "Approve all ready certificates", the URLs `activities:certificates_approve` / `certificates_approve_ready`, `services.approve_certificate` / `approve_certificates`, `ready_certificates`, `pages.next_to_approve`. The API action `approve` takes `{"activity_id": n}` only (`certificate_ids` → 400). Kept: the preview with Previous / Next, Download PDF, Resend, Retry, Mark handed over, Reissue.
      - **The tab:** a "Certificate approval" card at the top for everyone: "Approved by Ana Cruz on November 14, 2026, 3:05 PM" (`services.approved_text`, Manila) or "Needs approval"; the button only for `can_approve_certificates` (disabled with the reason when refused). Admin Staff: the state only. Rows waiting for an evaluation in an approved activity say "Sent automatically after the evaluation".
      - *(2026-11-15, item 373: the state shown is now three-way; "Needs approval" only while certificates wait.)*
+     - *(2026-11-21, item 420: the approval may also be given BEFORE Conducted, once the certificates are prepared
+       ("Prepare the certificates now" on the New activity form or the tab); the certificates are then created in an
+       approved activity. Before Conducted it is also cancelled by a change to the activity's title, dates, venue,
+       resource persons or the active design. "No certificates yet" is no longer a refusal for a prepared activity.)*
      - **Counts** (`services.needs_approval_q`: Generated and the activity not approved; one rule): the dashboard's S5 card ("Certificate approval", activities, with the number of certificates in the pill; "activity · need your approval"), its Needs attention line ("2 activities need certificate approval"), the activity's Needs attention ("Certificates need approval.", after a missing-signature line, which wins), the Activities list count and the certificates report's "now" rows. The old migration data: **no activity is marked approved** (owner decision); certificates already Approved or Issued stay as they are; activities with waiting certificates show "Needs approval".
 370. **Editable certificate text** (owner change request, 2026-11-14; replaces the fixed wording of item 183, which is still the default). *(Pending validation by the TBI, see TBI_QUESTIONS.)*
      - **New table CERTIFICATE_TEXT** (ERD change, migrations `certificates/0012`–`0014`): `certificate_text_id`, `certificate_type` (participation / appreciation), `activity_id` (FK to ACTIVITY, nullable: empty = the default wording), `title` (max 60, required), `line_before_name` (max 100), `main_sentence` (max 400, required), `closing_line` (max 200), `is_current`, `created_by_id` (FK to TBI_MEMBER, nullable: empty = System), `created_at`. One current default per type, one current custom text per (activity, type) (partial unique constraints). **CERTIFICATE.certificate_text_id** (FK, PROTECT, required): the wording the certificate is printed with. Versioned like the signatories: saving new text creates a NEW row (the old one is no longer current) and only certificates that are not Issued move to it; an Issued certificate keeps its row (and the text it was sent with). Migration 0013 creates the two defaults with exactly the text printed before (by the System) and gives every existing certificate the default of its type; no PDF changes.
@@ -871,6 +875,10 @@
      - **One rule** (`certificates.services.approval_state(activity, waiting)`, `waiting` = ALL the activity's certificates waiting for approval, never only the ones a filter shows; `waiting_counts(ids)`, one query): approved → "Approved by … on …" (green, unchanged); not approved AND certificates waiting → "Needs approval" (orange, as before); not approved AND nothing waiting (also no certificates yet) → the neutral grey note **"Not approved — new certificates will wait for approval"** (slate text, info icon; not a task, never counted). The tab's card adds "No certificate is waiting now. A certificate created later (for example attendance marked after the activity was Conducted) waits until the activity's certificates are approved." The approver's disabled button and its reason are unchanged.
      - **Used by** the Certificates page group header (`pages.activity_groups`, one extra query per page, not per activity) and the tab's "Certificate approval" card (`pages.approval_panel`, counted from the tab's own list). **Counts unchanged (confirmed and tested):** S5 on the dashboard and its Needs attention line, the activity's Needs attention ("Certificates need approval."), the Activities list count and the certificates report keep `needs_approval_q` (Generated and not approved), which already left out activities with nothing waiting; "Needs approval" is shown exactly when that rule counts the activity (test). History texts are unchanged.
      - **(2026-11-15, owner request) Five states; no button when there is nothing to approve.** `approval_state(activity, counts)` now takes the activity's counts per status (all its certificates, whatever the filters; `approval_counts(ids)`, one query, replaces `waiting_counts`) and returns, in this order: **approved** → "Approved by … on …"; **needs_approval** (certificates waiting) → "Needs approval" with the button, as before; **no_certificates** → only "Certificates are created automatically when the activity is Conducted." (grey); **all_issued** (not approved, every certificate Issued, e.g. "Test" and the old walkthrough activity) → **"All certificates issued (N)"** with a green check in the Issued badge's green (green-100 / green-800) and the short grey line "Nothing to approve. A certificate added later (attendance marked after Conducted) will show here for approval."; **not_approved** (anything else: old data with Approved but not Issued certificates and nothing waiting; approving is still allowed) → the grey "Not approved — new certificates will wait for approval". For **all_issued** and **no_certificates** the state has `offers_approval = False`: the tab shows NO approve button (not even disabled), no reason line and no long explanation, for approvers and Admin Staff alike; the reasons for missing certificates (design, signatories) stay where they were (the tab's "why certificates are not created yet" notice and Needs attention). The service still refuses a hand-made request (`approval_closed_reason`: "Every certificate of this activity is already issued." / no certificates yet). A certificate created later (late attendance) makes it "Needs approval" with the button again. The Certificates page header shows the same states (the note under "All certificates issued (N)"); an activity without certificates never appears there. Counts unchanged: only "needs_approval" agrees with `needs_approval_q`; all_issued and no_certificates are counted nowhere. No database or ERD change.
+     - *(2026-11-21, item 420: before Conducted (no certificates yet) the state is `approved` + "Certificates will be
+       created when the activity is Conducted.", `prepared` ("Prepared — needs approval", with the approve button) or
+       `not_prepared` (no button; "Prepare the certificates now"). After Conducted the five states above are unchanged;
+       `no_certificates` now only appears for a Conducted activity whose certificates could not be created.)*
      - **Formula-like titles (confirmed, no code change):** the demo title `=HYPERLINK("https://example.com","Formula test")` (item 211, kept as it is) is plain text on every page (Django escapes it; no title is placed in JavaScript: Alpine/onclick values are IDs, the preview list uses `json_script`) and in the report PDF. Excel reports write every text value starting with `=`, `+`, `-`, `@`, tab or CR as text with Excel's quote prefix (`reports.excel.safe_cell`, item 207); real negative numbers stay numbers. Tests: `reports/tests/test_formula_safety.py` (each starting character, saved and reopened, no `<f>` in the file; the pages and the PDF HTML), `certificates/tests/test_approval_state.py`, two header tests in `certificates/tests/test_list_page.py`.
 
 ## AI Assistant: Enter to send, auto-scroll, safe formatting, delete and rename, generated titles (2026-11-15)
@@ -1746,3 +1754,80 @@ Still 34 tables.
        twice / no retry / staff resend respected, later attendees while Ongoing and after Conducted, no form, the task,
        page loads never send, the tab's note and buttons, no note for staff sends);
        `test_evaluation_links_auto.py` now checks Ongoing before end - 3 h.
+
+## Prepare and approve certificates before the activity is Conducted (2026-11-21)
+
+420. **"Prepare the certificates now (optional)" and early approval** (NAVIGATU UAT, Administrative Staff: "Certificates
+     can be generated while creating the activity, and then the Director receives this to review and approve it.
+     Generating it while creating the activity is optional; if they forget, after the activity is Conducted the system
+     generates them automatically."; owner decisions 2026-11-21). **Amends items 365, 369 and 373.** Certificates are
+     still CREATED only by the System at Conducted (item 362): "prepare" means choosing what they will print and asking
+     for the approval early; nothing is generated before Conducted. *(Pending confirmation by NAVIGATU, see TBI_QUESTIONS.)*
+     - **Database:** two nullable columns on ACTIVITY, `certificates_prepared_by` (FK to TBI_MEMBER, PROTECT) and
+       `certificates_prepared_at` (datetime), migration `activities/0010_activity_certificates_prepared` (no data step:
+       existing activities are "not prepared" = the flow before this item). Set only by
+       `certificates.services.prepare_activity_certificates`; never by `update_activity`, the form or the admin. Still
+       34 tables. Back up the development database (and `csu_tbi_uat` if it is ever started again) before `migrate`.
+     - **New activity form:** "Who signs the certificates" is replaced by the card "Prepare the certificates now
+       (optional)" (`activities/_prepare_certificates.html`, `activities.pages.prepare_section`) with an unticked
+       checkbox (`prepare_certificates`, New form only). **Not ticked:** the activity gets the default signatories and
+       the default text, exactly as before; the posted signatory / title / text fields are ignored (the form does not
+       even validate them, `signatories_used`; `save_new_activity(prepare_certificates=False)` drops them too).
+       **Ticked:** the left / right signatories and optional titles (the item-365 fields, "Add a person…" still only for
+       `can_manage_signatories`, item 418), "Use the default text" / "Custom text for this activity" (the item-370 fields
+       with the live wording preview, `certificates:new_activity_text_preview`), and "Show the preview". Saved in the
+       same transaction as the activity (`create_activity_with_documents(..., prepare_certificates=, certificate_texts=)`
+       → `assign_default_signatories`, `save_activity_text`, `prepare_activity_certificates`); a refused wording is shown
+       under its field ("Please correct the certificate text marked below."), nothing is saved and the box stays
+       ticked. The Edit form keeps "Who signs the certificates" unchanged (owner decision).
+     - **Sample preview (nothing stored):** the same certificate template as the final PDF with the active design, the
+       signatories, titles and wording, the sample name "Juan Dela Cruz" (Appreciation: the activity's first resource
+       person and topic, else "Dr. Maria Santos"), the corner mark PREVIEW and the number SAMPLE.
+       New form: `certificates:draft_sample_preview` (GET, can_create_activity; the form's script sends only the typed
+       title, dates, venue, signatory ids, titles and wording, never the CSRF token or files;
+       `services.draft_sample_preview_pdf`). Tab: `activities:certificates_sample_preview`
+       (`services.activity_sample_preview_pdf`, any active staff member like item 358's preview). Both are
+       `xframe_options_sameorigin` (the 3rd and 4th framed views) and `private, no-store`. When it cannot be shown
+       (no active design, a signatory missing, refused wording) the frame says why.
+     - **Preparing** (`prepare_activity_certificates`, can_create_activity or can_approve_certificates; the New form or
+       the tab's "Prepare the certificates now" + confirm dialog, `activities:certificates_prepare`): stores who / when,
+       one History row "Certificates": "Prepared for review by <name>", and tells the reviewers ONCE (refused when
+       already prepared or Conducted, so it cannot repeat; later signatory or text changes tell nobody).
+     - **Who is told (owner decision):** `notifications.services.certificate_reviewers()` = active members whose role has
+       **can_manage_signatories AND can_approve_certificates** (the Director by default; flags, never the role name;
+       both, so nobody gets a review they cannot act on), except the member who prepared them. In-app only
+       (NOTIFICATION type `certificates_prepared`, "Certificates of <activity> are ready for your review", opens the
+       Certificates tab: "Open certificates"). Nobody qualifies = nobody is told (the tab still shows the state; the
+       roles screen already warns when nobody manages signatories).
+     - **Early approval:** `approval_closed_reason` before Conducted: not prepared → "Prepare the certificates first, or
+       wait until the activity is Conducted."; prepared → the same checks as after Conducted (active design, both slots,
+       both signature images). Allowed on Draft, Scheduled and Ongoing (owner decision). `approve_activity_certificates`
+       is unchanged (History "Prepared — needs approval" → "Approved by <name> (before Conducted)"). At Conducted,
+       `generate_missing_certificates` already calls `approve_ready_certificates`, so the certificates are created in an
+       approved activity: a resource person's is approved at once (ready to print), a participant who already evaluated
+       (links from 3 h before the end, item 419) is approved, rendered and emailed at creation, the others when they
+       evaluate (the item-369 behaviour). Their status stays "Waiting for approval" until each is ready, as before.
+     - **Cancelled before Conducted (owner decisions):** everything of item 369 (signatory, title, new version of a
+       person, the activity's text, the default text: `save_default_text` now also cancels early-approved activities
+       that use the default, `default_text_impact()["early"]` in the dialog), PLUS: an `update_activity` change to the
+       title, start date, end date or venue (`PRINTED_FIELDS`: printed through {activity}, {date}, {given_date},
+       {venue}; "activity details changed"), adding or removing a resource person ("resource persons changed"), and
+       activating or deactivating a certificate design in the Admin Console (`cancel_early_approvals`: every approved
+       activity without certificates; "certificate design changed"; activities with certificates keep their design as
+       before). A change of another field (slots, deadlines, budget…) cancels nothing. The activity stays prepared.
+     - **States (`approval_state`, amends item 373):** only while the activity is not Conducted and has no certificates:
+       `approved` + note "Certificates will be created when the activity is Conducted.", `prepared` ("Prepared — needs
+       approval", orange, the approve button for approvers + "Prepared by … on …") or `not_prepared` ("Not prepared —
+       certificates will be created when the activity is Conducted", grey, no approve button; "Prepare the certificates
+       now" as a secondary button for can_create_activity / can_approve_certificates). After Conducted the five states of
+       item 373 are unchanged. Counts are unchanged: `needs_approval_q` counts waiting certificates only, so a prepared
+       activity is in no count (S5, Needs attention, dashboard); the notification and the tab are the signals.
+     - **Tab:** before Conducted the "Certificate preview" card shows the sample (Participation / Appreciation) instead of
+       the certificates' own preview (`pages.sample_preview`). Item 413 kept: one primary per card (Approve), the prepare
+       button is secondary, spacing scale.
+     - Tests: `certificates/tests/test_prepare_early.py` (closed by default, defaults when not chosen, invalid hidden
+       fields ignored, chosen with signatories / titles / custom or default text, refused text, notification once and
+       only to reviewers, the previews with the sample name and their reasons, approval before Conducted needs
+       preparing and both signatures, created approved and emailed after each evaluation, not prepared = today's flow,
+       prepared but not approved waits, every cancel rule, unprinted fields keep it, the default-text dialog, the tab's
+       states and buttons, permissions, "Add a person" still item 418's).

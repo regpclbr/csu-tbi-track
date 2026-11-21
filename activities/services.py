@@ -372,11 +372,26 @@ def recent_audit_entries(limit: int = RECENT_CHANGES_LIMIT) -> list[ActivityAudi
 
 # --- Create and edit ----------------------------------------------------------------------
 
+# Activity fields printed on the certificates (certificates.wording placeholders {activity}, {date}, {given_date},
+# {venue}): changing one before Conducted cancels an early certificate approval (ASSUMPTIONS 420).
+PRINTED_FIELDS = frozenset({"title", "start_date", "end_date", "venue"})
+
+
+def _cancel_early_approval(activity: Activity, member: TBIMember, now: datetime | None, reason: str) -> None:
+    """Cancel the activity's certificate approval when it was given before Conducted (ASSUMPTIONS 420; edits and
+    resource person changes are refused after Conducted, so any approval here is an early one). Same transaction."""
+    if activity.certificates_approved_at is None:
+        return
+    from certificates.services import cancel_certificate_approval  # certificates.services imports this module
+
+    cancel_certificate_approval(activity, member, now, reason)
+
 
 @transaction.atomic
 def save_new_activity(
     member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None,
     signatories: dict | None = None, creation_documents_required: bool = False,
+    prepare_certificates: bool = False, certificate_texts: dict | None = None,
 ) -> Activity:
     """Validate and save an unsaved Activity as Draft with its categories, write its first audit row and notify the
     Director (notifications.services.notify_directors_of_new_activity).
@@ -387,8 +402,15 @@ def save_new_activity(
     take the defaults (certificates.services.assign_default_signatories, ASSUMPTIONS 365, 366).
     `creation_documents_required` (ASSUMPTIONS 405): True from the New activity form
     (documents.services.create_activity_with_documents) and the JSON API; the admin, the demo seed and tests keep False.
+    `prepare_certificates` (ASSUMPTIONS 420, the New activity form's "Prepare the certificates now"): True = the chosen
+    `signatories` are saved, `certificate_texts` ({type: {field: text}}, None = the default text) become the activity's
+    custom text (certificates.services.save_activity_text) and the certificates are prepared
+    (prepare_activity_certificates: the reviewers are told). False = the default signatories and the default text,
+    whatever `signatories` / `certificate_texts` hold (the flow before item 420).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
+    if not prepare_certificates:
+        signatories, certificate_texts = None, None
     categories = _category_set(participant_categories)
     validate_activity_values({**activity_values(activity), CATEGORIES: categories}, now=now)
     activity.created_by = member
@@ -405,22 +427,31 @@ def save_new_activity(
     from certificates.services import assign_default_signatories  # certificates.services imports this module
 
     assign_default_signatories(activity, signatories)
+    if prepare_certificates:  # ASSUMPTIONS 420, same transaction
+        from certificates.services import prepare_activity_certificates, save_activity_text
+
+        if certificate_texts:
+            save_activity_text(member, activity, certificate_texts, now=now)
+        prepare_activity_certificates(member, activity, now=now)
     return activity
 
 
 def create_activity(member: TBIMember, data: dict, now: datetime | None = None,
-                    signatories: dict | None = None, creation_documents_required: bool = False) -> Activity:
+                    signatories: dict | None = None, creation_documents_required: bool = False,
+                    prepare_certificates: bool = False, certificate_texts: dict | None = None) -> Activity:
     """Create a Draft activity. `data` holds Python values (model instances, dates, Decimal);
     `participant_categories` is a list of one or more ParticipantCategory.
 
     start_date and registration_deadline must not be in the past (see save_new_activity for `now`).
-    `creation_documents_required`: see save_new_activity (ASSUMPTIONS 405).
+    `creation_documents_required`: see save_new_activity (ASSUMPTIONS 405); `prepare_certificates`,
+    `certificate_texts`: see save_new_activity (ASSUMPTIONS 420).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     values = _clean_values(data)
     categories = values.pop(CATEGORIES, frozenset())
     return save_new_activity(member, Activity(**values), categories, now=now, signatories=signatories,
-                             creation_documents_required=creation_documents_required)
+                             creation_documents_required=creation_documents_required,
+                             prepare_certificates=prepare_certificates, certificate_texts=certificate_texts)
 
 
 @transaction.atomic
@@ -452,6 +483,10 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
         _write_audit(
             current, member, [(FIELD_LABELS[field], old_values[field], changes[field]) for field in changed]
         )
+        if PRINTED_FIELDS.intersection(changed):
+            # Printed on the certificates ({activity}, {date}, {given_date}, {venue}): an approval given before
+            # Conducted no longer matches what will print (ASSUMPTIONS 420).
+            _cancel_early_approval(current, member, now, "activity details changed")
     if signatories is not None:
         from certificates.services import set_activity_signatories  # certificates.services imports this module
 
@@ -603,6 +638,7 @@ def add_resource_person(
         raise ActivityError(f"{resource_person.name} is already a resource person for this activity.")
     link = ActivityResourcePerson.objects.create(activity=current, resource_person=resource_person, topic=topic.strip())
     _write_audit(current, member, [(RESOURCE_PERSON_ADDED, "", resource_person.name)])
+    _cancel_early_approval(current, member, None, "resource persons changed")  # ASSUMPTIONS 420
     return link
 
 
@@ -617,6 +653,7 @@ def remove_resource_person(member: TBIMember, activity: Activity, resource_perso
         raise ActivityError(f"{resource_person.name} is not a resource person for this activity.")
     link.delete()
     _write_audit(current, member, [(RESOURCE_PERSON_REMOVED, resource_person.name, "")])
+    _cancel_early_approval(current, member, None, "resource persons changed")  # ASSUMPTIONS 420
 
 
 # --- Read services (any signed-in member) -------------------------------------------------

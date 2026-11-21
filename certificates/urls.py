@@ -27,6 +27,9 @@ urlpatterns = [
     path("text/", page_views.certificate_text, name="text"),
     path("text/preview/", page_views.certificate_text_preview, name="text_preview"),
     path("text/<str:certificate_type>/", page_views.certificate_text_save, name="text_save"),
+    # The New activity form's "Prepare the certificates now" (can_create_activity, ASSUMPTIONS 420)
+    path("new-activity/text-preview/", page_views.new_activity_text_preview, name="new_activity_text_preview"),
+    path("new-activity/sample-preview/", views.draft_sample_preview, name="draft_sample_preview"),
     # Staff: reading and files
     path("api/", views.list_api, name="api_list"),
     path("api/<int:certificate_id>/", views.detail_api, name="api_detail"),

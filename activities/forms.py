@@ -134,6 +134,7 @@ CREATE_AS_HELP = {
 
 
 SIGNATORY_SLOTS = ("left", "right")  # certificates.models.Slot values, printed left to right
+PREPARE_FIELD = "prepare_certificates"  # the New activity form's optional "Prepare the certificates now" (ASSUMPTIONS 420)
 ADD_PERSON = "add"  # the dropdown's "Add a person…" (opens a dialog; never saved as a choice)
 
 
@@ -169,6 +170,8 @@ class SignatoriesFormMixin(forms.Form):
             field.allowed_people = people
 
     def _clean_person(self, slot: str):
+        if not self.signatories_used():  # "Prepare the certificates now" not chosen: the defaults (ASSUMPTIONS 420)
+            return None
         raw = self.cleaned_data.get(f"signatory_{slot}") or ""
         if raw == ADD_PERSON:
             raise ValidationError("Choose a person from the list (add one first with “Add a person…”).")
@@ -181,6 +184,19 @@ class SignatoriesFormMixin(forms.Form):
 
     def clean_signatory_right(self):
         return self._clean_person("right")
+
+    def signatories_used(self) -> bool:
+        """True when the posted signatories count: always on the edit form; on the New activity form only with
+        "Prepare the certificates now" ticked (ASSUMPTIONS 420)."""
+        field = self.fields.get(PREPARE_FIELD)
+        if field is None:
+            return True
+        return bool(field.widget.value_from_datadict(self.data, self.files, self.add_prefix(PREPARE_FIELD)))
+
+    def certificate_preparation(self) -> bool:
+        """The New activity form's "Prepare the certificates now" for the services (ASSUMPTIONS 420); removes the field
+        from cleaned_data (the activity services reject unknown keys). False on the edit form."""
+        return bool(self.cleaned_data.pop(PREPARE_FIELD, False))
 
     def signatory_choices(self) -> dict:
         """{slot: (person or None, title text)} for the services; removes the four fields from cleaned_data (the
@@ -199,4 +215,7 @@ class ActivityPageFormWithSignatories(SignatoriesFormMixin, ActivityPageForm):
     def __init__(self, *args, activity: Activity | None = None, current_signatories: dict | None = None,
                  can_add_person: bool = False, **kwargs):
         super().__init__(*args, activity=activity, **kwargs)
+        if activity is None:  # closed by default: not ticked = default signatories and default text (ASSUMPTIONS 420)
+            self.fields[PREPARE_FIELD] = forms.BooleanField(required=False, initial=False,
+                                                            label="Prepare the certificates now")
         self.setup_signatories(current_signatories or {}, can_add_person)

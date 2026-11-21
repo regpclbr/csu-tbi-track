@@ -196,7 +196,7 @@ def test_changing_the_default_updates_activities_on_the_default(generated, direc
     activity, people = generated
     services.approve_activity_certificates(director, activity)
     impact = services.default_text_impact(P)
-    assert impact == {"activities": 1, "certificates": 2, "approved": 1}
+    assert impact == {"activities": 1, "certificates": 2, "approved": 1, "early": 0}
     assert "the approval of 1 activity is cancelled" in services.default_text_impact_text(impact)
     result = services.save_default_text(director, P, text(closing_line="Given on {given_date}."))
     assert result == {"changed": True, "activities": 1, "updated": 2, "cancelled": 1}

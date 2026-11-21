@@ -189,30 +189,92 @@ def approval_panel(member, activity: Activity, certificates: list[Certificate]) 
     by_email = sum(1 for c in not_issued if c.delivery_method == DeliveryMethod.EMAIL)
     state = services.approval_state(activity, Counter(c.status for c in certificates))
     offered = can_approve and not approved and state.offers_approval
+    # Before Conducted (ASSUMPTIONS 420): "Prepare the certificates now" while not prepared, for members who choose
+    # the signatories (can_create_activity or can_approve_certificates); the service refuses anything else.
+    can_prepare = (state.kind == services.NOT_PREPARED_KIND and services.can_choose_signatories(member)
+                   and services.prepare_closed_reason(activity) is None)
     return {
         "approved": approved,
         "state": state.kind,
         "text": state.text,
         "note": state.note,
         "has_certificates": bool(certificates),
+        "early": state.kind in (services.PREPARED_KIND, services.NOT_PREPARED_KIND) or (approved and not certificates
+                                                                                         and services.before_conducted(activity)),
+        "prepared_text": prepared_text(activity),
         "can_approve": offered,
         "closed_reason": services.approval_closed_reason(activity) if offered else "",
         "by_email": by_email,
         "by_hand": len(not_issued) - by_email,
         "url": reverse("activities:certificates_approve_activity", args=[activity.pk]),
+        "can_prepare": can_prepare,
+        "prepare_url": reverse("activities:certificates_prepare", args=[activity.pk]),
     }
 
 
-def text_panel(member, activity: Activity, values: dict | None = None, errors: dict | None = None,
-               mode: str | None = None) -> dict:
-    """The Certificate text section (ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
-    fields per type (the activity's current text; after a refused save, what was typed and the errors), the
-    placeholders, the limits and a first live preview (services.wording_preview). can_create_activity or
-    can_approve_certificates edit it; others see the text only."""
-    custom = services.uses_custom_text(activity)
+def prepared_text(activity: Activity) -> str:
+    """ "Prepared by Ana Cruz on Nov 21, 2026, 3:05 PM" (Manila) for the approval card, or "" (ASSUMPTIONS 420)."""
+    if not services.is_prepared(activity):
+        return ""
+    from django.utils import timezone
+
+    at = timezone.localtime(activity.certificates_prepared_at)
+    who = activity.certificates_prepared_by.name if activity.certificates_prepared_by_id else "a member"
+    return f"Prepared by {who} on {at:%b} {at.day}, {at.year}, {at.hour % 12 or 12}:{at:%M %p}"
+
+
+SAMPLE_TYPES = [(services.TEXT_PARTICIPATION, "Participation"), (services.TEXT_APPRECIATION, "Appreciation")]
+
+
+def sample_preview(activity: Activity, certificates: list) -> dict | None:
+    """The Certificates tab's sample preview before Conducted (ASSUMPTIONS 420): one URL per type
+    (activities:certificates_sample_preview, a sample name with the activity's saved design and text). None once the
+    activity has certificates (the real preview takes over)."""
+    if certificates or not services.before_conducted(activity):
+        return None
+    base = reverse("activities:certificates_sample_preview", args=[activity.pk])
+    return {"types": [{"type": kind, "label": label, "url": f"{base}?{urlencode({'type': kind})}"}
+                      for kind, label in SAMPLE_TYPES]}
+
+
+def posted_texts(data: QueryDict) -> dict[str, dict]:
+    """{type: {field: text}} from posted "<type>-<field>" values (both types): the tab's and the New form's wording."""
+    return {kind: {field: data.get(f"{kind}-{field}", "") for field in wording.FIELDS} for kind in services.TEXT_TYPES}
+
+
+def _parse_date(raw: str):
+    from datetime import date
+
+    try:
+        return date.fromisoformat((raw or "").strip())
+    except ValueError:
+        return None
+
+
+def draft_preview_inputs(query: QueryDict) -> tuple[str, dict, dict, dict | None]:
+    """The New activity form's sample preview request (certificates:draft_sample_preview, ASSUMPTIONS 420) as service
+    arguments: (type, details, slots, text). Parsing only; services.draft_sample_preview_pdf checks everything. An
+    unknown type is Participation; an unreadable date is left out (a sample date is used)."""
+    kind = query.get("type", "")
+    if kind not in services.TEXT_TYPES:
+        kind = services.TEXT_PARTICIPATION
+    details = {"title": query.get("title", "")[:255], "venue": query.get("venue", "")[:255],
+               "start_date": _parse_date(query.get("start_date", "")), "end_date": _parse_date(query.get("end_date", ""))}
+    ids = {slot: query.get(f"signatory_{slot}", "") for slot in services.SLOTS}
+    people = CertificateSignatory.objects.in_bulk([int(v) for v in ids.values() if v.isdigit()])
+    slots = {slot: (people.get(int(raw)) if raw.isdigit() else None, query.get(f"title_{slot}", ""))
+             for slot, raw in ids.items()}
+    text = None
+    if query.get("certificate_text_mode") == "custom":
+        text = {field: query.get(f"{kind}-{field}", "") for field in wording.FIELDS}
+    return kind, details, slots, text
+
+
+def _text_types(activity: Activity | None, values: dict | None, errors: dict) -> list[dict]:
+    """Per type: the four fields (the current text, or what was typed), limits, errors, placeholders and a first live
+    preview. `activity` None = the default text (the New activity form)."""
     current = services.current_texts(activity)
     defaults = services.current_texts(None)
-    errors = errors or {}
     types = []
     for kind in services.TEXT_TYPES:
         shown = {field: (values or {}).get(f"{kind}-{field}", value)
@@ -229,6 +291,29 @@ def text_panel(member, activity: Activity, values: dict | None = None, errors: d
             "placeholders": wording.placeholder_list(kind),
             "preview": preview,
         })
+    return types
+
+
+def new_activity_text_panel(values: dict | None = None, errors: dict | None = None) -> dict:
+    """The New activity form's optional custom wording inside "Prepare the certificates now" (ASSUMPTIONS 420): the
+    default text to start from, what was typed after a refused save and the errors under the fields. Display only."""
+    errors = errors or {}
+    custom = (values or {}).get("certificate_text_mode") == "custom" or bool(errors)
+    return {
+        "custom": custom,
+        "types": _text_types(None, values, errors),
+        "preview_url": reverse("certificates:new_activity_text_preview"),
+    }
+
+
+def text_panel(member, activity: Activity, values: dict | None = None, errors: dict | None = None,
+               mode: str | None = None) -> dict:
+    """The Certificate text section (ASSUMPTIONS 370): "Use the default text" / "Custom text for this activity", the
+    fields per type (the activity's current text; after a refused save, what was typed and the errors), the
+    placeholders, the limits and a first live preview (services.wording_preview). can_create_activity or
+    can_approve_certificates edit it; others see the text only."""
+    custom = services.uses_custom_text(activity)
+    types = _text_types(activity, values, errors or {})
     return {
         "custom": custom if mode is None else mode == "custom",
         "can_edit": services.can_edit_activity_text(member),
@@ -421,6 +506,7 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
         "can_approve": can_approve,
         "generation_reason": services.generation_closed_reason(activity),
         "approval": approval_panel(member, activity, certificates),
+        "sample": sample_preview(activity, certificates),  # before Conducted (ASSUMPTIONS 420)
         "signatures": signatures_panel(member, activity),
         "text": text_panel(member, activity, **(text_form or {})),
         "reissue": reissue_panel(member, activity, outdated),

@@ -97,7 +97,7 @@ def test_the_new_activity_form_saves_another_person_and_a_title(design, director
     _, vp, head = design
     response = client_for(director).post(reverse("activities:create"), {**form_post(
         valid_data, title="Changed", signatory_left=head.pk, signatory_right=president.pk, title_left="Director, CSU-TBI"),
-        **creation_document_files()})
+        "prepare_certificates": "on", **creation_document_files()})  # chosen only inside the optional section (420)
     assert response.status_code == 302
     activity = activity_services.Activity.objects.get(title="Changed")
     rows = services.activity_slots(activity)
@@ -108,8 +108,9 @@ def test_the_new_activity_form_saves_another_person_and_a_title(design, director
 
 def test_the_same_person_on_both_sides_is_refused_under_the_field(design, director, valid_data) -> None:
     _, vp, head = design
-    html = client_for(director).post(reverse("activities:create"), form_post(
-        valid_data, title="Twice", signatory_left=head.pk, signatory_right=head.pk)).content.decode()
+    html = client_for(director).post(reverse("activities:create"), {**form_post(
+        valid_data, title="Twice", signatory_left=head.pk, signatory_right=head.pk),
+        "prepare_certificates": "on"}).content.decode()
     assert "The same person cannot sign on both sides." in html
     assert not activity_services.Activity.objects.filter(title="Twice").exists()  # all or nothing
 

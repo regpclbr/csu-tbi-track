@@ -109,6 +109,14 @@ class Activity(models.Model):
         related_name="approved_activity_certificates",
     )
     certificates_approved_at = models.DateTimeField(null=True, blank=True)
+    # "Prepare the certificates now" (ASSUMPTIONS 420): who chose it (New activity form or the Certificates tab, before
+    # Conducted) and when. Empty = not prepared (certificates are created at Conducted and wait for approval, as before).
+    # Set ONLY by certificates.services.prepare_activity_certificates; never by update_activity or the admin.
+    certificates_prepared_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="prepared_activity_certificates",
+    )
+    certificates_prepared_at = models.DateTimeField(null=True, blank=True)
     # ASSUMPTIONS 405: True = the Activity Design and the Request Letter (settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION)
     # are uploaded when the activity is created and needed before Scheduled; never overdue once uploaded. False =
     # activities created before 2026-11-19 (current rules). Set only when the activity is created (the New activity

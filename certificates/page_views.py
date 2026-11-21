@@ -120,13 +120,40 @@ def approve_activity(request: HttpRequest, activity_id: int) -> HttpResponse:
     """"Approve certificates for this activity" (after the confirm dialog): services.approve_activity_certificates. A
     refusal (already approved, a missing signature, no certificates) is one message."""
     activity = _activity(activity_id)
+    early = services.before_conducted(activity)  # ASSUMPTIONS 420
     try:
         approved = services.approve_activity_certificates(request.user, activity)
     except services.CertificateError as error:
         messages.error(request, f"Not approved: {error}")
     else:
-        messages.success(request, approved_message(approved))
+        messages.success(request, EARLY_APPROVED_MESSAGE if early else approved_message(approved))
     return redirect(pages.tab_url(activity.pk))
+
+
+EARLY_APPROVED_MESSAGE = ("Approved the certificates of this activity. They will be created already approved when the "
+                          "activity is Conducted: each participant's certificate is emailed as soon as they submit their "
+                          "evaluation, and resource persons' certificates are ready to print.")
+
+
+@staff_login_required
+@post_only_or_tab("certificates")
+def prepare(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """"Prepare the certificates now" on the Certificates tab before Conducted (ASSUMPTIONS 420):
+    services.prepare_activity_certificates (can_create_activity or can_approve_certificates; 403 without either).
+    The signatories, titles and text are the ones on the tab. A refusal is one message."""
+    require_any_permission(request.user, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    activity = _activity(activity_id)
+    try:
+        services.prepare_activity_certificates(request.user, activity)
+    except services.CertificateError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, PREPARED_MESSAGE)
+    return redirect(pages.tab_url(activity.pk))
+
+
+PREPARED_MESSAGE = ("The certificates are prepared and wait for approval (the Director gets a notification). Once "
+                    "approved, they are created already approved when the activity is Conducted.")
 
 
 # --- Certificate text of the activity (ASSUMPTIONS 370) -------------------------------------------------------------
@@ -134,10 +161,7 @@ def approve_activity(request: HttpRequest, activity_id: int) -> HttpResponse:
 
 def _posted_texts(request: HttpRequest) -> dict[str, dict]:
     """{type: {field: text}} from the posted "<type>-<field>" values (both types)."""
-    from . import wording
-
-    return {kind: {field: request.POST.get(f"{kind}-{field}", "") for field in wording.FIELDS}
-            for kind in services.TEXT_TYPES}
+    return pages.posted_texts(request.POST)
 
 
 def text_saved_message(result: dict, what: str) -> str:
@@ -423,6 +447,20 @@ def certificate_text_save(request: HttpRequest, certificate_type: str) -> HttpRe
                      f"activit{'y was' if result['cancelled'] == 1 else 'ies was'} cancelled.")
         messages.success(request, text)
     return redirect("certificates:text")
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_POST
+def new_activity_text_preview(request: HttpRequest) -> HttpResponse:
+    """HTMX, while typing custom wording on the New activity form (ASSUMPTIONS 420): the wording filled with sample
+    values (services.wording_preview without an activity). Nothing is saved."""
+    from . import wording
+
+    kind = request.POST.get("type", "")
+    if kind not in services.TEXT_TYPES:
+        return HttpResponse(status=400)
+    values = {field: request.POST.get(f"{kind}-{field}", "") for field in wording.FIELDS}
+    return render(request, "certificates/_text_preview.html", {"preview": services.wording_preview(None, kind, values)})
 
 
 @permission_required(Permission.APPROVE_CERTIFICATES)

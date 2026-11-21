@@ -1,0 +1,15 @@
+{% load static %}<!doctype html>
+{% comment %}Shown inside the sample-preview <iframe> (ASSUMPTIONS 420) when the sample certificate cannot be rendered yet:
+the service's reason (no active design, a signatory missing, refused wording). A standalone page (it is framed).{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview not available</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body class="bg-slate-50 p-6 font-sans text-sm text-ink">
+  <p class="flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-amber-900" role="status">
+    <span><strong class="font-semibold">The preview is not available yet.</strong> {{ message }}</span></p>
+</body>
+</html>

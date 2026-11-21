@@ -1,0 +1,12 @@
+{% comment %}Inside the "Prepare the certificates now" confirm dialog on the Certificates tab before Conducted (ASSUMPTIONS 420).
+POST to activities:certificates_prepare: services.prepare_activity_certificates checks the permission and the status
+again.{% endcomment %}
+<form method="post" action="{{ approval.prepare_url }}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">The signatories, titles and certificate text shown on this tab are used. The Director gets a notification to review the sample preview and approve the certificates before the activity is Conducted.</p>
+  <p class="text-sm text-muted">You can still change the signatories or the text afterwards; a change after the approval cancels it.</p>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Prepare the certificates</button>
+  </div>
+</form>

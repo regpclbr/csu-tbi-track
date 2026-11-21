@@ -78,6 +78,31 @@ def notify_directors_of_new_activity(activity, creator: TBIMember) -> int:
     return len(created)
 
 
+def certificate_reviewers() -> QuerySet:
+    """Who is told that an activity's certificates are prepared (ASSUMPTIONS 420): every active member whose role has
+    can_manage_signatories AND can_approve_certificates (the Director by default). Flags only, never a role name;
+    both flags, so nobody gets a review they cannot act on. Nobody qualifies = nobody is told (the tab still shows
+    "Prepared — needs approval")."""
+    return TBIMember.objects.filter(is_active=True, role__can_manage_signatories=True,
+                                    role__can_approve_certificates=True).order_by("pk")
+
+
+CERTIFICATES_PREPARED_MESSAGE = "Certificates of {title} are ready for your review"
+
+
+def notify_certificate_reviewers(activity, preparer: TBIMember) -> int:
+    """In-app "Certificates of <activity> are ready for your review" for every certificate reviewer except the member
+    who prepared them, linked to the activity (certificates.services.prepare_activity_certificates calls it once,
+    inside its transaction). No email. Returns how many were created."""
+    recipients = certificate_reviewers().exclude(pk=preparer.pk)
+    message = CERTIFICATES_PREPARED_MESSAGE.format(title=activity.title[:400])[:500]
+    created = Notification.objects.bulk_create(
+        Notification(member=recipient, activity=activity, type=Notification.CERTIFICATES_PREPARED, message=message)
+        for recipient in recipients
+    )
+    return len(created)
+
+
 def mark_all_read(recipient: Recipient) -> int:
     """Mark all of the recipient's notifications as read. Returns how many changed."""
     return my_notifications(recipient).filter(is_read=False).update(is_read=True)

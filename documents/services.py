@@ -444,6 +444,7 @@ CREATION_STATUSES = (ActivityStatus.DRAFT, ActivityStatus.SCHEDULED)  # "Create 
 def create_activity_with_documents(
     member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None,
     signatories: dict | None = None, status: str = ActivityStatus.DRAFT,
+    prepare_certificates: bool = False, certificate_texts: dict | None = None,
 ) -> Activity:
     """Create the activity (activities.services.create_activity), upload its documents (upload_document, the
     same rules as the Documents tab) in one transaction: all or nothing. The activity is saved with
@@ -456,6 +457,8 @@ def create_activity_with_documents(
 
     Errors of the activity and of every row are raised together as NewActivityError (the Scheduled check runs only
     once they are valid: it needs the saved documents). Files already stored when something fails are deleted again.
+    `prepare_certificates` / `certificate_texts` (ASSUMPTIONS 420): "Prepare the certificates now" (see
+    activities.services.save_new_activity); a refused text is part of activity_error ("<type>-<field>" keys).
     upload_document's review notifications are rows in this same transaction and it creates no email or task
     (indexing is queued only on approval, on commit), so a refused create never tells anyone anything."""
     from activities.services import ActivityError, change_status, create_activity  # documents imports activities
@@ -474,7 +477,9 @@ def create_activity_with_documents(
         with transaction.atomic():
             try:
                 activity = create_activity(member, data, now=now, signatories=signatories,
-                                           creation_documents_required=True)
+                                           creation_documents_required=True,
+                                           prepare_certificates=prepare_certificates,
+                                           certificate_texts=certificate_texts)
             except ValidationError as error:
                 activity_error = error
                 raise _RollBack from error

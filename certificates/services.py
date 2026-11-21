@@ -15,6 +15,16 @@ The life of a certificate (status rules in set_certificate_status; ASSUMPTIONS 3
   certificates created later. A change to what is printed (signatory, title, a new version of a person, "Apply the
   current design", the certificate text) cancels the approval (cancel_certificate_approval): not-Issued certificates
   wait again. Apply the current design, hand over, resend: can_create_activity.
+- Before Conducted (ASSUMPTIONS 420): staff may "Prepare the certificates now" (prepare_activity_certificates: who and
+  when on ACTIVITY, the reviewers are told once); a prepared activity can be approved early, after the sample preview
+  (activity_sample_preview_pdf). Its certificates are then created at Conducted in an approved activity, so each one is
+  approved as soon as it is ready. Not prepared = the flow above. A change to what will be printed (also the
+  activity's title, dates, venue, resource persons and the active design) cancels an early approval.
+- Before Conducted (ASSUMPTIONS 420): staff may "Prepare the certificates now" (prepare_activity_certificates: who and
+  when on ACTIVITY, the reviewers are told once); a prepared activity can be approved early, after the sample preview
+  (sample_preview_pdf). Its certificates are then created at Conducted in an approved activity, so each one is approved
+  as soon as it is ready. Not prepared = the flow above. Changes to what will be printed (also the activity's title,
+  dates, venue, resource persons and the active design) cancel an early approval.
 - The wording (ASSUMPTIONS 370): CERTIFICATE_TEXT rows (a default per type, optional custom text per activity),
   versioned; each certificate keeps the row it was printed with (certificates.wording fills the placeholders).
 - Signatories (ASSUMPTIONS 363, 418): a list of people (CERTIFICATE_SIGNATORY) managed ONLY by can_manage_signatories
@@ -262,16 +272,23 @@ def activate_template(member: TBIMember, template: CertificateTemplate) -> Certi
     """Make this the only active design (the previous one is deactivated in the same transaction)."""
     require_permission(member, Permission.MANAGE_USERS)
     list(CertificateTemplate.objects.select_for_update().filter(Q(is_active=True) | Q(pk=template.pk)))
+    was_active = CertificateTemplate.objects.filter(pk=template.pk, is_active=True).exists()
     CertificateTemplate.objects.filter(is_active=True).exclude(pk=template.pk).update(is_active=False)
     CertificateTemplate.objects.filter(pk=template.pk).update(is_active=True)
     template.refresh_from_db()
+    if not was_active:  # a new design will be printed: early approvals no longer match (ASSUMPTIONS 420)
+        cancel_early_approvals(member, None, "certificate design changed")
     return template
 
 
+@transaction.atomic
 def deactivate_template(member: TBIMember, template: CertificateTemplate) -> CertificateTemplate:
     require_permission(member, Permission.MANAGE_USERS)
+    was_active = CertificateTemplate.objects.filter(pk=template.pk, is_active=True).exists()
     CertificateTemplate.objects.filter(pk=template.pk).update(is_active=False)
     template.refresh_from_db()
+    if was_active:
+        cancel_early_approvals(member, None, "certificate design changed")
     return template
 
 
@@ -936,9 +953,31 @@ def _on_default(certificate_type: str):
     return Activity.objects.filter(Exists(waiting)).exclude(Exists(custom)).order_by("pk")
 
 
+def early_approved_activities() -> QuerySet:
+    """Approved activities that have no certificate yet: approved before Conducted (ASSUMPTIONS 420). A change to what
+    they will print (the active design, the default text they use) cancels that approval."""
+    return (Activity.objects.filter(certificates_approved_at__isnull=False)
+            .exclude(Exists(Certificate.objects.filter(activity=OuterRef("pk")))).order_by("pk"))
+
+
+def _early_on_default(certificate_type: str) -> QuerySet:
+    """Early-approved activities that will print the default wording of the type (no current custom text)."""
+    custom = CertificateText.objects.filter(activity=OuterRef("pk"), certificate_type=certificate_type, is_current=True)
+    return early_approved_activities().exclude(Exists(custom))
+
+
+def cancel_early_approvals(member: TBIMember | None, now: datetime | None, reason: str,
+                           activities: QuerySet | None = None) -> int:
+    """Cancel the approval of every early-approved activity (early_approved_activities, or `activities`): what they
+    will print changed (ASSUMPTIONS 420). One History row each (cancel_certificate_approval). Returns how many."""
+    rows = list((activities if activities is not None else early_approved_activities()).select_for_update(of=("self",)))
+    return sum(cancel_certificate_approval(activity, member, now, reason) for activity in rows)
+
+
 def default_text_impact(certificate_type: str) -> dict[str, int]:
     """What saving a new default wording changes (the confirm dialog): `activities` using the default with certificates
-    not Issued, `certificates` (rendered again) and `approved` activities whose approval is cancelled."""
+    not Issued, `certificates` (rendered again), `approved` activities whose approval is cancelled and `early`
+    activities approved before Conducted whose approval is cancelled too (ASSUMPTIONS 420)."""
     _check_type(certificate_type)
     activities = _on_default(certificate_type)
     custom = CertificateText.objects.filter(activity=OuterRef("activity_id"), certificate_type=certificate_type,
@@ -948,20 +987,25 @@ def default_text_impact(certificate_type: str) -> dict[str, int]:
         "certificates": (Certificate.objects.filter(recipient_type=RECIPIENT_FOR_TEXT[certificate_type])
                          .exclude(status=Status.ISSUED).exclude(Exists(custom)).count()),
         "approved": activities.filter(certificates_approved_at__isnull=False).count(),
+        "early": _early_on_default(certificate_type).count(),
     }
 
 
 def default_text_impact_text(impact: dict[str, int]) -> str:
     """ "This updates 2 activities: 14 certificates not issued yet are rendered again with the new text; the approval of
-    1 activity is cancelled. Issued certificates keep the text they were sent with." """
+    1 activity is cancelled. Issued certificates keep the text they were sent with." (+ the early approvals) """
+    early = impact.get("early", 0)
+    early_text = (f" The approval of {_plural(early, 'activity', 'activities')} approved before it was Conducted is "
+                  "cancelled." if early else "")
     if not impact["activities"]:
-        return "No certificate waiting to be issued uses this text now; new certificates will use the new text."
+        return ("No certificate waiting to be issued uses this text now; new certificates will use the new text."
+                + early_text)
     text = (f"This updates {_plural(impact['activities'], 'activity', 'activities')}: "
             f"{_plural(impact['certificates'], 'certificate', 'certificates')} not issued yet "
             f"{'is' if impact['certificates'] == 1 else 'are'} rendered again with the new text")
     if impact["approved"]:
         text += f"; the approval of {_plural(impact['approved'], 'activity', 'activities')} is cancelled"
-    return text + ". Issued certificates keep the text they were sent with."
+    return text + ". Issued certificates keep the text they were sent with." + early_text
 
 
 @transaction.atomic
@@ -989,6 +1033,8 @@ def save_default_text(member: TBIMember, certificate_type: str, values: dict, no
         cancelled += cancel_certificate_approval(activity, member, now, f"default {label} text changed")
         updated += _sync_text(activity.pk, certificate_type, new, member, now)
         write_certificate_text_history(activity, member, f"Default text ({label})", f"Default text ({label}), changed")
+    # Approved before Conducted and printing this default (ASSUMPTIONS 420): the approved wording no longer matches.
+    cancelled += cancel_early_approvals(member, now, f"default {label} text changed", _early_on_default(certificate_type))
     audit_logger.info("Default certificate text: type=%s text_id=%s -> %s activities=%s certificates_updated=%s "
                       "by member_id=%s", certificate_type, current.pk, new.pk, len(activities), updated, member.pk)
     return {"changed": True, "activities": len(activities), "updated": updated, "cancelled": cancelled}
@@ -1387,6 +1433,11 @@ NO_CERTIFICATES_YET = "Certificates are created automatically when the activity 
 ALL_ISSUED_TEXT = "All certificates issued ({count})"
 ALL_ISSUED_NOTE = ("Nothing to approve. A certificate added later (attendance marked after Conducted) will show here for "
                    "approval.")
+# Before Conducted (ASSUMPTIONS 420)
+PREPARED_TEXT = "Prepared — needs approval"
+NOT_PREPARED_TEXT = "Not prepared — certificates will be created when the activity is Conducted"
+EARLY_APPROVED_NOTE = "Certificates will be created when the activity is Conducted."
+NOT_PREPARED = "Prepare the certificates first, or wait until the activity is Conducted."
 
 
 @dataclass(frozen=True)
@@ -1405,18 +1456,37 @@ class ApprovalState:
 
 APPROVED_KIND, NEEDS_APPROVAL_KIND, NOT_APPROVED_KIND = "approved", "needs_approval", "not_approved"
 NO_CERTIFICATES_KIND, ALL_ISSUED_KIND = "no_certificates", "all_issued"
+PREPARED_KIND, NOT_PREPARED_KIND = "prepared", "not_prepared"  # before Conducted (ASSUMPTIONS 420)
+
+
+def is_prepared(activity: Activity) -> bool:
+    """True when someone chose "Prepare the certificates now" (ACTIVITY.certificates_prepared_at, ASSUMPTIONS 420)."""
+    return activity.certificates_prepared_at is not None
+
+
+def before_conducted(activity: Activity) -> bool:
+    """The activity is not Conducted yet: its certificates do not exist; only a prepared one can be approved."""
+    return activity.status.name != ActivityStatus.CONDUCTED
 
 
 def approval_state(activity: Activity, counts: dict[str, int]) -> ApprovalState:
     """The one rule for showing an activity's certificate approval (the Certificates page header and the tab's card).
     `counts` = {status: n} of ALL the activity's certificates, never only the ones a filter shows (approval_counts).
     In order: approved; certificates waiting (agrees with needs_approval_q: NEEDS_APPROVAL_KIND exactly when that rule
-    counts the activity); no certificates yet; every certificate Issued; otherwise the grey note."""
+    counts the activity); no certificates yet; every certificate Issued; otherwise the grey note.
+    Before Conducted (no certificates yet, ASSUMPTIONS 420): approved early ("Approved by …" + "Certificates will be
+    created when the activity is Conducted."), PREPARED_KIND ("Prepared — needs approval", offers approval) or
+    NOT_PREPARED_KIND (no button). Never counted: needs_approval_q counts waiting certificates only."""
+    total = sum(counts.values())
+    early = not total and before_conducted(activity)
     if is_approved(activity):
-        return ApprovalState(APPROVED_KIND, approved_text(activity))
+        return ApprovalState(APPROVED_KIND, approved_text(activity), EARLY_APPROVED_NOTE if early else "")
     if counts.get(Status.GENERATED, 0):
         return ApprovalState(NEEDS_APPROVAL_KIND, NEEDS_APPROVAL)
-    total = sum(counts.values())
+    if early:
+        if is_prepared(activity):
+            return ApprovalState(PREPARED_KIND, PREPARED_TEXT)
+        return ApprovalState(NOT_PREPARED_KIND, NOT_PREPARED_TEXT, offers_approval=False)
     if not total:
         return ApprovalState(NO_CERTIFICATES_KIND, NO_CERTIFICATES_YET, offers_approval=False)
     if counts.get(Status.ISSUED, 0) == total:
@@ -1445,13 +1515,18 @@ def approval_closed_reason(activity: Activity, now: datetime | None = None) -> s
     """Why "Approve certificates for this activity" cannot be used now, or None. Read only: the Certificates tab shows
     it on the disabled button (approvers only) and approve_activity_certificates refuses with it. Already approved; no
     certificates yet; every certificate Issued; the design incomplete (no active design, a slot empty); a signature
-    image missing ("Add the signature of ... first.": certificates are emailed without another click)."""
+    image missing ("Add the signature of ... first.": certificates are emailed without another click).
+    Before Conducted (ASSUMPTIONS 420): allowed only once the certificates are prepared (else NOT_PREPARED), with the
+    same design and signature checks."""
     if is_approved(activity):
         return ALREADY_APPROVED
     statuses = set(Certificate.objects.filter(activity=activity).values_list("status", flat=True))
     if not statuses:
-        return NOTHING_TO_APPROVE
-    if statuses == {Status.ISSUED}:
+        if not before_conducted(activity):
+            return NOTHING_TO_APPROVE
+        if not is_prepared(activity):
+            return NOT_PREPARED
+    elif statuses == {Status.ISSUED}:
         return ALL_ISSUED
     try:
         fields = design_fields(activity)
@@ -1476,7 +1551,9 @@ def approve_activity_certificates(member: TBIMember, activity: Activity, now: da
         raise CertificateError(reason)
     Activity.objects.filter(pk=locked.pk).update(certificates_approved_by=member, certificates_approved_at=now)
     locked.certificates_approved_by, locked.certificates_approved_at = member, now
-    write_certificate_approval_history(locked, member, NEEDS_APPROVAL, f"Approved by {member.name}")
+    early = before_conducted(locked)  # ASSUMPTIONS 420: approved before the certificates exist
+    write_certificate_approval_history(locked, member, PREPARED_TEXT if early else NEEDS_APPROVAL,
+                                       f"Approved by {member.name}{' (before Conducted)' if early else ''}")
     approved = approve_ready_certificates(locked, now=now)
     audit_logger.info("Activity certificates approved: activity_id=%s certificates_approved_now=%s by member_id=%s",
                       locked.pk, len(approved), member.pk)
@@ -1542,6 +1619,124 @@ def cancel_certificate_approval(activity: Activity, member: TBIMember | None, no
     audit_logger.info("Activity certificate approval cancelled: activity_id=%s certificates_back=%s by member_id=%s",
                       locked.pk, len(approved), member.pk if member else None)
     return True
+
+
+# --- Prepare and preview before Conducted (ASSUMPTIONS 420) ----------------------------------------------------------
+
+ALREADY_PREPARED = "The certificates of this activity are already prepared."
+PREPARE_CONDUCTED = "This activity is Conducted: its certificates are created automatically."
+PREPARED_HISTORY_TEXT = "Prepared for review by {name}"
+
+
+def prepare_closed_reason(activity: Activity) -> str | None:
+    """Why "Prepare the certificates now" cannot be used, or None: the activity is Conducted (the certificates exist or
+    are created by the System) or it is already prepared."""
+    if not before_conducted(activity):
+        return PREPARE_CONDUCTED
+    if is_prepared(activity):
+        return ALREADY_PREPARED
+    return None
+
+
+@transaction.atomic
+def prepare_activity_certificates(member: TBIMember, activity: Activity, now: datetime | None = None) -> Activity:
+    """"Prepare the certificates now" (the New activity form or the Certificates tab; can_create_activity or
+    can_approve_certificates): who and when are stored on the activity, one History row ("Certificates": "Prepared for
+    review by <name>") and the certificate reviewers are told once (notifications.services.notify_certificate_reviewers,
+    same transaction; never the member who prepared them). The signatories, titles and text are whatever the activity
+    has (chosen on the form or the tab). Refused (CertificateError) with prepare_closed_reason, so it happens once."""
+    from activities.services import write_certificate_history
+    from notifications.services import notify_certificate_reviewers
+
+    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    now = now or timezone.now()
+    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    if reason := prepare_closed_reason(locked):
+        raise CertificateError(reason)
+    Activity.objects.filter(pk=locked.pk).update(certificates_prepared_by=member, certificates_prepared_at=now)
+    locked.certificates_prepared_by, locked.certificates_prepared_at = member, now
+    activity.certificates_prepared_by, activity.certificates_prepared_at = member, now
+    write_certificate_history(locked, member, "", PREPARED_HISTORY_TEXT.format(name=member.name))
+    told = notify_certificate_reviewers(locked, member)
+    audit_logger.info("Activity certificates prepared: activity_id=%s reviewers_told=%s by member_id=%s",
+                      locked.pk, told, member.pk)
+    return activity
+
+
+SAMPLE_NUMBER = "SAMPLE"
+SAMPLE_TITLE = "Activity title"
+
+
+def _sample_values(activity: Activity, certificate_type: str, name: str, topic: str) -> dict[str, str]:
+    values = pdf.placeholder_values(Certificate(recipient_type=RECIPIENT_FOR_TEXT[certificate_type]), name,
+                                    activity=activity)
+    values["topic"] = topic if certificate_type == TEXT_APPRECIATION else ""
+    return values
+
+
+def _render_sample(activity: Activity, certificate_type: str, fields: dict, text: CertificateText, name: str,
+                   topic: str) -> bytes:
+    """The sample certificate (never saved): the active design and `fields` (design_fields' columns), the wording
+    `text`, the sample `name`, marked PREVIEW, number SAMPLE. A missing signature image is left blank."""
+    certificate = Certificate(certificate_number=SAMPLE_NUMBER, recipient_type=RECIPIENT_FOR_TEXT[certificate_type],
+                              certificate_text=text, **fields)
+    return pdf.render_certificate_pdf(certificate, name=name, mark=True, missing_signature_ok=True,
+                                      values=_sample_values(activity, certificate_type, name, topic))
+
+
+def activity_sample_preview_pdf(member: TBIMember, activity: Activity, certificate_type: str) -> bytes:
+    """The Certificates tab's preview before Conducted: what this activity's certificates will look like with the
+    active design, its saved signatories, titles and text, and a sample name ("Juan Dela Cruz"; Appreciation: the
+    first resource person and their topic, else "Dr. Maria Santos"). Nothing is stored. Any active staff member, like
+    preview_pdf. Refused (CertificateError) when the design is incomplete (design_fields)."""
+    require_staff_member(member)
+    _check_type(certificate_type)
+    fields = design_fields(activity)
+    name, topic = SAMPLE_NAMES[certificate_type], SAMPLE_TOPIC
+    if certificate_type == TEXT_APPRECIATION:
+        link = activity.resource_person_links.select_related("resource_person").order_by("pk").first()
+        if link is not None:
+            name, topic = link.resource_person.name, link.topic
+    text = wording.current_text_for(activity.pk, certificate_type)
+    return _render_sample(activity, certificate_type, fields, text, name, topic)
+
+
+def draft_sample_preview_pdf(member: TBIMember, certificate_type: str, *, details: dict, slots: dict,
+                             text: dict | None = None) -> bytes:
+    """The New activity form's preview (nothing saved yet, ASSUMPTIONS 420): `details` = the typed title, start_date,
+    end_date, venue (a missing one gets a sample value); `slots` = {slot: (person or None, title text)} from the
+    form; `text` = the typed wording of this type, or None for the default. Same template and sample names as
+    activity_sample_preview_pdf. can_create_activity (the form's permission). Refused (CertificateError) when there is
+    no active design, a slot is empty or inactive, the same person signs twice, or the typed wording would be refused
+    (the message of the first problem)."""
+    require_permission(member, Permission.CREATE_ACTIVITY)
+    _check_type(certificate_type)
+    template = active_template()
+    if template is None:
+        raise CertificateError(NO_TEMPLATE)
+    fields: dict = {"certificate_template": template}
+    for slot in SLOTS:
+        person, title = slots.get(slot) or (None, None)
+        if person is None:
+            raise CertificateError("Choose the two signatories first.")
+        if not person.is_active:
+            raise CertificateError(f"{person.name} is inactive. Choose an active person.")
+        title = _clean_title(title, f"title_{slot}")
+        fields[SLOT_FIELDS[slot]] = person
+        fields[f"{SLOT_FIELDS[slot]}_title"] = title or person.position
+    if fields["left_signatory"].pk == fields["right_signatory"].pk:
+        raise CertificateError("The same person cannot sign on both sides. Choose another person.")
+    if text is None:
+        row = wording.default_text(certificate_type)
+    else:
+        cleaned, problems = wording.clean(text, certificate_type)
+        if problems:
+            raise CertificateError(next(iter(problems.values())))
+        row = CertificateText(certificate_type=certificate_type, **cleaned)
+    start = details.get("start_date") or timezone.localdate()
+    activity = Activity(title=(details.get("title") or "").strip() or SAMPLE_TITLE, start_date=start,
+                        end_date=details.get("end_date") or start, venue=(details.get("venue") or "").strip())
+    return _render_sample(activity, certificate_type, fields, row, SAMPLE_NAMES[certificate_type], SAMPLE_TOPIC)
 
 
 def set_certificate_status(

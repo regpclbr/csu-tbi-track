@@ -238,6 +238,48 @@ def preview_certificate(request: HttpRequest, certificate_id: int) -> HttpRespon
     return _no_store(_pdf_response(content, f"PREVIEW-{certificate.certificate_number}.pdf", inline=True))
 
 
+def _sample_response(request: HttpRequest, render) -> HttpResponse:
+    """The sample certificate PDF (inline, never stored), or a short page with the reason it cannot be shown yet (the
+    service's message: no design, a signatory missing, refused wording) inside the same <iframe>."""
+    from django.shortcuts import render as render_page
+
+    try:
+        content = render()
+    except services.CertificateError as error:
+        return _no_store(render_page(request, "certificates/sample_preview_message.html", {"message": str(error)}))
+    except Exception as error:  # e.g. WeasyPrint's system libraries are missing
+        return HttpResponse(f"The preview could not be rendered ({type(error).__name__}). Run python manage.py check_pdf.",
+                            status=503, content_type="text/plain; charset=utf-8")
+    return _no_store(_pdf_response(content, "SAMPLE-certificate.pdf", inline=True))
+
+
+@staff_login_required
+@require_GET
+@xframe_options_sameorigin  # the Certificates tab's sample <iframe> before Conducted (ASSUMPTIONS 420)
+def activity_sample_preview(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """GET ?type=participation|appreciation: the activity's certificate with a sample name, its saved signatories,
+    titles and text and the active design (services.activity_sample_preview_pdf). Any active staff member."""
+    activity = get_object_or_404(Activity, pk=activity_id)
+    kind = request.GET.get("type", services.TEXT_PARTICIPATION)
+    if kind not in services.TEXT_TYPES:
+        raise Http404("Unknown certificate type.")
+    return _sample_response(request, lambda: services.activity_sample_preview_pdf(request.user, activity, kind))
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_GET
+@xframe_options_sameorigin  # the New activity form's sample <iframe> (ASSUMPTIONS 420)
+def draft_sample_preview(request: HttpRequest) -> HttpResponse:
+    """GET the New activity form's typed title, dates, venue, signatories, titles and (mode=custom) wording, plus
+    ?type=: the certificate with a sample name before anything is saved (services.draft_sample_preview_pdf). Only
+    these fields are sent (built by the form's script), never the CSRF token or files. can_create_activity."""
+    from . import pages
+
+    kind, details, slots, text = pages.draft_preview_inputs(request.GET)
+    return _sample_response(request, lambda: services.draft_sample_preview_pdf(
+        request.user, kind, details=details, slots=slots, text=text))
+
+
 # --- Staff: actions (regenerate etc.: can_create_activity; approve: can_approve_certificates) ---------
 # Certificates are created by the System when the activity is Conducted (ASSUMPTIONS 362): no generate endpoint.
 

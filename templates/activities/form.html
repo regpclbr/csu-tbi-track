@@ -6,7 +6,9 @@ the first field with an error gets the focus. Date-times are typed and shown in 
 New only: the Activity Design and Request Letter and other documents, all optional (activities/_new_documents.html,
 ASSUMPTIONS 405, 417), and "Create as: Draft / Scheduled" (activities/_create_as.html, 417), saved with the activity in
 one service call.
-"Who signs the certificates" (activities/_signatories_fields.html, ASSUMPTIONS 365): saved with the activity.
+"Who signs the certificates" (activities/_signatories_fields.html, ASSUMPTIONS 365): saved with the activity. Edit only;
+the New form has the optional "Prepare the certificates now" instead (activities/_prepare_certificates.html, closed by
+default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 420).
 {% endcomment %}
 {# The form's heading is the page header: back link, the h1 and the description (ASSUMPTIONS 411). #}
 {% block page_header %}
@@ -74,7 +76,7 @@ one service call.
     </div>
   </section>
 
-  {% include "activities/_signatories_fields.html" %}
+  {% if activity %}{% include "activities/_signatories_fields.html" %}{% else %}{% include "activities/_prepare_certificates.html" %}{% endif %}
 
   {% if not activity %}
     {% include "activities/_new_documents.html" %}

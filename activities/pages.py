@@ -404,6 +404,46 @@ def create_as_section(form) -> dict:
     }
 
 
+TEXT_MODE_FIELD = "certificate_text_mode"  # "default" | "custom" inside "Prepare the certificates now"
+
+
+def posted_certificate_texts(data) -> dict | None:
+    """The New activity form's wording when "Custom text for this activity" is chosen inside "Prepare the certificates
+    now" ({type: {field: text}}), else None (the default text). Parsing only (ASSUMPTIONS 420)."""
+    if data.get(TEXT_MODE_FIELD) != "custom":
+        return None
+    from certificates import pages as certificate_pages
+
+    return certificate_pages.posted_texts(data)
+
+
+def split_text_errors(error) -> dict[str, list[str]]:
+    """Take the wording errors ("participation-main_sentence", ...) out of the service's ValidationError, so they go
+    under the certificate text fields and the rest under the activity's fields."""
+    from certificates.services import TEXT_TYPES
+
+    if not hasattr(error, "error_dict"):
+        return {}
+    keys = [key for key in error.error_dict if key.split("-", 1)[0] in TEXT_TYPES]
+    return {key: [message for item in error.error_dict.pop(key) for message in item.messages] for key in keys}
+
+
+def prepare_section(form, data, text_errors: dict | None = None) -> dict:
+    """The New activity form's optional "Prepare the certificates now" (ASSUMPTIONS 420): closed by default; ticked
+    after an error stays ticked. Inside: "Who signs the certificates" (signatory_form_section), "Use the default text" /
+    "Custom text for this activity" (certificates.pages.new_activity_text_panel) and the sample preview
+    (certificates:draft_sample_preview, built from the typed fields). Display only: the services decide."""
+    from certificates import pages as certificate_pages
+
+    return {
+        "field": form["prepare_certificates"],
+        "checked": form.signatories_used(),
+        "text": certificate_pages.new_activity_text_panel(data, text_errors),
+        "preview_url": reverse("certificates:draft_sample_preview"),
+        "types": [{"type": kind, "label": label} for kind, label in certificate_pages.SAMPLE_TYPES],
+    }
+
+
 def signatory_form_section(form, member) -> dict:
     """What the form template shows for "Who signs the certificates": per slot the bound select and title fields,
     each option's usual position (the title's placeholder follows the chosen person) and the amber note for an

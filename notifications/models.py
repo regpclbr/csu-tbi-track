@@ -14,6 +14,9 @@ class Notification(models.Model):
     DOCUMENT_RETURNED = "document_returned"
     DOCUMENT_WAITING_FOR_REVIEW = "document_waiting_for_review"  # to members who can approve documents, not the uploader
     ACTIVITY_CREATED = "activity_created"  # to every active Director when someone else creates an activity (ASSUMPTIONS 361)
+    # to every certificate reviewer (can_manage_signatories AND can_approve_certificates) when someone else prepares an
+    # activity's certificates before Conducted (ASSUMPTIONS 420)
+    CERTIFICATES_PREPARED = "certificates_prepared"
     REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
 
     notification_id = models.BigAutoField(primary_key=True)
