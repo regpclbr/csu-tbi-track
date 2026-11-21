@@ -8,10 +8,10 @@ days of the week; each chip's link text is the title and its status.
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
   <div class="flex items-center gap-2">
     <a href="?view=calendar&amp;month={{ calendar.previous|date:'Y-m' }}" hx-get="?view=calendar&amp;month={{ calendar.previous|date:'Y-m' }}" hx-target="#activity-results" hx-push-url="true"
-       class="btn btn-secondary btn-sm px-2.5" aria-label="Previous month, {{ calendar.previous|date:'F Y' }}">{% include "components/icon.html" with name="chevron-left" class="size-4" %}</a>
+       class="btn btn-secondary btn-sm px-3" aria-label="Previous month, {{ calendar.previous|date:'F Y' }}">{% include "components/icon.html" with name="chevron-left" class="size-4" %}</a>
     <h3 class="min-w-40 text-center text-lg font-semibold text-ink" aria-live="polite">{{ month|date:"F Y" }}</h3>
     <a href="?view=calendar&amp;month={{ calendar.next|date:'Y-m' }}" hx-get="?view=calendar&amp;month={{ calendar.next|date:'Y-m' }}" hx-target="#activity-results" hx-push-url="true"
-       class="btn btn-secondary btn-sm px-2.5" aria-label="Next month, {{ calendar.next|date:'F Y' }}">{% include "components/icon.html" with name="chevron-right" class="size-4" %}</a>
+       class="btn btn-secondary btn-sm px-3" aria-label="Next month, {{ calendar.next|date:'F Y' }}">{% include "components/icon.html" with name="chevron-right" class="size-4" %}</a>
     <a href="?view=calendar" hx-get="?view=calendar" hx-target="#activity-results" hx-push-url="true" class="btn btn-ghost btn-sm">This month</a>
   </div>
   <ul class="flex flex-wrap items-center gap-2" aria-label="Status colours">
@@ -32,7 +32,7 @@ days of the week; each chip's link text is the title and its status.
       {% for week in calendar.weeks %}
         <tr>
           {% for day in week %}
-            <td class="h-24 border-t border-l border-line p-1.5 align-top first:border-l-0 {% if day.in_month %}bg-white{% else %}bg-slate-50{% endif %}">
+            <td class="h-24 border-t border-l border-line p-2 align-top first:border-l-0 {% if day.in_month %}bg-white{% else %}bg-slate-50{% endif %}">
               <p class="mb-1 flex justify-end">
                 <span class="flex size-6 items-center justify-center rounded-full text-xs font-semibold {% if day.is_today %}bg-primary-soft text-primary font-bold{% elif day.in_month %}text-ink{% else %}text-slate-500{% endif %}">
                   <span class="sr-only">{{ day.date|date:"l, F j" }}{% if day.is_today %} (today){% endif %}</span><span aria-hidden="true">{{ day.date.day }}</span>
@@ -43,11 +43,11 @@ days of the week; each chip's link text is the title and its status.
                   {% for activity in day.activities %}
                     <li>
                       <a href="{% url 'activities:detail' activity.pk %}" title="{{ activity.title }} · {{ activity.status.name }} · {{ activity|date_span }}"
-                         class="badge {% if activity.status.name == 'Draft' %}badge-draft ring-1 ring-slate-300 ring-inset{% elif activity.status.name == 'Scheduled' %}badge-scheduled{% elif activity.status.name == 'Ongoing' %}badge-ongoing{% else %}badge-conducted{% endif %} block w-full truncate px-1.5 text-left hover:underline">{{ activity.title }}<span class="sr-only"> ({{ activity.status.name }})</span></a>
+                         class="badge {% if activity.status.name == 'Draft' %}badge-draft ring-1 ring-slate-300 ring-inset{% elif activity.status.name == 'Scheduled' %}badge-scheduled{% elif activity.status.name == 'Ongoing' %}badge-ongoing{% else %}badge-conducted{% endif %} block w-full truncate px-2 text-left hover:underline">{{ activity.title }}<span class="sr-only"> ({{ activity.status.name }})</span></a>
                     </li>
                   {% endfor %}
                   {% if day.more %}
-                    <li><a href="{% url 'activities:list' %}?date_from={{ day.date|date:'Y-m-d' }}&amp;date_to={{ day.date|date:'Y-m-d' }}" class="link px-1.5 text-xs">+{{ day.more }} more</a></li>
+                    <li><a href="{% url 'activities:list' %}?date_from={{ day.date|date:'Y-m-d' }}&amp;date_to={{ day.date|date:'Y-m-d' }}" class="link px-2 text-xs">+{{ day.more }} more</a></li>
                   {% endif %}
                 </ul>
               {% endif %}

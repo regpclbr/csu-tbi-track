@@ -12,12 +12,12 @@ closes. Errors come back here. The activity itself is saved only with the activi
   {% if errors.file %}<p class="field-error" role="alert">{{ errors.file }}</p>{% endif %}
   <div>
     <label for="add-signatory-name" class="text-sm font-semibold text-ink">Name as printed</label>
-    <input id="add-signatory-name" name="name" value="{{ values.name|default:'' }}" maxlength="255" required class="field-input mt-1.5" placeholder="e.g. Dr. Maria Santos"{% if errors.name %} aria-invalid="true" aria-describedby="add-signatory-name-error"{% endif %}>
+    <input id="add-signatory-name" name="name" value="{{ values.name|default:'' }}" maxlength="255" required class="field-input mt-2" placeholder="e.g. Dr. Maria Santos"{% if errors.name %} aria-invalid="true" aria-describedby="add-signatory-name-error"{% endif %}>
     {% if errors.name %}<p id="add-signatory-name-error" class="field-error">{{ errors.name }}</p>{% endif %}
   </div>
   <div>
     <label for="add-signatory-position" class="text-sm font-semibold text-ink">Position as printed</label>
-    <input id="add-signatory-position" name="position" value="{{ values.position|default:'' }}" maxlength="255" required class="field-input mt-1.5" placeholder="e.g. University President"{% if errors.position %} aria-invalid="true" aria-describedby="add-signatory-position-error"{% endif %}>
+    <input id="add-signatory-position" name="position" value="{{ values.position|default:'' }}" maxlength="255" required class="field-input mt-2" placeholder="e.g. University President"{% if errors.position %} aria-invalid="true" aria-describedby="add-signatory-position-error"{% endif %}>
     {% if errors.position %}<p id="add-signatory-position-error" class="field-error">{{ errors.position }}</p>{% endif %}
   </div>
   {% include "certificates/_signature_file_field.html" with prefix="add-signatory" optional=True %}

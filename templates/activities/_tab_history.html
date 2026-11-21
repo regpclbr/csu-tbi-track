@@ -6,10 +6,10 @@
     <ol class="divide-y divide-line">
       {% for row in history_rows %}
         <li class="flex gap-4 py-3 first:pt-0">
-          <span class="chip chip-blue mt-0.5 size-9 rounded-xl" aria-hidden="true">{% include "components/icon.html" with name="history" class="size-4.5" %}</span>
+          <span class="chip chip-blue mt-1 size-9 rounded-xl" aria-hidden="true">{% include "components/icon.html" with name="history" class="size-4.5" %}</span>
           <div class="min-w-0 flex-1">
             <p class="text-sm font-medium [overflow-wrap:anywhere] text-ink">{{ row.sentence }}</p>
-            <p class="mt-0.5 text-xs text-muted"><time datetime="{{ row.entry.changed_at|date:'c' }}" title="{{ row.entry.changed_at|date:'M j, Y g:i A' }}">{{ row.entry.changed_at|relative_time }}</time> · {{ row.entry.field_changed }}</p>
+            <p class="mt-1 text-xs text-muted"><time datetime="{{ row.entry.changed_at|date:'c' }}" title="{{ row.entry.changed_at|date:'M j, Y g:i A' }}">{{ row.entry.changed_at|relative_time }}</time> · {{ row.entry.field_changed }}</p>
           </div>
         </li>
       {% endfor %}

@@ -9,7 +9,7 @@ appear under their fields.
 <div class="space-y-6">
   {% if can_generate %}
     <section class="card p-0" id="new-report" aria-labelledby="new-report-title">
-      <div class="px-6 pt-5 pb-1">
+      <div class="px-6 pt-6 pb-1">
         <h2 id="new-report-title" class="card-title">New report</h2>
         <p class="card-subtitle">{% if ai_fill_available %}Say what you need, check the settings, then generate.{% else %}Choose a report type, the sections, the period and the format.{% endif %} The file is made in the background.</p>
       </div>
@@ -17,7 +17,7 @@ appear under their fields.
     </section>
   {% else %}
     <p class="flex items-start gap-2 rounded-2xl border border-line bg-white px-4 py-3 text-sm text-slate-700 shadow-card">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}
+      {% include "components/icon.html" with name="info" class="mt-1 size-4 text-muted" %}
       You can view and download every report. Generating a new one needs a role that can create activities.
     </p>
   {% endif %}

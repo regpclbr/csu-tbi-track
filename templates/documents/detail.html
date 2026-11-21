@@ -8,22 +8,22 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
 {# The header card below is this page's header: the document title is the h1 (ASSUMPTIONS 411). #}
 {% block page_header %}{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-4xl space-y-5">
-  <a href="{{ back_link.url }}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}{{ back_link.label|truncatechars:90 }}</a>
+<div class="mx-auto max-w-4xl space-y-6">
+  <a href="{{ back_link.url }}" class="link inline-flex items-center gap-2 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}{{ back_link.label|truncatechars:90 }}</a>
 
   <section class="card p-6" aria-labelledby="document-title">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div class="min-w-0">
         <p class="text-xs font-semibold tracking-wide text-primary uppercase">{{ document.document_type.name }}</p>
         <h1 id="document-title" class="page-title mt-1 break-words">{{ document.title }}</h1>
-        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+        <div class="mt-2 flex flex-wrap items-center gap-2">
           {% include "components/badge.html" with text=state.label tone=state.tone %}
           {% if searchable %}<span class="badge badge-neutral">{% include "components/icon.html" with name="sparkles" class="size-3.5" %}Searchable by the AI assistant</span>{% endif %}
           {% if document.related_certificate %}<span class="badge badge-info">Evidence for certificate {{ document.related_certificate.certificate_number }}</span>{% endif %}
         </div>
       </div>
     </div>
-    <div class="mt-5 border-t border-line pt-4">
+    <div class="mt-6 border-t border-line pt-4">
       {% include "documents/_actions.html" with row=view_row next=request.get_full_path %}
     </div>
   </section>
@@ -31,13 +31,13 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
   <section class="card p-6" aria-labelledby="facts-title">
     {% include "components/section_header.html" with id="facts-title" title="Details" %}
     <dl class="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
-      <div><dt class="font-semibold text-ink">Activity</dt><dd class="mt-0.5"><a href="{% url 'activities:detail' document.activity_id %}" class="link">{{ document.activity.title }}</a></dd></div>
-      <div><dt class="font-semibold text-ink">File</dt><dd class="mt-0.5 break-all text-slate-700">{{ document.file_name }} · {{ document.file_extension|upper }} · {{ document.file_size_kb }} KB</dd></div>
-      <div><dt class="font-semibold text-ink">Uploaded</dt><dd class="mt-0.5 text-slate-700">by {{ document.uploaded_by.name }} on <time datetime="{{ document.uploaded_at|date:'c' }}">{{ document.uploaded_at|date:"M j, Y g:i A" }}</time></dd></div>
-      <div><dt class="font-semibold text-ink">Last changed</dt><dd class="mt-0.5 text-slate-700"><time datetime="{{ document.updated_at|date:'c' }}">{{ document.updated_at|date:"M j, Y g:i A" }}</time></dd></div>
+      <div><dt class="font-semibold text-ink">Activity</dt><dd class="mt-1"><a href="{% url 'activities:detail' document.activity_id %}" class="link">{{ document.activity.title }}</a></dd></div>
+      <div><dt class="font-semibold text-ink">File</dt><dd class="mt-1 break-all text-slate-700">{{ document.file_name }} · {{ document.file_extension|upper }} · {{ document.file_size_kb }} KB</dd></div>
+      <div><dt class="font-semibold text-ink">Uploaded</dt><dd class="mt-1 text-slate-700">by {{ document.uploaded_by.name }} on <time datetime="{{ document.uploaded_at|date:'c' }}">{{ document.uploaded_at|date:"M j, Y g:i A" }}</time></dd></div>
+      <div><dt class="font-semibold text-ink">Last changed</dt><dd class="mt-1 text-slate-700"><time datetime="{{ document.updated_at|date:'c' }}">{{ document.updated_at|date:"M j, Y g:i A" }}</time></dd></div>
       <div class="sm:col-span-2">
         <dt class="font-semibold text-ink">Review</dt>
-        <dd class="mt-0.5 text-slate-700">
+        <dd class="mt-1 text-slate-700">
           {% if document.review_state == "approved" %}
             Approved by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. Approved documents are final.
           {% elif document.review_state == "returned" %}

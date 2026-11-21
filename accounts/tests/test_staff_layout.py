@@ -487,6 +487,64 @@ def test_destructive_buttons_are_red_text_and_never_filled_outside_a_confirmatio
                 assert "btn-danger" in match.group(1).split(), f"{template.name}: {match.group(2)}"
 
 
+# --- Spacing scale (ASSUMPTIONS 413, Part 2) ---------------------------------------------------------------------------
+
+SPACING_STEPS = {"0", "px", "1", "2", "3", "4", "6", "8", "12", "16", "auto"}  # 4 8 12 16 24 32 px; 48 / 64 px page gutters
+SPACING_UTILITY = re.compile(
+    r"(?<![\w\[-])-?(?:[a-z0-9-]+:)*(p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y)"
+    r"-(\[[^\]]*\]|[0-9.]+)(?![\w.\[-])")
+ICON_CLEARANCE = {"8", "9", "10", "11", "12", "14"}  # one-sided pl / pr inside a field-input (room for its icon)
+PRINT_TEMPLATES = {"attendance_sheet.html", "certificate_pdf.html", "report_pdf.html", "individual_evaluation_pdf.html"}
+
+
+def spacing_offenders(classes: str) -> list[str]:
+    """The padding / margin / gap / space utilities of one class attribute that are off the scale."""
+    found = []
+    for match in SPACING_UTILITY.finditer(classes):
+        utility, value = match.groups()
+        if value in SPACING_STEPS:
+            continue
+        if utility in ("pl", "pr") and value in ICON_CLEARANCE and "field-input" in classes:
+            continue
+        found.append(match.group(0))
+    return found
+
+
+def test_spacing_scale_in_every_template() -> None:
+    """One spacing scale (ASSUMPTIONS 413): padding, margins, gaps and space-* use 4 / 8 / 12 / 16 / 24 / 32 px (48 / 64 px
+    only as page gutters), never half steps (2, 6, 10, 14 px), 20, 28, 36, 40 px or an arbitrary [..px] value. Exceptions:
+    a field-input's one-sided icon clearance, scroll-mt (an offset, not spacing), print / PDF templates and the Django
+    admin's own templates."""
+    base = Path(settings.BASE_DIR)
+    offenders = []
+    for folder in [base / "templates", *base.glob("*/templates")]:
+        for template in folder.rglob("*.html"):
+            if "admin" in template.relative_to(folder).parts or template.name in PRINT_TEMPLATES:
+                continue
+            text = template.read_text(encoding="utf-8")
+            attributes = re.findall(r'[\w:-]*class="([^"]*)"', text)
+            attributes += re.findall(r"\{% block main_class %\}(.*?)\{% endblock", text)
+            for classes in attributes:
+                offenders += [f"{template.relative_to(base)}: {token}" for token in spacing_offenders(classes)]
+    assert offenders == []
+
+
+def test_spacing_scale_in_the_component_classes() -> None:
+    """The @apply rules of frontend/tailwind/app.css follow the same scale; the one exception is the 2 px vertical padding
+    inside badges and tags (chip-internal, like line height), and the select's chevron clearance."""
+    offenders = []
+    for line in SOURCE_CSS.read_text(encoding="utf-8").splitlines():
+        if "@apply" not in line:
+            continue
+        for token in spacing_offenders(line.split("@apply", 1)[1]):
+            if token == "py-0.5" and "text-xs" in line:  # .badge / .tag
+                continue
+            if token == "pr-10" and "appearance-none" in line:  # .field-select chevron
+                continue
+            offenders.append(f"{token}: {line.strip()[:80]}")
+    assert offenders == []
+
+
 def test_type_scale_on_staff_pages() -> None:
     """ASSUMPTIONS 413: four sizes on staff pages (24 page title / 18 section heading / 14 body / 12 caption); the odd
     pixel sizes are gone. Public and portal pages use 16 px body text; their hero headlines are display text."""

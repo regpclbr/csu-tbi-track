@@ -7,7 +7,7 @@ registrations.services.register checks the choice belongs to the activity; its m
 {% endcomment %}
 <fieldset{% if errors.participant_category %} aria-describedby="id_participant_category-error"{% endif %}>
   <legend class="text-sm font-semibold text-ink">You are attending as <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span></legend>
-  <div class="mt-1 space-y-0.5">
+  <div class="mt-1 space-y-1">
     {% for category in categories %}
       <label class="flex min-h-11 cursor-pointer items-center gap-3 py-1 text-sm text-ink">
         <input type="radio" name="participant_category" value="{{ category.participant_category_id }}" class="size-5 shrink-0 accent-primary"{% if categories|length == 1 or values.participant_category == category.participant_category_id|stringformat:"s" %} checked{% endif %}{% if focus == "participant_category" and forloop.first %} autofocus{% endif %}{% if errors.participant_category %} aria-invalid="true"{% endif %}>
@@ -15,6 +15,6 @@ registrations.services.register checks the choice belongs to the activity; its m
       </label>
     {% endfor %}
   </div>
-  {% if categories|length == 1 %}<p class="mt-0.5 text-sm text-slate-700">This activity is for this group only.</p>{% endif %}
+  {% if categories|length == 1 %}<p class="mt-1 text-sm text-slate-700">This activity is for this group only.</p>{% endif %}
   {% if errors.participant_category %}<p id="id_participant_category-error" class="field-error">{{ errors.participant_category }}</p>{% endif %}
 </fieldset>

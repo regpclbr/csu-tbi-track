@@ -4,7 +4,7 @@ The title row of components/modal.html: the title (id="<id>-title", the dialog's
 {% endcomment %}
 <div class="mb-4 flex items-start justify-between gap-4">
   <h2 id="{{ id }}-title" class="card-title">{{ title }}</h2>
-  <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" onclick="this.closest('dialog').close()" aria-label="Close">
+  <button type="button" class="-m-2 rounded-lg p-2 text-muted hover:bg-slate-100 hover:text-ink" onclick="this.closest('dialog').close()" aria-label="Close">
     {% include "components/icon.html" with name="x" class="size-5" %}
   </button>
 </div>

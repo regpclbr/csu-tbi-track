@@ -7,7 +7,7 @@ activities:certificates_signature (services.upload_signature checks everything a
   <p class="text-sm text-slate-700">{{ slot.signatory.name }} · {{ slot.signatory.position }}</p>
   {% if slot.impact %}
     <p class="flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>{{ slot.impact }}</span></p>
+      {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>{{ slot.impact }}</span></p>
   {% endif %}
   {% with prefix="signature-"|add:slot.slot %}{% include "certificates/_signature_file_field.html" with required=True max_mb=signatures.max_mb %}{% endwith %}
   <div class="flex justify-end gap-2">

@@ -7,7 +7,7 @@ by HTMX when the page opens (console_system_pdf); without JavaScript a link open
 {% block content %}
 {% include "console/_tabs.html" %}
 <section class="card p-6" aria-labelledby="system-title">
-  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
     <div>
       <h2 id="system-title" class="card-title">System status</h2>
       <p class="card-subtitle">Checked <time datetime="{{ checked_at|date:'c' }}">{{ checked_at|date:"M j, Y g:i A" }}</time>. Nothing here changes data or sends anything.</p>

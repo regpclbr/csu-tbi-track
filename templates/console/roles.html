@@ -9,7 +9,7 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
 {% block content %}
 {% include "console/_tabs.html" %}
 <section class="card p-6" aria-labelledby="roles-title">
-  <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+  <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
     <div>
       <h2 id="roles-title" class="card-title">Roles</h2>
       <p class="card-subtitle">What each role may do. Every active member can view activities, documents, certificates, startups and reports.</p>
@@ -18,19 +18,19 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
   </div>
   {% if no_creator %}
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}No active member can create or edit activities. New activities cannot be added until a role with active members can create them.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can create or edit activities. New activities cannot be added until a role with active members can create them.</p>
   {% endif %}
   {% if no_deleter %}
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}No active member can delete activities. Activities created by mistake stay until a role with active members can delete them.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can delete activities. Activities created by mistake stay until a role with active members can delete them.</p>
   {% endif %}
   {% if no_approver %}
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}No active member can approve documents. Uploaded documents will wait for review until a role with active members can approve them.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can approve documents. Uploaded documents will wait for review until a role with active members can approve them.</p>
   {% endif %}
   {% if no_certificate_approver %}
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}No active member can approve certificates. Generated certificates will wait for approval until a role with active members can approve them.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can approve certificates. Generated certificates will wait for approval until a role with active members can approve them.</p>
   {% endif %}
   {% if roles %}
     <div class="relative overflow-x-auto rounded-2xl border border-line">
@@ -39,13 +39,13 @@ set_role_document_approval / set_role_certificate_approval / set_role_activity_d
         {# Headers wrap (never wider than the card at 1366 px: the last column's "Turn on" was hidden, ASSUMPTIONS 411). #}
         <thead class="bg-slate-50 align-bottom text-xs font-semibold tracking-wide text-muted uppercase">
           <tr>
-            <th scope="col" class="px-4 py-2.5">Role</th>
-            <th scope="col" class="px-4 py-2.5">Create and edit activities</th>
-            <th scope="col" class="px-4 py-2.5">Manage users (Admin Console)</th>
-            <th scope="col" class="px-4 py-2.5">Approve and return documents</th>
-            <th scope="col" class="px-4 py-2.5">Approve certificates</th>
-            <th scope="col" class="px-4 py-2.5">Delete activities</th>
-            <th scope="col" class="px-4 py-2.5">Active members</th>
+            <th scope="col" class="px-4 py-3">Role</th>
+            <th scope="col" class="px-4 py-3">Create and edit activities</th>
+            <th scope="col" class="px-4 py-3">Manage users (Admin Console)</th>
+            <th scope="col" class="px-4 py-3">Approve and return documents</th>
+            <th scope="col" class="px-4 py-3">Approve certificates</th>
+            <th scope="col" class="px-4 py-3">Delete activities</th>
+            <th scope="col" class="px-4 py-3">Active members</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">

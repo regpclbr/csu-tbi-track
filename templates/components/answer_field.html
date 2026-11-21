@@ -11,9 +11,9 @@ Touch targets are at least 44 px (rating buttons, option rows).
   <div>
     <label for="answer-{{ field.pk }}" class="text-sm font-semibold text-ink">{{ field.field_label }}{% if field.is_required %} <span class="text-danger" aria-hidden="true">*</span>{% endif %}</label>
     {% if field.field_type == "short_text" %}
-      <input id="answer-{{ field.pk }}" type="text" name="field_{{ field.pk }}" value="{{ row.value|default:'' }}" class="field-input mt-1.5"{% if field.is_required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if row.error %} aria-invalid="true" aria-describedby="answer-{{ field.pk }}-error"{% endif %}{% if row.autofocus %} autofocus{% endif %}>
+      <input id="answer-{{ field.pk }}" type="text" name="field_{{ field.pk }}" value="{{ row.value|default:'' }}" class="field-input mt-2"{% if field.is_required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if row.error %} aria-invalid="true" aria-describedby="answer-{{ field.pk }}-error"{% endif %}{% if row.autofocus %} autofocus{% endif %}>
     {% else %}
-      <textarea id="answer-{{ field.pk }}" name="field_{{ field.pk }}" rows="3" class="field-input mt-1.5"{% if field.is_required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if row.error %} aria-invalid="true" aria-describedby="answer-{{ field.pk }}-error"{% endif %}{% if row.autofocus %} autofocus{% endif %}>{{ row.value|default:'' }}</textarea>
+      <textarea id="answer-{{ field.pk }}" name="field_{{ field.pk }}" rows="3" class="field-input mt-2"{% if field.is_required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if row.error %} aria-invalid="true" aria-describedby="answer-{{ field.pk }}-error"{% endif %}{% if row.autofocus %} autofocus{% endif %}>{{ row.value|default:'' }}</textarea>
     {% endif %}
     {% if row.error %}<p id="answer-{{ field.pk }}-error" class="field-error">{{ row.error }}</p>{% endif %}
   </div>
@@ -21,7 +21,7 @@ Touch targets are at least 44 px (rating buttons, option rows).
   <fieldset{% if row.error %} aria-describedby="answer-{{ field.pk }}-error"{% endif %}>
     <legend class="text-sm font-semibold text-ink">{{ field.field_label }}{% if field.is_required %} <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span>{% endif %}</legend>
     {% if field.field_type == "rating" %}
-      <div class="mt-1.5 flex flex-wrap gap-2">
+      <div class="mt-2 flex flex-wrap gap-2">
         {% for number in "12345" %}
           <label class="relative">
             <input type="radio" name="field_{{ field.pk }}" value="{{ number }}" class="peer sr-only"{% if row.value == number %} checked{% endif %}{% if disabled %} disabled{% endif %}{% if row.autofocus and forloop.first %} autofocus{% endif %}{% if row.error %} aria-invalid="true"{% endif %}>
@@ -31,7 +31,7 @@ Touch targets are at least 44 px (rating buttons, option rows).
       </div>
       <p class="mt-1 text-xs text-slate-700">1 = poor, 5 = excellent</p>
     {% else %}
-      <div class="mt-1 space-y-0.5">
+      <div class="mt-1 space-y-1">
         {% for option in row.options %}
           <label class="flex min-h-11 cursor-pointer items-center gap-3 py-1 text-sm text-ink">
             <input type="{% if field.field_type == 'checkbox' %}checkbox{% else %}radio{% endif %}" name="field_{{ field.pk }}" value="{{ option }}" class="size-5 shrink-0 accent-primary"{% if field.field_type == 'checkbox' %}{% if option in row.values %} checked{% endif %}{% elif row.value == option %} checked{% endif %}{% if disabled %} disabled{% endif %}{% if row.autofocus and forloop.first %} autofocus{% endif %}{% if row.error %} aria-invalid="true"{% endif %}>

@@ -21,9 +21,9 @@ the grid fills main, so both cards reach the bottom and only the messages and th
 message box stays at the bottom of the chat card. Lower windows: the panel scrolls and the grid is 34rem high.
 {% endcomment %}
 {% block panel_scroll %}short-screen:overflow-y-auto fit-screen:flex fit-screen:flex-col fit-screen:overflow-hidden{% endblock %}
-{% block main_class %}px-4 pt-2 pb-10 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-6{% endblock %}
+{% block main_class %}px-4 pt-2 pb-8 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-6{% endblock %}
 {% block content %}
-<div id="assistant-layout" class="grid gap-5 short-screen:h-[34rem] fit-screen:min-h-0 fit-screen:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]"
+<div id="assistant-layout" class="grid gap-6 short-screen:h-[34rem] fit-screen:min-h-0 fit-screen:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]"
      x-data="{
        chatsOpen: true,
        init() { try { this.chatsOpen = localStorage.getItem('tbi.assistant.chats') !== 'closed' } catch (e) {} },
@@ -35,7 +35,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
      }">
   <nav id="my-chats-panel" class="card flex min-h-0 flex-col p-3" aria-labelledby="my-chats-title" x-show="chatsOpen">
     <div class="mb-3 px-1">
-      <div class="flex items-center gap-1.5">
+      <div class="flex items-center gap-2">
         <h2 id="my-chats-title" class="card-title min-w-0 flex-1 text-base">My chats</h2>
         <button type="button" id="chats-hide" x-cloak class="btn btn-ghost btn-sm px-2" aria-label="Hide my chats"
                 aria-controls="my-chats-panel" aria-expanded="true" :aria-expanded="chatsOpen.toString()" @click="setChats(false)">
@@ -73,7 +73,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
         <button type="button" id="chats-show" class="btn btn-secondary btn-sm" aria-controls="my-chats-panel" aria-expanded="true"
                 :aria-expanded="chatsOpen.toString()" @click="setChats(true)">
           {% include "components/icon.html" with name="messages-square" class="size-4" %}Chats</button>
-        <a href="{% url 'assistant:chat' %}" class="btn btn-secondary btn-sm px-2.5" aria-label="New chat">
+        <a href="{% url 'assistant:chat' %}" class="btn btn-secondary btn-sm px-3" aria-label="New chat">
           {% include "components/icon.html" with name="plus" class="size-4" %}</a>
       </div>
       <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
@@ -84,11 +84,11 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
     </header>
 
     <div class="relative flex min-h-0 flex-1 flex-col">
-      <div id="chat-scroll" x-ref="scroll" class="relative min-h-0 flex-1 overflow-y-auto px-6 py-5"
-           x-init="$nextTick(() => toBottom(false))" @scroll.passive="onScroll()"
+      <div id="chat-scroll" x-ref="scroll" class="relative min-h-0 flex-1 overflow-y-auto px-6 py-4"
+           x-init="$nextTick(() => { if (!document.getElementById('chat-empty')) toBottom(false) })" @scroll.passive="onScroll()"
            @htmx:after-settle="if ($event.target.id === 'messages') contentAdded()">
         {% if suggestions %}
-          <div id="chat-empty" class="mx-auto max-w-xl py-6 text-center">
+          <div id="chat-empty" class="mx-auto max-w-xl py-2 text-center">
             <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" %}</span>
             <p class="font-semibold text-ink">Ask about your activities and documents</p>
             <p class="mt-1 text-sm text-muted">For example, try one of these:</p>
@@ -101,16 +101,16 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
           </div>
         {% endif %}
 
-        <ol id="messages" class="space-y-5" aria-label="Conversation">
+        <ol id="messages" class="space-y-6" aria-label="Conversation">
           {% for item in conversation %}{% include "assistant/_message.html" %}{% endfor %}
         </ol>
 
         {# The question being answered and the typing indicator (only while waiting). #}
-        <div x-cloak x-show="busy" class="mt-5 space-y-5">
-          <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm break-words whitespace-pre-line text-ink" x-text="pending"></p></div>
+        <div x-cloak x-show="busy" class="mt-6 space-y-6">
+          <div class="flex justify-end"><p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary-soft px-4 py-3 text-sm break-words whitespace-pre-line text-ink" x-text="pending"></p></div>
           <div class="flex items-center gap-3" role="status">
             <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
-            <span class="inline-flex items-center gap-1.5 rounded-2xl bg-slate-100 px-4 py-3" aria-hidden="true">
+            <span class="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-3" aria-hidden="true">
               <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce"></span>
               <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:150ms]"></span>
               <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:300ms]"></span>
@@ -118,7 +118,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
             <span class="text-sm text-muted">The assistant is answering… this can take up to {{ timeout_seconds }} seconds.</span>
           </div>
         </div>
-        <p x-cloak x-show="stopped" class="mt-5 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status">
+        <p x-cloak x-show="stopped" class="mt-6 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status">
           Stopped waiting. If the assistant still finishes, its answer will be in this chat when you open it again.</p>
       </div>
       {# Shown only when a new message arrived while the reader was scrolled up on purpose. #}
@@ -132,7 +132,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
     {# After a new chat's first answer, _exchange.html swaps in a one-time refresh of my chats here (the generated title). #}
     <div id="title-refresh" hidden></div>
 
-    <div class="border-t border-line px-6 pt-4 pb-5">
+    <div class="border-t border-line px-6 pt-4 pb-4">
       {% if ai_off %}
         <p id="ai-off-note" class="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700" role="note">
           {% include "components/icon.html" with name="info" class="mt-px size-4 shrink-0" %}
@@ -191,7 +191,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
       <input type="text" id="rename-chat-input" name="title" x-ref="renameInput" x-model="renameTitle" maxlength="{{ title_max }}"
              required class="field-input" aria-describedby="rename-chat-help">
       <p id="rename-chat-help" class="mt-1 text-xs text-muted">At most {{ title_max }} characters. Only you see your chats.</p>
-      <div class="mt-5 flex justify-end gap-2">
+      <div class="mt-4 flex justify-end gap-2">
         <button type="button" class="btn btn-secondary" @click="$refs.renameDialog.close()">Cancel</button>
         <button type="submit" class="btn btn-primary">Save</button>
       </div>
@@ -204,7 +204,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
       {% csrf_token %}
       <input type="hidden" name="current" value="{% if chat %}{{ chat.pk }}{% endif %}">
       <p id="delete-chat-text" class="text-sm text-slate-700">Delete this chat? This can't be undone.</p>
-      <div class="mt-5 flex justify-end gap-2">
+      <div class="mt-4 flex justify-end gap-2">
         <button type="button" class="btn btn-secondary" autofocus @click="$refs.deleteDialog.close()">Cancel</button>
         <button type="submit" class="btn btn-danger">{% include "components/icon.html" with name="trash-2" class="size-4" %}Delete</button>
       </div>

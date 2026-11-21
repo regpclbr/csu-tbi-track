@@ -7,7 +7,7 @@ documents.services (document_state_counts, document_checklist's rule, allowed_ac
 {% endcomment %}
 {% if filters.ignored %}
   <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-    {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+    {% include "components/icon.html" with name="info" class="mt-1 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
 {% endif %}
 
 {% comment %}
@@ -15,7 +15,7 @@ Summary cards: click = filter by that state (again = clear). Rendered from the U
 (aria-pressed) is always the current ?state=. Links with role="button" (they work without JavaScript; Space works too).
 .stat-card-link: no outline on click, rounded ring on keyboard focus.
 {% endcomment %}
-<ul class="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4{% if filters.state %} stat-cards-selected{% endif %}" aria-label="Filter by state">
+<ul class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4{% if filters.state %} stat-cards-selected{% endif %}" aria-label="Filter by state">
   {% for card in summary_cards %}
     <li>
       <a href="{{ card.url }}" hx-get="{{ card.url }}" hx-target="#document-repository" hx-push-url="true"
@@ -91,7 +91,7 @@ Summary cards: click = filter by that state (again = clear). Rendered from the U
   {% include "documents/_results.html" %}
 {% else %}
   {% if cards %}
-    <ul class="space-y-3">
+    <ul class="space-y-4">
       {% for card in cards %}{% include "documents/_activity_card.html" with card=card %}{% endfor %}
     </ul>
     {% include "components/pagination.html" with result=result query=filters.query hx_target="#document-repository" %}

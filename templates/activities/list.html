@@ -10,11 +10,11 @@ Without JavaScript the Apply button submits the filters.
 {# The page's one primary action, in the page header (ASSUMPTIONS 411). #}
 {% block page_actions %}{% if can_create %}<a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}{% endblock %}
 {% block content %}
-<div class="space-y-5">
+<div class="space-y-6">
   {% include "activities/_stat_cards.html" %}
 
   <section class="card p-6" aria-labelledby="activities-title">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-wrap items-center gap-4">
         <h2 id="activities-title" class="card-title">{% if filters.view == "calendar" %}Calendar{% else %}All activities{% endif %}</h2>
         <nav class="segmented" aria-label="View">
@@ -30,7 +30,7 @@ Without JavaScript the Apply button submits the filters.
       <form id="activity-filters" method="get" action="{% url 'activities:list' %}" role="search" aria-label="Filter activities"
             hx-get="{% url 'activities:list' %}" hx-target="#activity-results" hx-push-url="true"
             hx-trigger="change, keyup changed delay:400ms from:#filter-q, search from:#filter-q" hx-indicator="#activity-results, #filters-loading"
-            class="mb-5 flex flex-wrap items-center gap-2.5">
+            class="mb-6 flex flex-wrap items-center gap-2">
         {% include "activities/_preset_input.html" %}
         <div class="relative w-full xl:w-64">
           <label for="filter-q" class="sr-only">Search by title</label>
@@ -64,7 +64,7 @@ Without JavaScript the Apply button submits the filters.
           <label for="filter-to" class="text-sm text-muted">to</label>
           <input id="filter-to" type="date" name="date_to" value="{{ filters.date_to|date:'Y-m-d' }}" class="field-input pill-select w-auto px-3">
         </div>
-        <div class="ml-auto flex items-center gap-1.5">
+        <div class="ml-auto flex items-center gap-2">
           <label for="filter-sort" class="text-sm text-muted">Sort</label>
           <select id="filter-sort" name="sort" class="field-input field-select pill-select w-auto pl-4">
             {% for value, label in sort_choices %}<option value="{{ value }}"{% if value == filters.sort %} selected{% endif %}>{{ label }}</option>{% endfor %}

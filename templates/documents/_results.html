@@ -17,11 +17,11 @@ on narrow screens. Every row has the member's own actions (documents.services.al
         <caption class="sr-only">{% if list_tab == "all" %}Documents{% else %}Documents waiting for your review{% endif %}</caption>
         <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
           <tr>
-            <th scope="col" class="px-3 py-2.5">Document</th>
-            <th scope="col" class="px-3 py-2.5">Activity</th>
-            <th scope="col" class="px-3 py-2.5">Uploaded</th>
-            <th scope="col" class="px-3 py-2.5">State</th>
-            <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th>
+            <th scope="col" class="px-3 py-3">Document</th>
+            <th scope="col" class="px-3 py-3">Activity</th>
+            <th scope="col" class="px-3 py-3">Uploaded</th>
+            <th scope="col" class="px-3 py-3">State</th>
+            <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">
@@ -29,7 +29,7 @@ on narrow screens. Every row has the member's own actions (documents.services.al
             <tr class="align-top hover:bg-slate-50">
               <th scope="row" class="min-w-56 px-3 py-3 font-normal">
                 <a href="{% url 'documents:detail' document.pk %}?next={{ request|here|urlencode:"" }}" class="font-semibold break-words text-ink hover:text-primary hover:underline">{{ document.title }}</a>
-                <p class="mt-0.5 text-xs text-slate-700">{{ document.document_type.name }}</p>
+                <p class="mt-1 text-xs text-slate-700">{{ document.document_type.name }}</p>
                 <p class="text-xs break-all text-muted">{{ document.file_name }} · {{ document.file_size_kb }} KB</p>
               </th>
               <td class="min-w-36 px-3 py-3"><a href="{% url 'activities:detail' document.activity_id %}?tab=documents" class="text-slate-700 hover:text-primary hover:underline">{{ document.activity.title }}</a></td>

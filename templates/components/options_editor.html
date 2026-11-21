@@ -8,7 +8,7 @@ them (registrations.services.clean_options) and stores the JSON list.
           x-init="items = JSON.parse(document.getElementById('{{ script_id }}').textContent).map(text => ({ id: next++, text })); if (!items.length) items.push({ id: next++, text: '' })"
           {% if error %}aria-describedby="{{ script_id }}-error"{% endif %}>
   <legend class="text-sm font-semibold text-ink">Options</legend>
-  <ol class="mt-1.5 space-y-2">
+  <ol class="mt-2 space-y-2">
     <template x-for="(item, index) in items" :key="item.id">
       <li class="flex items-center gap-2">
         <label :for="'{{ script_id }}-' + item.id" class="sr-only" x-text="'Option ' + (index + 1)"></label>

@@ -3,7 +3,7 @@ calendar. The chip appears only for a preset (a card dialog's "Show all in the l
 refreshes the hidden preset out of band (oob), as a filter may drop it.{% endcomment %}
 {% if filters.errors %}
   <div class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
-    {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}
+    {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4.5" %}
     <div>{% for error in filters.errors %}<p>{{ error }}</p>{% endfor %}</div>
   </div>
 {% endif %}
@@ -11,7 +11,7 @@ refreshes the hidden preset out of band (oob), as a filter may drop it.{% endcom
   {% include "activities/_calendar.html" %}
 {% else %}
   {% if filters.preset %}
-    <p class="mb-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-info-line bg-info-soft px-3.5 py-1.5 text-sm text-info">
+    <p class="mb-3 inline-flex flex-wrap items-center gap-2 rounded-full border border-info-line bg-info-soft px-4 py-2 text-sm text-info">
       <span>Showing: <strong class="font-semibold">{{ filters.preset_label }}</strong></span>
       <span aria-hidden="true">·</span>
       <a href="{% url 'activities:list' %}{% if clear_preset_query %}?{{ clear_preset_query }}{% endif %}"

@@ -22,21 +22,21 @@ Registrations tab anyway); never ratings, comments or answers.
     {% endif %}
   </div>
 
-  <ul class="mb-4 space-y-1.5 text-sm text-slate-700">
+  <ul class="mb-4 space-y-2 text-sm text-slate-700">
     {% for line in explanation %}
-      <li class="flex items-start gap-2">{% include "components/icon.html" with name="info" class="mt-0.5 size-4 shrink-0 text-muted" %}<span>{{ line }}</span></li>
+      <li class="flex items-start gap-2">{% include "components/icon.html" with name="info" class="mt-1 size-4 shrink-0 text-muted" %}<span>{{ line }}</span></li>
     {% endfor %}
   </ul>
   {% if console_mode %}
     <p class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-warning" %}
+      {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4.5 text-warning" %}
       <span><strong class="font-semibold">Emails are only printed in the qcluster terminal, not sent.</strong> Set EMAIL_REAL_SENDING=True in .env (and restart runserver and qcluster) to send real emails.</span></p>
   {% endif %}
   {% if can_resend and resend_reason %}
     <p id="resend-reason" class="mb-4 text-sm text-slate-700">Resend: {{ resend_reason }}</p>
   {% endif %}
 
-  <dl class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+  <dl class="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
     <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Sent</dt><dd class="text-xl font-bold text-ink tabular-nums">{{ link_counts.sent|number }}</dd></div>
     <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Failed</dt><dd class="text-xl font-bold tabular-nums {% if link_counts.failed %}text-danger{% else %}text-ink{% endif %}">{{ link_counts.failed|number }}</dd></div>
     <div class="rounded-2xl border border-line px-4 py-3"><dt class="text-xs text-muted">Not sent yet</dt><dd class="text-xl font-bold text-ink tabular-nums">{{ link_counts.not_sent|number }}</dd></div>
@@ -46,9 +46,9 @@ Registrations tab anyway); never ratings, comments or answers.
   {% if link_requests %}
     <h3 class="mb-1 text-sm font-semibold text-ink">Link requests from the general evaluation link</h3>
     <p class="mb-2 text-xs text-muted">The latest request per registered person (newest first). Emails that match nobody are never stored, and the public page always shows the same message.</p>
-    <ul class="mb-5 divide-y divide-line rounded-2xl border border-line text-sm" aria-label="Link requests">
+    <ul class="mb-6 divide-y divide-line rounded-2xl border border-line text-sm" aria-label="Link requests">
       {% for request in link_requests %}
-        <li class="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2">
+        <li class="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2">
           <span class="font-semibold text-ink">{{ request.registration.name }}</span>
           <span class="text-muted">· requested <time datetime="{{ request.requested_at|date:'c' }}">{{ request.requested_at|date:"M j, g:i A" }}</time> ·</span>
           <span class="{% if request.sent %}font-semibold text-success{% elif request.pending %}text-slate-700{% else %}font-semibold text-amber-900{% endif %}">{{ request.text }}</span>
@@ -63,17 +63,17 @@ Registrations tab anyway); never ratings, comments or answers.
       <table class="w-full text-left text-sm">
         <caption class="sr-only">Attendees who have not answered the evaluation, with the state of their link</caption>
         <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
-          <tr><th scope="col" class="px-3 py-2.5">Name</th><th scope="col" class="px-3 py-2.5">Link</th><th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th></tr>
+          <tr><th scope="col" class="px-3 py-3">Name</th><th scope="col" class="px-3 py-3">Link</th><th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th></tr>
         </thead>
         <tbody class="divide-y divide-line">
           {% for row in link_rows %}
             <tr class="hover:bg-slate-50">
-              <th scope="row" class="px-3 py-2.5 font-semibold text-ink">{{ row.registration.name }}</th>
-              <td class="px-3 py-2.5 whitespace-nowrap">
+              <th scope="row" class="px-3 py-3 font-semibold text-ink">{{ row.registration.name }}</th>
+              <td class="px-3 py-3 whitespace-nowrap">
                 <span class="badge badge-{{ row.state.tone }}">{{ row.state.label }}</span>
                 {% if row.state.at %}<time class="ml-1 text-xs text-muted" datetime="{{ row.state.at|date:'c' }}">{{ row.state.at|date:"M j, g:i A" }}</time>{% endif %}
               </td>
-              <td class="px-3 py-2.5 text-right">
+              <td class="px-3 py-3 text-right">
                 {% if can_resend and not resend_reason %}
                   <form method="post" action="{% url 'registrations:send_links' activity.pk %}">
                     {% csrf_token %}

@@ -1,14 +1,14 @@
 {% extends "layouts/app.html" %}
 {% comment %}The edit page of a Conducted activity: read-only (activities.services refuses every edit of a Conducted activity).{% endcomment %}
 {% block content %}
-<div class="mx-auto max-w-4xl space-y-5">
+<div class="mx-auto max-w-4xl space-y-6">
   <div>
-    <a href="{% url 'activities:detail' activity.pk %}" class="link inline-flex items-center gap-1.5 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to the activity</a>
+    <a href="{% url 'activities:detail' activity.pk %}" class="link inline-flex items-center gap-2 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to the activity</a>
     <h2 class="mt-1 text-2xl font-bold tracking-tight text-ink">{{ activity.title }}</h2>
   </div>
   {% include "components/form_errors.html" %}
   <div class="flex gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-sm text-slate-700 shadow-card" role="note">
-    {% include "components/icon.html" with name="lock" class="mt-0.5 size-4.5 text-muted" %}
+    {% include "components/icon.html" with name="lock" class="mt-1 size-4.5 text-muted" %}
     <p><strong class="text-ink">This activity is Conducted, so it is read-only.</strong> Its details stay as they were when it was conducted.</p>
   </div>
   <section class="card p-6" aria-labelledby="details-title">

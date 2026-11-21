@@ -15,20 +15,20 @@ the service's messages under the inputs and the focus on the first one. `editor`
   <h3 class="font-semibold text-ink">{% if card.editing == "new" %}New field{% else %}Edit field{% endif %}</h3>
   <div>
     <label for="editor-label-{{ card.form_type }}" class="text-sm font-semibold text-ink">Question</label>
-    <input id="editor-label-{{ card.form_type }}" type="text" name="field_label" value="{{ editor.field_label }}" maxlength="255" class="field-input mt-1.5"
+    <input id="editor-label-{{ card.form_type }}" type="text" name="field_label" value="{{ editor.field_label }}" maxlength="255" class="field-input mt-2"
            {% if editor.errors.field_label %}aria-invalid="true" aria-describedby="editor-label-{{ card.form_type }}-error"{% endif %}>
     {% if editor.errors.field_label %}<p id="editor-label-{{ card.form_type }}-error" class="field-error">{{ editor.errors.field_label }}</p>{% endif %}
   </div>
   <div class="flex flex-wrap items-end gap-4">
     <div>
       <label for="editor-type-{{ card.form_type }}" class="text-sm font-semibold text-ink">Answer type</label>
-      <select id="editor-type-{{ card.form_type }}" name="field_type" x-model="type" class="field-input field-select mt-1.5 w-auto"
+      <select id="editor-type-{{ card.form_type }}" name="field_type" x-model="type" class="field-input field-select mt-2 w-auto"
               {% if editor.errors.field_type %}aria-invalid="true" aria-describedby="editor-type-{{ card.form_type }}-error"{% endif %}>
         {% for value, label in field_types %}<option value="{{ value }}"{% if value == editor.field_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
       </select>
       {% if editor.errors.field_type %}<p id="editor-type-{{ card.form_type }}-error" class="field-error">{{ editor.errors.field_type }}</p>{% endif %}
     </div>
-    <label class="flex items-center gap-2 pb-2.5 text-sm font-medium text-ink">
+    <label class="flex items-center gap-2 pb-3 text-sm font-medium text-ink">
       <input type="checkbox" name="is_required" class="size-4 accent-primary"{% if editor.is_required %} checked{% endif %}> Required
     </label>
   </div>

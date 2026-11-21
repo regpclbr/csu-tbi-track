@@ -9,14 +9,14 @@ private_page (token links): no link to the activities list, never personal data.
 {% block content %}
 {% url 'register_list' as list_url %}
 {% if activity or ended %}
-  <section class="public-card p-5 sm:p-8" aria-label="Activity">
+  <section class="public-card p-6 sm:p-8" aria-label="Activity">
     {% if ended %}{% include "public/_activity_summary.html" with activity=ended %}{% else %}{% include "public/_activity_summary.html" with activity=activity summary=summary %}{% endif %}
   </section>
-  <section class="public-card mt-4 p-6 sm:p-8">
+  <section class="public-card mt-6 p-6 sm:p-8">
     {% include "public/_notice_card.html" with heading="h2" link_url=list_url link_label="See open activities" %}
   </section>
 {% else %}
-  <section class="public-card p-6 sm:p-10">
+  <section class="public-card p-6 sm:p-8">
     {% if private_page %}
       {% include "public/_notice_card.html" %}
     {% else %}

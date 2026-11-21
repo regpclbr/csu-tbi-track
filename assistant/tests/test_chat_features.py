@@ -481,11 +481,11 @@ def test_only_the_assistant_page_fits_the_window(director, login) -> None:
     html = client.get(reverse("assistant:chat")).content.decode()
     panel = html[html.index('<div id="content-panel"'):].split(">", 1)[0]
     assert "fit-screen:overflow-hidden" in panel and "short-screen:overflow-y-auto" in panel and "lg:overflow-y-auto" not in panel
-    assert 'class="px-4 pt-2 pb-10 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1' in html  # spacing scale (411)
+    assert 'class="px-4 pt-2 pb-8 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1' in html  # spacing scale (411)
     assert "fit-screen:flex-1" in html and "lg:h-[calc(100vh" not in html
     # Scroll boxes holding sr-only text must be positioned, or that text stretches the page (CLAUDE.md).
     assert 'id="chat-scroll" x-ref="scroll" class="relative ' in html and 'id="chat-list" class="relative ' in html
     other = client.get(reverse("home")).content.decode()
     other_panel = other[other.index('<div id="content-panel"'):].split(">", 1)[0]
     assert "lg:overflow-y-auto" in other_panel and "fit-screen" not in other_panel
-    assert '<main id="main" class="px-4 pt-2 pb-10 sm:px-6 xl:px-8"' in other
+    assert '<main id="main" class="px-4 pt-2 pb-8 sm:px-6 xl:px-8"' in other

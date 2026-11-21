@@ -31,7 +31,7 @@ def detail(document, next_url: str | None = None) -> str:
 
 
 def back_href(html: str) -> str:
-    start = html.index('class="link inline-flex items-center gap-1.5 text-sm"')
+    start = html.index('class="link inline-flex items-center gap-2 text-sm"')
     return html[html.rindex('href="', 0, start) + 6: html.index('"', html.rindex('href="', 0, start) + 6)]
 
 

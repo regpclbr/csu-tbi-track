@@ -24,7 +24,7 @@ Draft) and participants by category (right). Two stacked columns, so neither lea
         {% elif registration.notice %}
           {% include "activities/_registration_notice.html" %}
         {% else %}
-          <p class="flex gap-2 text-sm text-slate-700">{% include "components/icon.html" with name="info" class="mt-0.5 size-4.5 text-muted" %}{{ registration.reason }}</p>
+          <p class="flex gap-2 text-sm text-slate-700">{% include "components/icon.html" with name="info" class="mt-1 size-4.5 text-muted" %}{{ registration.reason }}</p>
         {% endif %}
       </div>
     </section>

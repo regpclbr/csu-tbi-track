@@ -18,7 +18,7 @@ Registration form of an activity created with its documents (ASSUMPTIONS 409): u
   </div>
 
   {% if not card.form %}
-    <div class="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-10 text-center">
+    <div class="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-line px-6 py-8 text-center">
       <span class="mb-3 flex size-11 items-center justify-center rounded-full bg-slate-100 text-muted">{% include "components/icon.html" with name="file-text" %}</span>
       <p class="text-sm font-semibold text-ink">No {{ card.label|lower }} form yet</p>
       <p class="mt-1 max-w-sm text-sm text-muted">
@@ -48,7 +48,7 @@ Registration form of an activity created with its documents (ASSUMPTIONS 409): u
     {% endif %}
     {% if card.locked %}
       <div class="mb-4 flex gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3 text-sm text-slate-700" role="note">
-        {% include "components/icon.html" with name="lock" class="mt-0.5 size-4.5 text-muted" %}
+        {% include "components/icon.html" with name="lock" class="mt-1 size-4.5 text-muted" %}
         <p><strong class="text-ink">Locked.</strong> People have already answered this form, so its fields can no longer be added, edited, removed or moved.</p>
       </div>
     {% endif %}
@@ -59,13 +59,13 @@ Registration form of an activity created with its documents (ASSUMPTIONS 409): u
           {% if card.editable and card.editing == field.pk|stringformat:"s" %}
             <li>{% include "registrations/_field_editor.html" with editor=card.editor action_url=field.pk %}</li>
           {% else %}
-            <li class="flex items-start gap-3 rounded-2xl border border-line bg-white p-3.5" x-data="{ confirming: false }">
-              <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600" aria-hidden="true">{{ forloop.counter }}</span>
+            <li class="flex items-start gap-3 rounded-2xl border border-line bg-white p-4" x-data="{ confirming: false }">
+              <span class="mt-1 flex size-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-600" aria-hidden="true">{{ forloop.counter }}</span>
               <div class="min-w-0 flex-1">
                 <p class="font-semibold [overflow-wrap:anywhere] text-ink">
                   {{ field.field_label }}{% if field.is_required %} <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span>{% endif %}
                 </p>
-                <p class="mt-1 flex flex-wrap items-center gap-1.5">
+                <p class="mt-1 flex flex-wrap items-center gap-2">
                   <span class="badge badge-info">{{ row.type_label }}</span>
                   {% if field.is_required %}<span class="badge badge-neutral">Required</span>{% else %}<span class="badge badge-neutral">Optional</span>{% endif %}
                 </p>
@@ -74,7 +74,7 @@ Registration form of an activity created with its documents (ASSUMPTIONS 409): u
                 {% endif %}
               </div>
               {% if card.editable %}
-                <div class="flex shrink-0 items-center gap-1" x-show="!confirming">
+                <div class="flex shrink-0 items-center gap-2" x-show="!confirming">
                   <button type="button" class="btn btn-ghost btn-sm px-2" aria-label="Move “{{ field.field_label }}” up"{% if row.is_first %} disabled{% endif %}
                           hx-post="{% url 'registrations:field_move' field.pk %}" hx-vals='{"direction": "up"}' hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML">
                     {% include "components/icon.html" with name="chevron-up" class="size-4" %}</button>

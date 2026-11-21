@@ -36,7 +36,7 @@ lg:overflow-y-auto: the panel scrolls) and main_class (default padding). Every o
   <div id="content-panel" class="app-panel relative min-w-0 flex-1 bg-panel lg:my-4 lg:mr-4 lg:rounded-[28px] {% block panel_scroll %}lg:overflow-y-auto{% endblock %}">
     {% include "partials/topbar.html" %}
     {# Page padding (ASSUMPTIONS 411, spacing scale): 16 px on phones, 24 px, 32 px from 1280 px; 8 px below the top bar. #}
-    <main id="main" class="{% block main_class %}px-4 pt-2 pb-10 sm:px-6 xl:px-8{% endblock %}" tabindex="-1">
+    <main id="main" class="{% block main_class %}px-4 pt-2 pb-8 sm:px-6 xl:px-8{% endblock %}" tabindex="-1">
       {% block page_header %}
         <div class="page-header">
           <div class="min-w-0">

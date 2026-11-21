@@ -16,7 +16,7 @@ JavaScript they are plain links and the Apply button submits the filters (ASSUMP
     <a href="{% url 'documents:review' %}"{% if list_tab == "review" %} aria-current="page"{% endif %}
        class="segmented-item {% if list_tab == 'review' %}is-selected{% endif %}">
       {% include "components/icon.html" with name="file-check" class="size-4" %}Waiting for my review
-      <span class="rounded-full px-1.5 text-xs font-bold {% if review_count %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ review_count }}<span class="sr-only"> documents</span></span></a>
+      <span class="rounded-full px-2 text-xs font-bold {% if review_count %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ review_count }}<span class="sr-only"> documents</span></span></a>
     {% endif %}
   </nav>
 {% endblock %}
@@ -25,7 +25,7 @@ JavaScript they are plain links and the Apply button submits the filters (ASSUMP
   {% if list_tab == "all" %}
     <div id="document-repository" class="htmx-dim">{% include "documents/_repository.html" %}</div>
   {% else %}
-    <p class="mb-5 text-sm text-slate-700">Documents waiting for a reviewer that you may approve or return: your own uploads too, never documents already returned to their uploader.</p>
+    <p class="mb-6 text-sm text-slate-700">Documents waiting for a reviewer that you may approve or return: your own uploads too, never documents already returned to their uploader.</p>
     {% include "documents/_results.html" %}
   {% endif %}
 </section>

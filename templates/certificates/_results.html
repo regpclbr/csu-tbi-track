@@ -7,7 +7,7 @@ the activity groups (certificates/_activity_group.html) or the flat table (certi
   <form id="certificate-filters" method="get" action="{% url 'certificates:list' %}" role="search" aria-label="Filter certificates"
         hx-get="{% url 'certificates:list' %}" hx-target="#certificate-results" hx-push-url="true"
         hx-trigger="change, keyup changed delay:400ms from:#cert-q, search from:#cert-q" hx-indicator="#certificate-results, #cert-loading"
-        class="mb-4 flex flex-wrap items-center gap-2.5">
+        class="mb-4 flex flex-wrap items-center gap-2">
     {% if filters.view != "activity" %}<input type="hidden" name="view" value="{{ filters.view }}">{% endif %}
     <div class="relative min-w-72 flex-1">
       <label for="cert-q" class="sr-only">Search by number, name, email or activity</label>
@@ -49,13 +49,13 @@ the activity groups (certificates/_activity_group.html) or the flat table (certi
 
   {% if filters.ignored %}
     <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
   {% endif %}
   <ul class="mb-4 flex flex-wrap gap-2" aria-label="Certificates per status">
     {% for status in counts %}
       <li>
         <a href="?{{ filters.base_query }}{% if filters.base_query %}&amp;{% endif %}status={{ status.value }}" hx-get="?{{ filters.base_query }}{% if filters.base_query %}&amp;{% endif %}status={{ status.value }}" hx-target="#certificate-results" hx-push-url="true"{% if status.value == filters.status %} aria-current="true"{% endif %}
-           class="cert-link flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm shadow-card hover:border-primary {% if status.value == filters.status %}border-primary bg-primary-soft/40{% else %}border-line bg-white{% endif %}">
+           class="cert-link flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-card hover:border-primary {% if status.value == filters.status %}border-primary bg-primary-soft/40{% else %}border-line bg-white{% endif %}">
           {% include "components/badge.html" with text=status.label tone=status.tone %}<span class="font-semibold text-ink">{{ status.count }}</span><span class="sr-only"> certificates</span></a>
       </li>
     {% endfor %}

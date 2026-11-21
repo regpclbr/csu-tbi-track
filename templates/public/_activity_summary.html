@@ -11,20 +11,20 @@ heading="h2": the title is an h2 (inside the portal layout, whose page title is 
     {% if heading == "h2" %}<h2 class="mt-1 text-2xl leading-tight font-bold tracking-tight break-words text-ink sm:text-[28px]">{{ activity.title }}</h2>{% else %}<h1 class="mt-1 text-2xl leading-tight font-bold tracking-tight break-words text-ink sm:text-[28px]">{{ activity.title }}</h1>{% endif %}
   </div>
 </div>
-<dl class="mt-5 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-  <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Date</dt><dd class="text-slate-700">{{ activity|date_span }}</dd></div></div>
-  <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Time</dt><dd class="text-slate-700">{{ activity|time_range }}</dd></div></div>
-  <div class="flex gap-3 sm:col-span-2"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><div class="min-w-0"><dt class="font-semibold text-ink">Venue</dt><dd class="break-words text-slate-700">{{ activity.venue }}</dd></div></div>
+<dl class="mt-6 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+  <div class="flex gap-3"><span class="mt-1 text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Date</dt><dd class="text-slate-700">{{ activity|date_span }}</dd></div></div>
+  <div class="flex gap-3"><span class="mt-1 text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Time</dt><dd class="text-slate-700">{{ activity|time_range }}</dd></div></div>
+  <div class="flex gap-3 sm:col-span-2"><span class="mt-1 text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><div class="min-w-0"><dt class="font-semibold text-ink">Venue</dt><dd class="break-words text-slate-700">{{ activity.venue }}</dd></div></div>
   {% if summary %}
-    <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="users" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Slots left</dt><dd class="text-slate-700">{{ summary.slots_remaining|number }}</dd></div></div>
-    <div class="flex gap-3"><span class="mt-0.5 text-primary-hover">{% include "components/icon.html" with name="calendar-clock" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Register by</dt><dd class="text-slate-700">{{ summary.registration_deadline|date_time }} <span class="whitespace-nowrap">(Philippine time)</span></dd></div></div>
+    <div class="flex gap-3"><span class="mt-1 text-primary-hover">{% include "components/icon.html" with name="users" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Slots left</dt><dd class="text-slate-700">{{ summary.slots_remaining|number }}</dd></div></div>
+    <div class="flex gap-3"><span class="mt-1 text-primary-hover">{% include "components/icon.html" with name="calendar-clock" class="size-4.5" %}</span><div><dt class="font-semibold text-ink">Register by</dt><dd class="text-slate-700">{{ summary.registration_deadline|date_time }} <span class="whitespace-nowrap">(Philippine time)</span></dd></div></div>
   {% endif %}
 </dl>
 {% if summary %}
   {% if summary.participant_categories %}
     <div class="mt-4">
       <p class="text-sm font-semibold text-ink">Open to</p>
-      <ul class="mt-1.5 flex flex-wrap gap-1.5">{% for category in summary.participant_categories %}<li class="tag">{{ category.name }}</li>{% endfor %}</ul>
+      <ul class="mt-2 flex flex-wrap gap-2">{% for category in summary.participant_categories %}<li class="tag">{{ category.name }}</li>{% endfor %}</ul>
     </div>
   {% endif %}
   {% if summary.description %}<div class="mt-4 space-y-2 text-base leading-relaxed break-words text-slate-800">{{ summary.description|linebreaks }}</div>{% endif %}

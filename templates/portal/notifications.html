@@ -2,8 +2,8 @@
 {% load ui %}
 {# /startups/portal/notifications/: my notifications (the startup is the recipient, notifications.services), newest first, All or Unread. #}
 {% block content %}
-<section class="card p-5 sm:p-6" aria-labelledby="notifications-title">
-  <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+<section class="card p-6 sm:p-6" aria-labelledby="notifications-title">
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
     <h2 id="notifications-title" class="card-title">Notifications</h2>
     <div class="flex flex-wrap items-center gap-3">
       <nav class="segmented" aria-label="Which notifications">
@@ -11,7 +11,7 @@
            class="segmented-item {% if show == 'all' %}is-selected{% endif %}">All</a>
         <a href="{% url 'startups:portal_notifications_page' %}?show=unread"{% if show == "unread" %} aria-current="page"{% endif %}
            class="segmented-item {% if show == 'unread' %}is-selected{% endif %}">Unread
-          <span class="rounded-full px-1.5 text-xs font-bold {% if unread %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ unread }}<span class="sr-only"> unread</span></span></a>
+          <span class="rounded-full px-2 text-xs font-bold {% if unread %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ unread }}<span class="sr-only"> unread</span></span></a>
       </nav>
       {% if unread %}
         <form method="post" action="{% url 'startups:portal_read_all_page' %}">
@@ -26,11 +26,11 @@
   {% if notifications %}
     <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
       {% for notification in notifications %}
-        <li class="flex flex-wrap items-start gap-3 px-4 py-3.5 sm:flex-nowrap {% if not notification.is_read %}bg-info-soft/60{% else %}bg-white{% endif %}">
-          <span class="mt-1.5 size-2.5 shrink-0 rounded-full {% if notification.is_read %}bg-slate-200{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
+        <li class="flex flex-wrap items-start gap-3 px-4 py-4 sm:flex-nowrap {% if not notification.is_read %}bg-info-soft/60{% else %}bg-white{% endif %}">
+          <span class="mt-2 size-2.5 shrink-0 rounded-full {% if notification.is_read %}bg-slate-200{% else %}bg-primary{% endif %}" aria-hidden="true"></span>
           <div class="min-w-0 flex-1">
             <p class="text-sm text-ink">{% if not notification.is_read %}<span class="sr-only">Unread: </span>{% endif %}{{ notification.message }}</p>
-            <p class="mt-0.5 text-xs text-muted"><time datetime="{{ notification.created_at|date:'c' }}" title="{{ notification.created_at|date:'M j, Y g:i A' }}">{{ notification.created_at|relative_time }}</time>{% if notification.activity %} · {{ notification.activity.title }}{% endif %}</p>
+            <p class="mt-1 text-xs text-muted"><time datetime="{{ notification.created_at|date:'c' }}" title="{{ notification.created_at|date:'M j, Y g:i A' }}">{{ notification.created_at|relative_time }}</time>{% if notification.activity %} · {{ notification.activity.title }}{% endif %}</p>
           </div>
           {% if not notification.is_read %}
             <form method="post" action="{% url 'startups:portal_read_page' notification.pk %}">

@@ -26,8 +26,8 @@ Certificates tab of the activity page (certificates.pages.certificates_tab; ASSU
 - The list: Preview, Mark handed over / Resend (can_create_activity), PDF, Evidence. No checkboxes.
 Every action redirects back to /activities/<id>/?tab=certificates.
 {% endcomment %}
-<div id="certificates-tab" class="space-y-5">
-  <section class="card flex flex-wrap items-center justify-between gap-4 p-5" aria-labelledby="approval-title">
+<div id="certificates-tab" class="space-y-6">
+  <section class="card flex flex-wrap items-center justify-between gap-4 p-6" aria-labelledby="approval-title">
     <div class="flex min-w-0 items-start gap-3">
       {# services.approval_state (ASSUMPTIONS 373): approved = green, needs_approval = orange, all_issued = the Issued badge's green, no_certificates / not_approved = grey #}
       {% if approval.state == "approved" %}
@@ -41,7 +41,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       {% endif %}
       <div class="min-w-0">
         <h2 id="approval-title" class="card-title">Certificate approval</h2>
-        <p class="text-sm {% if approval.state == 'not_approved' or approval.state == 'no_certificates' %}font-medium text-slate-600{% else %}font-semibold text-ink{% endif %}" data-testid="approval-state" data-approval-state="{{ approval.state }}">{{ approval.text }}</p>
+        <p class="mt-1 text-sm {% if approval.state == 'not_approved' or approval.state == 'no_certificates' %}font-medium text-slate-600{% else %}font-semibold text-ink{% endif %}" data-testid="approval-state" data-approval-state="{{ approval.state }}">{{ approval.text }}</p>
         {% if approval.note %}
           <p class="text-sm text-slate-600">{{ approval.note }}</p>
         {% elif approval.approved %}
@@ -63,7 +63,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     {% endif %}
     {% if approval.closed_reason and approval.has_certificates %}
       <p id="approval-reason" class="flex w-full items-start gap-2 text-sm text-slate-700">
-        {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}{{ approval.closed_reason }}</p>
+        {% include "components/icon.html" with name="info" class="mt-1 size-4 text-muted" %}{{ approval.closed_reason }}</p>
     {% elif approval.closed_reason %}
       <p id="approval-reason" class="sr-only">{{ approval.closed_reason }}</p>
     {% endif %}
@@ -72,7 +72,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   <div class="flex flex-wrap items-center justify-between gap-3">
     <ul class="flex flex-wrap gap-2" aria-label="Certificates per status">
       {% for status in counts %}
-        <li class="flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-sm shadow-card">
+        <li class="flex items-center gap-2 rounded-full border border-line bg-white px-4 py-2 text-sm shadow-card">
           {% include "components/badge.html" with text=status.label tone=status.tone %}<span class="font-semibold text-ink">{{ status.count }}</span>
         </li>
       {% endfor %}
@@ -93,12 +93,12 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   </div>
   {% if reissue.closed_reason %}
     <p id="reissue-reason" class="-mt-2 flex items-start gap-2 text-sm text-slate-700">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-muted" %}Reissue: {{ reissue.closed_reason }}</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4 text-muted" %}Reissue: {{ reissue.closed_reason }}</p>
   {% endif %}
 
   {% if worker_stopped %}
     <p class="flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-warning" %}
+      {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4.5 text-warning" %}
       <span><strong class="font-semibold">Certificates are waiting for the background worker.</strong> The approved certificates are being updated (PDF, email) as soon as qcluster runs. Start it in a new terminal: <code>python manage.py qcluster</code></span></p>
   {% endif %}
 
@@ -114,7 +114,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     </div>
     {% if signatures.missing_reason %}
       <p class="mt-3 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>{{ signatures.missing_reason }}</span></p>
+        {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>{{ signatures.missing_reason }}</span></p>
     {% endif %}
     <div class="mt-4 grid gap-4 md:grid-cols-2">
       {% for slot in signatures.slots %}
@@ -158,7 +158,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
               {% csrf_token %}
               <div>
                 <label for="signatory-{{ slot.slot }}" class="text-sm font-semibold text-ink">Who signs on the {{ slot.label|lower }}</label>
-                <select id="signatory-{{ slot.slot }}" name="signatory" class="field-input field-select mt-1.5"{% if signatures.can_upload %}
+                <select id="signatory-{{ slot.slot }}" name="signatory" class="field-input field-select mt-2"{% if signatures.can_upload %}
                         @change="if ($event.target.value === 'add') { $event.target.value = previous; document.getElementById('add-person-dialog-{{ slot.slot }}').showModal() } else { previous = $event.target.value }"{% endif %}>
                   {% if not slot.signatory %}<option value="">Choose a person</option>{% endif %}
                   {% if slot.inactive %}<option value="{{ slot.signatory.pk }}" selected>{{ slot.signatory.name }} · {{ slot.signatory.position }} (inactive)</option>{% endif %}
@@ -170,7 +170,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
               </div>
               <div>
                 <label for="signatory-title-{{ slot.slot }}" class="text-sm font-semibold text-ink">Title on this certificate <span class="font-normal text-muted">(optional)</span></label>
-                <input id="signatory-title-{{ slot.slot }}" name="title" value="{{ slot.custom_title }}" maxlength="255" class="field-input mt-1.5"
+                <input id="signatory-title-{{ slot.slot }}" name="title" value="{{ slot.custom_title }}" maxlength="255" class="field-input mt-2"
                        placeholder="{{ slot.signatory.position|default:'The person’s usual position' }}" aria-describedby="signatory-title-{{ slot.slot }}-help">
                 <p id="signatory-title-{{ slot.slot }}-help" class="field-help">Printed instead of the person's position on this activity's certificates only. Leave it empty to print the position.</p>
               </div>
@@ -240,9 +240,9 @@ Every action redirects back to /activities/<id>/?tab=certificates.
       <p class="mb-3 flex items-start gap-2 rounded-xl px-3 py-2 text-sm" role="note" x-show="items[i].issued_note"
          :class="items[i].outdated ? 'bg-warning-soft text-amber-900' : 'bg-success-soft text-success'"
          class="{% if shown.outdated %}bg-warning-soft text-amber-900{% else %}bg-success-soft text-success{% endif %}"{% if not shown.issued_note %} style="display: none"{% endif %}>
-        {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}<span x-text="items[i].issued_note">{{ shown.issued_note }}</span></p>
+        {% include "components/icon.html" with name="info" class="mt-1 size-4" %}<span x-text="items[i].issued_note">{{ shown.issued_note }}</span></p>
       <p class="mb-3 flex items-start gap-2 rounded-xl bg-primary-soft px-3 py-2 text-sm text-slate-700" role="note" x-show="!items[i].name_final"{% if shown.name_final %} style="display: none"{% endif %}>
-        {% include "components/icon.html" with name="info" class="mt-0.5 size-4 text-primary" %}<span>The final name comes from the evaluation.</span></p>
+        {% include "components/icon.html" with name="info" class="mt-1 size-4 text-primary" %}<span>The final name comes from the evaluation.</span></p>
       <iframe :src="items[i].url" src="{{ shown.url }}" title="Certificate preview" class="h-[70vh] w-full rounded-xl border border-line bg-slate-50"></iframe>
       <p class="mt-2 text-xs text-muted">Rendered from the same template as the final PDF. A small “PREVIEW” mark stays in the corner until the certificate is approved. Issued certificates show the copy that was sent or handed over (until they are reissued).</p>
     </section>
@@ -256,12 +256,12 @@ Every action redirects back to /activities/<id>/?tab=certificates.
 
     {% if generation_reason and activity.status.name == "Conducted" %}
       <p class="mb-4 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>Certificates are not created yet: {{ generation_reason }}</span></p>
+        {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>Certificates are not created yet: {{ generation_reason }}</span></p>
     {% endif %}
 
     {% if emails_printed %}
       <p class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="note">
-        {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5 text-warning" %}
+        {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4.5 text-warning" %}
         <span><strong class="font-semibold">Emails are only printed in the qcluster terminal, not sent.</strong> Set EMAIL_REAL_SENDING=True in .env (and restart runserver and qcluster) to send real emails.</span></p>
     {% endif %}
 
@@ -278,20 +278,20 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           <caption class="sr-only">Certificates of {{ activity.title }}</caption>
           <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
             <tr>
-              <th scope="col" class="px-3 py-2.5">Number</th>
-              <th scope="col" class="px-3 py-2.5">Recipient</th>
-              <th scope="col" class="px-3 py-2.5">Type</th>
-              <th scope="col" class="px-3 py-2.5">Status</th>
-              <th scope="col" class="px-3 py-2.5">Issued</th>
-              <th scope="col" class="px-3 py-2.5">Sent</th>
-              <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions, files and evidence</span></th>
+              <th scope="col" class="px-3 py-3">Number</th>
+              <th scope="col" class="px-3 py-3">Recipient</th>
+              <th scope="col" class="px-3 py-3">Type</th>
+              <th scope="col" class="px-3 py-3">Status</th>
+              <th scope="col" class="px-3 py-3">Issued</th>
+              <th scope="col" class="px-3 py-3">Sent</th>
+              <th scope="col" class="px-3 py-3"><span class="sr-only">Actions, files and evidence</span></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-line">
             {% for row in rows %}{% with certificate=row.certificate %}
               <tr class="hover:bg-slate-50">
-                <th scope="row" class="px-3 py-2.5 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
-                <td class="min-w-48 px-3 py-2.5 text-slate-700">
+                <th scope="row" class="px-3 py-3 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
+                <td class="min-w-48 px-3 py-3 text-slate-700">
                   <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span>{{ row.recipient }}{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</span>
                     <a href="{% url 'certificates:preview_dialog' certificate.pk %}" class="btn btn-ghost btn-sm"
@@ -299,15 +299,15 @@ Every action redirects back to /activities/<id>/?tab=certificates.
                       {% include "components/icon.html" with name="eye" class="size-4" %}Preview<span class="sr-only"> {{ certificate.certificate_number }}</span></a>
                   </div>
                 </td>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ row.kind }}<span class="block text-xs text-muted">{{ row.delivery }}</span></td>
-                <td class="px-3 py-2.5">
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ row.kind }}<span class="block text-xs text-muted">{{ row.delivery }}</span></td>
+                <td class="px-3 py-3">
                   <div class="flex flex-wrap gap-1">
                     {% include "components/badge.html" with text=row.status.label tone=row.status.tone %}
                     {% if row.state %}{% include "components/badge.html" with text=row.state.label tone=row.state.tone %}{% endif %}
                   </div>
                 </td>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{% if certificate.issued_at %}<time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y" }}</time>{% else %}<span class="text-muted">–</span>{% endif %}</td>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{% if certificate.issued_at %}<time datetime="{{ certificate.issued_at|date:'c' }}">{{ certificate.issued_at|date:"M j, Y" }}</time>{% else %}<span class="text-muted">–</span>{% endif %}</td>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">
                   {% if row.sending.key == "sent" %}<time datetime="{{ certificate.sent_at|date:'c' }}">{{ certificate.sent_at|date:"M j, Y" }}</time>
                   {% elif row.sending.key == "failed" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}{% if can_act %}<button type="submit" form="resend-{{ certificate.pk }}" class="btn btn-ghost btn-sm ml-1">{% include "components/icon.html" with name="send" class="size-4" %}Resend<span class="sr-only"> {{ certificate.certificate_number }}</span></button>{% endif %}
                   {% elif row.sending.key == "reprint" %}{% include "components/badge.html" with text=row.sending.label tone=row.sending.tone %}
@@ -318,8 +318,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
                   {% elif row.sending.key == "pdf_pre_rule_waiting" or row.sending.key == "pdf_pre_rule_closed" %}<span class="block max-w-64 text-xs whitespace-normal text-muted">{{ row.sending.label }}</span>
                   {% else %}<span class="text-muted">{{ row.sending.label }}</span>{% endif %}
                 </td>
-                <td class="px-3 py-2.5">
-                  <div class="flex items-center justify-end gap-1">
+                <td class="px-3 py-3">
+                  <div class="flex items-center justify-end gap-2">
                     {% if row.can_hand_over %}
                       <button type="submit" form="hand-over-{{ certificate.pk }}" class="btn btn-secondary btn-sm whitespace-nowrap">{% include "components/icon.html" with name="award" class="size-4" %}Mark handed over<span class="sr-only"> {{ certificate.certificate_number }}</span></button>
                     {% endif %}

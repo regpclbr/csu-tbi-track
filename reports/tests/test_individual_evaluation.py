@@ -118,7 +118,7 @@ def test_the_top_shows_no_contact_details_and_the_section_is_closed(submitted, d
     assert "Participant category" in facts and "Registered" in facts and "Attendance" in facts and "Evaluation" in facts
     assert "ana.private@example.com" not in facts and "Contact number" not in facts
     section = html[html.index("<details"):]
-    assert section.startswith('<details class="group mt-5 rounded-2xl border border-line" id="registration-answers">')  # closed
+    assert section.startswith('<details class="group mt-6 rounded-2xl border border-line" id="registration-answers">')  # closed
     assert "Show contact details and registration answers" in section
     assert "ana.private@example.com" in section and "Contact number" in section and "Registration answers" in section
     assert html.index('id="evaluation"') < html.index('id="registration-answers"')

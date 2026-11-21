@@ -4,12 +4,12 @@
 its total and a "See all" link to that list filtered by the same words.
 {% endcomment %}
 {% block content %}
-<form method="get" action="{% url 'search' %}" role="search" class="mb-5 flex max-w-2xl gap-2">
+<form method="get" action="{% url 'search' %}" role="search" class="mb-6 flex max-w-2xl gap-2">
   <div class="relative flex-1">
     <label for="search-page-q" class="sr-only">Search activities, documents and startups</label>
     <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4.5" %}</span>
     <input id="search-page-q" type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Activity title, document title or file name, startup name or email…"
-           class="field-input rounded-full py-2.5 pl-11 shadow-card"{% if not q %} autofocus{% endif %}>
+           class="field-input rounded-full py-3 pl-11 shadow-card"{% if not q %} autofocus{% endif %}>
   </div>
   <button type="submit" class="btn btn-primary">Search</button>
 </form>
@@ -20,9 +20,9 @@ its total and a "See all" link to that list filtered by the same words.
   <div class="card p-6" role="status">{% include "components/empty_state.html" with icon="search" title="Nothing matches" text="No activity, document or startup matches your search. Check the spelling or try fewer words." %}</div>
 {% else %}
   <p class="sr-only" role="status">{{ total }} result{{ total|pluralize }}.</p>
-  <div class="grid gap-5 xl:grid-cols-3">
+  <div class="grid gap-6 xl:grid-cols-3">
     {% for group in groups %}
-      <section class="card flex flex-col p-5" aria-labelledby="results-{{ group.key }}">
+      <section class="card flex flex-col p-6" aria-labelledby="results-{{ group.key }}">
         <div class="mb-3 flex items-center justify-between gap-2">
           <h2 id="results-{{ group.key }}" class="card-title flex items-center gap-2 text-base">
             {% include "components/icon.html" with name=group.icon class="size-4.5 text-primary" %}{{ group.label }}
@@ -37,17 +37,17 @@ its total and a "See all" link to that list filtered by the same words.
                 {% if group.key == "activities" %}
                   <a href="{% url 'activities:detail' item.pk %}" class="hover-row block rounded-xl px-2 py-2">
                     <span class="block truncate text-sm font-semibold text-ink">{{ item.title }}</span>
-                    <span class="mt-0.5 flex items-center gap-2 text-xs text-muted">{% include "components/status_badge.html" with status=item.status.name %}{{ item.start_date|date:"M j, Y" }}</span>
+                    <span class="mt-1 flex items-center gap-2 text-xs text-muted">{% include "components/status_badge.html" with status=item.status.name %}{{ item.start_date|date:"M j, Y" }}</span>
                   </a>
                 {% elif group.key == "documents" %}
                   <a href="{% url 'documents:detail' item.pk %}" class="hover-row block rounded-xl px-2 py-2">
                     <span class="block truncate text-sm font-semibold text-ink">{{ item.title }}</span>
-                    <span class="mt-0.5 block truncate text-xs text-muted">{{ item.document_type.name }} · {{ item.activity.title }}</span>
+                    <span class="mt-1 block truncate text-xs text-muted">{{ item.document_type.name }} · {{ item.activity.title }}</span>
                   </a>
                 {% else %}
                   <a href="{% url 'startups:detail' item.pk %}" class="hover-row block rounded-xl px-2 py-2">
                     <span class="block truncate text-sm font-semibold text-ink">{{ item.name }}</span>
-                    <span class="mt-0.5 block truncate text-xs text-muted">{{ item.email }}{% if not item.is_active %} · Inactive{% endif %}</span>
+                    <span class="mt-1 block truncate text-xs text-muted">{{ item.email }}{% if not item.is_active %} · Inactive{% endif %}</span>
                   </a>
                 {% endif %}
               </li>

@@ -7,6 +7,6 @@ Section card = <section class="card p-6" aria-labelledby="ID"> + this header fir
     <h2 id="{{ id }}" class="card-title">{{ title }}</h2>
     {% if subtitle %}<p class="card-subtitle">{{ subtitle }}</p>{% endif %}
   </div>
-  {% if aside %}<p class="shrink-0 pt-0.5 text-sm text-muted">{{ aside }}</p>{% endif %}
-  {% if link_url %}<a href="{{ link_url }}" class="link shrink-0 pt-0.5 text-sm">{{ link_label }}</a>{% endif %}
+  {% if aside %}<p class="shrink-0 pt-1 text-sm text-muted">{{ aside }}</p>{% endif %}
+  {% if link_url %}<a href="{{ link_url }}" class="link shrink-0 pt-1 text-sm">{{ link_label }}</a>{% endif %}
 </div>

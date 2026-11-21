@@ -9,10 +9,10 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
 {% with message=item.message %}
 {% if item.is_answer %}
   <li class="flex gap-3" id="message-{{ message.pk }}">
-    <span class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary" aria-hidden="true">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
+    <span class="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary" aria-hidden="true">{% include "components/icon.html" with name="sparkles" class="size-4" %}</span>
     <div class="min-w-0 max-w-[85%]">
       <p class="sr-only">The assistant answered:</p>
-      <div class="rounded-2xl rounded-tl-md border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-card break-words [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold">{{ item.html }}</div>
+      <div class="rounded-2xl rounded-tl-md border border-line bg-white px-4 py-3 text-sm leading-relaxed text-ink shadow-card break-words [&_a.cite]:font-semibold [&_a.cite]:text-primary [&_a.cite]:hover:underline [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1 [&_strong]:font-semibold">{{ item.html }}</div>
       <div class="mt-2 flex flex-wrap items-center gap-2">
         {% include "components/badge.html" with text=item.badge.label tone=item.badge.tone %}
         <time class="text-xs text-muted" datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"M j, g:i A" }}</time>
@@ -29,7 +29,7 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
             {% endif %}
             <ul class="mt-2 grid gap-2 sm:grid-cols-2">
               {% for card in group.cards %}
-                <li id="{{ card.dom_id }}" class="scroll-mt-4 rounded-xl border border-line bg-slate-50 px-3 py-2.5 text-xs target:border-primary target:ring-2 target:ring-primary/30">
+                <li id="{{ card.dom_id }}" class="scroll-mt-4 rounded-xl border border-line bg-slate-50 px-3 py-3 text-xs target:border-primary target:ring-2 target:ring-primary/30">
                   {% if card.missing %}
                     <p class="text-slate-700">This file is no longer available.</p>
                   {% else %}
@@ -63,7 +63,7 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
 {% else %}
   <li class="flex justify-end" id="message-{{ message.pk }}">
     <p class="sr-only">You asked:</p>
-    <p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary-soft px-4 py-2.5 text-sm break-words text-ink">{{ message.content|linebreaksbr }}</p>
+    <p class="max-w-[80%] rounded-2xl rounded-br-md bg-primary-soft px-4 py-3 text-sm break-words text-ink">{{ message.content|linebreaksbr }}</p>
   </li>
 {% endif %}
 {% endwith %}

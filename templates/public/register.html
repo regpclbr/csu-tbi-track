@@ -6,16 +6,16 @@ the server's, so all messages appear together under their fields; the first fiel
 {% endcomment %}
 {% block title %}Register: {{ activity.title }} · CSU-TBI Track{% endblock %}
 {% block content %}
-<section class="public-card p-5 sm:p-8" aria-label="Activity">
+<section class="public-card p-6 sm:p-8" aria-label="Activity">
   {% include "public/_activity_summary.html" with activity=activity summary=summary %}
 </section>
 
-<section class="public-card mt-4 p-5 sm:p-8" aria-labelledby="form-heading">
+<section class="public-card mt-6 p-6 sm:p-8" aria-labelledby="form-heading">
   <h2 id="form-heading" class="text-xl font-bold tracking-tight text-ink">Registration form</h2>
-  <p class="mt-1 mb-5 text-sm text-slate-700">Fields marked <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
+  <p class="mt-1 mb-6 text-sm text-slate-700">Fields marked <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
   {% include "public/_form_alerts.html" %}
 
-  <form method="post" action="{% url 'register' activity.pk %}" novalidate class="space-y-5" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+  <form method="post" action="{% url 'register' activity.pk %}" novalidate class="space-y-6" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
     {% csrf_token %}
     {% include "public/_input.html" with name="name" label="Full name" value=values.name error=errors.name autocomplete="name" required=True focus=focus %}
     {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="email" required=True focus=focus help="Your confirmation email is sent here." %}

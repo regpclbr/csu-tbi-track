@@ -42,25 +42,25 @@ certificates.services (assign_default_signatories / set_activity_signatories); e
   {% include "components/section_header.html" with id="section-signatories" title="Who signs the certificates" subtitle="The two people printed on this activity's certificates (left and right). New activities start with the default signatories; change them here or later on the Certificates tab." %}
   {% if signatories.no_defaults %}
     <p class="mb-4 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>There are no default signatories yet. Choose two people here, or later on the Certificates tab: certificates are created only once both are chosen.</span></p>
+      {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>There are no default signatories yet. Choose two people here, or later on the Certificates tab: certificates are created only once both are chosen.</span></p>
   {% endif %}
   <div class="grid gap-4 md:grid-cols-2">
     {% for slot in signatories.slots %}
       <div class="space-y-3 rounded-2xl border border-line p-4">
         <div>
           <label for="{{ slot.field.id_for_label }}" class="text-sm font-semibold text-ink">{{ slot.label }}</label>
-          <select name="{{ slot.field.html_name }}" id="{{ slot.field.id_for_label }}" class="field-input field-select mt-1.5"
+          <select name="{{ slot.field.html_name }}" id="{{ slot.field.id_for_label }}" class="field-input field-select mt-2"
                   data-signatory="{{ slot.slot }}" data-previous="{{ slot.field.value|default:'' }}" @change="changed($event)"
                   {% if slot.field.errors %}aria-invalid="true" aria-describedby="{{ slot.field.id_for_label }}-error"{% endif %}>
             {% for option in slot.options %}<option value="{{ option.value }}" data-position="{{ option.position }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
           </select>
           {% if slot.field.errors %}<p id="{{ slot.field.id_for_label }}-error" class="field-error">{{ slot.field.errors|join:" " }}</p>{% endif %}
-          {% if slot.inactive %}<p class="mt-1.5 text-xs text-amber-900">This person is inactive. Choose an active person (or use the current version on the Certificates tab).</p>{% endif %}
+          {% if slot.inactive %}<p class="mt-2 text-xs text-amber-900">This person is inactive. Choose an active person (or use the current version on the Certificates tab).</p>{% endif %}
         </div>
         <div>
           <label for="{{ slot.title.id_for_label }}" class="text-sm font-semibold text-ink">Title on this certificate <span class="font-normal text-muted">(optional)</span></label>
           <input type="text" name="{{ slot.title.html_name }}" id="{{ slot.title.id_for_label }}" value="{{ slot.title.value|default:'' }}" maxlength="255"
-                 class="field-input mt-1.5" placeholder="{{ slot.placeholder }}" data-title="{{ slot.slot }}"
+                 class="field-input mt-2" placeholder="{{ slot.placeholder }}" data-title="{{ slot.slot }}"
                  aria-describedby="{% if slot.title.errors %}{{ slot.title.id_for_label }}-error{% else %}{{ slot.title.id_for_label }}-help{% endif %}"{% if slot.title.errors %} aria-invalid="true"{% endif %}>
           {% if slot.title.errors %}<p id="{{ slot.title.id_for_label }}-error" class="field-error">{{ slot.title.errors|join:" " }}</p>{% endif %}
           <p id="{{ slot.title.id_for_label }}-help" class="field-help">Printed instead of the person's position, on this activity's certificates only. Empty: the position prints.</p>

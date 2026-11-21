@@ -192,7 +192,7 @@
     @apply inline-flex items-center gap-1 rounded-full border border-line bg-white p-1;
   }
   .segmented-item {
-    @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap text-slate-600 hover:text-ink;
+    @apply inline-flex h-8 items-center gap-2 rounded-full px-3 text-sm font-semibold whitespace-nowrap text-slate-600 hover:text-ink sm:px-4;  /* 12 px sides on phones (fits 390 px), 16 px from 640 px */
   }
   .segmented-item.is-selected, .segmented-item[aria-pressed="true"] {
     @apply bg-primary-soft text-primary;
@@ -298,6 +298,8 @@
   /* Softer badges (ASSUMPTIONS 411, 413): a light tint, a 1 px border of the same hue and dark text (5.4:1 or more).
      The five document states stay apart by hue: Missing grey, Overdue red (+ icon), Waiting for review blue, Returned
      amber, Approved green. */
+  /* Badges and tags keep a 2 px vertical padding: chip-internal, like line height (the one exception to the spacing
+     scale, ASSUMPTIONS 413). */
   .badge {
     @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
   }
@@ -316,7 +318,7 @@
 
   /* Forms */
   .field-label {
-    @apply mb-1.5 block text-sm font-medium text-ink;
+    @apply mb-2 block text-sm font-medium text-ink;  /* 8 px label -> input (spacing scale, ASSUMPTIONS 413) */
   }
   .field-input {
     @apply block w-full rounded-lg border border-line-strong bg-white px-3 py-2 text-sm text-ink placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none;
@@ -363,10 +365,10 @@
     @apply h-8;
   }
   .field-error {
-    @apply mt-1.5 text-sm text-danger;
+    @apply mt-2 text-sm text-danger;
   }
   .field-help {
-    @apply mt-1.5 text-sm text-helper;
+    @apply mt-2 text-sm text-helper;
   }
 
   /* HTMX loading state: elements with .htmx-indicator show only while a request is running. */

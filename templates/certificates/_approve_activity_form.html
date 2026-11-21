@@ -5,7 +5,7 @@ certificates.pages.approval_panel.{% endcomment %}
 <form method="post" action="{{ approval.url }}" class="space-y-4">
   {% csrf_token %}
   <p class="text-sm text-slate-700">Certificates of this activity will be emailed to each participant as soon as they submit their evaluation; resource persons' certificates become ready to print.</p>
-  <ul class="list-disc space-y-1 pl-5 text-sm text-slate-700">
+  <ul class="list-disc space-y-1 pl-6 text-sm text-slate-700">
     {% if approval.by_email %}<li>{{ approval.by_email }} participant certificate{{ approval.by_email|pluralize }} not issued yet: emailed automatically after each evaluation (PDF attached).</li>{% endif %}
     {% if approval.by_hand %}<li>{{ approval.by_hand }} resource person certificate{{ approval.by_hand|pluralize }}: printed and handed over (Mark handed over afterwards).</li>{% endif %}
     <li>Certificates created later (attendance marked afterwards) follow the same rule.</li>

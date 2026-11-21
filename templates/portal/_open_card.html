@@ -1,7 +1,7 @@
 {% load ui %}
 {# One open activity in the portal (startups.portal_pages.open_cards): the public facts and "Already registered" or Register. #}
 {% with activity=card.activity summary=card.summary %}
-<li class="card flex flex-col p-5">
+<li class="card flex flex-col p-6">
   <div class="flex items-start gap-4">
     {% include "components/date_tile.html" with activity=activity gradient=True %}
     <div class="min-w-0">
@@ -10,9 +10,9 @@
     </div>
   </div>
   <dl class="mt-4 space-y-2 text-sm text-slate-700">
-    <div class="flex gap-2.5"><dt class="sr-only">Date</dt><span class="text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><dd>{{ activity|date_span }}</dd></div>
-    <div class="flex gap-2.5"><dt class="sr-only">Time</dt><span class="text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><dd>{{ summary.time_text }}</dd></div>
-    <div class="flex gap-2.5"><dt class="sr-only">Venue</dt><span class="text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><dd class="min-w-0 break-words">{{ summary.venue }}</dd></div>
+    <div class="flex gap-2"><dt class="sr-only">Date</dt><span class="text-primary-hover">{% include "components/icon.html" with name="calendar" class="size-4.5" %}</span><dd>{{ activity|date_span }}</dd></div>
+    <div class="flex gap-2"><dt class="sr-only">Time</dt><span class="text-primary-hover">{% include "components/icon.html" with name="clock" class="size-4.5" %}</span><dd>{{ summary.time_text }}</dd></div>
+    <div class="flex gap-2"><dt class="sr-only">Venue</dt><span class="text-primary-hover">{% include "components/icon.html" with name="map-pin" class="size-4.5" %}</span><dd class="min-w-0 break-words">{{ summary.venue }}</dd></div>
   </dl>
   <div class="mt-auto pt-4">
     {% if card.registered %}

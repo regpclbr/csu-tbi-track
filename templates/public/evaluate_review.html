@@ -15,12 +15,12 @@ inputs; nothing is saved before the confirmation.
   <input type="hidden" name="comments" value="{{ values.comments }}">
   {% for name, value in hidden_answers %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
 
-  <section class="public-card p-5 sm:p-8">
+  <section class="public-card p-6 sm:p-8">
     <p class="text-xs font-semibold tracking-wide text-primary-hover uppercase">Step 2 of 2 · Check before you submit</p>
     <h1 class="mt-1 text-2xl leading-tight font-bold tracking-tight text-ink sm:text-[28px]">Is this correct?</h1>
     <p class="mt-1 text-sm break-words text-slate-700">{{ activity.title }}</p>
 
-    <div class="mt-6 space-y-4 rounded-2xl border border-warning-line bg-warning-soft p-4 sm:p-5">
+    <div class="mt-6 space-y-4 rounded-2xl border border-warning-line bg-warning-soft p-4 sm:p-6">
       <div>
         <p class="text-sm font-semibold text-amber-900">Your certificate will be issued to:</p>
         <p class="mt-1 text-2xl leading-tight font-bold break-words text-ink sm:text-3xl" id="review-name">{{ certificate_name }}</p>
@@ -29,25 +29,25 @@ inputs; nothing is saved before the confirmation.
         <p class="text-sm font-semibold text-amber-900">It will be sent to:</p>
         <p class="mt-1 text-xl leading-tight font-bold break-all text-ink sm:text-2xl" id="review-email">{{ certificate_email }}</p>
       </div>
-      <p class="flex gap-2 text-sm text-amber-900">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4.5" %}<span>Check the spelling and capital letters. The certificate is printed exactly like this and cannot be changed after it is issued.</span></p>
+      <p class="flex gap-2 text-sm text-amber-900">{% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4.5" %}<span>Check the spelling and capital letters. The certificate is printed exactly like this and cannot be changed after it is issued.</span></p>
     </div>
   </section>
 
-  <section class="public-card mt-4 p-5 sm:p-8" aria-labelledby="answers-heading">
+  <section class="public-card mt-6 p-6 sm:p-8" aria-labelledby="answers-heading">
     <h2 id="answers-heading" class="text-xl font-bold tracking-tight text-ink">Your answers</h2>
     <dl class="mt-4 divide-y divide-slate-300/60">
       {% for row in review %}
-        <div class="py-3"><dt class="text-sm font-semibold text-ink">{{ row.label }}</dt><dd class="mt-0.5 text-base break-words {% if row.empty %}text-slate-700 italic{% else %}text-slate-800{% endif %}">{{ row.answer }}</dd></div>
+        <div class="py-3"><dt class="text-sm font-semibold text-ink">{{ row.label }}</dt><dd class="mt-1 text-base break-words {% if row.empty %}text-slate-700 italic{% else %}text-slate-800{% endif %}">{{ row.answer }}</dd></div>
       {% endfor %}
-      <div class="py-3"><dt class="text-sm font-semibold text-ink">Comments</dt><dd class="mt-0.5 text-base break-words whitespace-pre-line {% if comments %}text-slate-800{% else %}text-slate-700 italic{% endif %}">{{ comments|default:"No comments" }}</dd></div>
+      <div class="py-3"><dt class="text-sm font-semibold text-ink">Comments</dt><dd class="mt-1 text-base break-words whitespace-pre-line {% if comments %}text-slate-800{% else %}text-slate-700 italic{% endif %}">{{ comments|default:"No comments" }}</dd></div>
     </dl>
   </section>
 
-  <section class="public-card mt-4 p-5 sm:p-8" aria-label="Privacy notice">
+  <section class="public-card mt-6 p-6 sm:p-8" aria-label="Privacy notice">
     {% include "public/_privacy_consent.html" with field=consent_field error=consent_error %}
   </section>
 
-  <div class="public-card mt-4 flex flex-col-reverse gap-3 p-5 sm:flex-row sm:justify-between sm:px-8">
+  <div class="public-card mt-6 flex flex-col-reverse gap-2 p-6 sm:flex-row sm:justify-between sm:px-8">
     <button type="submit" name="step" value="edit" class="btn btn-secondary">
       {% include "components/icon.html" with name="pencil" class="size-4.5" %}Edit
     </button>

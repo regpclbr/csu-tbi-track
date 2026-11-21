@@ -23,11 +23,11 @@ are in the legend text and the aria-label, never in the colour only. Display onl
     <tbody>
       {% for row in chart.legend %}
         <tr>
-          <th scope="row" class="py-1.5 text-left font-normal text-ink">
+          <th scope="row" class="py-2 text-left font-normal text-ink">
             <span class="mr-2 inline-block size-3 rounded-full align-[-1px]" style="background: {{ row.color }}" aria-hidden="true"></span>{{ row.name }} ({{ row.percent_text }})
-            {% if row.note %}<span class="block pl-5 text-xs text-muted">{{ row.note }}</span>{% endif %}
+            {% if row.note %}<span class="block pl-6 text-xs text-muted">{{ row.note }}</span>{% endif %}
           </th>
-          <td class="py-1.5 text-right align-top font-semibold text-ink tabular-nums">{{ row.count|number }}</td>
+          <td class="py-2 text-right align-top font-semibold text-ink tabular-nums">{{ row.count|number }}</td>
         </tr>
       {% endfor %}
     </tbody>

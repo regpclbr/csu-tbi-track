@@ -7,7 +7,7 @@ certificates:signatory_remove_background (services.remove_signature_background).
   <p class="text-sm text-slate-700">White and near-white pixels around the signature become transparent, so it prints cleanly on the certificate design. The ink is kept.</p>
   {% if row.impact %}
     <p class="flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>{{ row.impact }}</span></p>
+      {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>{{ row.impact }}</span></p>
   {% endif %}
   <div class="flex justify-end gap-2">
     <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>

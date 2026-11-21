@@ -10,7 +10,7 @@ The table scrolls sideways inside the card on narrow screens.
 <div id="registrations-results" class="htmx-dim">
   {% if attendance_reason %}
     <p class="mb-3 flex items-start gap-2 rounded-2xl border border-line bg-slate-50 px-4 py-3 text-sm text-slate-700" role="note">
-      {% include "components/icon.html" with name="clock" class="mt-0.5 size-4 text-muted" %}{{ attendance_reason }}</p>
+      {% include "components/icon.html" with name="clock" class="mt-1 size-4 text-muted" %}{{ attendance_reason }}</p>
   {% endif %}
   <p class="mb-3 text-sm text-muted" role="status">
     {{ result.total }} registration{{ result.total|pluralize }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
@@ -44,20 +44,20 @@ The table scrolls sideways inside the card on narrow screens.
           <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
             <tr>
               {% if can_create and not attendance_reason %}
-                <th scope="col" class="w-10 px-3 py-2.5">
+                <th scope="col" class="w-10 px-3 py-3">
                   <input type="checkbox" class="size-4 accent-primary" aria-label="Select all on this page"
                          :checked="selected.length === all.length" @change="selected = $event.target.checked ? [...all] : []">
                 </th>
               {% endif %}
-              <th scope="col" class="px-3 py-2.5">Name</th>
-              <th scope="col" class="px-3 py-2.5">Email</th>
-              <th scope="col" class="px-3 py-2.5">Contact number</th>
-              <th scope="col" class="px-3 py-2.5">Category</th>
-              <th scope="col" class="px-3 py-2.5">Registered</th>
-              <th scope="col" class="px-3 py-2.5">Attendance</th>
-              <th scope="col" class="px-3 py-2.5">Evaluation</th>
-              <th scope="col" class="px-3 py-2.5">Startup</th>
-              <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th>
+              <th scope="col" class="px-3 py-3">Name</th>
+              <th scope="col" class="px-3 py-3">Email</th>
+              <th scope="col" class="px-3 py-3">Contact number</th>
+              <th scope="col" class="px-3 py-3">Category</th>
+              <th scope="col" class="px-3 py-3">Registered</th>
+              <th scope="col" class="px-3 py-3">Attendance</th>
+              <th scope="col" class="px-3 py-3">Evaluation</th>
+              <th scope="col" class="px-3 py-3">Startup</th>
+              <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-line">
@@ -65,14 +65,14 @@ The table scrolls sideways inside the card on narrow screens.
               {% with registration=row.registration %}
               <tr class="hover:bg-slate-50">
                 {% if can_create and not attendance_reason %}
-                  <td class="px-3 py-2.5"><input type="checkbox" name="registration_ids" value="{{ registration.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ registration.name }}"></td>
+                  <td class="px-3 py-3"><input type="checkbox" name="registration_ids" value="{{ registration.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ registration.name }}"></td>
                 {% endif %}
-                <th scope="row" class="min-w-44 px-3 py-2.5 font-semibold text-ink">{{ registration.name }}</th>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.email }}</td>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.contact_number|default:"–" }}</td>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700">{{ registration.participant_category.name }}</td>
-                <td class="px-3 py-2.5 whitespace-nowrap text-slate-700"><time datetime="{{ registration.registration_date|date:'c' }}">{{ registration.registration_date|date:"M j, Y g:i A" }}</time></td>
-                <td class="px-3 py-2.5 whitespace-nowrap">
+                <th scope="row" class="min-w-44 px-3 py-3 font-semibold text-ink">{{ registration.name }}</th>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.email }}</td>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.contact_number|default:"–" }}</td>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.participant_category.name }}</td>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700"><time datetime="{{ registration.registration_date|date:'c' }}">{{ registration.registration_date|date:"M j, Y g:i A" }}</time></td>
+                <td class="px-3 py-3 whitespace-nowrap">
                   {% if registration.attendance_confirmed %}
                     <span class="badge badge-success">Attended · {{ registration.get_confirmation_method_display|lower }}</span>
                     {% if registration.attendance_marked_at %}
@@ -80,7 +80,7 @@ The table scrolls sideways inside the card on narrow screens.
                     {% endif %}
                   {% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
                 </td>
-                <td class="px-3 py-2.5">
+                <td class="px-3 py-3">
                   {% if registration.evaluation_submission %}
                     {% comment %}Opens the registration dialog, which shows the answers only to can_create_activity (ASSUMPTIONS 402).{% endcomment %}
                     <button type="button" class="badge badge-info cursor-pointer hover:underline" aria-haspopup="dialog" @click="opener = $el"
@@ -89,8 +89,8 @@ The table scrolls sideways inside the card on narrow screens.
                       Submitted<span class="sr-only">: open the evaluation of {{ registration.name }}</span></button>
                   {% else %}<span class="text-muted">–</span>{% endif %}
                 </td>
-                <td class="min-w-36 px-3 py-2.5 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
-                <td class="px-3 py-2.5 text-right whitespace-nowrap">
+                <td class="min-w-36 px-3 py-3 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
+                <td class="px-3 py-3 text-right whitespace-nowrap">
                   {% if can_create and not attendance_reason %}
                     {% if not registration.attendance_confirmed %}
                       <button type="submit" name="row_action" value="mark:{{ registration.pk }}" class="btn btn-secondary btn-sm">Mark attended<span class="sr-only"> {{ registration.name }}</span></button>

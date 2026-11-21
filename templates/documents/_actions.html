@@ -9,7 +9,7 @@ tooltip), so the row's actions usually fit on one line. The group always wraps w
 flex-nowrap: it pushed Approve / Return over the State badges on the Documents page, ASSUMPTIONS 408).
 {% endcomment %}
 {% with document=row.document %}
-<div class="flex flex-wrap items-center justify-end gap-1.5" data-actions-group>
+<div class="flex flex-wrap items-center justify-end gap-2" data-actions-group>
   <a href="{{ row.download_url }}" class="btn btn-sm {% if compact %}btn-ghost btn-icon{% else %}btn-secondary{% endif %}"{% if compact %} title="Download"{% endif %}>{% include "components/icon.html" with name="download" class="size-4" %}{% if compact %}<span class="sr-only">Download {{ document.title }}</span>{% else %}Download<span class="sr-only"> {{ document.title }}</span>{% endif %}</a>
   {% if row.preview_url %}
     <a href="{{ row.preview_url }}" class="btn btn-sm {% if compact %}btn-ghost btn-icon{% else %}btn-secondary{% endif %}" aria-haspopup="dialog"{% if compact %} title="Preview"{% endif %}

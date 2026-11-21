@@ -2,12 +2,12 @@
 {# /startups/portal/activities/<id>/registered/: right after registering (session flag, as the public success page). #}
 {% block content %}
 <div class="mx-auto max-w-3xl">
-  <section class="card p-6 sm:p-10">
+  <section class="card p-6 sm:p-8">
     {% include "public/_notice_card.html" with heading="h2" icon="circle-check" tone="success" title="You're registered!" text="A confirmation email is on its way to your startup's email address. If you don't see it in a few minutes, check your spam folder." %}
   </section>
-  <section class="card mt-4 p-5 sm:p-8" aria-label="Activity">
+  <section class="card mt-6 p-6 sm:p-8" aria-label="Activity">
     {% include "public/_activity_summary.html" with activity=activity heading="h2" %}
-    <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+    <div class="mt-6 flex flex-col gap-2 sm:flex-row">
       <a href="{% url 'register_calendar' activity.pk %}" class="btn btn-primary" download>{% include "components/icon.html" with name="calendar-plus" class="size-4.5" %}Add to calendar</a>
       <a href="{% url 'startups:portal_registrations_page' %}" class="btn btn-secondary">My registrations</a>
       <a href="{% url 'startups:portal_activities' %}" class="btn btn-ghost">Other open activities</a>

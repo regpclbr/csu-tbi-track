@@ -6,7 +6,7 @@ The buttons are shown for every member: the services refuse what is not allowed 
 <div id="member-results" class="htmx-dim">
   {% if filters.ignored %}
     <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
   {% endif %}
   <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} member{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
   {% if members %}
@@ -15,10 +15,10 @@ The buttons are shown for every member: the services refuse what is not allowed 
         <caption class="sr-only">Members</caption>
         <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
           <tr>
-            <th scope="col" class="px-3 py-2.5">Member</th>
-            <th scope="col" class="px-3 py-2.5">Role</th>
-            <th scope="col" class="px-3 py-2.5">Status</th>
-            <th scope="col" class="px-3 py-2.5"><span class="sr-only">Actions</span></th>
+            <th scope="col" class="px-3 py-3">Member</th>
+            <th scope="col" class="px-3 py-3">Role</th>
+            <th scope="col" class="px-3 py-3">Status</th>
+            <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">

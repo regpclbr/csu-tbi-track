@@ -7,8 +7,8 @@ without names, for any staff member. Each bar is the average out of 5; the table
 same numbers as text. Then the evaluation links card (registrations.pages.evaluation_links): how links work, their
 counts, and the attendees who have not answered yet with "Resend link".
 {% endcomment %}
-<div class="space-y-5">
-  <div class="grid grid-cols-2 gap-3.5 lg:grid-cols-3 xl:grid-cols-5">
+<div class="space-y-6">
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
     {% include "components/kpi_card.html" with label="Registered" value=results.registered|number icon="users" chip="blue" %}
     {% include "components/kpi_card.html" with label="Attended" value=results.attended|number icon="circle-check" chip="green" %}
     {% include "components/kpi_card.html" with label="Evaluations submitted" value=results.evaluations|number icon="file-check" chip="teal" %}

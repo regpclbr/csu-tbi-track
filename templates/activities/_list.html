@@ -13,21 +13,21 @@ activities/_list_row.html.
     <div class="space-y-6">
       {% for section in sections %}
         <section aria-labelledby="group-{{ section.key }}">
-          <h3 id="group-{{ section.key }}" class="mb-2.5 flex items-center gap-2 text-sm font-semibold tracking-wide text-ink uppercase">
+          <h3 id="group-{{ section.key }}" class="mb-2 flex items-center gap-2 text-sm font-semibold tracking-wide text-ink uppercase">
             {% if section.key == "now" %}<span class="live-dot size-2 rounded-full" aria-hidden="true"></span>{% elif section.key == "follow_up" %}{% include "components/icon.html" with name="triangle-alert" class="size-4 text-warning" %}{% endif %}
             {{ section.label }} <span class="badge badge-neutral tabular-nums normal-case">{{ section.total|number }}</span>
           </h3>
           {% if section.key == "follow_up" %}
-            <p class="mb-2.5 text-sm text-muted">Their end has passed but they are still Ongoing (no attendance recorded yet), or they are still a Draft after their start.</p>
+            <p class="mb-2 text-sm text-muted">Their end has passed but they are still Ongoing (no attendance recorded yet), or they are still a Draft after their start.</p>
           {% endif %}
           {% if section.months %}
             {% for month in section.months %}
               <h4 class="mt-4 mb-2 text-xs font-semibold text-muted first:mt-0">{{ month.label }}</h4>
-              <ul class="space-y-2.5">{% for row in month.rows %}{% include "activities/_list_row.html" %}{% endfor %}</ul>
+              <ul class="space-y-2">{% for row in month.rows %}{% include "activities/_list_row.html" %}{% endfor %}</ul>
             {% endfor %}
             {% include "components/pagination.html" with result=section.page query=page_query hx_target="#activity-results" %}
           {% else %}
-            <ul class="space-y-2.5">{% for row in section.rows %}{% include "activities/_list_row.html" %}{% endfor %}</ul>
+            <ul class="space-y-2">{% for row in section.rows %}{% include "activities/_list_row.html" %}{% endfor %}</ul>
           {% endif %}
         </section>
       {% endfor %}
@@ -43,7 +43,7 @@ activities/_list_row.html.
   {{ result.total|number }} activit{{ result.total|pluralize:"y,ies" }}{% if filters.q %} for “{{ filters.q }}”{% endif %}{% if filters.any_set %} matching the filters{% endif %}
 </p>
 {% if rows %}
-  <ul class="space-y-2.5">
+  <ul class="space-y-2">
     {% for row in rows %}{% include "activities/_list_row.html" %}{% endfor %}
   </ul>
   {% include "components/pagination.html" with result=result query=page_query hx_target="#activity-results" %}

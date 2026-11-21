@@ -5,7 +5,7 @@ The counts come from certificates.pages.reissue_panel.{% endcomment %}
 <form method="post" action="{{ reissue.url }}" class="space-y-4">
   {% csrf_token %}
   <p class="text-sm text-slate-700"><strong class="font-semibold text-ink">{{ reissue.total }} issued certificate{{ reissue.total|pluralize }} will be reissued</strong> with the current signatories and design. The numbers stay the same.</p>
-  <ul class="list-disc space-y-1 pl-5 text-sm text-slate-700">
+  <ul class="list-disc space-y-1 pl-6 text-sm text-slate-700">
     {% if reissue.by_email %}<li>{{ reissue.by_email }} will be emailed again to the participant{{ reissue.by_email|pluralize }} (“Updated copy”, it replaces the earlier copy).</li>{% endif %}
     {% if reissue.by_hand %}<li>{{ reissue.by_hand }} hard cop{{ reissue.by_hand|pluralize:"y needs,ies need" }} reprinting and handing over again.</li>{% endif %}
   </ul>

@@ -7,7 +7,7 @@ dropped on it is put into that same input, and the chosen file's name is shown. 
 <div x-data="{ name: '', over: false,
                pick(files) { if (files && files.length) { const t = new DataTransfer(); t.items.add(files[0]); $refs.input.files = t.files; this.name = files[0].name; } } }">
   <label for="{{ id }}" class="text-sm font-semibold text-ink">{{ label|default:"File" }}</label>
-  <div class="mt-1.5 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-5 text-center transition-colors {% if error %}border-danger bg-danger-soft/60{% else %}border-slate-300 bg-slate-50{% endif %}"
+  <div class="mt-2 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition-colors {% if error %}border-danger bg-danger-soft/60{% else %}border-slate-300 bg-slate-50{% endif %}"
        :class="over ? '!border-primary !bg-primary-soft/40' : ''"
        @dragover.prevent="over = true" @dragleave.prevent="over = false" @drop.prevent="over = false; pick($event.dataTransfer.files)">
     <span class="flex size-10 items-center justify-center rounded-full bg-white text-primary shadow-card" aria-hidden="true">{% include "components/icon.html" with name="upload" class="size-5" %}</span>

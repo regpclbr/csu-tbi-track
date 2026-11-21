@@ -10,10 +10,10 @@ Used by the activity's Certificate text section and the Certificate text page. E
         <div>
           <label for="{{ field.name }}" class="text-sm font-semibold text-ink">{{ field.label }}{% if not field.required %} <span class="font-normal text-muted">(optional)</span>{% endif %}</label>
           {% if field.field == "main_sentence" %}
-            <textarea id="{{ field.name }}" name="{{ field.name }}" rows="3" maxlength="{{ field.max }}" class="field-input mt-1.5"{% if readonly %} readonly{% endif %}{% if field.required %} required{% endif %}
+            <textarea id="{{ field.name }}" name="{{ field.name }}" rows="3" maxlength="{{ field.max }}" class="field-input mt-2"{% if readonly %} readonly{% endif %}{% if field.required %} required{% endif %}
                       aria-describedby="{{ field.name }}-help{% if field.error %} {{ field.name }}-error{% endif %}"{% if field.error %} aria-invalid="true"{% endif %}>{{ field.value }}</textarea>
           {% else %}
-            <input id="{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}" maxlength="{{ field.max }}" class="field-input mt-1.5"{% if readonly %} readonly{% endif %}{% if field.required %} required{% endif %}
+            <input id="{{ field.name }}" name="{{ field.name }}" value="{{ field.value }}" maxlength="{{ field.max }}" class="field-input mt-2"{% if readonly %} readonly{% endif %}{% if field.required %} required{% endif %}
                    aria-describedby="{{ field.name }}-help{% if field.error %} {{ field.name }}-error{% endif %}"{% if field.error %} aria-invalid="true"{% endif %}>
           {% endif %}
           <p id="{{ field.name }}-help" class="field-help">At most {{ field.max }} characters.</p>
@@ -24,12 +24,12 @@ Used by the activity's Certificate text section and the Certificate text page. E
     <div class="space-y-3">
       <div>
         <p class="text-sm font-semibold text-ink">Preview</p>
-        <div id="text-preview-{{ kind.type }}" class="mt-1.5" aria-live="polite">{% include "certificates/_text_preview.html" with preview=kind.preview %}</div>
+        <div id="text-preview-{{ kind.type }}" class="mt-2" aria-live="polite">{% include "certificates/_text_preview.html" with preview=kind.preview %}</div>
       </div>
       <div class="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700">
         <p class="font-semibold text-ink">Placeholders the system fills in</p>
-        <ul class="mt-1 space-y-0.5">{% for item in kind.placeholders %}<li><code class="font-semibold">{{ item.token }}</code> {{ item.meaning }}</li>{% endfor %}</ul>
-        <p class="mt-1.5">Text in square brackets prints only when every placeholder inside it has a value, e.g. <code>held on {date}[ at {venue}].</code> Plain text only.</p>
+        <ul class="mt-1 space-y-1">{% for item in kind.placeholders %}<li><code class="font-semibold">{{ item.token }}</code> {{ item.meaning }}</li>{% endfor %}</ul>
+        <p class="mt-2">Text in square brackets prints only when every placeholder inside it has a value, e.g. <code>held on {date}[ at {venue}].</code> Plain text only.</p>
       </div>
     </div>
   </div>

@@ -9,27 +9,27 @@ Errors of a refused upload appear under their fields (template_errors), with tha
 {% endcomment %}
 {% block content %}
 {% include "console/_tabs.html" %}
-<div class="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+<div class="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
   <section class="card p-6" aria-labelledby="templates-title">
     <div class="mb-4">
       <h2 id="templates-title" class="card-title">Certificate designs</h2>
       <p class="card-subtitle">The background image of every certificate. Each certificate keeps the design it was generated with.</p>
     </div>
     {% if not active_template %}
-      <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">{% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4" %}No design is active: certificates cannot be generated.</p>
+      <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">{% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4" %}No design is active: certificates cannot be generated.</p>
     {% endif %}
 
-    <details class="group mb-5 rounded-2xl border border-line" {% if template_errors %}open{% endif %} id="upload-template">
+    <details class="group mb-6 rounded-2xl border border-line" {% if template_errors %}open{% endif %} id="upload-template">
       <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
         <span class="inline-flex items-center gap-2">{% include "components/icon.html" with name="upload" class="size-4" %}Upload a new design</span>
         {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
       </summary>
-      <form method="post" action="{% url 'accounts:console_template_upload' %}" enctype="multipart/form-data" novalidate class="space-y-4 border-t border-line px-4 pt-4 pb-5"
+      <form method="post" action="{% url 'accounts:console_template_upload' %}" enctype="multipart/form-data" novalidate class="space-y-4 border-t border-line px-4 pt-4 pb-6"
             x-data="{ busy: false }" @submit="busy = true">
         {% csrf_token %}
         <div>
           <label for="template-name" class="text-sm font-semibold text-ink">Name</label>
-          <input id="template-name" name="name" value="{{ template_values.name|default:'' }}" maxlength="255" class="field-input mt-1.5" placeholder="e.g. TBI 2026 design"{% if template_errors.name %} aria-invalid="true" aria-describedby="template-name-error" autofocus{% endif %}>
+          <input id="template-name" name="name" value="{{ template_values.name|default:'' }}" maxlength="255" class="field-input mt-2" placeholder="e.g. TBI 2026 design"{% if template_errors.name %} aria-invalid="true" aria-describedby="template-name-error" autofocus{% endif %}>
           {% if template_errors.name %}<p id="template-name-error" class="field-error">{{ template_errors.name }}</p>{% endif %}
         </div>
         {% include "console/_image_input.html" with id="template-file" accept="image/png,image/jpeg" help=template_help error=template_errors.file %}

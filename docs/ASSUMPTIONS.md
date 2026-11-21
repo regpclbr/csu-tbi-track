@@ -1524,4 +1524,23 @@ Still 34 tables.
      - Tests: `accounts/tests/test_staff_layout.py` (option B tokens, contrast pairs, gradients, filled dashboard blocks,
        accent bars, red-text danger buttons, type scale, one primary on the activity page / list, no teal left, logo tiles),
        `reports/tests/test_dashboard_page.py` (accent + the card's one primary), the PDF / Excel / focus colour assertions.
-     - **Part 2 (next)**: the spacing scale sweep across every template (142 files use off-scale steps) and a template scan.
+     - **Part 2: one spacing scale everywhere** (2026-11-21). Padding, margins, gaps and `space-*` use only 4 / 8 / 12 / 16 /
+       24 / 32 px (Tailwind steps 1 2 3 4 6 8), plus 48 / 64 px for page-level gutters (sign-in, error pages). Before: 650
+       off-scale uses in 146 templates (half steps 2 / 6 / 10 / 14 px: `mt-0.5` ×99, `py-2.5` ×98, `mt-1.5` ×71, `gap-1.5`
+       ×35; 20 px: `p-5` / `mb-5` / `space-y-5` / `mt-5` / `gap-5` ×120; 28 / 36 / 40 px: `mt-7`, `p-9`, `p-10`, `pb-10`).
+       Mapping: 2 → 4, 6 → 8, 10 → 12 (padding) or 8 (gaps / margins), 14 → 16 (padding) or 12 (gaps), 20 → 24, 28 / 36 /
+       40 → 32, 56 → 48. Rules (checked on the rendered pages at 1366 px, every page of the page table): page padding 16 /
+       24 / 32 px; card padding 24 px (KPI cards 16 px; list cards whose rows carry the padding: 0); page header → content
+       24 px; 24 px between cards, 16 px between repeated cards of one list (Documents by activity was 12, Certificates by
+       activity 16) and between KPI cards (the Registrations and Evaluation tabs were 12); card heading block → content
+       16 px (My profile was 24); form fields 16 px apart, label → input 8 px (was 6), help / error text 8 px below the
+       field (was 6); 8 px between buttons (the New activity form, public "registered" / review pages were 12; four table
+       row groups were 4); public and portal cards 24 px apart (were 16). Exceptions: a field-input's one-sided icon
+       clearance (`pl-10`, `pr-12`, ...), `scroll-mt-*` (an offset, not spacing), the 2 px vertical padding inside badges
+       and tags, print / PDF templates and the Django admin.
+     - Side effects fixed: the AI Assistant still fits 1366 × 768 (composer and message area at 16 px; the empty state no
+       longer scrolls to the bottom on load, which had hidden its icon); KPI labels are 12 px below 640 px wide, so
+       "Certificates" no longer breaks inside the portal's three narrow cards; segmented items have 12 px sides below 640 px
+       (the Documents page switch scrolled the page sideways by 4 px at 390 px).
+     - Tests: `test_spacing_scale_in_every_template` (every class attribute and the `main_class` blocks) and
+       `test_spacing_scale_in_the_component_classes` (the `@apply` rules) in `accounts/tests/test_staff_layout.py`.

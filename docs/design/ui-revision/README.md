@@ -541,3 +541,44 @@ overdue, amber when something is due soon or waits for the member, blue when onl
 Screenshots (1366 × 768, demo data, Demo Director): `b-dashboard.png`, `b-dashboard-attention.png`,
 `b-activity-overview.png`, `b-activity-certificates.png`, `b-activity-documents.png`, `b-activities.png`,
 `b-documents.png`, `b-signin.png`, `b-public-phone.png` (390 × 844); also `../dashboard.png` and `../login.png`.
+
+### 9.6 Part 2: one spacing scale (2026-11-21)
+
+Scale: 4 · 8 · 12 · 16 · 24 · 32 px (Tailwind 1 2 3 4 6 8), plus 48 / 64 px for page gutters only. Enforced by two template
+scans in `accounts/tests/test_staff_layout.py`.
+
+**Inconsistent before** (650 uses in 146 templates; the remaining 18 are the allowed exceptions below):
+
+| Found | Uses | Now |
+|---|---|---|
+| Half steps 2 / 6 px (`mt-0.5`, `mt-1.5`, `gap-1.5`, `py-1.5`, `mb-1.5`, `space-y-0.5`, ...) | 275 | 4 / 8 px |
+| 10 px (`py-2.5`, `px-2.5`, `gap-2.5`, `space-y-2.5`, ...) | 136 | 12 px padding, 8 px gaps |
+| 14 px (`px-3.5`, `gap-3.5`, `py-3.5`) | 23 | 16 px padding, 12 px gaps |
+| 20 px (`p-5`, `mb-5`, `space-y-5`, `mt-5`, `gap-5`, `px-5`, `pt-5`, ...) | 164 | 24 px |
+| 28 / 36 / 40 px (`mt-7`, `pt-7`, `p-9`, `p-10`, `py-10`, `pb-10`, ...) | 34 | 32 px |
+| 56 px sign-in gutter (`lg:px-14`) | 1 | 48 px |
+| Label → input 6 px, help / error text 6 px (`.field-label`, `.field-help`, `.field-error`) | every form | 8 px |
+| Segmented control items 14 × 6 px padding | every switch | 16 px sides (12 px below 640 px), 32 px high |
+
+**Measured on the rendered pages (1366 px) and fixed:**
+
+| Where | Was | Now |
+|---|---|---|
+| KPI cards, Registrations and Evaluation tabs | 12 px apart | 16 px (like every KPI row) |
+| Documents page, activity cards | 12 px apart | 16 px (like the Certificates page groups) |
+| Public / portal pages, cards (evaluation request, review, registered, notice, portal register) | 16 px apart | 24 px |
+| My profile, heading → form | 24 px | 16 px |
+| Button rows: New activity form, public "registered" / review pages | 12 px | 8 px |
+| Button rows in table rows (Signatories, certificates table, certificate tab, form fields) | 4 px | 8 px |
+| Portal home, "My next activity" empty state | 0 px under the heading | 16 px |
+| Certificate approval card, state line | 0 px under the heading | 4 px (like a card subtitle) |
+
+Kept on purpose: 0 px padding on list cards whose rows carry their own padding; a field-input's one-sided icon clearance;
+`scroll-mt-*`; badge and tag 2 px inner padding.
+
+Side effects found and fixed: the AI Assistant's empty state was cut off at 1366 × 768 (it scrolled to the bottom on
+load). The message area and composer now use 16 px, and the empty state no longer scrolls. KPI labels are 12 px below
+640 px, so "Certificates" fits the portal's three narrow cards. The Documents page's Repository / Waiting for my review
+switch was 4 px too wide at 390 px (found by the browser check); segmented items use 12 px sides below 640 px.
+
+The screenshots in `docs/design/screens/` are not retaken yet (owner: once at the end, after tasks A–G).

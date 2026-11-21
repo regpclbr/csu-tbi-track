@@ -7,7 +7,7 @@ column. View only.
 {% endcomment %}
 {% with activity=group.activity %}
 <li class="card overflow-hidden">
-  <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-5 py-4">
+  <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 px-6 py-4">
     <div class="min-w-0 flex-1 basis-80">
       <h3 class="text-sm leading-snug font-semibold [overflow-wrap:anywhere] text-ink">
         <a href="{{ group.url }}" class="cert-link rounded-md hover:text-primary hover:underline">{{ activity.title }}<span class="sr-only"> (open its Certificates tab)</span></a></h3>
@@ -16,13 +16,13 @@ column. View only.
         <span class="inline-flex items-center gap-1 whitespace-nowrap">{% include "components/icon.html" with name="clock" class="size-3.5" %}{{ activity|time_range }}</span>
       </p>
       {# services.approval_state (ASSUMPTIONS 373): approved / all_issued = green (the Issued badge's), needs_approval = orange (a task), not_approved = grey note #}
-      <p class="mt-2 flex items-center gap-1.5 text-sm {% if group.approval_state == 'approved' or group.approval_state == 'all_issued' %}font-medium text-success{% elif group.approval_state == 'needs_approval' %}font-medium text-amber-800{% else %}text-slate-600{% endif %}" data-approval-state="{{ group.approval_state }}">
+      <p class="mt-2 flex items-center gap-2 text-sm {% if group.approval_state == 'approved' or group.approval_state == 'all_issued' %}font-medium text-success{% elif group.approval_state == 'needs_approval' %}font-medium text-amber-800{% else %}text-slate-600{% endif %}" data-approval-state="{{ group.approval_state }}">
         {% if group.approval_state == 'approved' or group.approval_state == 'all_issued' %}{% include "components/icon.html" with name="circle-check" class="size-4 shrink-0" %}{% elif group.approval_state == 'needs_approval' %}{% include "components/icon.html" with name="clock" class="size-4 shrink-0" %}{% else %}{% include "components/icon.html" with name="info" class="size-4 shrink-0" %}{% endif %}<span>{{ group.approval }}</span></p>
-      {% if group.approval_note %}<p class="mt-0.5 pl-5.5 text-xs text-slate-600">{{ group.approval_note }}</p>{% endif %}
+      {% if group.approval_note %}<p class="mt-1 pl-6 text-xs text-slate-600">{{ group.approval_note }}</p>{% endif %}
     </div>
     <ul class="flex flex-wrap gap-2" aria-label="Certificates of {{ activity.title }} per status">
       {% for status in group.counts %}
-        <li class="flex items-center gap-1.5 rounded-full border border-line bg-white px-3 py-1 text-xs">
+        <li class="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1 text-xs">
           {% include "components/badge.html" with text=status.label tone=status.tone %}<span class="font-semibold text-ink tabular-nums">{{ status.count }}</span></li>
       {% endfor %}
     </ul>

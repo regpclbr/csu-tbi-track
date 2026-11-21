@@ -1,10 +1,10 @@
 {# One sidebar link (white on the gradient). Active: white pill at 18% with a white indicator on the left; hover: white at 10%; count badge: white with primary text (8:1 or more, ASSUMPTIONS 413). `item` is a dict from config.frontend.StaffLayout. #}
 <a href="{{ item.url }}"
-   class="group relative flex items-center gap-3 rounded-full px-3.5 py-2 text-sm font-medium text-white transition-colors {% if item.active %}bg-white/18 font-semibold shadow-[inset_3px_0_0_#FFFFFF]{% else %}hover:bg-white/10{% endif %}"
+   class="group relative flex items-center gap-3 rounded-full px-4 py-2 text-sm font-medium text-white transition-colors {% if item.active %}bg-white/18 font-semibold shadow-[inset_3px_0_0_#FFFFFF]{% else %}hover:bg-white/10{% endif %}"
    {% if item.active %}aria-current="page"{% endif %}>
   {% include "components/icon.html" with name=item.icon class="size-5 transition-transform duration-200 motion-safe:group-hover:scale-110" %}
   <span class="flex-1">{{ item.label }}</span>
   {% if item.badge %}
-    <span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-xs font-bold text-primary">{{ item.badge }}<span class="sr-only"> {{ item.badge_label }}</span></span>
+    <span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-2 text-xs font-bold text-primary">{{ item.badge }}<span class="sr-only"> {{ item.badge_label }}</span></span>
   {% endif %}
 </a>

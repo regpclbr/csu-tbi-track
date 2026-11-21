@@ -41,7 +41,7 @@ def type_named(name: str) -> DocumentType:
 
 def cards_of(html: str) -> dict[str, str]:
     """Summary card label -> number, as the page shows them (components/kpi_card.html)."""
-    found = re.findall(r'text-muted">([^<]+)</p>\s*</div>\s*<div[^>]*>\s*<p class="text-2xl[^"]*">([^<]+)</p>', html)
+    found = re.findall(r'text-muted[^"]*">([^<]+)</p>\s*</div>\s*<div[^>]*>\s*<p class="text-2xl[^"]*">([^<]+)</p>', html)
     return {label.strip(): value.strip() for label, value in found}
 
 
@@ -240,7 +240,7 @@ def test_summary_cards_use_the_shared_card_link_style(world, director, login) ->
 
 def pressed(html: str) -> dict[str, str]:
     """Summary card label -> its aria-pressed value."""
-    found = re.findall(r'aria-pressed="(true|false)" class="stat-card-link".*?text-muted">([^<]+)</p>', html, re.S)
+    found = re.findall(r'aria-pressed="(true|false)" class="stat-card-link".*?text-muted[^"]*">([^<]+)</p>', html, re.S)
     return {label.strip(): value for value, label in found}
 
 

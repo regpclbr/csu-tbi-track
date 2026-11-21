@@ -5,11 +5,11 @@ inside the scrolling content panel made Chromium draw a small square over the pa
 {% if people %}
   <fieldset>
     <legend class="sr-only">Choose a resource person</legend>
-    <div class="rounded-xl border border-line bg-white p-1.5">
+    <div class="rounded-xl border border-line bg-white p-2">
     <ul class="max-h-[13.25rem] space-y-1 overflow-y-auto">
       {% for person in people %}
         <li>
-          <label class="flex cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 hover:bg-slate-50 has-[:checked]:bg-primary-soft">
+          <label class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-slate-50 has-[:checked]:bg-primary-soft">
             <input type="radio" name="resource_person" value="{{ person.pk }}" class="size-4 accent-primary" required>
             <span class="min-w-0">
               <span class="block text-sm font-semibold [overflow-wrap:anywhere] text-ink">{{ person.name }}</span>

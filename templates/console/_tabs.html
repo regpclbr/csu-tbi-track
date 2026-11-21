@@ -1,5 +1,5 @@
 {# The Admin Console's tab row (accounts.console_pages.TABS) and the link to the Startups page (sync, set-password links). #}
-<nav class="mb-5 flex flex-wrap items-center gap-2" aria-label="Admin Console">
+<nav class="mb-6 flex flex-wrap items-center gap-2" aria-label="Admin Console">
   <ul class="inline-flex flex-wrap gap-1 rounded-full border border-line bg-slate-50 p-1">
     {% for tab in tabs %}
       <li><a href="{{ tab.url }}"{% if tab.active %} aria-current="page"{% endif %}

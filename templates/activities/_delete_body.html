@@ -5,27 +5,27 @@ goes with it) and a form that needs the activity's title typed exactly. A normal
 {% endcomment %}
 {% if refused %}
   <div class="flex gap-3 rounded-xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">
-    {% include "components/icon.html" with name="shield" class="mt-0.5 size-4.5 shrink-0" %}<p>{{ refused }}</p>
+    {% include "components/icon.html" with name="shield" class="mt-1 size-4.5 shrink-0" %}<p>{{ refused }}</p>
   </div>
-  <div class="mt-5 flex justify-end">
+  <div class="mt-6 flex justify-end">
     <a href="{% url 'activities:detail' activity.pk %}" class="btn btn-secondary" onclick="const d = this.closest('dialog'); if (d) { event.preventDefault(); d.close(); }">Close</a>
   </div>
 {% else %}
   <p class="text-sm text-slate-700">This permanently deletes <strong class="font-semibold text-ink [overflow-wrap:anywhere]">{{ activity.title }}</strong> and everything that belongs to it. It cannot be undone.</p>
   {% if lines %}
     <p class="mt-3 text-sm font-semibold text-ink">Also deleted:</p>
-    <ul class="mt-1.5 list-disc space-y-1 pl-5 text-sm text-slate-700" data-delete-lines>
+    <ul class="mt-2 list-disc space-y-1 pl-6 text-sm text-slate-700" data-delete-lines>
       {% for line in lines %}<li>{{ line }}</li>{% endfor %}
     </ul>
   {% else %}
     <p class="mt-3 text-sm text-slate-700">Nothing else is attached to this activity.</p>
   {% endif %}
   <p class="mt-3 text-xs text-muted">Kept: resource persons, signatories, startups and staff accounts. A record of the deletion (who, when, the counts above and the certificate numbers) stays in the Admin Console. Deleted certificate numbers are never given again.</p>
-  <form method="post" action="{% url 'activities:delete' activity.pk %}" class="mt-5 space-y-3" novalidate>
+  <form method="post" action="{% url 'activities:delete' activity.pk %}" class="mt-6 space-y-3" novalidate>
     {% csrf_token %}
     <div>
       <label for="delete-title" class="text-sm font-semibold text-ink">Type the activity's title to confirm</label>
-      <input id="delete-title" type="text" name="title" value="{{ typed_title }}" autocomplete="off" class="field-input mt-1.5"
+      <input id="delete-title" type="text" name="title" value="{{ typed_title }}" autocomplete="off" class="field-input mt-2"
              aria-describedby="delete-title-help{% if error %} delete-title-error{% endif %}"{% if error %} aria-invalid="true"{% endif %} autofocus>
       <p id="delete-title-help" class="field-help [overflow-wrap:anywhere]">{{ activity.title }}</p>
       {% if error %}<p id="delete-title-error" class="field-error">{{ error }}</p>{% endif %}

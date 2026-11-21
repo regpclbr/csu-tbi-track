@@ -9,9 +9,9 @@ One System status item (accounts.system_status.StatusItem): green (ok), amber (w
   <div class="min-w-0 flex-1">
     <p class="flex flex-wrap items-center gap-x-2 font-semibold text-ink">{{ item.label }}
       <span class="text-xs font-semibold {% if item.tone == 'ok' %}text-success{% elif item.tone == 'info' %}text-info{% else %}text-amber-900{% endif %}">({% if item.tone == "ok" %}OK{% elif item.tone == "info" %}Development{% else %}Needs attention{% endif %})</span></p>
-    <p class="mt-0.5 text-sm text-slate-800">{{ item.summary }}</p>
+    <p class="mt-1 text-sm text-slate-800">{{ item.summary }}</p>
     {% if item.details %}
-      <dl class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-700">
+      <dl class="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-700">
         {% for label, value in item.details %}<div><dt class="inline font-semibold">{{ label }}:</dt> <dd class="inline break-all">{{ value }}</dd></div>{% endfor %}
       </dl>
     {% endif %}
@@ -38,6 +38,6 @@ One System status item (accounts.system_status.StatusItem): green (ok), amber (w
         </table>
       </div>
     {% endif %}
-    {% if item.fix %}<p class="mt-2 text-sm text-slate-800"><span class="font-semibold">{% if item.tone == "warning" %}Fix:{% else %}Tip:{% endif %}</span> <code class="rounded bg-white/80 px-1 py-0.5 text-sm break-words">{{ item.fix }}</code></p>{% endif %}
+    {% if item.fix %}<p class="mt-2 text-sm text-slate-800"><span class="font-semibold">{% if item.tone == "warning" %}Fix:{% else %}Tip:{% endif %}</span> <code class="rounded bg-white/80 px-1 py-1 text-sm break-words">{{ item.fix }}</code></p>{% endif %}
   </div>
 </li>

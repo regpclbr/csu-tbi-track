@@ -14,7 +14,7 @@ summary line is refreshed with them (hx-swap-oob in _body.html).
 {% block page_description %}{{ layout.today|long_date }} · Here's what's happening at CSU-TBI{% endblock %}
 {% block page_actions %}{% if page.can_create_activity %}<a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}{% endblock %}
 {% block content %}
-<div class="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+<div class="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
   {# --- Welcome banner ------------------------------------------------------------------------- #}
   {# The original filled block on the calmer gradient (ASSUMPTIONS 413); its button is outlined on the dark, so the page's one solid primary stays "New activity" in the page header. #}
   <section class="welcome-banner on-dark relative isolate flex flex-col justify-center overflow-hidden rounded-[24px] p-6 text-white xl:col-start-1 xl:row-start-1" aria-labelledby="welcome-title">
@@ -41,7 +41,7 @@ summary line is refreshed with them (hx-swap-oob in _body.html).
           hx-get="{% url 'home' %}" hx-target="#dashboard-body" hx-push-url="true" hx-trigger="change delay:300ms"
           hx-indicator="#dashboard-body, #filters-loading"
           x-data="{ range: '{{ page.range_key }}' }"
-          class="flex max-w-full min-w-0 flex-wrap items-center gap-2.5">
+          class="flex max-w-full min-w-0 flex-wrap items-center gap-2">
       <span id="filters-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
       <div class="max-w-full min-w-0">
         <label for="filter-range" class="sr-only">Date range</label>

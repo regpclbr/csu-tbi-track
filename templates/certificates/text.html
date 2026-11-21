@@ -7,11 +7,11 @@ use the default get it on their certificates that are not issued, and their appr
 keep their text. Activities can use their own text instead (their Certificates tab).
 {% endcomment %}
 {% block content %}
-<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+<div class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <p class="max-w-3xl text-sm text-slate-700">The default words printed on certificates. Each activity uses them unless it has its own text (Certificates tab). Placeholders such as {activity} are filled in by the system; text is plain (no formatting).</p>
   <a href="{{ signatories_url }}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="users" class="size-4" %}Signatories</a>
 </div>
-<div class="space-y-5">
+<div class="space-y-6">
   {% for kind in types %}
     <section class="card p-6" aria-labelledby="text-title-{{ kind.type }}">
       <div class="mb-4">

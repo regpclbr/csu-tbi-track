@@ -3,10 +3,10 @@ filled in (plain text, escaped here) or the errors saving would give. Nothing is
 {% if preview.errors %}
   <div class="rounded-xl border border-danger-line bg-danger-soft px-3 py-2 text-sm text-red-800" role="status">
     <p class="font-semibold">Not saved like this:</p>
-    <ul class="mt-1 list-disc space-y-0.5 pl-5">{% for field, message in preview.errors.items %}<li>{{ message }}</li>{% endfor %}</ul>
+    <ul class="mt-1 list-disc space-y-1 pl-6">{% for field, message in preview.errors.items %}<li>{{ message }}</li>{% endfor %}</ul>
   </div>
 {% else %}
-  <div class="rounded-xl border border-line bg-[#fbf6e9] px-4 py-5 text-center font-serif text-slate-800" role="status" aria-label="Preview of the wording">
+  <div class="rounded-xl border border-line bg-[#fbf6e9] px-4 py-6 text-center font-serif text-slate-800" role="status" aria-label="Preview of the wording">
     <p class="text-base font-semibold tracking-[0.2em] uppercase">{{ preview.text.title }}</p>
     {% if preview.text.line_before_name %}<p class="mt-1 text-sm italic">{{ preview.text.line_before_name }}</p>{% endif %}
     <p class="mt-1 text-lg font-bold">[the name]</p>

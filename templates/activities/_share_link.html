@@ -5,7 +5,7 @@ The QR image comes from activities:qr_code (staff login; ?download=1 = the same 
 {% endcomment %}
 {% url 'activities:qr_code' activity.pk kind as qr_src %}
 <label for="share-{{ kind }}-url" class="mt-3 block text-sm font-semibold text-ink">{{ label }}</label>
-<div class="mt-1.5 flex gap-2">
+<div class="mt-2 flex gap-2">
   <input id="share-{{ kind }}-url" type="text" readonly value="{{ url }}" class="field-input min-w-0 flex-1 py-2 text-sm" @focus="$el.select()" x-data>
   {% include "components/copy_button.html" with text=url label="Copy link" done=done %}
 </div>

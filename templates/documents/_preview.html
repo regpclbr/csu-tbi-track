@@ -30,7 +30,7 @@ standalone=True: its own page without JavaScript (Close becomes a link back to t
       <img src="{{ file_url }}" alt="Preview of {{ document.title }}" class="h-auto max-w-full object-contain">
     </div>
   {% else %}
-    <div class="rounded-xl border border-line bg-slate-50 px-6 py-10 text-center" data-preview-fallback>
+    <div class="rounded-xl border border-line bg-slate-50 px-6 py-8 text-center" data-preview-fallback>
       <span class="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="file-text" %}</span>
       <p class="font-semibold text-ink">Preview isn't available for this file type ({{ document.file_extension|upper }}).</p>
       <p class="mt-1 text-sm text-muted">Download the file to open it on your computer.</p>

@@ -6,7 +6,7 @@ The input gets autofocus when focus == name (the first field with an error; work
 {% endcomment %}
 <div>
   <label for="id_{{ name }}" class="text-sm font-semibold text-ink">{{ label }}{% if optional %} <span class="font-normal text-slate-700">(optional)</span>{% elif required %} <span class="text-danger" aria-hidden="true">*</span>{% endif %}</label>
-  <div class="relative mt-1.5"{% if reveal %} x-data="{ show: false }"{% endif %}>
+  <div class="relative mt-2"{% if reveal %} x-data="{ show: false }"{% endif %}>
     <input id="id_{{ name }}" name="{{ name }}" type="{{ type|default:'text' }}" class="field-input{% if reveal %} pr-14{% endif %}"{% if reveal %} :type="show ? 'text' : 'password'"{% endif %}{% if value and type != "password" %} value="{{ value }}"{% endif %}{% if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}{% if inputmode %} inputmode="{{ inputmode }}"{% endif %}{% if maxlength %} maxlength="{{ maxlength }}"{% endif %}{% if required %} required{% endif %}{% if focus == name %} autofocus{% endif %}{% if error %} aria-invalid="true" aria-describedby="id_{{ name }}-error"{% elif help %} aria-describedby="id_{{ name }}-help"{% endif %}>
     {% if reveal %}
       <button type="button" class="absolute inset-y-0 right-0.5 my-auto flex size-11 items-center justify-center rounded-full text-slate-600 hover:bg-white/70 hover:text-ink"
@@ -16,5 +16,5 @@ The input gets autofocus when focus == name (the first field with an error; work
       </button>
     {% endif %}
   </div>
-  {% if error %}<p id="id_{{ name }}-error" class="field-error">{{ error }}</p>{% elif help %}<div id="id_{{ name }}-help" class="mt-1.5 text-sm text-slate-700">{{ help }}</div>{% endif %}
+  {% if error %}<p id="id_{{ name }}-error" class="field-error">{{ error }}</p>{% elif help %}<div id="id_{{ name }}-help" class="mt-2 text-sm text-slate-700">{{ help }}</div>{% endif %}
 </div>

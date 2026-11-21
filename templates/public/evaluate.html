@@ -6,7 +6,7 @@ step=review: the server checks everything (services.check_evaluation, nothing sa
 {% endcomment %}
 {% block title %}Evaluation: {{ activity.title }} · CSU-TBI Track{% endblock %}
 {% block content %}
-<section class="public-card p-5 sm:p-8">
+<section class="public-card p-6 sm:p-8">
   <p class="text-xs font-semibold tracking-wide text-primary-hover uppercase">Activity evaluation</p>
   <h1 class="mt-1 text-2xl leading-tight font-bold tracking-tight break-words text-ink sm:text-[28px]">{{ activity.title }}</h1>
   <p class="mt-2 text-base text-slate-700">Thank you for attending. Your answers help the TBI improve its activities. You will check everything on the next page before it is sent.</p>
@@ -17,7 +17,7 @@ step=review: the server checks everything (services.check_evaluation, nothing sa
   <input type="hidden" name="step" value="review">
   {% if errors %}<div class="public-card p-4 sm:px-8">{% include "public/_form_alerts.html" %}</div>{% endif %}
 
-  <section class="public-card space-y-5 p-5 sm:p-8" aria-labelledby="certificate-heading">
+  <section class="public-card space-y-6 p-6 sm:p-8" aria-labelledby="certificate-heading">
     <div>
       <h2 id="certificate-heading" class="text-xl font-bold tracking-tight text-ink">Your certificate</h2>
       <p class="mt-1 text-sm text-slate-700">Type your name exactly as it should be printed on your certificate, and the email address it should be sent to. Please check the spelling: the certificate cannot be changed after it is issued.</p>
@@ -26,7 +26,7 @@ step=review: the server checks everything (services.check_evaluation, nothing sa
     {% include "public/_input.html" with name="certificate_email" label="Send the certificate to" type="email" inputmode="email" value=values.certificate_email error=errors.certificate_email autocomplete="email" required=True focus=focus %}
   </section>
 
-  <section class="public-card space-y-5 p-5 sm:p-8" aria-labelledby="questions-heading">
+  <section class="public-card space-y-6 p-6 sm:p-8" aria-labelledby="questions-heading">
     <div>
       <h2 id="questions-heading" class="text-xl font-bold tracking-tight text-ink">Your feedback</h2>
       <p class="mt-1 text-sm text-slate-700">Fields marked <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
@@ -34,11 +34,11 @@ step=review: the server checks everything (services.check_evaluation, nothing sa
     {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
     <div>
       <label for="id_comments" class="text-sm font-semibold text-ink">Comments <span class="font-normal text-slate-700">(optional)</span></label>
-      <textarea id="id_comments" name="comments" rows="4" class="field-input mt-1.5">{{ values.comments }}</textarea>
+      <textarea id="id_comments" name="comments" rows="4" class="field-input mt-2">{{ values.comments }}</textarea>
     </div>
   </section>
 
-  <div class="public-card p-5 sm:px-8">
+  <div class="public-card p-6 sm:px-8">
     <button type="submit" class="btn btn-primary btn-arrow w-full sm:w-auto sm:px-8" :disabled="busy">
       <span x-show="!busy">Review my answers</span><span x-show="busy" x-cloak>Checking…</span>
       {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}

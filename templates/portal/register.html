@@ -8,13 +8,13 @@ novalidate: every check is the service's; the first field with an error gets the
 {% block content %}
 <div class="mx-auto max-w-3xl">
   <a href="{% url 'startups:portal_activities' %}" class="link inline-flex items-center gap-1 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Open activities</a>
-  <section class="card mt-3 p-5 sm:p-8" aria-label="Activity">
+  <section class="card mt-3 p-6 sm:p-8" aria-label="Activity">
     {% include "public/_activity_summary.html" with activity=activity summary=summary heading="h2" %}
   </section>
 
-  <section class="card mt-4 p-5 sm:p-8" aria-labelledby="form-heading">
+  <section class="card mt-6 p-6 sm:p-8" aria-labelledby="form-heading">
     <h2 id="form-heading" class="text-xl font-bold tracking-tight text-ink">Registration form</h2>
-    <p class="mt-1 mb-5 text-sm text-slate-700">Fields marked <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
+    <p class="mt-1 mb-6 text-sm text-slate-700">Fields marked <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">with an asterisk</span> are required.</p>
     {% include "public/_form_alerts.html" %}
 
     <div class="mb-6 rounded-2xl border border-line bg-slate-50 p-4">
@@ -27,7 +27,7 @@ novalidate: every check is the service's; the first field with an error gets the
       <p class="mt-2 text-xs text-muted">From your Navigatu profile. Changes are made in Navigatu.</p>
     </div>
 
-    <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate class="space-y-5" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+    <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate class="space-y-6" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
       {% csrf_token %}
       {% include "components/category_choice.html" %}
 

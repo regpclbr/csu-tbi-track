@@ -531,9 +531,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Type scale (413): page title 24 px bold (`.page-title`, one h1), section / card heading 18 px semibold (`.card-title` =
   `.section-title`), body 14 px (`text-sm`), caption 12 px (`.caption` / `text-xs`). No `text-[11px]` / `[13px]` / `[15px]`
   on staff pages (test). Big numbers are data; sign-in / public hero headlines are display text; public and portal body 16 px.
-- Spacing scale 4 · 8 · 12 · 16 · 24 · 32 px: page padding 16/24/32 px, card padding 24 px (KPI cards and list rows 16 px),
-  24 px between cards and below the page header, 16 px card header → content and between form fields, 8 px label → input
-  and between buttons. (The sweep of every template onto it is Part 2 of 413.)
+- Spacing scale (413, enforced by `test_spacing_scale_in_every_template` / `_in_the_component_classes`): padding, margins,
+  gaps and `space-*` only 4 · 8 · 12 · 16 · 24 · 32 px (steps 1 2 3 4 6 8; 48 / 64 px only as page gutters); never half
+  steps (`-0.5`, `-1.5`, `-2.5`, `-3.5`), 20 / 28 / 36 / 40 px or `[..px]`. Page padding 16/24/32 px, card padding 24 px
+  (KPI cards and list rows 16 px), 24 px between cards and below the page header, 16 px between repeated cards of one
+  list and between KPI cards, 16 px card heading → content and between form fields, 8 px label → input, help text and
+  between buttons. Exceptions: a field-input's icon clearance (`pl-10`, `pr-12`), `scroll-mt-*`, badge / tag inner 2 px,
+  print / PDF templates, the Django admin.
 - Page header (`layouts/app.html`): h1 + `page_subtitle`; `{% block page_actions %}` = the page's buttons (secondary first,
   the ONE primary last, rare / destructive ones in a "⋯" menu); `{% block page_header %}` replaces it (activity page,
   document page, New / Edit activity); `{% block page_description %}` (Dashboard: the date). A card never repeats the page title.
@@ -806,7 +810,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Back to the original design, calmer (2026-11-21, owner after the UAT): the teal / cream palette (412) removed; the
   original gradient frame, filled dashboard blocks and navy logo in option B (`#1E2F73` -> `#3B8AA6`, primary `#2A4494`),
   neutral grey panel, softer status colours, type scale, red-text destructive buttons, one primary per page or card,
-  Needs attention / pending approvals with an accent bar (413, Part 1). Part 2: the spacing sweep. No database change.
+  Needs attention / pending approvals with an accent bar (413, Part 1). Part 2: every template on the spacing scale
+  (650 off-scale uses in 146 files) + template scan tests. No database change.
 
 ## Hosted client review version (ASSUMPTIONS 391–398, `docs/DEPLOY.md`)
 - NOT the final production deployment: one Azure VM (Azure for Students, B2ats v2, ~1 GB) with Docker Compose. No Railway.

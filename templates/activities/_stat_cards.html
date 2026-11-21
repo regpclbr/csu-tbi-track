@@ -4,7 +4,7 @@ The Activities list cards (activities.pages.stat_cards, ASSUMPTIONS 341). "Activ
 other three open #card-dialog (components/modal.html, remote) with their activities, loaded with HTMX; the list below
 never changes. Without JavaScript they are links to the list with the preset. Keyboard focus: .stat-card-link.
 {% endcomment %}
-<div class="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
   {% for card in cards %}
     {% if card.preset %}
       <a href="{{ card.list_url }}" class="stat-card-link" aria-haspopup="dialog"

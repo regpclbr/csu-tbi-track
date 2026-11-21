@@ -4,7 +4,7 @@
 through startups:portal_certificate_download, which checks again that the certificate is mine (anything else: 404).
 {% endcomment %}
 {% block content %}
-<section class="card p-5 sm:p-6" aria-labelledby="certificates-title">
+<section class="card p-6 sm:p-6" aria-labelledby="certificates-title">
   <div class="mb-4">
     <h2 id="certificates-title" class="card-title">My certificates</h2>
     <p class="card-subtitle">Certificates of Participation for the activities you attended and evaluated.</p>
@@ -12,7 +12,7 @@ through startups:portal_certificate_download, which checks again that the certif
   {% if certificates %}
     <ul class="divide-y divide-line overflow-hidden rounded-2xl border border-line">
       {% for certificate in certificates %}
-        <li class="flex flex-wrap items-center gap-3 px-4 py-3.5 sm:flex-nowrap">
+        <li class="flex flex-wrap items-center gap-3 px-4 py-4 sm:flex-nowrap">
           <span class="chip chip-violet size-10 shrink-0 rounded-xl">{% include "components/icon.html" with name="award" class="size-5" %}</span>
           <div class="min-w-0 flex-1">
             <p class="font-semibold break-words text-ink">{{ certificate.activity.title }}</p>

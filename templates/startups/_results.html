@@ -4,7 +4,7 @@ The startups table (startups.services.list_startups, 20 a page, by name), swappe
 <div id="startup-results" class="htmx-dim">
   {% if filters.ignored %}
     <p class="mb-3 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-0.5 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}Some filters could not be read and were ignored: {{ filters.ignored|join:", " }}.</p>
   {% endif %}
   <p class="mb-3 text-sm text-muted" role="status">{{ result.total }} startup{{ result.total|pluralize }}{% if filters.any_set %} matching the filters{% endif %}</p>
   {% if startups %}
@@ -13,11 +13,11 @@ The startups table (startups.services.list_startups, 20 a page, by name), swappe
         <caption class="sr-only">Startups</caption>
         <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
           <tr>
-            <th scope="col" class="px-3 py-2.5">Startup</th>
-            <th scope="col" class="px-3 py-2.5">Maturity stage</th>
-            <th scope="col" class="px-3 py-2.5">Status</th>
-            <th scope="col" class="px-3 py-2.5">Portal login</th>
-            <th scope="col" class="px-3 py-2.5">Last synced</th>
+            <th scope="col" class="px-3 py-3">Startup</th>
+            <th scope="col" class="px-3 py-3">Maturity stage</th>
+            <th scope="col" class="px-3 py-3">Status</th>
+            <th scope="col" class="px-3 py-3">Portal login</th>
+            <th scope="col" class="px-3 py-3">Last synced</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">

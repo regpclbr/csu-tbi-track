@@ -10,7 +10,7 @@ set_default_signatories. The Edit and Signature dialogs show the impact of a new
 Nobody is ever deleted (there is no delete URL). Signature thumbnails come from certificates:signature_image.
 {% endcomment %}
 {% block content %}
-<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+<div class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <p class="max-w-3xl text-sm text-slate-700">The people whose name, position and signature are printed on certificates. Each activity chooses two of them (left and right) on its Certificates tab. A person already printed on a certificate is never changed: a new signature image or a new name or position becomes a new version that every activity uses from then on, and issued certificates keep the old one until they are reissued.</p>
   <div class="flex flex-wrap gap-2">
     <a href="{% url 'certificates:text' %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="file-text" class="size-4" %}Certificate text</a>
@@ -18,7 +18,7 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
   </div>
 </div>
 
-<div class="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+<div class="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
   <section class="card p-6" aria-labelledby="people-title">
     <div class="mb-4">
       <h2 id="people-title" class="card-title">Signatories ({{ people|length }})</h2>
@@ -37,12 +37,12 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
             <div class="min-w-0 grow basis-48" data-signatory-text>
               <p class="font-semibold break-words text-ink">{{ person.name }}</p>
               <p class="text-sm break-words text-slate-700">{{ person.position }}</p>
-              <p class="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+              <p class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
                 {% if row.default_label %}{% include "components/badge.html" with text=row.default_label tone="info" %}{% endif %}
                 <span>Used by {{ row.activities }} activit{{ row.activities|pluralize:"y,ies" }}</span>
               </p>
             </div>
-            <div class="ml-auto flex flex-wrap items-center justify-end gap-1">
+            <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
               {% include "components/modal.html" with id=row.edit_id title="Edit "|add:person.name body="certificates/_edit_person_form.html" trigger_label="Edit" trigger_icon="pencil" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
               {% if person.signature_image_path %}
                 {% include "components/modal.html" with id=row.image_id title="Replace signature?" body="certificates/_person_image_form.html" trigger_label="Replace signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
@@ -70,25 +70,25 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
     {% endif %}
 
     {% if inactive %}
-      <details class="group mt-5 rounded-2xl border border-line">
+      <details class="group mt-6 rounded-2xl border border-line">
         <summary class="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-ink hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
           <span>Inactive people and earlier versions ({{ inactive|length }})</span>
           {% include "components/icon.html" with name="chevron-down" class="size-4 transition-transform group-open:rotate-180" %}
         </summary>
         <ul class="divide-y divide-line border-t border-line">
           {% for person in inactive %}
-            <li class="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2.5 text-sm">
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
               <span class="font-semibold text-ink">{{ person.name }}</span><span class="text-slate-700">{{ person.position }}</span>
               <span class="text-xs text-muted">added {{ person.created_at|date:"M j, Y" }}{% if not person.signature_image_path %} · no signature{% endif %}</span>
             </li>
           {% endfor %}
         </ul>
-        <p class="border-t border-line px-4 py-2.5 text-xs text-muted">Kept for the certificates already printed with them. Never deleted.</p>
+        <p class="border-t border-line px-4 py-3 text-xs text-muted">Kept for the certificates already printed with them. Never deleted.</p>
       </details>
     {% endif %}
   </section>
 
-  <div class="space-y-5">
+  <div class="space-y-6">
     <section class="card p-6" aria-labelledby="defaults-title">
       <h2 id="defaults-title" class="card-title">Default signatories</h2>
       <p class="card-subtitle">A new activity starts with these two. Existing activities keep their own.</p>
@@ -98,7 +98,7 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
           {% for slot, label in slots %}
             <div>
               <label for="default-{{ slot }}" class="text-sm font-semibold text-ink">{{ label }}</label>
-              <select id="default-{{ slot }}" name="{{ slot }}" class="field-input field-select mt-1.5">
+              <select id="default-{{ slot }}" name="{{ slot }}" class="field-input field-select mt-2">
                 <option value="">Choose a person</option>
                 {% for row in people %}
                   <option value="{{ row.signatory.pk }}"{% if row.signatory.default_slot == slot %} selected{% endif %}>{{ row.signatory.name }} · {{ row.signatory.position }}</option>

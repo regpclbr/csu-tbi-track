@@ -4,8 +4,8 @@ Registrations tab (registrations.pages.registrations_tab). Counts (reports metri
 attendance sheet; evaluation links live on the Evaluation tab), filters and the table. The filters swap only #registrations-results (hx-select
 picks it from the tab); attendance changes are normal POSTs that come back here with a toast.
 {% endcomment %}
-<div class="space-y-5" x-data="{ opener: null }">
-  <div class="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+<div class="space-y-6" x-data="{ opener: null }">
+  <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
     {% include "components/kpi_card.html" with label="Registered / max slots" value=counts.slots icon="users" chip="blue" %}
     {% include "components/kpi_card.html" with label="Attended" value=counts.attended|number icon="circle-check" chip="green" %}
     {% include "components/kpi_card.html" with label="Evaluations submitted" value=counts.evaluations|number icon="file-check" chip="teal" %}
@@ -29,7 +29,7 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
     <form id="registration-filters" method="get" action="{% url 'activities:detail' activity.pk %}" role="search" aria-label="Filter registrations"
           hx-get="{% url 'activities:detail' activity.pk %}" hx-target="#registrations-results" hx-select="#registrations-results" hx-swap="outerHTML"
           hx-push-url="true" hx-trigger="change, keyup changed delay:400ms from:#reg-q, search from:#reg-q" hx-indicator="#registrations-results, #reg-loading"
-          class="mb-4 flex flex-wrap items-center gap-2.5">
+          class="mb-4 flex flex-wrap items-center gap-2">
       <input type="hidden" name="tab" value="registrations">
       <div class="relative w-full sm:w-72">
         <label for="reg-q" class="sr-only">Search by name or email</label>
@@ -65,7 +65,7 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
     <div class="p-6">
       <div class="mb-4 flex items-start justify-between gap-4">
         <h2 id="registration-dialog-title" class="card-title">Registration</h2>
-        <button type="button" class="-m-1.5 rounded-lg p-1.5 text-muted hover:bg-slate-100 hover:text-ink" onclick="this.closest('dialog').close()" aria-label="Close">
+        <button type="button" class="-m-2 rounded-lg p-2 text-muted hover:bg-slate-100 hover:text-ink" onclick="this.closest('dialog').close()" aria-label="Close">
           {% include "components/icon.html" with name="x" class="size-5" %}</button>
       </div>
       <div id="registration-dialog-body"></div>

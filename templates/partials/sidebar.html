@@ -7,21 +7,21 @@ tall) without a scrollbar; only smaller heights scroll the nav (ASSUMPTIONS 339)
     <img src="{% static 'img/logo-96.png' %}" alt="" width="40" height="40" class="size-10 rounded-[12px] ring-1 ring-white/25">
     <span class="text-lg font-bold tracking-tight">CSU-TBI Track</span>
   </a>
-  <button type="button" class="ml-auto rounded-full p-1.5 text-white hover:bg-white/10 lg:hidden" @click="menuOpen = false" aria-label="Close the menu">
+  <button type="button" class="ml-auto rounded-full p-2 text-white hover:bg-white/10 lg:hidden" @click="menuOpen = false" aria-label="Close the menu">
     {% include "components/icon.html" with name="x" %}
   </button>
 </div>
 
 <nav class="flex-1 overflow-y-auto px-4 pt-2 pb-3" aria-label="Main">
   <p class="px-3 pb-2 text-xs font-semibold tracking-wider text-sidebar-muted uppercase" id="nav-workspace">Workspace</p>
-  <ul class="space-y-0.5" aria-labelledby="nav-workspace">
+  <ul class="space-y-1" aria-labelledby="nav-workspace">
     {% for item in layout.workspace %}
       <li>{% include "partials/nav_item.html" %}</li>
     {% endfor %}
   </ul>
   {% if layout.admin %}
     <p class="px-3 pt-4 pb-2 text-xs font-semibold tracking-wider text-sidebar-muted uppercase" id="nav-system">System</p>
-    <ul class="space-y-0.5" aria-labelledby="nav-system">
+    <ul class="space-y-1" aria-labelledby="nav-system">
       {% for item in layout.admin %}
         <li>{% include "partials/nav_item.html" %}</li>
       {% endfor %}

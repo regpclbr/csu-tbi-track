@@ -25,7 +25,7 @@ from the <template> (alpine=True) and build the same names from `key`. documents
              {% if alpine %}:id="`doc-${key}-title`" :name="`documents-${key}-title`"{% else %}id="doc-{{ row.key }}-title" name="documents-{{ row.key }}-title" value="{{ row.title }}"{% if row.errors.title %} aria-invalid="true" aria-describedby="doc-{{ row.key }}-title-error"{% endif %}{% endif %}>
       {% if not alpine and row.errors.title %}<p id="doc-{{ row.key }}-title-error" class="field-error">{{ row.errors.title }}</p>{% endif %}
     </div>
-    <div class="md:pt-7">
+    <div class="md:pt-8">
       <button type="button" x-cloak class="btn btn-danger btn-sm"
               {% if alpine %}@click="remove(key)"{% else %}@click="removeRow($el)"{% endif %}>
         {% include "components/icon.html" with name="trash-2" class="size-4" %}Remove<span class="sr-only"> this document</span></button>

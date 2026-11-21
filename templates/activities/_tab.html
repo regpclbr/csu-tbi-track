@@ -7,7 +7,7 @@ and a reload keeps the tab.
   {% for item in tabs %}
     <a href="{{ activity_url }}?tab={{ item.key }}" hx-get="{{ activity_url }}?tab={{ item.key }}" hx-target="#tab-area" hx-push-url="true" hx-indicator="#tab-loading"
        {% if item.current %}aria-current="page"{% endif %}
-       class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap {% if item.current %}bg-primary-soft text-primary{% else %}text-slate-600 hover:bg-white/70 hover:text-ink{% endif %}">
+       class="inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap {% if item.current %}bg-primary-soft text-primary{% else %}text-slate-600 hover:bg-white/70 hover:text-ink{% endif %}">
       {{ item.label }}
     </a>
   {% endfor %}

@@ -5,13 +5,13 @@ The activity's public details and the "Add to calendar" file; no personal data.
 {% endcomment %}
 {% block title %}You're registered · CSU-TBI Track{% endblock %}
 {% block content %}
-<section class="public-card p-6 sm:p-10">
+<section class="public-card p-6 sm:p-8">
   {% include "public/_notice_card.html" with icon="circle-check" tone="success" title="You're registered!" text="A confirmation email is on its way. If you don't see it in a few minutes, check your spam folder." %}
 </section>
 
-<section class="public-card mt-4 p-5 sm:p-8" aria-label="Activity">
+<section class="public-card mt-6 p-6 sm:p-8" aria-label="Activity">
   {% include "public/_activity_summary.html" with activity=activity %}
-  <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+  <div class="mt-6 flex flex-col gap-2 sm:flex-row">
     <a href="{% url 'register_calendar' activity.pk %}" class="btn btn-primary" download>
       {% include "components/icon.html" with name="calendar-plus" class="size-4.5" %}Add to calendar
     </a>

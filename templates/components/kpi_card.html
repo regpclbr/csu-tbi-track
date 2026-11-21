@@ -10,9 +10,9 @@ cards side by side) the label wraps under the icon instead of overflowing.
 {% endcomment %}
 {# One structure for every KPI card (ASSUMPTIONS 411): icon + label (a row at least 36 px high, so 1- and 2-line labels take the same room), the number + badge on one baseline, then the optional note. Cards in a row stretch to the same height. #}
 <div class="kpi-card {% if alert %}has-accent accent-warning {% elif not static %}hover-lift {% endif %}flex h-full flex-col p-4">
-  <div class="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1.5">
+  <div class="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-2">
     {% if icon %}<span class="chip chip-{{ chip|default:'blue' }} size-8 rounded-lg">{% include "components/icon.html" with name=icon class="size-4" %}</span>{% endif %}
-    <p class="min-w-0 flex-1 basis-16 text-sm leading-snug font-medium break-words text-muted">{{ label }}</p>
+    <p class="min-w-0 flex-1 basis-16 text-xs leading-snug font-medium break-words text-muted sm:text-sm">{{ label }}</p>{# 12 px on phones (three cards side by side in the portal), 14 px from 640 px #}
   </div>
   <div class="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1">
     <p class="text-2xl leading-none font-bold tracking-tight text-kpi tabular-nums">{{ value }}</p>

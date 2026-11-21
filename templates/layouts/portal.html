@@ -21,13 +21,13 @@ Below 1024 px the sidebar slides in from the menu button; the pages also work at
 
   <div id="content-panel" class="app-panel relative min-w-0 flex-1 bg-panel lg:my-4 lg:mr-4 lg:overflow-y-auto lg:rounded-[28px]">
     {% load ui %}
-    <header class="sticky top-0 z-20 flex min-h-20 items-center gap-3 bg-panel/85 px-4 backdrop-blur-md sm:px-6 xl:px-7">
+    <header class="sticky top-0 z-20 flex min-h-20 items-center gap-3 bg-panel/85 px-4 backdrop-blur-md sm:px-6 xl:px-8">
       <button type="button" class="-ml-1 rounded-full p-2 text-muted hover:bg-slate-200/60 lg:hidden" @click="menuOpen = true" aria-label="Open the menu" aria-controls="sidebar" :aria-expanded="menuOpen.toString()">
         {% include "components/icon.html" with name="menu" class="size-6" %}
       </button>
       <div class="min-w-0 flex-1">
         <h1 class="truncate text-xl font-bold tracking-tight text-ink sm:text-2xl">{{ page_title }}</h1>
-        <p class="mt-0.5 truncate text-sm text-muted">{% if page_subtitle %}{{ page_subtitle }}{% else %}{{ portal.today|long_date }} · Startup portal{% endif %}</p>
+        <p class="mt-1 truncate text-sm text-muted">{% if page_subtitle %}{{ page_subtitle }}{% else %}{{ portal.today|long_date }} · Startup portal{% endif %}</p>
       </div>
       <a href="{% url 'startups:portal_notifications_page' %}" class="relative flex size-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-ink shadow-card hover:bg-slate-50">
         {% include "components/icon.html" with name="bell" %}
@@ -35,7 +35,7 @@ Below 1024 px the sidebar slides in from the menu button; the pages also work at
         {% include "partials/bell_count.html" with unread=portal.unread_count %}
       </a>
     </header>
-    <main id="main" class="px-4 pt-4 pb-10 sm:px-6 sm:pt-5 xl:px-7" tabindex="-1">
+    <main id="main" class="px-4 pt-4 pb-8 sm:px-6 sm:pt-6 xl:px-8" tabindex="-1">
       {% block content %}{% endblock %}
     </main>
   </div>

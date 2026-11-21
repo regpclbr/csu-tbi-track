@@ -5,13 +5,13 @@ A real fieldset/legend with real checkboxes (keyboard: Tab to a pill, Space to t
 {% endcomment %}
 {% with selected=field.value|default_if_none:"" %}
 <fieldset{% if field.errors %} aria-describedby="{{ field.auto_id }}-error"{% elif field.help_text %} aria-describedby="{{ field.auto_id }}-help"{% endif %} id="{{ field.auto_id }}">
-  <legend class="mb-1.5 text-sm font-semibold text-ink">{{ field.label }}</legend>
+  <legend class="mb-2 text-sm font-semibold text-ink">{{ field.label }}</legend>
   <div class="flex flex-wrap gap-2">
     {% for value, label in field.field.choices %}
       <label class="relative">
         <input type="checkbox" name="{{ field.html_name }}" value="{{ value }}" id="{{ field.auto_id }}_{{ forloop.counter0 }}" class="peer sr-only"
                {% for chosen in selected %}{% if chosen|stringformat:"s" == value|stringformat:"s" %}checked{% endif %}{% endfor %}{% if field.errors %} aria-invalid="true"{% endif %}>
-        <span class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-line-strong bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 transition-colors select-none hover:border-primary peer-checked:border-primary peer-checked:bg-primary-soft peer-checked:text-primary peer-checked:[&>svg]:block peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 {% if field.errors %}border-danger-line{% endif %}">
+        <span class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-line-strong bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors select-none hover:border-primary peer-checked:border-primary peer-checked:bg-primary-soft peer-checked:text-primary peer-checked:[&>svg]:block peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-2 {% if field.errors %}border-danger-line{% endif %}">
           <svg class="hidden size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>{{ label }}
         </span>
       </label>

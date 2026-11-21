@@ -6,7 +6,7 @@ certificates:signatory_image (services.replace_signature).{% endcomment %}
   <p class="text-sm text-slate-700">{{ person.name }} · {{ person.position }}</p>
   {% if person.signature_image_path and row.impact %}
     <p class="flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
-      {% include "components/icon.html" with name="triangle-alert" class="mt-0.5 size-4 text-warning" %}<span>{{ row.impact }}</span></p>
+      {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>{{ row.impact }}</span></p>
   {% endif %}
   {% include "certificates/_signature_file_field.html" with prefix=row.image_id required=True %}
   <div class="flex justify-end gap-2">
