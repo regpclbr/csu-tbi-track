@@ -106,30 +106,41 @@ REGISTRATION_NEXT_STEP = ("Registration stays closed until you create the regist
                           "“Open registration”.")
 
 
+def _draft_next_step(activity: Activity) -> str:
+    """After creating a Draft (ASSUMPTIONS 417): what is still needed before it can be Scheduled (the service's list)."""
+    missing = document_services.missing_creation_types(activity)
+    if missing:
+        return f"Upload the {' and the '.join(missing)} on the Documents tab, then change the status to Scheduled."
+    return "Change the status to Scheduled when it is ready."
+
+
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
-    """The activity, its signatories (pre-filled with the defaults, ASSUMPTIONS 365), its required Activity Design and
-    Request Letter (ASSUMPTIONS 405) and its optional documents are saved by one service call, all or nothing
-    (documents.services.create_activity_with_documents, ASSUMPTIONS 327). The required rows come first, so the
-    service's row errors (by position) map back onto `required + rows`."""
+    """The activity, its signatories (pre-filled with the defaults, ASSUMPTIONS 365), its Activity Design and Request
+    Letter (optional, ASSUMPTIONS 405 / 417), its other documents and the "Create as" status (Draft / Scheduled,
+    ASSUMPTIONS 417) are saved by one service call, all or nothing (documents.services.create_activity_with_documents,
+    ASSUMPTIONS 327). The two fixed rows come first (when filled in), so the service's row errors (by position) map
+    back onto `required + rows`; a refused Scheduled goes under the "Create as" field."""
     form = ActivityPageForm(request.POST or None, **pages.signatory_form_options(request.user))
     required = document_pages.required_document_rows(request)
     rows = document_pages.new_document_rows(request) if request.method == "POST" else []
     if request.method == "POST":
-        all_rows = [*required, *rows]
+        given = [row for row in required if row.is_filled_in]  # an untouched fixed row is simply not sent (417)
+        all_rows = [*given, *rows]
         uploads = document_pages.new_documents_for_service(all_rows)
         if form.is_valid():
             signatories = form.signatory_choices()
+            status = form.creation_status()
             try:
                 activity = document_services.create_activity_with_documents(request.user, form.cleaned_data, uploads,
-                                                                            signatories=signatories)
+                                                                            signatories=signatories, status=status)
             except document_services.NewActivityError as error:
                 if error.activity_error:
                     _put_errors_on_fields(form, error.activity_error)
                 document_pages.put_row_errors(all_rows, error.row_errors)
-                if error.missing_types:  # only when a type became required a moment ago (the form has a row per type)
-                    form.add_error(None, f"Upload these documents too: {', '.join(error.missing_types)}.")
+                if error.status_error:
+                    form.add_error("create_as", error.status_error)
             except ValidationError as error:
                 _put_errors_on_fields(form, error)
             except services.ActivityError as error:
@@ -137,16 +148,19 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             else:
                 count = len(uploads)
                 extra = f" with {count} document{'s' if count != 1 else ''} waiting for review" if count else ""
-                # ASSUMPTIONS 409: created as Scheduled; the next step is the registration form (Forms tab).
-                messages.success(request, f'"{activity.title}" was created as {activity.status.name}{extra}. '
-                                          f"{REGISTRATION_NEXT_STEP}")
-                return redirect(_detail_url(activity, "forms"))
+                created = f'"{activity.title}" was created as {activity.status.name}{extra}.'
+                if activity.status.name == ActivityStatus.SCHEDULED:
+                    # ASSUMPTIONS 409: the next step is the registration form (Forms tab).
+                    messages.success(request, f"{created} {REGISTRATION_NEXT_STEP}")
+                    return redirect(_detail_url(activity, "forms"))
+                messages.success(request, f"{created} {_draft_next_step(activity)}")
+                return redirect(_detail_url(activity))
         else:  # show the rows' problems together with the fields' ones
             document_pages.put_row_errors(all_rows, document_services.check_new_documents(uploads))
         if any(row.errors for row in all_rows):
             form.add_error(None, "Please correct the documents marked below.")
     context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows, required),
-               "signatories": pages.signatory_form_section(form, request.user)}
+               "signatories": pages.signatory_form_section(form, request.user), "create_as": pages.create_as_section(form)}
     return render(request, "activities/form.html", context)
 
 

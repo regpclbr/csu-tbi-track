@@ -50,6 +50,7 @@ def form_post(valid_data, **overrides) -> dict:
         "registration_deadline": timezone.localtime(values["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
         "evaluation_deadline": timezone.localtime(values["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
         "budget_amount": str(values["budget_amount"]),
+        "create_as": "Draft",  # the New form's "Create as" (ASSUMPTIONS 417); the edit form ignores it
     }
     data.update(signatories)
     return data

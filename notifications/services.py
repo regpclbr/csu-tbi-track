@@ -55,6 +55,12 @@ def mark_read(recipient: Recipient, notification_id: int) -> Notification:
     return notification
 
 
+def active_directors() -> QuerySet:
+    """Every active member whose role is the Director (Role.DIRECTOR): who is TOLD, never a permission. Used for the
+    new-activity notification (ASSUMPTIONS 361) and the Draft creation-document reminders (ASSUMPTIONS 417)."""
+    return TBIMember.objects.filter(is_active=True, role__role_name=Role.DIRECTOR).order_by("pk")
+
+
 def notify_directors_of_new_activity(activity, creator: TBIMember) -> int:
     """In-app "<Name> created a new activity: <Title> (<Nov 20, 2026>)" for every active member whose role is the
     Director (Role.DIRECTOR: who is told, never a permission; ASSUMPTIONS 361), linked to the activity. Nobody is
@@ -63,7 +69,7 @@ def notify_directors_of_new_activity(activity, creator: TBIMember) -> int:
 
     if creator.role.role_name == Role.DIRECTOR:
         return 0
-    recipients = TBIMember.objects.filter(is_active=True, role__role_name=Role.DIRECTOR).exclude(pk=creator.pk).order_by("pk")
+    recipients = active_directors().exclude(pk=creator.pk)
     message = f"{creator.name[:80]} created a new activity: {activity.title[:200]} ({format_date(activity.start_date)})"[:500]
     created = Notification.objects.bulk_create(
         Notification(member=recipient, activity=activity, type=Notification.ACTIVITY_CREATED, message=message)

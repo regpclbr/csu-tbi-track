@@ -387,6 +387,23 @@ def signatory_form_options(member, activity: Activity | None = None) -> dict:
     return {"current_signatories": current, "can_add_person": has_permission(member, Permission.APPROVE_CERTIFICATES)}
 
 
+def create_as_section(form) -> dict:
+    """The New activity form's "Create as" choice (ASSUMPTIONS 417): each option with its help line and whether it is
+    selected (the posted value is kept after an error), and the field's error (the service's refusal goes here).
+    Display only: the service and change_status decide."""
+    from .forms import CREATE_AS_HELP
+
+    field = form["create_as"]
+    selected = str(field.value() or "")
+    return {
+        "name": field.html_name,
+        "label": field.label,
+        "options": [{"value": value, "label": label, "help": CREATE_AS_HELP[value], "selected": value == selected}
+                    for value, label in form.fields["create_as"].choices],
+        "errors": list(field.errors),
+    }
+
+
 def signatory_form_section(form, member) -> dict:
     """What the form template shows for "Who signs the certificates": per slot the bound select and title fields,
     each option's usual position (the title's placeholder follows the chosen person) and the amber note for an

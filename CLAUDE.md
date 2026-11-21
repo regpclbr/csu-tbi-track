@@ -107,8 +107,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   can_delete_activities (`set_role_activity_deletion`; allowed with can_manage_users, ASSUMPTIONS 389) (toast +
   `accounts.audit`, amber note when no active member has the flag). Tests' "cannot" checks use the test-only role
   `conftest.VIEW_ONLY_ROLE` ("View Only (test)", fixture `view_only`), never Admin Staff.
-- `Role.DIRECTOR` ("Director") is used only to choose who gets the new-activity notification
-  (`notifications.services.notify_directors_of_new_activity`), never for a permission.
+- `Role.DIRECTOR` ("Director") is used only to choose who is told (`notifications.services.active_directors`: the
+  new-activity notification `notify_directors_of_new_activity` and the Draft creation-document reminders, ASSUMPTIONS 417),
+  never for a permission.
 - CERTIFICATE_SIGNATORY is a list of people (ASSUMPTIONS 363): name, free-text position, nullable signature image,
   is_active, `default_slot` (left/right, one per slot: who a new activity starts with), `previous_version` (the row it
   replaced, ASSUMPTIONS 367). A row a certificate uses never changes: a new image or a name/position edit is a NEW row
@@ -244,20 +245,31 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Documents with a new activity: only `create_activity_with_documents()` (one transaction with `create_activity` + `upload_document`,
   all or nothing, stored files removed on failure, errors as `NewActivityError`); offered types only from
   `types_allowed_at_creation()` (not due after the end date, not in `DOCUMENT_TYPES_AFTER_ACTIVITY`) (ASSUMPTIONS 327–328).
-- Activity Design + Request Letter at creation (ASSUMPTIONS 405): `creation_required_types()` (`DOCUMENT_TYPES_REQUIRED_AT_CREATION`,
-  active + required) are REQUIRED rows of `create_activity_with_documents` (the form's fixed `required-<type id>-file` fields, first
-  in the row list). `ACTIVITY.creation_documents_required` (set only at creation: the form and the JSON API; admin, `seed_demo`,
+- Activity Design + Request Letter at creation (ASSUMPTIONS 405, 417): `creation_required_types()` (`DOCUMENT_TYPES_REQUIRED_AT_CREATION`,
+  active + required) are the form's two fixed, OPTIONAL rows (`required-<type id>-file|title`, sent only when filled in,
+  `NewDocumentRow.is_filled_in`, first in the row list). `ACTIVITY.creation_documents_required` (set only at creation: the form and the JSON API; admin, `seed_demo`,
   tests and every row before 2026-11-19 = False = old rules; never editable). Flagged: Draft → Scheduled needs both UPLOADED
   (`scheduling_refused_reason` in `_move_status`), never overdue once uploaded (`is_creation_type` in `_required_item`, same
   rule in `reports.metrics._overdue`, parity test), the only one of a type is never deleted outside Draft
-  (`_delete_refused_reason`). Their title is required on the New activity form only
+  (`_delete_refused_reason`). A title is required with a file on the New activity form only
   (`creation_title_error` in `check_new_documents`, ASSUMPTIONS 410). Tests posting the New activity form add
-  `conftest.creation_document_files()` (files + titles).
+  `conftest.creation_document_files()` (files + titles) when they need the files, and always `create_as`.
+- "Create as" (ASSUMPTIONS 417, amends 405/409): the New form's required radio Draft (default) / Scheduled
+  (`ActivityPageForm.creation_status`, `pages.create_as_section`, `activities/_create_as.html`) →
+  `create_activity_with_documents(..., status=)` (only `CREATION_STATUSES`). Scheduled = `change_status` in the same
+  transaction; a refusal rolls back everything and is `NewActivityError.status_error` (`scheduling_refused_reason(...,
+  on_new_form=True)`) under the field. After an error everything typed is kept and the files to choose again are named
+  (`new_documents_context.choose_again`). Draft → the Overview with what is still missing (`missing_creation_types`).
+- Draft reminders (417): `send_document_reminders` also covers flagged Drafts, ONLY their Activity Design and Request Letter
+  (`is_creation_type`), same rule and timing, to the creator AND every active Director
+  (`notifications.services.active_directors`); Scheduled and later stay creator-only; other types / unflagged Drafts get none.
+  Needs attention (`activities.attention`) already shows them on Drafts. The dashboard (S3, `document_attention`) and the
+  compliance report keep leaving Drafts out.
 - Every upload waits for the Director (`notify_approvers`, in-app only, never the uploader); the Director may approve their
   own upload (ASSUMPTIONS 344, 406).
-- New activities (the form) are created as Scheduled: `create_activity_with_documents` → `change_status` in the same
-  transaction (History: Draft, then Draft → Scheduled); the page opens the Forms tab (ASSUMPTIONS 409). API / admin / demo:
-  Draft. On flagged activities the registration form counts only once marked ready (`FORM_TEMPLATE.ready_at`,
+- New activities (the form) chosen as Scheduled: `create_activity_with_documents` → `change_status` in the same
+  transaction (History: Draft, then Draft → Scheduled); the page opens the Forms tab (ASSUMPTIONS 409, 417; Draft is the
+  form's default). API / admin / demo: Draft. On flagged activities the registration form counts only once marked ready (`FORM_TEMPLATE.ready_at`,
   `mark_registration_form_ready`, Forms tab "Open registration"): the one rule `registrations.services.registration_form_ready`
   in `registration_closed_reason` and (as a query) `open_for_registration` (parity test). Until then the Share card shows
   `share.BUILD_FORM_FIRST` and no link / QR (404).
@@ -679,8 +691,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   about what is missing are answered from database checks, not from documents.
 - Every edit to an ACTIVITY writes an ACTIVITY_AUDIT_LOG row with the field name and the
   readable old and new values.
-- Required-document reminders go to the activity's creator as an in-app NOTIFICATION.
-  Never create the same reminder twice.
+- Required-document reminders go to the activity's creator as an in-app NOTIFICATION (a flagged Draft's Activity Design /
+  Request Letter also to every active Director, ASSUMPTIONS 417). Never create the same reminder twice.
 - Navigatu is accessed only through the `StartupProvider` class (mock for now).
 
 ## Working rules
@@ -824,6 +836,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Activity Design 5-day rule (2026-11-21, NAVIGATU): due 5 days before the start (was 10), like the Request Letter; seed -5
   (create-only), guarded data migration documents/0005 (only start_date / -10 -> -5, reversible), demo workshop starts in
   4 days so an overdue Activity Design still shows (416). No schema or ERD change.
+- Create as Draft / Scheduled (2026-11-21, NAVIGATU UAT): the New activity form's "Create as" (default Draft), Activity Design
+  and Request Letter optional (Scheduled needs both, through `change_status` in the same transaction), refusal under the
+  field, typed values kept and files to re-choose named; Draft reminders for those two types to the creator and the
+  Director; dashboard numbers unchanged (417, amends 405 and 409). No database, ERD or migration change.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the

@@ -1,29 +1,33 @@
 {% comment %}
-One REQUIRED document of the New activity form (ASSUMPTIONS 405): the Activity Design or the Request Letter, from
-documents.pages.required_document_rows (`row.key` = the type's id, `row.label` = its name). Posted as
-`required-<type id>-file|title`; the service (create_activity_with_documents) checks the file like any upload and
-refuses a blank title (services.creation_title_error, ASSUMPTIONS 410). The typed title is re-shown after an error
-(browsers clear the file input, not text inputs); the placeholder is only an example, never a value.
+One of the two fixed documents of the New activity form (ASSUMPTIONS 405; optional since 417): the Activity Design or
+the Request Letter, from documents.pages.required_document_rows (`row.key` = the type's id, `row.label` = its name).
+Posted as `required-<type id>-file|title`; an untouched row is not sent. The service (create_activity_with_documents)
+checks the file like any upload and refuses a file without a title (services.creation_title_error, ASSUMPTIONS 410);
+"Create as: Scheduled" needs both (change_status). The typed title is re-shown after an error (browsers clear the file
+input, not text inputs): the file's note names the file to choose again. The placeholder is only an example.
 {% endcomment %}
 <div class="rounded-2xl border border-line bg-slate-50/60 p-4" data-required-document>
   <div class="grid gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)] md:items-start">
     <div class="md:pt-8">
       <p class="font-semibold text-ink">{{ row.label }}</p>
-      <p class="text-xs text-muted">Required</p>
+      <p class="text-xs text-muted">Needed for Scheduled</p>
     </div>
     <div>
-      <label class="field-label" for="required-{{ row.key }}-file">File <span class="text-red-700" aria-hidden="true">*</span></label>
-      <input type="file" required accept="{{ limits.accept }}" id="required-{{ row.key }}-file" name="required-{{ row.key }}-file"
+      <label class="field-label" for="required-{{ row.key }}-file">File</label>
+      <input type="file" accept="{{ limits.accept }}" id="required-{{ row.key }}-file" name="required-{{ row.key }}-file"
              class="field-input bg-white py-2 file:mr-3 file:rounded-md file:border-0 file:bg-primary-soft file:px-3 file:py-1 file:text-sm file:font-semibold file:text-primary"
-             aria-label="{{ row.label }} file (required)"{% if row.errors.file %} aria-invalid="true" aria-describedby="required-{{ row.key }}-file-error"{% endif %}>
-      {% if row.errors.file %}<p id="required-{{ row.key }}-file-error" class="field-error">{{ row.errors.file }}</p>{% endif %}
+             aria-label="{{ row.label }} file"{% if row.errors.file %} aria-invalid="true" aria-describedby="required-{{ row.key }}-file-error"{% elif row.chosen_name %} aria-describedby="required-{{ row.key }}-file-again"{% endif %}>
+      {% if row.errors.file %}<p id="required-{{ row.key }}-file-error" class="field-error">{{ row.errors.file }}</p>
+      {% elif row.chosen_name %}<p id="required-{{ row.key }}-file-again" class="field-help text-warning">Choose “{{ row.chosen_name }}” again.</p>{% endif %}
       {% if row.errors.document_type %}<p class="field-error">{{ row.errors.document_type }}</p>{% endif %}
     </div>
     <div>
-      <label class="field-label" for="required-{{ row.key }}-title">Title <span class="text-red-700" aria-hidden="true">*</span></label>
-      <input type="text" required maxlength="255" class="field-input" placeholder="e.g. {{ row.label }} - Product Development Workshop" id="required-{{ row.key }}-title"
-             name="required-{{ row.key }}-title" value="{{ row.title }}" aria-label="{{ row.label }} title (required)"{% if row.errors.title %} aria-invalid="true" aria-describedby="required-{{ row.key }}-title-error"{% endif %}>
-      {% if row.errors.title %}<p id="required-{{ row.key }}-title-error" class="field-error">{{ row.errors.title }}</p>{% endif %}
+      <label class="field-label" for="required-{{ row.key }}-title">Title</label>
+      <input type="text" maxlength="255" class="field-input" placeholder="e.g. {{ row.label }} - Product Development Workshop" id="required-{{ row.key }}-title"
+             name="required-{{ row.key }}-title" value="{{ row.title }}" aria-label="{{ row.label }} title"
+             aria-describedby="{% if row.errors.title %}required-{{ row.key }}-title-error{% else %}required-{{ row.key }}-title-help{% endif %}"{% if row.errors.title %} aria-invalid="true"{% endif %}>
+      {% if row.errors.title %}<p id="required-{{ row.key }}-title-error" class="field-error">{{ row.errors.title }}</p>
+      {% else %}<p id="required-{{ row.key }}-title-help" class="field-help">Required when you choose a file.</p>{% endif %}
     </div>
   </div>
 </div>

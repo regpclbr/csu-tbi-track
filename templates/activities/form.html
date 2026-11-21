@@ -3,8 +3,9 @@
 Create / edit an activity (activities.page_views.activity_create / activity_edit). Every field the service accepts,
 in four sections. The rules are checked by activities.services; their messages appear under the right field, and
 the first field with an error gets the focus. Date-times are typed and shown in Manila time.
-New only: the required Activity Design and Request Letter and optional documents (activities/_new_documents.html,
-ASSUMPTIONS 405), saved with the activity in one service call.
+New only: the Activity Design and Request Letter and other documents, all optional (activities/_new_documents.html,
+ASSUMPTIONS 405, 417), and "Create as: Draft / Scheduled" (activities/_create_as.html, 417), saved with the activity in
+one service call.
 "Who signs the certificates" (activities/_signatories_fields.html, ASSUMPTIONS 365): saved with the activity.
 {% endcomment %}
 {# The form's heading is the page header: back link, the h1 and the description (ASSUMPTIONS 411). #}
@@ -15,7 +16,7 @@ ASSUMPTIONS 405), saved with the activity in one service call.
         {% include "components/icon.html" with name="arrow-left" class="size-4" %}{% if activity %}Back to the activity{% else %}All activities{% endif %}
       </a>
       <h1 class="page-title mt-1">{% if activity %}Edit activity{% else %}New activity{% endif %}</h1>
-      <p class="page-description">{% if activity %}Every change is written to the activity's History.{% else %}A new activity is created as Scheduled, with its Activity Design and Request Letter. Every field except the description is required.{% endif %}</p>
+      <p class="page-description">{% if activity %}Every change is written to the activity's History.{% else %}Create it as a Draft and finish later, or as Scheduled once its Activity Design and Request Letter are uploaded. Every field except the description and the documents is required.{% endif %}</p>
     </div>
   </div>
 {% endblock %}
@@ -75,7 +76,10 @@ ASSUMPTIONS 405), saved with the activity in one service call.
 
   {% include "activities/_signatories_fields.html" %}
 
-  {% if not activity %}{% include "activities/_new_documents.html" %}{% endif %}
+  {% if not activity %}
+    {% include "activities/_new_documents.html" %}
+    {% include "activities/_create_as.html" %}
+  {% endif %}
 
   <div class="flex items-center justify-end gap-2">
     <a href="{% if activity %}{% url 'activities:detail' activity.pk %}{% else %}{% url 'activities:list' %}{% endif %}" class="btn btn-secondary">Cancel</a>

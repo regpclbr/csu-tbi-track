@@ -1,5 +1,5 @@
-"""A new activity is created as Scheduled (ASSUMPTIONS 409, NAVIGATU: with its Activity Design and Request Letter it is no
-longer a Draft), but nobody can register until its registration form exists AND staff marked it ready ("Open
+"""A new activity created as Scheduled (ASSUMPTIONS 409; since 417 when "Create as: Scheduled" is chosen with its Activity
+Design and Request Letter), but nobody can register until its registration form exists AND staff marked it ready ("Open
 registration"): the public page and API, the startup portal, the open lists and cards, the Share card link and its QR
 code all follow registrations.services.registration_form_ready. Older activities keep the rule before (a form is enough)."""
 
@@ -39,7 +39,8 @@ def client_for(member) -> Client:
 @pytest.fixture
 def created(director, valid_data) -> Activity:
     """Created through the New activity form's service, by the Director."""
-    return create_activity_with_documents(director, valid_data(title="Investor Day"), required_rows())
+    return create_activity_with_documents(director, valid_data(title="Investor Day"), required_rows(),
+                                          status="Scheduled")
 
 
 def register_someone(activity: Activity):
@@ -73,7 +74,7 @@ def test_the_page_opens_the_forms_tab_with_the_next_step(director, valid_data) -
         "start_time": "08:00", "end_time": "17:00", "venue": data["venue"], "max_slots": data["max_slots"],
         "registration_deadline": timezone.localtime(data["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
         "evaluation_deadline": timezone.localtime(data["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
-        "budget_amount": str(data["budget_amount"]), **creation_document_files(),
+        "budget_amount": str(data["budget_amount"]), **creation_document_files(), "create_as": "Scheduled",
     }
     response = client_for(director).post(reverse("activities:create"), post, follow=True)
     activity = Activity.objects.get(title="Via the page")
@@ -105,7 +106,7 @@ def test_it_can_go_back_to_draft_while_nobody_registered(created, director) -> N
 def test_no_extra_notifications_or_emails(created, director, make_member, valid_data) -> None:
     """Creating as Scheduled and opening registration tell nobody anything new (no status-change notifications exist)."""
     head = make_member("Incubation Project Head")
-    activity = create_activity_with_documents(head, valid_data(title="By the head"), required_rows())
+    activity = create_activity_with_documents(head, valid_data(title="By the head"), required_rows(), status="Scheduled")
     registration_services.create_form(head, activity, FormType.REGISTRATION)
     registration_services.mark_registration_form_ready(head, activity)
     types = sorted(Notification.objects.filter(activity=activity).values_list("type", flat=True))

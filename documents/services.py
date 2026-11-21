@@ -315,15 +315,14 @@ class NewActivityError(Exception):
     """Creating the activity with its documents was refused; nothing was saved.
 
     `activity_error`: the activity's own ValidationError (or None); `row_errors`: {row index: {field: message}};
-    `missing_types`: names of the creation-required types without any row (ASSUMPTIONS 405; the New activity form
-    always sends a row for each, so this only happens to other callers)."""
+    `status_error`: why it cannot be created as Scheduled (ASSUMPTIONS 417: change_status refused the move), or ""."""
 
     def __init__(self, activity_error: ValidationError | None, row_errors: dict[int, dict[str, str]],
-                 missing_types: list[str] | None = None):
+                 status_error: str = ""):
         super().__init__("The activity was not created.")
         self.activity_error = activity_error
         self.row_errors = row_errors
-        self.missing_types = missing_types or []
+        self.status_error = status_error
 
 
 class _RollBack(Exception):
@@ -374,14 +373,17 @@ def missing_creation_types(activity: Activity) -> list[str]:
     return [document_type.name for document_type in types if document_type.pk not in uploaded]
 
 
-def scheduling_refused_reason(activity: Activity) -> str | None:
+def scheduling_refused_reason(activity: Activity, on_new_form: bool = False) -> str | None:
     """Why this Draft cannot be Scheduled yet (activities.services._move_status calls it for activities with
-    creation_documents_required), or None. Uploaded is enough: waiting, returned or approved."""
+    creation_documents_required), or None. Uploaded is enough: waiting, returned or approved.
+    `on_new_form`: the same check, worded for the New activity form's "Create as" field (ASSUMPTIONS 417)."""
     if not activity.creation_documents_required:
         return None
     missing = missing_creation_types(activity)
     if not missing:
         return None
+    if on_new_form:
+        return f"To create it as Scheduled, choose {_the_names(missing)} above, or create it as Draft."
     return f"Upload {_the_names(missing)} before scheduling this activity (Documents tab)."
 
 
@@ -436,28 +438,36 @@ def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str
     return errors
 
 
+CREATION_STATUSES = (ActivityStatus.DRAFT, ActivityStatus.SCHEDULED)  # "Create as" on the New activity form (417)
+
+
 def create_activity_with_documents(
     member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None,
-    signatories: dict | None = None,
+    signatories: dict | None = None, status: str = ActivityStatus.DRAFT,
 ) -> Activity:
     """Create the activity (activities.services.create_activity), upload its documents (upload_document, the
-    same rules as the Documents tab) in one transaction: all or nothing. `documents` must hold a row for each
-    creation_required_types() type (the Activity Design and the Request Letter, ASSUMPTIONS 405); the activity is
-    saved with creation_documents_required=True and then moved to Scheduled (ASSUMPTIONS 409). Other rows are optional.
+    same rules as the Documents tab) in one transaction: all or nothing. The activity is saved with
+    creation_documents_required=True (ASSUMPTIONS 405), so Draft -> Scheduled always needs the Activity Design and
+    the Request Letter uploaded. Every row is optional (ASSUMPTIONS 417).
 
-    Errors of the activity and of every row are raised together as NewActivityError. Files already stored when
-    something fails are deleted again. upload_document's review notifications are rows in this same transaction
-    and it creates no email or task (indexing is queued only on approval, on commit), so a refused create never
-    tells anyone anything."""
-    from activities.services import change_status, create_activity  # documents imports activities, never the reverse
+    `status` (ASSUMPTIONS 417, amends 409): Draft (default) or Scheduled. Scheduled goes through change_status in the
+    same transaction (the one transition rule, incl. scheduling_refused_reason): when the rows did not include both
+    documents it is refused, nothing is saved, and the reason (worded for the form) is NewActivityError.status_error.
+
+    Errors of the activity and of every row are raised together as NewActivityError (the Scheduled check runs only
+    once they are valid: it needs the saved documents). Files already stored when something fails are deleted again.
+    upload_document's review notifications are rows in this same transaction and it creates no email or task
+    (indexing is queued only on approval, on commit), so a refused create never tells anyone anything."""
+    from activities.services import ActivityError, change_status, create_activity  # documents imports activities
 
     require_permission(member, Permission.CREATE_ACTIVITY)
+    if status not in CREATION_STATUSES:
+        raise ValidationError({"status": ["A new activity is created as Draft or Scheduled."]})
     if len(documents) > MAX_DOCUMENTS_AT_CREATION:
         raise ValidationError({"documents": [f"Add at most {MAX_DOCUMENTS_AT_CREATION} documents here."]})
     row_errors = check_new_documents(documents)
-    given = {row.document_type.pk for row in documents if row.document_type is not None}
-    missing_types = [t.name for t in creation_required_types().order_by("name") if t.pk not in given]
     activity_error = None
+    status_error = ""
     stored: list[str] = []
     committed = False
     try:
@@ -468,7 +478,7 @@ def create_activity_with_documents(
             except ValidationError as error:
                 activity_error = error
                 raise _RollBack from error
-            if row_errors or missing_types:
+            if row_errors:
                 raise _RollBack
             for index, row in enumerate(documents):
                 try:
@@ -478,11 +488,16 @@ def create_activity_with_documents(
                     row_errors[index] = {key: messages[0] for key, messages in found.items()}
                     raise _RollBack from error
                 stored.append(document.file_path.name)
-            # ASSUMPTIONS 409 (NAVIGATU): with its Activity Design and Request Letter uploaded it is no longer a Draft.
-            # The one transition rule (change_status -> _move_status, incl. the "both uploaded" check), so History shows
-            # "Draft" then "Draft -> Scheduled" by the creator. Registration still stays closed until the registration
-            # form exists AND is marked ready (registrations.services.registration_form_ready).
-            change_status(member, activity, ActivityStatus.SCHEDULED)
+            if status == ActivityStatus.SCHEDULED:
+                # ASSUMPTIONS 409 / 417: the one transition rule (change_status -> _move_status, incl. the "both
+                # uploaded" check), so History shows "Draft" then "Draft -> Scheduled" by the creator. Registration
+                # still stays closed until the registration form exists AND is marked ready (registration_form_ready).
+                try:
+                    change_status(member, activity, ActivityStatus.SCHEDULED)
+                except ActivityError as error:
+                    # The same check, worded for the form (the documents saved above are still visible here).
+                    status_error = scheduling_refused_reason(activity, on_new_form=True) or str(error)
+                    raise _RollBack from error
         committed = True
     except _RollBack:
         pass
@@ -491,7 +506,7 @@ def create_activity_with_documents(
             for name in stored:
                 _delete_stored_file(name)
     if not committed:
-        raise NewActivityError(activity_error, row_errors, missing_types)
+        raise NewActivityError(activity_error, row_errors, status_error)
     return activity
 
 
@@ -912,37 +927,56 @@ def _create_reminder_once(member: TBIMember, activity: Activity, item: Checklist
 def send_document_reminders(now: datetime | None = None) -> dict[str, int]:
     """Create in-app reminders for each activity's creator (created_by):
     - "due soon": a required type with no uploaded document, due within DOCUMENT_REMINDER_DAYS_BEFORE days;
-    - "overdue": a required type past its due date and not Approved.
-    Draft activities and inactive types are skipped. A deactivated creator is skipped and logged.
+    - "overdue": a required type past its due date and not Approved (the Activity Design / Request Letter of an
+      activity created with them: past the due date and nothing uploaded, _required_item).
+    Draft activities are skipped, EXCEPT the Activity Design and the Request Letter of a Draft created with them
+    (creation_documents_required, is_creation_type; ASSUMPTIONS 417, NAVIGATU): the same rule and timing, to the
+    creator AND every active Director (notifications.services.active_directors). Inactive types are skipped.
+    A deactivated creator is skipped and logged (the Directors of a Draft still get theirs).
     At most one reminder per (member, activity, document type, kind): running it again creates nothing new.
     """
+    from notifications.services import active_directors  # notifications.services imports activities.services
+
     today = today_in_manila(now)
     days_before = settings.DOCUMENT_REMINDER_DAYS_BEFORE
     counts = {Notification.DOCUMENT_DUE_SOON: 0, Notification.DOCUMENT_OVERDUE: 0, "already_sent": 0, "skipped_inactive_creator": 0}
 
-    activities = Activity.objects.exclude(status__name=ActivityStatus.DRAFT).select_related("created_by").order_by("pk")
+    activities = (
+        Activity.objects.filter(~Q(status__name=ActivityStatus.DRAFT) | Q(creation_documents_required=True))
+        .select_related("created_by", "status").order_by("pk")
+    )
+    directors = None  # loaded once, only when a Draft needs them
     for activity in activities:
+        is_draft = activity.status.name == ActivityStatus.DRAFT
         due = [
             (item, kind)
             for item in document_checklist(activity, now)["required"]
-            if (kind := _reminder_kind(item, today, days_before))
+            if (not is_draft or is_creation_type(activity, item.document_type))
+            and (kind := _reminder_kind(item, today, days_before))
         ]
         if not due:
             continue
+        recipients = []
         creator = activity.created_by
-        if not creator.is_active:
+        if creator.is_active:
+            recipients.append(creator)
+        else:
             # Open item for the TBI: who should get these reminders instead?
             logger.warning(
                 "Skipped %d document reminder(s) for activity %s: its creator (member %s) is deactivated.",
                 len(due), activity.pk, creator.pk,
             )
             counts["skipped_inactive_creator"] += len(due)
-            continue
-        for item, kind in due:
-            if _create_reminder_once(creator, activity, item, kind):
-                counts[kind] += 1
-            else:
-                counts["already_sent"] += 1
+        if is_draft:
+            if directors is None:
+                directors = list(active_directors())
+            recipients += [director for director in directors if director.pk != creator.pk]
+        for member in recipients:
+            for item, kind in due:
+                if _create_reminder_once(member, activity, item, kind):
+                    counts[kind] += 1
+                else:
+                    counts["already_sent"] += 1
     return {
         "due_soon": counts[Notification.DOCUMENT_DUE_SOON],
         "overdue": counts[Notification.DOCUMENT_OVERDUE],

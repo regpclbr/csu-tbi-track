@@ -1222,7 +1222,8 @@ database and media before `uat up -d --build` (the release step runs `migrate`; 
 Still 34 tables.
 
 405. **The Activity Design and the Request Letter are uploaded when the activity is created** (NAVIGATU: they already exist
-     then; owner decisions 2026-11-18).
+     then; owner decisions 2026-11-18). *(Amended by item 417 on 2026-11-21: both are OPTIONAL on the New activity form and
+     needed only for "Create as: Scheduled"; Drafts get their reminders. Everything else below still applies.)*
      - **Which types:** `settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION = ["Activity Design", "Request Letter"]`;
        `documents.services.creation_required_types()` = those of `types_allowed_at_creation()` that are active and
        `is_required`. A type the admin deactivates or makes optional drops out of the rule (nothing breaks).
@@ -1240,7 +1241,7 @@ Still 34 tables.
        position. Same checks as any upload (`validate_upload`: real content, PDF/DOCX/XLSX/JPG/PNG, `DOCUMENT_MAX_UPLOAD_MB`);
        the error shows under the field and the amber note asks to choose the files again. **All or nothing** (unchanged,
        item 327): a bad file, a missing file or a failed save leaves no activity, no document, no stored file and no
-       notification. A caller that sends no row for a type gets `NewActivityError.missing_types`.
+       notification. A caller that sends no row for a type gets `NewActivityError.missing_types` *(removed by item 417: the rows are optional)*.
      - The files are normal documents: For Review ("waiting for approval"), uploaded by the creator, `notify_approvers`.
      - **Drafts (owner decision: option A):** every new activity starts as Draft and the form always requires both files *(2026-11-19: the form now creates it as Scheduled, item 409)*.
        Moving **Draft -> Scheduled** on a flagged activity needs a document of each type **uploaded** (waiting, returned or
@@ -1292,7 +1293,9 @@ Still 34 tables.
      a waiting, overdue document uploaded by someone else (Approve + Return), and checks on every document line that no
      badge and button overlap and no button sticks out; it fails on the old templates. No database change.
 409. **New activities are created as Scheduled; registration opens only after "Open registration"** (NAVIGATU: with its
-     Activity Design and Request Letter an activity is no longer a Draft; owner decisions 2026-11-19). **One more migration**
+     Activity Design and Request Letter an activity is no longer a Draft; owner decisions 2026-11-19). *(Amended by item 417
+     on 2026-11-21: the form now asks "Create as: Draft / Scheduled", default Draft; Scheduled works as described here. The
+     ready mark, "Open registration" and the Share card rules are unchanged.)* **One more migration**
      (`registrations/0008_form_template_ready_at`): a nullable datetime on FORM_TEMPLATE; existing rows get NULL and nothing
      changes for them (older activities ignore it). Same backup advice as 405.
      - **Status:** `create_activity_with_documents` creates the activity, uploads the two files and then calls
@@ -1608,3 +1611,54 @@ Still 34 tables.
      - **Demo:** `seed_demo`'s "Product Development Workshop" now starts in 4 days (was 7), so its Activity Design (For
        Review) and Request Letter (missing) are overdue and the demo still shows an overdue Activity Design in Needs
        attention (tested). It applies to a new demo database; a rerun does not move an existing demo activity.
+
+## Choose the status when creating an activity (2026-11-21)
+
+417. **"Create as: Draft / Scheduled"; the Activity Design and Request Letter are optional at creation** (NAVIGATU, UAT;
+     owner decisions 2026-11-21). **Amends items 405 and 409.** No database, ERD, URL or permission change, no migration.
+     - **The choice:** the New activity form has a required "Create as" field (radio: Draft / Scheduled), **default Draft**,
+       in its own "Status" card after Documents (`activities.forms.ActivityPageForm`, New form only; help texts
+       `CREATE_AS_HELP`; display `activities.pages.create_as_section`, `activities/_create_as.html`). One primary button
+       ("Create activity"), spacing scale of item 413.
+     - **Documents optional:** the two fixed rows stay (Activity Design, Request Letter; label "Needed for Scheduled", no
+       star, no `required`). An untouched row is not sent (`NewDocumentRow.is_filled_in`); a title without a file gets
+       "Choose a file to upload."; a file without a title is still refused (item 410, `creation_title_error`).
+     - **The rule (service):** `documents.services.create_activity_with_documents(..., status=Draft)` accepts only Draft or
+       Scheduled (`CREATION_STATUSES`, else ValidationError). Every activity it creates has `creation_documents_required =
+       True`, so item 405's rules still apply (Draft -> Scheduled later needs both UPLOADED; never overdue once uploaded;
+       the only one is never deleted outside Draft) and item 409's ready mark still decides registration ("Open
+       registration"). Scheduled goes through `change_status` in the SAME transaction (the one transition rule:
+       `_move_status` -> `scheduling_refused_reason`); a refusal undoes everything (no activity, document, stored file or
+       notification) and comes back as `NewActivityError.status_error`, worded for the form by
+       `scheduling_refused_reason(activity, on_new_form=True)`: "To create it as Scheduled, choose the Request Letter above,
+       or create it as Draft." (shown under the field). `NewActivityError.missing_types` is gone.
+     - **Order of errors (owner: accepted):** the Scheduled check needs the saved documents, so it runs only once the
+       activity fields and every row are valid; with other errors the refusal appears on the next submit.
+     - **Kept after an error:** every typed value, the chosen "Create as", the titles; browsers clear file inputs, so the
+       amber note lists each file to choose again ("Activity Design (design.pdf)") and each file field says "Choose
+       “design.pdf” again." (`new_documents_context.choose_again`, `NewDocumentRow.chosen_name`; names are only shown).
+     - **After saving:** Scheduled -> the Forms tab and the message of item 409; Draft -> the Overview and "… was created as
+       Draft. Upload the Request Letter on the Documents tab, then change the status to Scheduled." (from
+       `missing_creation_types`) or "Change the status to Scheduled when it is ready." The JSON API create, the admin and
+       `seed_demo` are unchanged (Draft).
+     - **Reminders for Drafts** (NAVIGATU: staff are reminded while the letters are missing; owner decision: Director copy
+       for Drafts only): `send_document_reminders` now also looks at Drafts created with the rule
+       (`creation_documents_required`), but ONLY for the Activity Design and the Request Letter (`is_creation_type`): the
+       existing rule and timing (due 5 days before the start, item 416; "due soon" within `DOCUMENT_REMINDER_DAYS_BEFORE`
+       days and not uploaded; "overdue" after the due date with nothing uploaded), to the creator AND every active Director
+       (`notifications.services.active_directors`, the same group as the new-activity notification; `Role.DIRECTOR` is who
+       is told, never a permission). A Director who created it gets one copy. A deactivated creator is skipped and logged;
+       the Directors still get theirs. One per (member, activity, type, kind) as before (unique constraint), so scheduling
+       later never repeats one. Unchanged: other types on Drafts (no reminders), older Drafts (admin / demo, flag False: no
+       reminders), and Scheduled-and-later reminders (creator only). In-app only, no email.
+     - **Needs attention:** the activity page box and the Activities list count already used the reminders' rule for every
+       status (`activities.attention`), so a Draft shows "Required documents due soon and not uploaded: …" / "Overdue
+       required documents: …" without a code change (now tested).
+     - **Dashboard unchanged (owner decision):** its overdue number (S3, `metrics.documents_now`) and its Needs attention
+       rows (`metrics.document_attention`) stay Scheduled and later, like the compliance report; only reminders and the
+       activity's Needs attention include Drafts.
+     - Tests: `activities/tests/test_create_with_documents.py` (Draft default, Scheduled refused / allowed, nothing saved on a
+       refusal, invalid status, title rule kept, choice and typed values kept, the re-choose notes, one primary button),
+       `activities/tests/test_created_as_scheduled.py` (Scheduled via the choice), `documents/tests/test_draft_reminders.py`
+       (the `clock` fixture: due soon, overdue, once only, only the two types, uploaded stops it, Director creator, inactive
+       creator, older Drafts, Scheduled creator-only, Needs attention, dashboard unchanged).

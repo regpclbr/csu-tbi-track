@@ -60,6 +60,7 @@ def post_data(valid_data):
             "registration_deadline": timezone.localtime(values["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
             "evaluation_deadline": timezone.localtime(values["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
             "budget_amount": str(values["budget_amount"]),
+            "create_as": "Draft",  # the New form's "Create as" default (ASSUMPTIONS 417); the edit form ignores it
         }
 
     return make
@@ -183,7 +184,7 @@ def test_create_page_needs_can_create_activity(director, view_only, login) -> No
 
 
 def test_create_saves_it_as_scheduled_and_opens_the_forms_tab_with_a_toast(director, login, post_data) -> None:
-    data = {**post_data(title="New Pitch Clinic"), **creation_document_files()}  # required uploads (ASSUMPTIONS 405)
+    data = {**post_data(title="New Pitch Clinic"), **creation_document_files(), "create_as": "Scheduled"}  # 405, 417
     response = login(director).post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="New Pitch Clinic")
     assert response.redirect_chain[-1][0] == detail_url(activity) + "?tab=forms"  # ASSUMPTIONS 409

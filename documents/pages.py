@@ -461,7 +461,17 @@ class NewDocumentRow:
     title: str = ""
     file: object = None
     errors: dict[str, str] = field(default_factory=dict)
-    label: str = ""  # required rows only: the type's name (ASSUMPTIONS 405)
+    label: str = ""  # the two fixed rows only: the type's name (ASSUMPTIONS 405)
+
+    @property
+    def is_filled_in(self) -> bool:
+        """A file chosen or a title typed: the row is sent to the service (an untouched row is not, ASSUMPTIONS 417)."""
+        return bool(self.file or self.title)
+
+    @property
+    def chosen_name(self) -> str:
+        """The name of the file chosen before an error (shown in the "choose it again" note; never used in a path)."""
+        return (getattr(self.file, "name", "") or "")[:80]
 
 
 def new_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
@@ -481,9 +491,11 @@ def new_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
 
 
 def required_document_rows(request: HttpRequest) -> list[NewDocumentRow]:
-    """The fixed, required rows of the New activity form (ASSUMPTIONS 405): one per services.creation_required_types()
-    type (the Activity Design and the Request Letter), posted as `required-<type id>-file|title`. Always every type,
-    also when nothing was chosen, so the service reports "Choose a file to upload." under the right field."""
+    """The two fixed rows of the New activity form (ASSUMPTIONS 405, optional since 417): one per
+    services.creation_required_types() type (the Activity Design and the Request Letter), posted as
+    `required-<type id>-file|title`. Always every type (the page shows each); the view sends only the filled-in ones
+    (`is_filled_in`), so a title without a file gets "Choose a file to upload." and a file without a title gets
+    creation_title_error (410)."""
     rows = []
     for document_type in services.creation_required_types().order_by("name"):
         row = NewDocumentRow(key=document_type.pk, document_type=document_type.pk, label=document_type.name)
@@ -508,20 +520,28 @@ def put_row_errors(rows: list[NewDocumentRow], row_errors: dict[int, dict[str, s
 
 
 def new_documents_context(rows: list[NewDocumentRow], required: list[NewDocumentRow] | None = None) -> dict:
-    """What the Documents section shows: the required rows (ASSUMPTIONS 405), the types offered for the optional rows
-    (the creation-required ones left out: they have their own fields), the posted optional rows and the file limits."""
+    """What the Documents section shows: the two fixed rows (ASSUMPTIONS 405, optional since 417), the types offered
+    for the other rows (the two left out: they have their own fields), the posted rows and the file limits.
+    `choose_again`: "Activity Design (design.pdf)" for every file chosen before an error (browsers clear file inputs,
+    so the member chooses them again; everything typed is kept)."""
     required = required or []
+    types = services.types_allowed_at_creation().exclude(pk__in=[row.document_type for row in required]).order_by("name")
+    names = dict(DocumentType.objects.filter(pk__in=[row.document_type for row in rows if row.document_type])
+                 .values_list("pk", "name"))
+    choose_again = [
+        f"{row.label or names.get(row.document_type, 'Document')} ({row.chosen_name})"
+        for row in [*required, *rows] if row.file
+    ]
     return {
         "required": required,
-        "types": services.types_allowed_at_creation().exclude(
-            pk__in=[row.document_type for row in required]).order_by("name"),
+        "types": types,
         "rows": rows,
         "empty_row": NewDocumentRow(key=0),  # the one row shown without JavaScript
         "next_key": max((row.key for row in rows), default=-1) + 1,
         "limits": upload_limits(),
         "max_total": services.MAX_DOCUMENTS_AT_CREATION,
-        "max_rows": services.MAX_DOCUMENTS_AT_CREATION - len(required),  # optional rows: the limit counts the required ones
-        "choose_again": any(row.file for row in [*required, *rows]),  # files were chosen but the browser cleared them
+        "max_rows": services.MAX_DOCUMENTS_AT_CREATION - len(required),  # other rows: the limit counts the two fixed ones
+        "choose_again": choose_again,
     }
 
 

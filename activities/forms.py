@@ -108,6 +108,29 @@ class ActivityPageForm(ActivityDataForm):
             types = types | ActivityType.objects.filter(pk=activity.activity_type_id)
         self.fields["activity_type"].choices = [("", "Choose a type")] + [(t.pk, t.name) for t in types.order_by("name")]
         self.fields["participant_categories"].queryset = ParticipantCategory.objects.order_by("name")
+        if activity is None:  # the New activity form only (ASSUMPTIONS 417)
+            self.fields["create_as"] = forms.ChoiceField(
+                choices=CREATE_AS_CHOICES, initial=CREATE_AS_DRAFT, widget=forms.RadioSelect, label="Create as",
+                error_messages={"required": "Choose Draft or Scheduled.",
+                                "invalid_choice": "Choose Draft or Scheduled."},
+            )
+
+    def creation_status(self) -> str:
+        """The chosen "Create as" status for documents.services.create_activity_with_documents; removes the field
+        from cleaned_data (the activity services reject unknown keys)."""
+        return self.cleaned_data.pop("create_as")
+
+
+# "Create as" on the New activity form (ASSUMPTIONS 417): the values are status names; the service checks them
+# (documents.services.CREATION_STATUSES) and change_status decides whether Scheduled is allowed. Display text only.
+CREATE_AS_DRAFT, CREATE_AS_SCHEDULED = "Draft", "Scheduled"
+CREATE_AS_CHOICES = [(CREATE_AS_DRAFT, "Draft"), (CREATE_AS_SCHEDULED, "Scheduled")]
+CREATE_AS_HELP = {
+    CREATE_AS_DRAFT: "Save it now and finish later. Upload the Activity Design and the Request Letter on the Documents "
+                     "tab, then change the status to Scheduled.",
+    CREATE_AS_SCHEDULED: "Needs the Activity Design and the Request Letter chosen above. Registration still opens only "
+                         "after you click “Open registration” on the Forms tab.",
+}
 
 
 SIGNATORY_SLOTS = ("left", "right")  # certificates.models.Slot values, printed left to right

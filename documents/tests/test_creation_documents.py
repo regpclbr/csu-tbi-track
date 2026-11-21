@@ -144,11 +144,12 @@ def test_old_activities_keep_the_current_overdue_rule(new_activity, head, upload
 
 
 def test_a_new_draft_without_them_shows_missing_and_overdue(new_activity) -> None:
-    """Only possible for a Draft made through the JSON API: it shows Missing (Drafts get no reminders, as before)."""
+    """A Draft created without them (the New activity form's default since ASSUMPTIONS 417, or the JSON API) shows
+    Missing / overdue and gets their reminders (to the creator and the Director; details in test_draft_reminders)."""
     activity = new_activity(ActivityStatus.DRAFT)
     items = required_by_name(activity)
     assert (items[DESIGN].state, items[DESIGN].is_overdue) == ("Missing", True)
-    assert services.send_document_reminders(TEST_NOW)["overdue"] == 0  # Drafts are skipped, as before
+    assert services.send_document_reminders(TEST_NOW)["overdue"] == 2  # the creator is the Director: one copy each
 
 
 def test_other_required_types_are_unchanged(new_activity) -> None:
