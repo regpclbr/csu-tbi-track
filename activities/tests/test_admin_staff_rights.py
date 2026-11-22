@@ -28,8 +28,8 @@ def client_for(member) -> Client:
 def test_the_seeded_admin_staff_flags(roles, staff) -> None:
     role = roles["Admin Staff"]
     assert (role.can_create_activity, role.can_manage_users, role.can_approve_documents,
-            role.can_approve_certificates) == (True, False, False, True)
-    assert has_permission(staff, Permission.CREATE_ACTIVITY) and has_permission(staff, Permission.APPROVE_CERTIFICATES)
+            role.can_approve_certificates) == (True, False, False, False)  # certificates: the Director only (421)
+    assert has_permission(staff, Permission.CREATE_ACTIVITY) and not has_permission(staff, Permission.APPROVE_CERTIFICATES)
     assert not has_permission(staff, Permission.APPROVE_DOCUMENTS) and not has_permission(staff, Permission.MANAGE_USERS)
 
 

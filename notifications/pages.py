@@ -17,7 +17,7 @@ def target_url(notification: Notification) -> str:
     url = reverse("activities:detail", args=[notification.activity_id])
     if notification.document_type_id:
         return f"{url}?{urlencode({'tab': 'documents', 'type': notification.document_type_id})}"
-    if notification.type == Notification.CERTIFICATES_PREPARED:
+    if notification.type in Notification.CERTIFICATE_TYPES:
         return f"{url}?tab=certificates"
     return url
 
@@ -27,6 +27,6 @@ def target_label(notification: Notification) -> str:
     leads nowhere special."""
     if notification.activity_id is None:
         return ""
-    if notification.type == Notification.CERTIFICATES_PREPARED:
+    if notification.type in Notification.CERTIFICATE_TYPES:
         return "Open certificates"
     return "Open documents" if notification.document_type_id else "Open activity"

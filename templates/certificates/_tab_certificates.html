@@ -281,7 +281,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
   <section class="card p-6" aria-labelledby="certificates-title">
     <div class="mb-4">
       <h2 id="certificates-title" class="card-title">Certificates</h2>
-      <p class="card-subtitle">Created automatically when the activity is Conducted: one Certificate of Participation (by email) per attendee and one Certificate of Appreciation (hard copy) per resource person. Once the activity is approved, a participant's certificate is emailed as soon as they submit their evaluation.</p>
+      <p class="card-subtitle" data-testid="certificates-subtitle">{{ list_card.subtitle }}</p>
     </div>
 
     {% if generation_reason and activity.status.name == "Conducted" %}
@@ -366,7 +366,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           </tbody>
         </table>
       </div>
-      {% if can_approve %}{# "Retry" on a failed PDF (ASSUMPTIONS 368) #}
+      {% if can_retry %}{# "Retry" on a failed PDF (ASSUMPTIONS 368; can_create_activity or can_approve_certificates, 421) #}
         {% for row in rows %}
           {% if row.can_retry %}
             <form id="retry-{{ row.certificate.pk }}" method="post" action="{% url 'activities:certificates_action' activity.pk %}" hidden>
@@ -392,7 +392,8 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     {% elif activity.status.name == "Conducted" %}
       {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="They are created automatically for each attendee and resource person once there is an active certificate design and both signatories are chosen above." %}
     {% else %}
-      {% include "components/empty_state.html" with icon="award" title="No certificates yet" text="Certificates are created automatically when the activity is Conducted." %}
+      {# before Conducted: follows the approval card (pages.list_card, ASSUMPTIONS 420) #}
+      {% include "components/empty_state.html" with icon=list_card.empty_icon title=list_card.empty_title text=list_card.empty_text %}
     {% endif %}
   </section>
 

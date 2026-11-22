@@ -283,10 +283,12 @@ def test_certificates_of_several_activities_link_to_the_certificates_page(direct
     assert item.action_url == f"{reverse('certificates:list')}?status=generated"
 
 
-@pytest.mark.parametrize(("role_name", "approves"), [("Incubation Project Head", True), ("Admin Staff", True),
-                                                     (VIEW_ONLY_ROLE, False), ("System Administrator", True)])
+@pytest.mark.parametrize(("role_name", "approves"), [("Director", True), ("Incubation Project Head", False),
+                                                     ("Admin Staff", False), (VIEW_ONLY_ROLE, False),
+                                                     ("System Administrator", False)])  # ASSUMPTIONS 421
 def test_approvers_and_others_see_their_wording(make_member, login, data, role_name, approves) -> None:
-    response = login(make_member(role_name)).get(URL)
+    member = make_member(role_name, email=f"wording.{role_name.split()[0].lower()}@example.com")
+    response = login(member).get(URL)
     item = next(item for item in response.context["page"].attention if "certificate approval" in item.title)
     assert item.title == "1 activity needs certificate approval"  # the same title for everyone (ASSUMPTIONS 369)
     if approves:  # can_approve_certificates (ASSUMPTIONS 361, 369)

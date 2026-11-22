@@ -27,21 +27,22 @@ DOCUMENT_STATUSES = [DocumentStatus.FOR_REVIEW, DocumentStatus.APPROVED]
 # role_name: (can_create_activity, can_manage_users, can_approve_documents, can_approve_certificates,
 #             can_delete_activities, can_manage_signatories, description)
 ROLES: dict[str, tuple[bool, bool, bool, bool, bool, bool, str]] = {
-    # Only the Director approves or returns documents (ASSUMPTIONS 344). Certificates are approved (and signatures
-    # added) by the Director, both Project Heads, Admin Staff and the System Administrator (ASSUMPTIONS 361, 388).
-    # Admin Staff create and edit activities too (ASSUMPTIONS 388). Only the Director manages the signatory list and
-    # signature images (ASSUMPTIONS 418, NAVIGATU).
+    # Only the Director approves or returns documents (ASSUMPTIONS 344) and approves certificates (ASSUMPTIONS 421,
+    # NAVIGATU: "the Director reviews and approves the certificates"; was also both Project Heads, Admin Staff and the
+    # System Administrator, items 361 and 388). Admin Staff create and edit activities too (ASSUMPTIONS 388). Only the
+    # Director manages the signatory list and signature images (ASSUMPTIONS 418, NAVIGATU).
     Role.DIRECTOR: (True, False, True, True, False, True, "Director of the Technology Business Incubator."),
-    "Incubation Project Head": (True, False, False, True, False, False, "Leads incubation programs for startups."),
-    "Community Development Head": (True, False, False, True, False, False, "Leads community and MSME programs."),
+    "Incubation Project Head": (True, False, False, False, False, False, "Leads incubation programs for startups."),
+    "Community Development Head": (True, False, False, False, False, False, "Leads community and MSME programs."),
     "Admin Staff": (
-        True, False, False, True, False, False,
-        "Supports activities and documents; creates and edits activities and approves certificates.",
+        True, False, False, False, False, False,
+        "Supports activities and documents; creates and edits activities.",
     ),
     # Separation of duties (ASSUMPTIONS 85, 339): manages users, never creates activities or approves documents;
-    # may approve certificates (ASSUMPTIONS 361) and delete activities without real records (ASSUMPTIONS 389).
+    # deletes activities without real records (ASSUMPTIONS 389). No longer approves certificates (ASSUMPTIONS 421; the
+    # flag is still allowed with can_manage_users if an administrator turns it on).
     Role.SYSTEM_ADMINISTRATOR: (
-        False, True, False, True, True, False,
+        False, True, False, False, True, False,
         "System administrator: manages user accounts and system settings; does not create activities.",
     ),
 }

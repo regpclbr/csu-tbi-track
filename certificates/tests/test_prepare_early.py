@@ -429,3 +429,45 @@ def test_add_a_person_stays_with_the_signatory_managers(design, director, staff)
     assert "Add a person…" in client_for(director).get(reverse("activities:create")).content.decode()
     html = client_for(staff).get(reverse("activities:create")).content.decode()
     assert "Add a person…" not in html and 'name="signatory_left"' in html
+
+
+# --- The Certificates card follows the approval card before Conducted -----------------------------------------------
+
+
+def card_html(member, activity) -> str:
+    """The tab's text, unescaped (apostrophes are escaped in the HTML)."""
+    from html import unescape
+
+    return unescape(client_for(member).get(pages.tab_url(activity.pk)).content.decode())
+
+
+def test_the_list_card_when_not_prepared_keeps_todays_text(new_activity, design, director) -> None:
+    html = card_html(director, new_activity)
+    assert "No certificates yet" in html and pages.NOT_CONDUCTED_EMPTY[1] in html
+    assert pages.LIST_SUBTITLE in html and pages.PREPARED_EMPTY[1] not in html
+
+
+def test_the_list_card_when_prepared(prepared, director) -> None:
+    html = card_html(director, prepared)
+    assert pages.PREPARED_EMPTY[0] in html and pages.PREPARED_EMPTY[1] in html
+    assert "Certificates are prepared (see the sample above)." in html
+    assert pages.PREPARED_SUBTITLE in html
+    assert "No certificates yet" not in html and pages.LIST_SUBTITLE not in html
+
+
+def test_the_list_card_when_prepared_and_approved(early, director) -> None:
+    html = card_html(director, early)
+    assert pages.PREPARED_APPROVED_EMPTY[1] in html and pages.PREPARED_APPROVED_SUBTITLE in html
+    assert "emailed as soon as they submit their evaluation." in html
+    assert "No certificates yet" not in html and pages.PREPARED_EMPTY[1] not in html
+
+
+def test_the_list_card_after_conducted_keeps_todays_text(attended, design, director, staff) -> None:
+    people = attended(1)
+    activity = people[0].activity
+    services.prepare_activity_certificates(staff, activity)
+    services.approve_activity_certificates(director, activity)
+    activity_services.change_status(director, activity, "Conducted")
+    html = card_html(director, activity)
+    assert pages.LIST_SUBTITLE in html  # item 373's states and the list itself take over
+    assert pages.PREPARED_APPROVED_SUBTITLE not in html and pages.PREPARED_APPROVED_EMPTY[1] not in html

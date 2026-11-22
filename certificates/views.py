@@ -435,14 +435,18 @@ def template_image(request: HttpRequest, template_id: int) -> FileResponse:
     return _file_response(template.file_path, f"template-{template.pk}{_suffix(template.file_path.name)}")
 
 
+SIGNATURE_IMAGE_PERMISSIONS = (Permission.MANAGE_USERS, Permission.APPROVE_CERTIFICATES, Permission.MANAGE_SIGNATORIES,
+                               Permission.CREATE_ACTIVITY)  # ASSUMPTIONS 418, 421
+
+
 @staff_login_required
 @require_GET
 def signature_image(request: HttpRequest, signatory_id: int) -> FileResponse:
     """Signature images are never public: members who manage users (Admin Console), approve certificates (they check
-    the signatures before approving, ASSUMPTIONS 361) or manage signatories (ASSUMPTIONS 418). 404 while no image was
-    added."""
-    if not has_any_permission(request.user, Permission.MANAGE_USERS, Permission.APPROVE_CERTIFICATES,
-                              Permission.MANAGE_SIGNATORIES):
+    the signatures before approving, ASSUMPTIONS 361), manage signatories (ASSUMPTIONS 418) or create activities (they
+    choose the signatories; every certificate preview already shows the signatures, ASSUMPTIONS 421). 404 while no image
+    was added."""
+    if not has_any_permission(request.user, *SIGNATURE_IMAGE_PERMISSIONS):
         require_permission(request.user, Permission.APPROVE_CERTIFICATES)  # 403 with the usual message
     signatory = get_object_or_404(CertificateSignatory, pk=signatory_id)
     if not signatory.signature_image_path:

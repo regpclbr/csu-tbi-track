@@ -79,12 +79,10 @@ def notify_directors_of_new_activity(activity, creator: TBIMember) -> int:
 
 
 def certificate_reviewers() -> QuerySet:
-    """Who is told that an activity's certificates are prepared (ASSUMPTIONS 420): every active member whose role has
-    can_manage_signatories AND can_approve_certificates (the Director by default). Flags only, never a role name;
-    both flags, so nobody gets a review they cannot act on. Nobody qualifies = nobody is told (the tab still shows
-    "Prepared — needs approval")."""
-    return TBIMember.objects.filter(is_active=True, role__can_manage_signatories=True,
-                                    role__can_approve_certificates=True).order_by("pk")
+    """Who is told about certificates to approve (ASSUMPTIONS 420, 421): every active member whose role has
+    can_approve_certificates (the Director only by default). Flags only, never a role name. Nobody qualifies = nobody is
+    told (the tab and Needs attention still show it; the roles screen warns that nobody can approve certificates)."""
+    return TBIMember.objects.filter(is_active=True, role__can_approve_certificates=True).order_by("pk")
 
 
 CERTIFICATES_PREPARED_MESSAGE = "Certificates of {title} are ready for your review"
@@ -99,6 +97,24 @@ def notify_certificate_reviewers(activity, preparer: TBIMember) -> int:
     created = Notification.objects.bulk_create(
         Notification(member=recipient, activity=activity, type=Notification.CERTIFICATES_PREPARED, message=message)
         for recipient in recipients
+    )
+    return len(created)
+
+
+CERTIFICATES_WAITING_MESSAGE = "Certificates of {title} are waiting for your approval"
+
+
+def notify_certificates_waiting(activity) -> int:
+    """In-app "Certificates of <activity> are waiting for your approval" for every certificate approver, ONCE per
+    activity (ASSUMPTIONS 421): certificates.services.generate_missing_certificates calls it when the System first
+    creates certificates for an activity that is not approved (not after an early approval, item 420). A second call
+    for the same activity creates nothing. No email. Returns how many were created."""
+    if Notification.objects.filter(activity=activity, type=Notification.CERTIFICATES_WAITING).exists():
+        return 0
+    message = CERTIFICATES_WAITING_MESSAGE.format(title=activity.title[:400])[:500]
+    created = Notification.objects.bulk_create(
+        Notification(member=recipient, activity=activity, type=Notification.CERTIFICATES_WAITING, message=message)
+        for recipient in certificate_reviewers()
     )
     return len(created)
 

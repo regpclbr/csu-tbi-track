@@ -4,7 +4,9 @@ Resend, signatures, the certificate text), the Certificate text page, the previe
 certificates.services (and documents.services for evidence); certificates/pages.py prepares what the templates show.
 
 Viewing, previews, downloads and evidence uploads: any active staff member. Apply the current design, hand over and
-resend: can_create_activity. Approve and reissue: can_approve_certificates (the Director, both Project Heads, Admin Staff
+resend: can_create_activity. Retry a failed PDF: can_create_activity or can_approve_certificates (ASSUMPTIONS 421).
+Approve, reissue and the default text: can_approve_certificates (the Director only by default, ASSUMPTIONS 421; was also
+both Project Heads, Admin Staff
 and the System Administrator). Signature images, "Add a person" and the Signatories page: can_manage_signatories (the
 Director only, ASSUMPTIONS 418). An activity's two signatories: can_create_activity or can_approve_certificates
 (ASSUMPTIONS 363, 364). Certificates are created by the System (no Generate).
@@ -51,7 +53,7 @@ ROW_ACTIONS = {
                "RESEND"),
     # "PDF failed — Retry" (ASSUMPTIONS 368)
     "retry_pdf": (lambda member, ids: services.retry_certificate_pdfs(member, certificate_ids=ids),
-                  Permission.APPROVE_CERTIFICATES, "Queued {n} to be rendered again."),
+                  services.RETRY_PERMISSIONS, "Queued {n} to be rendered again."),  # ASSUMPTIONS 421
 }
 
 
@@ -248,7 +250,8 @@ def row_action(request: HttpRequest, activity_id: int) -> HttpResponse:
     if action not in ROW_ACTIONS:
         messages.error(request, "Choose an action.")
         return redirect(pages.tab_url(activity.pk))
-    require_permission(request.user, ROW_ACTIONS[action][1])
+    needed = ROW_ACTIONS[action][1]
+    require_any_permission(request.user, *(needed if isinstance(needed, tuple) else (needed,)))
     raw_ids = {value for value in request.POST.getlist("certificate_ids") if value.isdigit()}
     ids = list(activity.certificates.filter(pk__in=raw_ids).values_list("pk", flat=True))
     if not raw_ids or len(ids) != len(raw_ids):

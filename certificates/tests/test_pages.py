@@ -103,13 +103,14 @@ def test_approve_the_activity_after_checking_the_preview(director, login, genera
     assert messages_of(response)[0] == f"Not approved: {services.ALREADY_APPROVED}"
 
 
-def test_project_heads_approve(make_member, login, generated) -> None:
+def test_project_heads_no_longer_approve(make_member, login, generated) -> None:
+    """ASSUMPTIONS 421: only the Director approves; a Project Head still applies the design (can_create_activity)."""
     activity, _ = generated
     client = login(make_member("Incubation Project Head"))
     html = client.get(tab(activity)).content.decode()
-    assert "Approve certificates for this activity" in html and "Apply the current design" in html
-    client.post(approve_url(activity))
-    assert appreciation_of(activity).status == S.APPROVED
+    assert "Approve certificates for this activity" not in html and "Apply the current design" in html
+    assert client.post(approve_url(activity)).status_code == 403
+    assert appreciation_of(activity).status == S.GENERATED
 
 
 def test_view_only_members_see_no_approval_controls(make_member, login, generated) -> None:
@@ -189,16 +190,17 @@ def test_read_only_member_sees_no_actions(make_member, login, generated) -> None
     assert not Certificate.objects.exclude(status=S.GENERATED).exists()
 
 
-def test_system_administrator_approves_but_never_applies_the_design(admin_member, login, generated) -> None:
+def test_system_administrator_neither_approves_nor_applies_the_design(admin_member, login, generated) -> None:
+    """ASSUMPTIONS 421: the System Administrator no longer approves certificates by default."""
     activity, _ = generated
     client = login(admin_member)
     html = client.get(tab(activity)).content.decode()
-    assert "Approve certificates for this activity" in html and "Apply the current design" not in html
+    assert "Approve certificates for this activity" not in html and "Apply the current design" not in html
     for action in ("hand_over", "resend"):
         assert row_action(client, activity, action, Certificate.objects.all()).status_code == 403
     assert client.post(reverse("activities:certificates_apply_design", args=[activity.pk])).status_code == 403
-    client.post(approve_url(activity))
-    assert appreciation_of(activity).status == S.APPROVED
+    assert client.post(approve_url(activity)).status_code == 403
+    assert appreciation_of(activity).status == S.GENERATED
 
 
 def test_preview_opens_inline_and_downloads_need_a_login(director, login, generated, client) -> None:

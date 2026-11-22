@@ -18,7 +18,7 @@ pytestmark = pytest.mark.django_db
 
 SYSADMIN = Role.SYSTEM_ADMINISTRATOR
 APPROVERS = {"Director", "Incubation Project Head", "Community Development Head", SYSADMIN}  # migration 0006
-SEEDED_APPROVERS = APPROVERS | {"Admin Staff"}  # seed_data since ASSUMPTIONS 388
+SEEDED_APPROVERS = {"Director"}  # seed_data since ASSUMPTIONS 421 (was APPROVERS + Admin Staff, items 361, 388)
 
 
 def client_for(member) -> Client:
@@ -67,24 +67,27 @@ def test_migration_0006_gives_it_to_the_four_approver_roles() -> None:
 
 def test_seed_gives_it_to_the_approver_roles_and_never_reapplies_it(roles) -> None:
     assert {name for name, role in roles.items() if role.can_approve_certificates} == SEEDED_APPROVERS
-    Role.objects.filter(role_name__in=["Director", "Admin Staff"]).update(can_approve_certificates=False)
+    Role.objects.filter(role_name="Director").update(can_approve_certificates=False)
+    Role.objects.filter(role_name="Admin Staff").update(can_approve_certificates=True)
     load_lookups()
     flags = dict(Role.objects.values_list("role_name", "can_approve_certificates"))
-    assert flags["Director"] is False and flags["Admin Staff"] is False
+    assert flags["Director"] is False and flags["Admin Staff"] is True  # an Admin Console choice is never undone
 
 
 def test_permission_comes_from_the_flag(make_member) -> None:
     for name in SEEDED_APPROVERS:
         assert has_permission(make_member(name), Permission.APPROVE_CERTIFICATES)
-    assert not has_permission(make_member(VIEW_ONLY_ROLE), Permission.APPROVE_CERTIFICATES)
+    for name in ("Incubation Project Head", "Community Development Head", "Admin Staff", SYSADMIN, VIEW_ONLY_ROLE):
+        assert not has_permission(make_member(name), Permission.APPROVE_CERTIFICATES)  # ASSUMPTIONS 421
 
 
 def test_roles_screen_switches_it_and_logs_it(sysadmin, make_member, roles, caplog) -> None:
     client = client_for(sysadmin)
+    make_member("Director")
     html = client.get(reverse("accounts:console_roles")).content.decode()
-    assert "Approve certificates" in html and "No active member can approve certificates" not in html  # the sysadmin
-    response = toggle(client, roles[SYSADMIN], "false")  # no last-approver guard, only the warning
-    assert f"{SYSADMIN} can no longer approve certificates." in messages_of(response)
+    assert "Approve certificates" in html and "No active member can approve certificates" not in html  # the Director
+    response = toggle(client, roles["Director"], "false")  # no last-approver guard, only the warning
+    assert "Director can no longer approve certificates." in messages_of(response)
     assert "No active member can approve certificates" in client.get(reverse("accounts:console_roles")).content.decode()
 
     view_role = roles[VIEW_ONLY_ROLE]

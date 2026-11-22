@@ -21,8 +21,8 @@ from conftest import image_bytes
 
 pytestmark = pytest.mark.django_db
 
-APPROVERS = ["Director", "Incubation Project Head", "Community Development Head", "Admin Staff",
-             Role.SYSTEM_ADMINISTRATOR]  # Admin Staff since ASSUMPTIONS 388
+APPROVERS = ["Director"]  # ASSUMPTIONS 421 (was also both Project Heads, Admin Staff and the System Administrator)
+NOT_APPROVERS = ["Incubation Project Head", "Community Development Head", "Admin Staff", Role.SYSTEM_ADMINISTRATOR]
 
 
 def client_for(member) -> Client:
@@ -120,6 +120,15 @@ def test_approvers_approve_all_for_the_activity(evaluated, make_member, role_nam
     member = make_member(role_name, email=f"approver.{role_name.split()[0].lower()}@example.com")
     assert len(services.approve_activity_certificates(member, activity)) == 3
     assert set(Certificate.objects.values_list("status", "approved_by")) == {(S.APPROVED, member.pk)}
+
+
+@pytest.mark.parametrize("role_name", NOT_APPROVERS)
+def test_other_roles_cannot_approve(evaluated, make_member, role_name) -> None:
+    activity, _ = evaluated
+    member = make_member(role_name, email=f"other.{role_name.split()[0].lower()}@example.com")
+    with pytest.raises(PermissionDenied):
+        services.approve_activity_certificates(member, activity)
+    assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
 def test_view_only_members_only_views(generated, view_only, design) -> None:

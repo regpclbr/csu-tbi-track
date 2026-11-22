@@ -186,5 +186,7 @@ def test_choosing_from_the_list_keeps_its_rule(director, make_member, design, ac
 
 def test_certificate_approval_still_needs_only_can_approve_certificates(make_member) -> None:
     head = make_member("Incubation Project Head")
-    assert has_permission(head, Permission.APPROVE_CERTIFICATES)
+    assert not has_permission(head, Permission.APPROVE_CERTIFICATES)  # the Director only since ASSUMPTIONS 421
     assert not has_permission(head, Permission.MANAGE_SIGNATORIES)
+    director = make_member("Director", email="dir.flags@example.com")
+    assert has_permission(director, Permission.APPROVE_CERTIFICATES) and has_permission(director, Permission.MANAGE_SIGNATORIES)

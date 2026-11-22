@@ -21,10 +21,10 @@ FLAGS = ("can_create_activity", "can_manage_users", "can_approve_documents", "ca
 # CLAUDE.md "Roles (seed defaults, ASSUMPTIONS 388)".
 EXPECTED_ROLES = {
     "Director": (True, False, True, True, False),
-    "Incubation Project Head": (True, False, False, True, False),
-    "Community Development Head": (True, False, False, True, False),
-    "Admin Staff": (True, False, False, True, False),
-    Role.SYSTEM_ADMINISTRATOR: (False, True, False, True, True),
+    "Incubation Project Head": (True, False, False, False, False),  # certificates: the Director only (ASSUMPTIONS 421)
+    "Community Development Head": (True, False, False, False, False),
+    "Admin Staff": (True, False, False, False, False),
+    Role.SYSTEM_ADMINISTRATOR: (False, True, False, False, True),
 }
 
 

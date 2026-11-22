@@ -148,7 +148,7 @@ def state_label(certificate: Certificate, label: str | None, outdated: bool = Fa
 
 def certificate_row(certificate: Certificate, printed: dict[int, str] | None = None, label: str | None = None,
                     can_act: bool = False, outdated: bool = False, worker: WorkerCheck | None = None,
-                    can_approve: bool = False) -> dict:
+                    can_retry: bool = False) -> dict:
     printed = printed or {}
     shown, registered_as = names(certificate, printed)
     hard_copy = certificate.delivery_method == DeliveryMethod.HARD_COPY
@@ -163,7 +163,7 @@ def certificate_row(certificate: Certificate, printed: dict[int, str] | None = N
         "state": state_label(certificate, label, outdated, pdf),
         "outdated": outdated,
         "sending": sending(certificate, pdf),
-        "can_retry": can_approve and pdf == services.PDF_FAILED,  # "Retry" (ASSUMPTIONS 368)
+        "can_retry": can_retry and pdf == services.PDF_FAILED,  # "Retry" (ASSUMPTIONS 368, 421)
         "pdf_ready": bool(certificate.file_path),
         "evidence_count": getattr(certificate, "evidence_count", 0),
         # The row's "Mark handed over" (can_create_activity): an Approved hard copy whose PDF is ready, or a reissued
@@ -224,6 +224,44 @@ def prepared_text(activity: Activity) -> str:
 
 
 SAMPLE_TYPES = [(services.TEXT_PARTICIPATION, "Participation"), (services.TEXT_APPRECIATION, "Appreciation")]
+
+# The Certificates card (the list) follows the approval card before Conducted (ASSUMPTIONS 420): its description line
+# and the text shown while there are no certificates. Display only: the state comes from services.approval_state.
+LIST_SUBTITLE = ("Created automatically when the activity is Conducted: one Certificate of Participation (by email) per "
+                 "attendee and one Certificate of Appreciation (hard copy) per resource person. Once the activity is "
+                 "approved, a participant's certificate is emailed as soon as they submit their evaluation.")
+PREPARED_SUBTITLE = ("Prepared: created when the activity is Conducted, one Certificate of Participation (by email) per "
+                     "attendee and one Certificate of Appreciation (hard copy) per resource person, with the signatories "
+                     "and text above. Once the Director approves them, a participant's certificate is emailed as soon as "
+                     "they submit their evaluation.")
+PREPARED_APPROVED_SUBTITLE = ("Prepared and approved: created already approved when the activity is Conducted, one "
+                              "Certificate of Participation (by email) per attendee and one Certificate of Appreciation "
+                              "(hard copy) per resource person. A participant's certificate is emailed as soon as they "
+                              "submit their evaluation.")
+NOT_CONDUCTED_EMPTY = ("No certificates yet", "Certificates are created automatically when the activity is Conducted.",
+                       "award")
+PREPARED_EMPTY = ("Certificates are prepared",
+                  "Certificates are prepared (see the sample above). One certificate per attendee and resource person is "
+                  "created when the activity is Conducted. The Director can approve them now, so they are sent without "
+                  "waiting.", "file-check")
+PREPARED_APPROVED_EMPTY = ("Certificates are prepared and approved",
+                           "Certificates are prepared and approved. One certificate per attendee and resource person is "
+                           "created when the activity is Conducted, already approved: each participant's certificate is "
+                           "emailed as soon as they submit their evaluation.", "circle-check")
+
+
+def list_card(approval: dict) -> dict:
+    """The Certificates card's description and its empty text before Conducted (ASSUMPTIONS 420), from the approval
+    card (`approval_panel`, i.e. services.approval_state): prepared, prepared and approved, or today's text (not
+    prepared, and every state after Conducted)."""
+    if approval["state"] == services.PREPARED_KIND:
+        subtitle, empty = PREPARED_SUBTITLE, PREPARED_EMPTY
+    elif approval["state"] == services.APPROVED_KIND and approval["early"]:
+        subtitle, empty = PREPARED_APPROVED_SUBTITLE, PREPARED_APPROVED_EMPTY
+    else:
+        subtitle, empty = LIST_SUBTITLE, NOT_CONDUCTED_EMPTY
+    title, text, icon = empty
+    return {"subtitle": subtitle, "empty_title": title, "empty_text": text, "empty_icon": icon}
 
 
 def sample_preview(activity: Activity, certificates: list) -> dict | None:
@@ -325,11 +363,13 @@ def text_panel(member, activity: Activity, values: dict | None = None, errors: d
 
 
 def signature_image_url(signatory: CertificateSignatory | None, member) -> str:
-    """The thumbnail URL (signature images: can_manage_users, can_approve_certificates or can_manage_signatories only,
-    the rule of views.signature_image), or ""."""
+    """The thumbnail URL (signature images: views.SIGNATURE_IMAGE_PERMISSIONS, the rule of views.signature_image), or
+    ""."""
+    from .views import SIGNATURE_IMAGE_PERMISSIONS
+
     if signatory is None or not signatory.signature_image_path:
         return ""
-    if has_any_permission(member, Permission.APPROVE_CERTIFICATES, Permission.MANAGE_USERS, Permission.MANAGE_SIGNATORIES):
+    if has_any_permission(member, *SIGNATURE_IMAGE_PERMISSIONS):
         return reverse("certificates:signature_image", args=[signatory.pk])
     return ""
 
@@ -499,13 +539,15 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
     kept = request.session.pop(PROBLEMS_KEY.format(activity.pk), None) if hasattr(request, "session") else None
     worker = WorkerCheck()
     return {
-        "rows": [certificate_row(c, printed, labels.get(c.pk), can_act, c.pk in outdated, worker, can_approve)
-                 for c in certificates],
+        "rows": [certificate_row(c, printed, labels.get(c.pk), can_act, c.pk in outdated, worker,
+                                 services.can_retry_pdfs(member)) for c in certificates],
         "counts": status_counts(services.certificate_status_counts({"activity": activity.pk})),
         "can_act": can_act,
         "can_approve": can_approve,
+        "can_retry": services.can_retry_pdfs(member),
         "generation_reason": services.generation_closed_reason(activity),
-        "approval": approval_panel(member, activity, certificates),
+        "approval": (approval := approval_panel(member, activity, certificates)),
+        "list_card": list_card(approval),  # the Certificates card follows the approval card (ASSUMPTIONS 420)
         "sample": sample_preview(activity, certificates),  # before Conducted (ASSUMPTIONS 420)
         "signatures": signatures_panel(member, activity),
         "text": text_panel(member, activity, **(text_form or {})),

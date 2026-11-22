@@ -8,7 +8,8 @@ The life of a certificate (status rules in set_certificate_status; ASSUMPTIONS 3
 
 - The System creates the certificates when the activity becomes Conducted (generate_missing_certificates: one per
   attendee, one per resource person; also attendees marked later; the 5-minute job catches up). No Generate button.
-- Approval is per ACTIVITY (ASSUMPTIONS 369): a member with can_approve_certificates checks the preview and approves
+- Approval is per ACTIVITY (ASSUMPTIONS 369): a member with can_approve_certificates (the Director only by default,
+  ASSUMPTIONS 421; also reissue and the default text) checks the preview and approves
   the activity once (approve_activity_certificates: ACTIVITY.certificates_approved_by / _at). From then on every
   certificate of the activity that is ready (readiness(): both signature images; a participant's evaluation) is
   approved by the System in the approver's name (approve_ready_certificates): now, at each later evaluation, and for
@@ -666,6 +667,14 @@ def missing_slots_reason(signatories: dict[str, CertificateSignatory | None]) ->
     return None
 
 
+RETRY_PERMISSIONS = (Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)  # "Retry" a failed PDF (ASSUMPTIONS 421)
+
+
+def can_retry_pdfs(member: TBIMember) -> bool:
+    """Who may "Retry" a failed PDF: can_create_activity or can_approve_certificates (ASSUMPTIONS 421)."""
+    return any(has_permission(member, flag) for flag in RETRY_PERMISSIONS)
+
+
 def can_choose_signatories(member: TBIMember) -> bool:
     """Who may change an activity's signatories and titles: can_create_activity or can_approve_certificates
     (ASSUMPTIONS 363, 365). Without either flag: view only."""
@@ -1221,6 +1230,7 @@ def generate_missing_certificates(activity: Activity, *, registration_ids: list[
         raise CertificateError(reason)
     registrations, links = (list(rows) for rows in _missing_recipients(locked, registration_ids))
     participation = appreciation = 0
+    first_time = not Certificate.objects.filter(activity=locked).exists()
     if registrations or links:
         numbers = _certificate_numbers(now)
         common = {"activity": locked, **design_fields(locked)}
@@ -1241,6 +1251,11 @@ def generate_missing_certificates(activity: Activity, *, registration_ids: list[
         write_certificate_history(locked, None, "", created_text(participation, appreciation))
         # An approved activity: the new ones follow the same rule (ASSUMPTIONS 369), e.g. attendance marked later.
         approve_ready_certificates(locked, now=now)
+        if first_time and not is_approved(locked):
+            # ASSUMPTIONS 421: tell the approvers (the Director) once per activity (same transaction).
+            from notifications.services import notify_certificates_waiting
+
+            notify_certificates_waiting(locked)
     return {
         "participation_created": participation,
         "appreciation_created": appreciation,
@@ -2311,9 +2326,9 @@ def record_render_failure(certificate_id: int, error: BaseException, now: dateti
 @transaction.atomic
 def retry_certificate_pdfs(member: TBIMember, *, certificate_ids: list[int] | None = None,
                            activity: Activity | None = None) -> int:
-    """"Retry" on a failed PDF (can_approve_certificates): the failure is cleared and the render is queued again. Only
-    certificates whose PDF failed and that can be rendered now; all or nothing."""
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    """"Retry" on a failed PDF (can_create_activity or can_approve_certificates, ASSUMPTIONS 421): the failure is cleared
+    and the render is queued again. Only certificates whose PDF failed and that can be rendered now; all or nothing."""
+    require_any_permission(member, *RETRY_PERMISSIONS)
     certificates = _select_for_action(certificate_ids, activity, [Status.APPROVED, Status.ISSUED],
                                       Q(render_failed_at__isnull=False), empty="No certificate PDFs of this activity failed.")
 

@@ -90,26 +90,28 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (participation / appreciation); `activity` empty = the default; versioned (`is_current`; a row a certificate uses never
   changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 34 tables (ASSUMPTIONS 389,
   390: POSITION, ACTIVITY_DELETION, CERTIFICATE_NUMBER_SEQUENCE).
-- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361, 388): approve certificates (and reissue, Retry, the default
-  certificate text). Migration accounts/0006 gave it to Director, Incubation Project Head, Community Development Head and
-  System Administrator; seed also gives it to Admin Staff (388); seed only on create, roles screen switch
-  `set_role_certificate_approval`, no last-approver guard, allowed together with can_manage_users (the System
-  Administrator approves but never generates). It NO LONGER manages signatories or signature images (418).
+- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361, 388, 421): approve certificates (also before Conducted, 420), reissue
+  and the default certificate text. **Seed: the Director only** (421; NAVIGATU: "the Director reviews and approves the
+  certificates"); no data migration (existing databases: switched off per role in Admin Console → Roles; migration
+  accounts/0006 had given it to Director, both Project Heads and System Administrator). Seed only on create, roles screen
+  switch `set_role_certificate_approval`, no last-approver guard, still ALLOWED together with can_manage_users. It does
+  NOT manage signatories or signature images (418). Retry a failed PDF = can_create_activity OR can_approve_certificates
+  (`services.RETRY_PERMISSIONS`); signature images also for can_create_activity (`views.SIGNATURE_IMAGE_PERMISSIONS`).
 - ROLE.can_manage_signatories (ASSUMPTIONS 418, NAVIGATU: only the TBI Director): the signatory list, signature images
   (new versions), "Remove white background", deactivate, the defaults, the Signatories page, the tab's signature upload
   and "Add a person" (tab and activity form), the signatory JSON API. Migrations accounts/0009 (column) + 0010 (guarded
   data step: the role named "Director" only, skipped if it manages users); seed Director only, on create only; roles
   screen switch `set_role_signatory_management` (audit line, amber note when nobody active has it, no last-member
   guard); NEVER together with can_manage_users (`check_role_flags`).
-- Roles (seed defaults, ASSUMPTIONS 388, 418; flags are switched per role, never checked by name):
+- Roles (seed defaults, ASSUMPTIONS 388, 418, 421; flags are switched per role, never checked by name):
 
   | Role | can_create_activity | can_manage_users | can_approve_documents | can_approve_certificates | can_delete_activities | can_manage_signatories |
   |---|---|---|---|---|---|---|
   | Director | ✓ | – | ✓ | ✓ | – | ✓ |
-  | Incubation Project Head | ✓ | – | – | ✓ | – | – |
-  | Community Development Head | ✓ | – | – | ✓ | – | – |
-  | Admin Staff | ✓ | – | – | ✓ | – | – |
-  | System Administrator | – | ✓ | – | ✓ | ✓ | – (never with can_manage_users) |
+  | Incubation Project Head | ✓ | – | – | – | – | – |
+  | Community Development Head | ✓ | – | – | – | – | – |
+  | Admin Staff | ✓ | – | – | – | – | – |
+  | System Administrator | – | ✓ | – | – | ✓ | – (never with can_manage_users) |
 
   `seed_data` sets every flag except can_manage_users only when it creates a role (re-applies can_manage_users).
   Roles screen switches: can_create_activity (`set_role_activity_creation`), can_approve_documents, can_approve_certificates,
@@ -119,9 +121,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `conftest.VIEW_ONLY_ROLE` ("View Only (test)", fixture `view_only`), never Admin Staff.
 - `Role.DIRECTOR` ("Director") is used only to choose who is told (`notifications.services.active_directors`: the
   new-activity notification `notify_directors_of_new_activity` and the Draft creation-document reminders, ASSUMPTIONS 417),
-  never for a permission. Prepared certificates (ASSUMPTIONS 420) use FLAGS instead: `certificate_reviewers()` = active
-  members with can_manage_signatories AND can_approve_certificates (`notify_certificate_reviewers`, type
-  `certificates_prepared`, never the preparer).
+  never for a permission. Certificate notifications use FLAGS instead: `certificate_reviewers()` = active members with
+  can_approve_certificates (ASSUMPTIONS 421): "ready for your review" (`notify_certificate_reviewers`, type
+  `certificates_prepared`, item 420, never the preparer) and "waiting for your approval" (`notify_certificates_waiting`,
+  type `certificates_waiting`, once per activity when the System first creates certificates for a not-approved activity).
 - CERTIFICATE_SIGNATORY is a list of people (ASSUMPTIONS 363): name, free-text position, nullable signature image,
   is_active, `default_slot` (left/right, one per slot: who a new activity starts with), `previous_version` (the row it
   replaced, ASSUMPTIONS 367). A row a certificate uses never changes: a new image or a name/position edit is a NEW row
@@ -394,10 +397,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   white background made transparent on upload unless "Keep the background" (`prepare_signature_file`, Pillow only in
   `certificates/imaging.py`; preview before saving `signature_preview`; "Remove white background" =
   `remove_signature_background`, a new version; ASSUMPTIONS 366); files never change after upload; served only by `certificates/views.py` (never `/media/`; signature images to can_manage_users,
-  can_approve_certificates or can_manage_signatories). A new version refreshes the not-Issued certificates of EVERY activity using the person
+  can_approve_certificates, can_manage_signatories or can_create_activity, 421). A new version refreshes the not-Issued certificates of EVERY activity using the person
   (`_refresh_certificates`: PDF removed, Approved → Generated); its dialog shows `version_impact_text()` first. Logged on
   `certificates.audit` (IDs only). The Admin Console only shows the defaults; the Django admin is view only for both tables.
-  Viewing signature images: can_manage_users, can_approve_certificates or can_manage_signatories.
+  Viewing signature images: can_manage_users, can_approve_certificates, can_manage_signatories or can_create_activity (421).
   Signatories page rows wrap (text `min-w-0 grow basis-48`, buttons `ml-auto flex-wrap`; never `sm:flex-nowrap` with
   `flex-1` text: it squeezed names to one letter per line, ASSUMPTIONS 407; opt-in `certificates/tests/test_signatories_browser.py`).
 - Certificates are created only by the System (ASSUMPTIONS 362): `generate_missing_certificates(activity, registration_ids=)`
@@ -467,7 +470,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - An Approved (or reissued) certificate without a PDF shows why: `services.pdf_state()` (approved before the evaluation
   rule — waiting / closed, PDF failed — Retry with `render_error`, waiting for the background worker, PDF being prepared;
   labels `pages.PDF_STATE_LABELS`). Failures are recorded by `record_render_failure` in plain words
-  (`render_error_text`, never the raw message); Retry = `retry_certificate_pdfs` (can_approve_certificates); the 5-minute
+  (`render_error_text`, never the raw message); Retry = `retry_certificate_pdfs` (can_create_activity or can_approve_certificates, 421); the 5-minute
   job re-queues renders stalled for 10 minutes (`queue_stalled_preparations`) (ASSUMPTIONS 368).
 - `send_certificate` locks the row (`select_for_update(of=("self",))`), sets `sent_at` only after sending; a failure sets
   `send_failed_at` ("Send failed" + Resend on the tab, ASSUMPTIONS 360).
@@ -889,6 +892,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   + can_approve_certificates) told once, early approval from the tab, certificates created already approved at Conducted,
   cancel rules also for the activity's printed details, resource persons and the design (420; notes on 365, 369, 373).
   Database: activities 0010 (`ACTIVITY.certificates_prepared_by` / `_at`); ERD: those two columns; still 34 tables.
+- Only the Director approves certificates (2026-11-21, NAVIGATU UAT): seed can_approve_certificates for the Director only
+  (create-only, no data migration); approve, reissue and the default text stay with the flag; Retry and signature images
+  also for can_create_activity; "ready for your review" to can_approve_certificates; new "waiting for your approval"
+  notification once per activity (421). No database or migration change; ERD: the ROLE note only.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the

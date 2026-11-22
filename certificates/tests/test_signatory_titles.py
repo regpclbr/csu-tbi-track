@@ -315,12 +315,13 @@ def test_a_creator_without_the_approval_flag_changes_slots_but_cannot_add_people
     assert client_for(creator).post(reverse("certificates:signatory_add_inline"), {"name": "A", "position": "B"}).status_code == 403
 
 
-def test_the_system_administrator_changes_slots_on_the_tab_only(generated, make_member, design) -> None:
+def test_the_system_administrator_no_longer_changes_slots(generated, make_member, design) -> None:
+    """ASSUMPTIONS 421: the System Administrator neither creates activities nor approves certificates by default."""
     activity, _ = generated
     _, vp, head = design
     sysadmin = make_member(Role.SYSTEM_ADMINISTRATOR, email="sys@example.com")
-    assert client_for(sysadmin).post(choose_url(activity, "left"), {"signatory": head.pk, "title": "TBI Head"}).status_code == 302
-    assert services.printed_title(services.activity_slots(activity)["left"]) == "TBI Head"
+    assert client_for(sysadmin).post(choose_url(activity, "left"), {"signatory": head.pk, "title": "TBI Head"}).status_code == 403
+    assert services.printed_title(services.activity_slots(activity)["left"]) == "Director"
     assert client_for(sysadmin).get(reverse("activities:create")).status_code == 403
 
 

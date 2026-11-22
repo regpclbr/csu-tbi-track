@@ -47,9 +47,9 @@ def test_a_role_without_the_flag_cannot_approve(generated, make_member) -> None:
     assert set(Certificate.objects.values_list("status", flat=True)) == {S.GENERATED}
 
 
-def test_every_seeded_role_has_the_flag(roles) -> None:
-    """Since ASSUMPTIONS 388 Admin Staff approve certificates too; only the test-only role lacks it."""
-    assert {name for name, role in roles.items() if not role.can_approve_certificates} == {VIEW_ONLY_ROLE}
+def test_only_the_director_has_the_flag(roles) -> None:
+    """ASSUMPTIONS 421: only the Director approves certificates by default (was every seeded role, items 361, 388)."""
+    assert {name for name, role in roles.items() if role.can_approve_certificates} == {"Director"}
 
 
 def test_the_per_certificate_approval_is_gone() -> None:
