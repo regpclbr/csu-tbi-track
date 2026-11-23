@@ -28,7 +28,7 @@ def test_due_dates_from_the_seeded_rules(activity) -> None:
     assert items["Activity Design"].due_date == START - timedelta(days=5)  # NAVIGATU's 5-day rule (ASSUMPTIONS 416)
     assert items["Request Letter"].due_date == START - timedelta(days=5)
     assert "Invitation Letter" not in items and "Accomplishment Report" not in items  # optional (ASSUMPTIONS 386)
-    assert items["Attendance Sheet"].due_date == END
+    assert items["Attendance Sheet"].due_date == END + timedelta(days=5)  # a payment document (ASSUMPTIONS 425)
     assert all(item.state == services.MISSING and not item.is_overdue for item in items.values())
 
 
@@ -85,7 +85,9 @@ def test_optional_types_are_listed_with_their_documents(upload, director, activi
     document = upload(director, activity, document_type=form_type)
     checklist = services.document_checklist(activity, now=TEST_NOW)
     optional = {entry["document_type"].name: entry["documents"] for entry in checklist["optional"]}
-    assert set(optional) == {"Accomplishment Report", "Invitation Letter", "Pre-registration Form", "Evaluation Form", "Certificate", "Other"}
+    # Activity Report / Event Photos: required only for activities ending from PAYMENT_DOCUMENTS_FROM (ASSUMPTIONS 425).
+    assert set(optional) == {"Accomplishment Report", "Invitation Letter", "Pre-registration Form", "Evaluation Form",
+                             "Certificate", "Other", "Activity Report", "Event Photos"}
     assert optional["Evaluation Form"] == [document]
     assert "Evaluation Form" not in by_name(checklist)
 

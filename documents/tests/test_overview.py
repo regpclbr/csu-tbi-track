@@ -134,7 +134,9 @@ def test_by_activity_is_the_default_with_progress_and_open_state(world, director
 
 def test_a_complete_activity_starts_closed(director, head, make_activity, upload, login) -> None:
     activity = make_activity(ActivityStatus.CONDUCTED, title="All Done")
-    for document_type in DocumentType.objects.filter(is_active=True, is_required=True):
+    # The activity ends before PAYMENT_DOCUMENTS_FROM: Activity Report and Event Photos do not apply (ASSUMPTIONS 425).
+    for document_type in DocumentType.objects.filter(is_active=True, is_required=True).exclude(
+            name__in=["Activity Report", "Event Photos"]):
         services.approve_document(director, upload(head, activity, document_type=document_type), now=TEST_NOW)
     response = login(director).get(URL)
     card = response.context["cards"][0]

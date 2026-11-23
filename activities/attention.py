@@ -38,6 +38,8 @@ SET_TIMES = "Set the start and end time."
 CHOOSE_SIGNATORIES = "Choose who signs the certificates ({sides})."  # ASSUMPTIONS 365, 366
 INACTIVE_SIGNATORY = "A signatory on this activity is inactive."  # ASSUMPTIONS 367
 NEEDS_CERTIFICATE_APPROVAL = "Certificates need approval."  # ASSUMPTIONS 369
+MIX_OUTSIDE = "Participant mix is outside NAVIGATU's guideline: {problems}."  # ASSUMPTIONS 424
+PAYMENT_LABEL = "payment documents for the Supply Office"  # ASSUMPTIONS 425
 FORM_NOT_READY = "Registration form not marked as ready: registration stays closed. Check it and click “Open registration”."  # 409
 
 
@@ -69,6 +71,7 @@ class _Facts:
     signature_missing: str = ""  # certificates.services.missing_signature_reason for the waiting certificates
     certificates: dict[str, int] = field(default_factory=dict)
     signatory_slots: dict[str, bool] = field(default_factory=dict)  # slot -> the person is active (ACTIVITY_SIGNATORY)
+    participant_mix: dict = field(default_factory=dict)  # reports.metrics.participant_mix (ASSUMPTIONS 424)
 
 
 def _plural(count: int, one: str, many: str) -> str:
@@ -80,12 +83,18 @@ _WAITING_TO_EVALUATE = Q(registrations__attendance_confirmed=True, registrations
 
 
 def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
-    """Everything the items need, for any number of activities, in seven queries."""
+    """Everything the items need, for any number of activities, in a fixed number of queries (+ two for the participant
+    mix, ASSUMPTIONS 424)."""
     facts = {activity.pk: _Facts(activity) for activity in activities}
     if not facts:
         return facts
     ids = list(facts)
     today = timezone.localdate(now)
+
+    from reports.metrics import participant_mix  # reports.metrics imports documents.services, like this module
+
+    for activity_id, mix in participant_mix(ids).items():  # two queries (ASSUMPTIONS 424)
+        facts[activity_id].participant_mix = mix
 
     types = list(DocumentType.objects.filter(is_active=True, is_required=True).order_by("name"))
     documents = document_services.documents_by_activity(ids)
@@ -187,26 +196,34 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
             items.append(AttentionItem(ENDED_NO_ATTENDANCE if now >= end else ONGOING_NO_ATTENDANCE, "registrations", "attendance"))
     if fact.attended_after_evaluation:
         items.append(AttentionItem(ATTENDANCE_AFTER_EVALUATION, "registrations"))
+    # Participant mix (ASSUMPTIONS 424): metrics' check only; a warning while registration / attendance can still change,
+    # informational (never counted) once Conducted. Registration is never blocked.
+    check = fact.participant_mix.get("check")
+    if check is not None and not check["within"]:
+        items.append(AttentionItem(MIX_OUTSIDE.format(problems="; ".join(check["problems"])), "overview",
+                                   informational=status == CONDUCTED))
 
     # Forms
-    opens, closes = registration_services.evaluation_window(activity)
+    opens, _closes = registration_services.evaluation_window(activity)
     if status in (DRAFT, SCHEDULED) and FormType.REGISTRATION not in fact.forms:
         items.append(AttentionItem("Registration form not built yet.", "forms"))
     # ASSUMPTIONS 409 (registrations.services.registration_form_needs_ready): built but not marked ready.
     elif (status in (DRAFT, SCHEDULED) and activity.creation_documents_required
           and fact.registration_form_ready_at is None):
         items.append(AttentionItem(FORM_NOT_READY, "forms"))
-    if FormType.EVALUATION not in fact.forms and now <= closes:
+    if FormType.EVALUATION not in fact.forms and not registration_services.evaluation_has_closed(activity, now):
         items.append(AttentionItem("Evaluation form not built yet.", "forms"))
 
     # Documents: the reminders' rule (overdue; required, not uploaded and due soon) and the review states.
-    kinds = {item.document_type.name: document_services.reminder_kind(item, today) for item in fact.required}
-    overdue = [name for name, kind in kinds.items() if kind == Notification.DOCUMENT_OVERDUE]
-    due_soon = [name for name, kind in kinds.items() if kind == Notification.DOCUMENT_DUE_SOON]
-    if overdue:
-        items.append(AttentionItem(f"Overdue required documents: {', '.join(overdue)}.", "documents"))
-    if due_soon:
-        items.append(AttentionItem(f"Required documents due soon and not uploaded: {', '.join(due_soon)}.", "documents"))
+    # Payment documents (ASSUMPTIONS 425) only count once Conducted (reminder_kind is None before) and get their own line.
+    kinds = [(item.document_type.name, item.is_payment, document_services.reminder_kind(item, today)) for item in fact.required]
+    for payment, label in ((False, "required documents"), (True, PAYMENT_LABEL)):
+        overdue = [name for name, is_payment, kind in kinds if is_payment == payment and kind == Notification.DOCUMENT_OVERDUE]
+        due_soon = [name for name, is_payment, kind in kinds if is_payment == payment and kind == Notification.DOCUMENT_DUE_SOON]
+        if overdue:
+            items.append(AttentionItem(f"Overdue {label}: {', '.join(overdue)}.", "documents"))
+        if due_soon:
+            items.append(AttentionItem(f"{label[0].upper()}{label[1:]} due soon and not uploaded: {', '.join(due_soon)}.", "documents"))
     if fact.waiting_review:
         items.append(AttentionItem(f"{_plural(fact.waiting_review, 'document', 'documents')} waiting for approval.", "documents"))
     if fact.returned:
@@ -246,7 +263,8 @@ def _items(fact: _Facts, now: datetime) -> list[AttentionItem]:
             informational=True))
 
     # Evaluation links: only while they can still be sent (Conducted, a form, the window open).
-    if status == CONDUCTED and FormType.EVALUATION in fact.forms and opens <= now <= closes:
+    if (status == CONDUCTED and FormType.EVALUATION in fact.forms and opens <= now
+            and not registration_services.evaluation_has_closed(activity, now)):
         if fact.links_failed:
             items.append(AttentionItem(f"{_plural(fact.links_failed, 'evaluation link email', 'evaluation link emails')} failed. Resend on the Evaluation tab.", "evaluation"))
         if fact.links_not_sent:

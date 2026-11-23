@@ -1,12 +1,10 @@
 """Turn API input (strings and IDs) into Python values. Business rules live in services.py."""
 
-from datetime import datetime
-
 from django import forms
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 from .models import Activity, ActivityType, ParticipantCategory
+from .typed_fields import TypedDateField, TypedDateTimeField, TypedTimeField
 
 
 class ActivityDataForm(forms.Form):
@@ -27,7 +25,7 @@ class ActivityDataForm(forms.Form):
     venue = forms.CharField(max_length=255)
     max_slots = forms.IntegerField()
     registration_deadline = forms.DateTimeField()  # e.g. "2026-11-01T17:00" (Manila time)
-    evaluation_deadline = forms.DateTimeField()
+    evaluation_deadline = forms.DateTimeField(required=False)  # empty / null = stays open (ASSUMPTIONS 423)
     budget_amount = forms.DecimalField(max_digits=12, decimal_places=2)
 
 
@@ -48,47 +46,21 @@ def parse_activity_data(raw: dict, partial: bool = False) -> dict:
     return parsed
 
 
-class DateInput(forms.DateInput):
-    input_type = "date"
-
-    def __init__(self, attrs=None):
-        super().__init__(attrs, format="%Y-%m-%d")
-
-
-class TimeInput(forms.TimeInput):
-    input_type = "time"
-
-    def __init__(self, attrs=None):
-        super().__init__(attrs, format="%H:%M")
-
-
-class DateTimeLocalInput(forms.DateTimeInput):
-    input_type = "datetime-local"
-
-
-class LocalDateTimeField(forms.DateTimeField):
-    """A date-time typed in Manila time (TIME_ZONE) in a datetime-local input; shown back the same way."""
-
-    widget = DateTimeLocalInput
-
-    def prepare_value(self, value):
-        if isinstance(value, datetime):
-            return timezone.localtime(value).strftime("%Y-%m-%dT%H:%M") if timezone.is_aware(value) else value.strftime("%Y-%m-%dT%H:%M")
-        return value
-
-
 class ActivityPageForm(ActivityDataForm):
     """The create / edit page (activities/page_views.py). Same conversion as the API; every rule is still
     checked by services.create_activity / update_activity, whose errors the view puts under the fields.
     The type list offers the active types plus the activity's current one (an inactive type sent anyway
     gets the service's "inactive" message)."""
 
-    start_date = forms.DateField(widget=DateInput)
-    end_date = forms.DateField(widget=DateInput)
-    start_time = forms.TimeField(widget=TimeInput, help_text="Manila time.")
-    end_time = forms.TimeField(widget=TimeInput, help_text="On a one-day activity, after the start time.")
-    registration_deadline = LocalDateTimeField(help_text="Manila time. Registration closes at this time.")
-    evaluation_deadline = LocalDateTimeField(help_text="Manila time. Evaluation forms close at this time.")
+    # Typed dates and times (ASSUMPTIONS 422): month suggestions + calendar, hh:mm + AM/PM (activities.typed_fields).
+    start_date = TypedDateField(help_text="For example June 5, 2026.")
+    end_date = TypedDateField(help_text="For example June 5, 2026.")
+    start_time = TypedTimeField(help_text="Philippine time, for example 08:00 AM.")
+    end_time = TypedTimeField(help_text="On a one-day activity, after the start time.")
+    registration_deadline = TypedDateTimeField(help_text="Philippine time. Registration closes at this time.")
+    evaluation_deadline = TypedDateTimeField(
+        required=False,
+        help_text="Optional. Philippine time. Empty = the evaluation stays open (no certificate without an evaluation).")
     description = forms.CharField(required=False, widget=forms.Textarea)
 
     field_order = [

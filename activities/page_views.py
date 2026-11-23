@@ -18,6 +18,7 @@ from documents import services as document_services
 from registrations import pages as registration_pages
 from registrations import services as registration_services
 from reports import services as report_services
+from reports.dashboard_page import mix_chart
 
 from . import attention, deletion, pages, services, share
 from .forms import ActivityPageFormWithSignatories as ActivityPageForm
@@ -242,6 +243,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         context["share"] = share.share_card(activity, context["registration"])
         context["by_category"] = pages.category_donut(
             report_services.activity_participants_by_category(request.user, activity))
+        context["participant_mix"] = mix_chart(report_services.activity_participant_mix(request.user, activity))
     elif tab == "history":
         context["history"], context["history_rows"] = pages.history(activity, request.GET.get("page", 1))
     elif tab == "forms":

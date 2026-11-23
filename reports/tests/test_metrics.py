@@ -203,8 +203,9 @@ def test_s3_overdue_now_ignores_the_range_and_skips_draft(make_activity, add_doc
 
 
 def test_s3_due_date_itself_is_not_overdue_manila_midnight(make_activity) -> None:
-    # Attendance Sheet is due on the end date (offset 0); the other types are due before Oct 23.
-    activity = make_activity(start=date(2026, 10, 23), status=ONGOING)
+    # Attendance Sheet is due end + 5 = Oct 23 and counts once Conducted (ASSUMPTIONS 425); the other types are due
+    # before Oct 23.
+    activity = make_activity(start=date(2026, 10, 18), status=CONDUCTED)
     late_evening = timezone.make_aware(datetime(2026, 10, 23, 23, 59))
     just_after_midnight = timezone.make_aware(datetime(2026, 10, 24, 0, 0))
 

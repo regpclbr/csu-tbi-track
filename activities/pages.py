@@ -48,6 +48,7 @@ TABS = [
     ("certificates", "Certificates"),
 ]
 DEFAULT_TAB = "overview"
+NO_EVALUATION_DEADLINE = "No deadline (the evaluation stays open)"  # ASSUMPTIONS 423
 
 # Shown to staff instead of the public wording when only the registration form is missing (owner request, F2a).
 FORM_MISSING_NOTICE = "Registration form not created yet. Create it in the Forms tab (phase F2b)."
@@ -360,7 +361,7 @@ def detail_rows(detail: dict) -> list[tuple[str, str]]:
         ("Venue", detail["venue"]),
         ("Max slots", f"{detail['max_slots']:,}"),
         ("Registration deadline", format_datetime(detail["registration_deadline"])),
-        ("Evaluation deadline", format_datetime(detail["evaluation_deadline"])),
+        ("Evaluation deadline", format_datetime(detail["evaluation_deadline"]) if detail["evaluation_deadline"] else NO_EVALUATION_DEADLINE),
         ("Budget", format_money(detail["budget_amount"])),
         ("Created by", f"{detail['created_by']}, {format_datetime(detail['created_at'])}"),
         ("Last updated", format_datetime(detail["updated_at"])),

@@ -333,13 +333,21 @@ def _evaluation(filters: ReportFilters) -> Section:
     )
 
 
+NOT_REQUIRED = "Not required"  # compliance cell of a type that does not apply to the activity (ASSUMPTIONS 425)
+
+
 def _documents(filters: ReportFilters, now: datetime | None) -> Section:
     data = metrics.document_compliance(metrics.period_activities(filters), now)
     columns = [Column("Activity", key="title"), Column("End", DATE)] + [Column(name) for name in data["document_types"]] + [Column("All approved")]
     rows, overdue = [], 0
     for activity in data["activities"]:
+        by_name = {item["document_type"]: item for item in activity["items"]}
         states = []
-        for item in activity["items"]:
+        for name in data["document_types"]:
+            item = by_name.get(name)
+            if item is None:  # a payment type that does not apply to this older activity (ASSUMPTIONS 425)
+                states.append(NOT_REQUIRED)
+                continue
             overdue += item["is_overdue"]
             states.append(f"{item['state']} (overdue)" if item["is_overdue"] else item["state"])
         rows.append([activity["title"], activity["end_date"], *states, "Yes" if activity["complete"] else "No"])

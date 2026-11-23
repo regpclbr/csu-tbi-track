@@ -68,7 +68,8 @@ def test_tab_shows_the_checklist_with_states_and_due_dates(director, head, login
 def test_overdue_badge_after_the_due_date(director, login, make_activity) -> None:
     past = make_activity(start=date(2026, 1, 20))  # every required due date has passed and nothing is approved
     html = login(director).get(tab(past)).content.decode()
-    assert html.count('<span class="badge badge-danger">') == 3 and "Overdue" in html  # the 3 required types
+    # Activity Design and Request Letter (the Attendance Sheet counts only once Conducted, ASSUMPTIONS 425)
+    assert html.count('<span class="badge badge-danger">') == 2 and "Overdue" in html
 
 
 def test_type_parameter_preselects_the_upload_type(director, login, scheduled, doc_type) -> None:

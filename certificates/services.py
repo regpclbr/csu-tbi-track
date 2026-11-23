@@ -77,6 +77,7 @@ from activities.services import PageResult, _paginate
 from documents import services as document_services
 from documents.models import Document, DocumentType
 from registrations.models import EvaluationSubmission, Registration
+from registrations.services import evaluation_has_closed
 
 from . import emails, imaging, pdf, wording
 from .models import (
@@ -1392,7 +1393,7 @@ def readiness(certificate: Certificate, *, evaluated: bool | None = None, signat
     if participant:
         if evaluated is None:
             evaluated = get_submitted_evaluation(certificate) is not None
-        if not evaluated and (now or timezone.now()) > certificate.activity.evaluation_deadline:
+        if not evaluated and evaluation_has_closed(certificate.activity, now):
             return EVALUATION_CLOSED
     if not (present(certificate.left_signatory) and present(certificate.right_signatory)):
         return WAITING_FOR_SIGNATURES
@@ -2288,7 +2289,7 @@ def pdf_state(certificate: Certificate, *, evaluated: bool, worker_running, now:
     if certificate.file_path or not (certificate.status == Status.APPROVED or updated_copy_pending(certificate)):
         return None
     if approved_before_evaluation_rule(certificate, evaluated):
-        closed = (now or timezone.now()) > certificate.activity.evaluation_deadline
+        closed = evaluation_has_closed(certificate.activity, now)
         return PDF_PRE_RULE_CLOSED if closed else PDF_PRE_RULE_WAITING
     if certificate.render_failed_at:
         return PDF_FAILED

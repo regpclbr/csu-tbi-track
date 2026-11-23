@@ -1,0 +1,75 @@
+{% comment %}
+A typed date, time or date-time field (ASSUMPTIONS 422; activities.typed_fields, kind = field.field.widget.typed_kind).
+{% include "components/typed_datetime.html" with field=form.start_date %}
+- date: a text box with month suggestions (an ARIA combobox: type "j" -> January, June, July; arrows + Enter choose,
+  Escape closes) and a calendar button that opens the browser's date picker.
+- time: an hh:mm box where only digits can be typed (730 -> 07:30, 1430 -> 02:30 PM) and an AM/PM select.
+- datetime: both, side by side (names: <name>, <name>_time, <name>_period).
+The server checks every value again (static/js/typed_dates.js only helps typing); without JavaScript the boxes accept
+"June 5, 2026", "06/05/2026", "07:30" + AM/PM. Labels, help and errors like components/form_field.html.
+{% endcomment %}
+{% with kind=field.field.widget.typed_kind id=field.auto_id value=field.value %}
+<div{% if kind == "datetime" %} role="group" aria-labelledby="{{ id }}-label"{% endif %}>
+  <div class="mb-2">
+    {% if kind == "datetime" %}
+      <span id="{{ id }}-label" class="text-sm font-medium text-ink">{{ field.label }}</span>
+    {% else %}
+      <label for="{{ id }}" class="text-sm font-medium text-ink">{{ field.label }}</label>
+    {% endif %}
+  </div>
+  {% if field.errors %}{% firstof id|add:"-error" as described %}{% elif field.help_text %}{% firstof id|add:"-help" as described %}{% endif %}
+  <div class="flex flex-wrap items-start gap-2">
+    {% if kind == "date" or kind == "datetime" %}
+      {% if kind == "date" %}{% firstof value "" as day %}{% else %}{% firstof value.0 "" as day %}{% endif %}
+      <div class="relative min-w-0 grow basis-48" x-data="tbiDateInput()" @click.outside="close()">
+        <input type="text" id="{{ id }}" name="{{ field.html_name }}" value="{{ day }}" autocomplete="off" x-ref="text"
+               class="field-input pr-12" placeholder="Month day, year" role="combobox" aria-autocomplete="list"
+               aria-controls="{{ id }}-suggestions" aria-expanded="false" :aria-expanded="open.toString()"
+               :aria-activedescendant="active >= 0 ? '{{ id }}-option-' + active : null"
+               {% if kind == "datetime" %}aria-label="{{ field.label }}: date"{% endif %}
+               @input="suggest()" @keydown="keydown($event)" @blur="tidy()"
+               {% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}{% if described %} aria-describedby="{{ described }}"{% endif %}>
+        <button type="button" class="btn-icon absolute inset-y-0 right-1 my-1 flex w-10 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-ink"
+                @click="openCalendar()" aria-label="Choose {{ field.label|lower }} from a calendar">
+          {% include "components/icon.html" with name="calendar" class="size-4.5" %}
+        </button>
+        <input type="date" x-ref="picker" tabindex="-1" aria-hidden="true" class="pointer-events-none absolute bottom-0 right-0 size-px opacity-0" @change="picked()">
+        {# A rounded wrapper with a square scrolling list inside (never a rounded scroll box, ASSUMPTIONS 412) #}
+        <div class="absolute left-0 right-0 z-20 mt-1 overflow-hidden rounded-2xl border border-line bg-white shadow-card" x-show="open" x-cloak>
+          <ul id="{{ id }}-suggestions" role="listbox" aria-label="Suggestions" class="max-h-60 overflow-y-auto py-1">
+            <template x-for="(option, index) in options" :key="option">
+              <li :id="'{{ id }}-option-' + index" role="option" :aria-selected="(index === active).toString()"
+                  class="cursor-pointer px-4 py-2 text-sm text-ink" :class="index === active ? 'bg-slate-100' : ''"
+                  @mousedown.prevent="choose(option)" x-text="option"></li>
+            </template>
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+    {% if kind == "time" or kind == "datetime" %}
+      {% if kind == "time" %}
+        {% firstof value.0 "" as clock %}{% firstof value.1 "" as period %}{% firstof field.html_name as time_name %}{% firstof id as time_id %}
+      {% else %}
+        {% firstof value.1 "" as clock %}{% firstof value.2 "" as period %}{% firstof field.html_name|add:"_time" as time_name %}{% firstof id|add:"_time" as time_id %}
+      {% endif %}
+      <div class="flex gap-2" x-data="tbiTimeInput()">
+        <input type="text" id="{{ time_id }}" name="{{ time_name }}" value="{{ clock }}" inputmode="numeric" autocomplete="off"
+               maxlength="5" placeholder="hh:mm" class="field-input w-28" x-ref="text"
+               {% if kind == "datetime" %}aria-label="{{ field.label }}: time"{% endif %}
+               @keydown="keydown($event)" @input="format()" @blur="pad()"
+               {% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}{% if described %} aria-describedby="{{ described }}"{% endif %}>
+        <select name="{{ field.html_name }}_period" class="field-input field-select w-28" x-ref="period" aria-label="{{ field.label }}: AM or PM">
+          <option value=""{% if not period %} selected{% endif %}>AM/PM</option>
+          <option value="AM"{% if period == "AM" %} selected{% endif %}>AM</option>
+          <option value="PM"{% if period == "PM" %} selected{% endif %}>PM</option>
+        </select>
+      </div>
+    {% endif %}
+  </div>
+  {% if field.errors %}
+    <p id="{{ id }}-error" class="field-error">{{ field.errors|join:" " }}</p>
+  {% elif field.help_text %}
+    <div id="{{ id }}-help" class="field-help">{{ field.help_text }}</div>
+  {% endif %}
+</div>
+{% endwith %}

@@ -208,5 +208,7 @@ def test_checklist_api(client, view_only, make_activity) -> None:
     assert request_letter["due_date"] == "2026-11-05"
     assert request_letter["state"] == "Missing" and request_letter["documents"] == []
     assert isinstance(request_letter["is_overdue"], bool)
+    # The activity ends before PAYMENT_DOCUMENTS_FROM: Activity Report and Event Photos are not required (ASSUMPTIONS 425).
     assert {row["document_type"] for row in data["optional"]} == {
-        "Accomplishment Report", "Invitation Letter", "Pre-registration Form", "Evaluation Form", "Certificate", "Other"}
+        "Accomplishment Report", "Invitation Letter", "Pre-registration Form", "Evaluation Form", "Certificate", "Other",
+        "Activity Report", "Event Photos"}

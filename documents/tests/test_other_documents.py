@@ -129,10 +129,13 @@ def test_activities_with_and_without_the_optional_documents(director, make_activ
     assert overview[with_files].missing_count == overview[without].missing_count == len(REQUIRED)
     period = metrics.ReportFilters(date(2026, 1, 1), date(2026, 12, 31))
     compliance = metrics.document_compliance(metrics.period_activities(period), late)
-    assert set(compliance["document_types"]) == REQUIRED  # the compliance report's columns
+    # The compliance report's columns: every required type (the payment types of ASSUMPTIONS 425 print "Not required"
+    # for activities ending before PAYMENT_DOCUMENTS_FROM).
+    assert set(compliance["document_types"]) == REQUIRED | {"Activity Report", "Event Photos"}
     rows = metrics.document_attention(period, late)
     assert not any(row["document_type"] in optional_names for row in rows["overdue"] + rows["due_soon"])
-    assert metrics.documents_now(period, late)["overdue"] == 2 * len(REQUIRED)  # dashboard S3: 3 per activity
+    # Dashboard S3: 2 per Scheduled activity (the Attendance Sheet counts only once Conducted, ASSUMPTIONS 425).
+    assert metrics.documents_now(period, late)["overdue"] == 2 * (len(REQUIRED) - 1)
 
 
 # --- The "Other" type needs a title -------------------------------------------------------------------------------
@@ -189,7 +192,7 @@ def test_dropdown_is_grouped_required_then_other(director, login, scheduled) -> 
     groups = re.findall(r'<optgroup label="([^"]+)">(.*?)</optgroup>', select, re.S)
     names = {label: re.findall(r">([^<]+)</option>", body) for label, body in groups}
     assert list(names) == ["Required", "Other documents"]
-    assert names["Required"] == ["Activity Design", "Attendance Sheet", "Request Letter"]
+    assert names["Required"] == ["Activity Design", "Activity Report", "Attendance Sheet", "Event Photos", "Request Letter"]
     assert names["Other documents"] == ["Accomplishment Report", "Evaluation Form", "Invitation Letter", "Other",
                                         "Pre-registration Form"]
     assert "(required)" not in select and "Certificate" not in select  # evidence has its own upload

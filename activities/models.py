@@ -99,7 +99,8 @@ class Activity(models.Model):
     venue = models.CharField(max_length=255)
     max_slots = models.PositiveIntegerField()
     registration_deadline = models.DateTimeField()
-    evaluation_deadline = models.DateTimeField()
+    # Optional (ASSUMPTIONS 423): empty = the evaluation stays open (registrations.services.evaluation_window).
+    evaluation_deadline = models.DateTimeField(null=True, blank=True)
     budget_amount = models.DecimalField(max_digits=12, decimal_places=2)
     # The approval of the activity's certificates (ASSUMPTIONS 369): who (can_approve_certificates) and when. Empty =
     # "Needs approval". Set and cleared ONLY by certificates.services (approve_activity_certificates,

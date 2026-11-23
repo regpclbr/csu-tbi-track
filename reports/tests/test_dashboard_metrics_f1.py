@@ -53,7 +53,7 @@ def test_the_dashboard_card_carries_within_30_days(make_activity) -> None:
 @pytest.fixture
 def document_cases(make_activity, add_document):
     """Activities around TEST_NOW (Oct 23, 2026) with the seeded due rules: Activity Design and Request Letter
-    start-5 (NAVIGATU's 5-day rule, ASSUMPTIONS 416), Attendance Sheet end+0 (the Invitation Letter and the
+    start-5 (NAVIGATU's 5-day rule, ASSUMPTIONS 416), Attendance Sheet end+5, only once Conducted (ASSUMPTIONS 425) (the Invitation Letter and the
     Accomplishment Report are optional, ASSUMPTIONS 386: never due soon or overdue)."""
     soon = make_activity("Starts Oct 31", ActivityStatus.SCHEDULED, start=TODAY + timedelta(days=8))
     # Activity Design and Request Letter due Oct 26 (due soon, the last day of the window), Attendance later (nothing).
@@ -68,7 +68,8 @@ def document_cases(make_activity, add_document):
     add_document(ongoing, "Invitation Letter")
     add_document(ongoing, "Activity Design")
     add_document(ongoing, "Request Letter")
-    # Attendance Sheet due today (due soon, 0 days); the Accomplishment Report is optional (nothing)
+    # Attendance Sheet: a payment document, not counted while Ongoing (ASSUMPTIONS 425); Accomplishment Report optional.
+    # "Ended Oct 20" (Conducted): its Attendance Sheet is due Oct 25 (end + 5): due soon.
     late = make_activity("Ended Oct 20", ActivityStatus.CONDUCTED, start=TODAY - timedelta(days=3))
     return {"soon": soon, "uploaded": uploaded, "late_design": late_design, "ongoing": ongoing, "late": late}
 
@@ -82,7 +83,8 @@ def test_due_soon_and_overdue_rows(document_cases) -> None:
     soon, uploaded, ongoing = document_cases["soon"].pk, document_cases["uploaded"].pk, document_cases["ongoing"].pk
     late_design = document_cases["late_design"].pk
     assert pairs(rows["due_soon"]) == {
-        (soon, "Activity Design"), (soon, "Request Letter"), (uploaded, "Request Letter"), (ongoing, "Attendance Sheet"),
+        (soon, "Activity Design"), (soon, "Request Letter"), (uploaded, "Request Letter"),
+        (document_cases["late"].pk, "Attendance Sheet"),
     }
     assert not any(row["document_type"] == "Invitation Letter" for row in rows["due_soon"] + rows["overdue"])
     overdue = {(row["activity_id"], row["document_type"]): row for row in rows["overdue"]}

@@ -59,7 +59,9 @@ DOCUMENT_TYPES: dict[str, tuple[bool, str | None, int | None]] = {
     "Invitation Letter": (False, None, None),
     "Activity Design": (True, START, -5),
     "Request Letter": (True, START, -5),
-    "Attendance Sheet": (True, END, 0),
+    "Attendance Sheet": (True, END, 5),  # also a payment document (ASSUMPTIONS 425; documents/0006 moves end + 0)
+    "Activity Report": (True, END, 5),  # payment documents for the Supply Office (ASSUMPTIONS 425)
+    "Event Photos": (True, END, 5),
     "Accomplishment Report": (False, None, None),
     "Pre-registration Form": (False, None, None),
     "Evaluation Form": (False, None, None),

@@ -40,7 +40,7 @@ def test_seed_loads_every_lookup(admin_env) -> None:
         "Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum",
     }
     assert set(DocumentStatus.objects.values_list("status_name", flat=True)) == {"For Review", "Approved"}
-    assert DocumentType.objects.count() == 9  # incl. "Other" (ASSUMPTIONS 386)
+    assert DocumentType.objects.count() == 11  # incl. "Other" (ASSUMPTIONS 386), Activity Report, Event Photos (425)
 
 
 @pytest.mark.django_db
@@ -75,7 +75,9 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
     assert required == {  # the Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386)
         "Activity Design": ("start_date", -5),  # NAVIGATU's 5-day rule (ASSUMPTIONS 416)
         "Request Letter": ("start_date", -5),
-        "Attendance Sheet": ("end_date", 0),
+        "Attendance Sheet": ("end_date", 5),  # payment documents for the Supply Office (ASSUMPTIONS 425)
+        "Activity Report": ("end_date", 5),
+        "Event Photos": ("end_date", 5),
     }
     optional = DocumentType.objects.filter(is_required=False)
     assert set(optional.values_list("name", flat=True)) == {

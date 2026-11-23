@@ -236,6 +236,8 @@ def upload_document(
         problems["title"] = [message]
     try:
         extension = validate_upload(file)
+        if message := file_type_error(document_type, extension):
+            problems["file"] = [message]
     except ValidationError as error:
         problems["file"] = error.messages
     if problems:  # the title and the file are reported together
@@ -557,6 +559,8 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
     """
     require_staff_member(member)
     extension = validate_upload(file)
+    if message := file_type_error(document.document_type, extension):
+        raise ValidationError({"file": [message]})
     with transaction.atomic():
         document = _locked(document)
         _ensure_uploader_and_for_review(member, document, "replace")
@@ -743,6 +747,43 @@ class ChecklistItem:
     state: str  # Missing | For Review | Approved
     is_overdue: bool  # past the due date and not Approved (on the due date itself: not yet overdue)
     documents: list[Document]
+    counts_now: bool = True  # False = a payment document before Conducted: never overdue, no reminder (ASSUMPTIONS 425)
+
+    @property
+    def is_payment(self) -> bool:
+        return is_payment_type(self.document_type)
+
+
+# --- Payment documents for the Supply Office (ASSUMPTIONS 425) -------------------------------------------------------
+
+
+def is_payment_type(document_type: DocumentType) -> bool:
+    """One of settings.DOCUMENT_TYPES_FOR_PAYMENT (Activity Report, Attendance Sheet, Event Photos)."""
+    return document_type.name in settings.DOCUMENT_TYPES_FOR_PAYMENT
+
+
+def type_applies(document_type: DocumentType, activity: Activity) -> bool:
+    """Whether a required type is required for this activity: the types new in item 425
+    (DOCUMENT_TYPES_FROM_PAYMENT_DATE) only for activities ending on or after PAYMENT_DOCUMENTS_FROM; every other type
+    always. reports.metrics._applies is the same rule in SQL."""
+    return (document_type.name not in settings.DOCUMENT_TYPES_FROM_PAYMENT_DATE
+            or activity.end_date >= settings.PAYMENT_DOCUMENTS_FROM)
+
+
+def counts_now(document_type: DocumentType, activity: Activity) -> bool:
+    """A payment document counts (overdue, due soon, Needs attention, reminders) only once the activity is Conducted;
+    every other required type always. reports.metrics._counts_now is the same rule in SQL."""
+    return not is_payment_type(document_type) or activity.status.name == ActivityStatus.CONDUCTED
+
+
+IMAGES_ONLY_ERROR = "{name}: only JPG and PNG pictures can be uploaded."
+
+
+def file_type_error(document_type: DocumentType, extension: str) -> str | None:
+    """Types in DOCUMENT_TYPES_IMAGES_ONLY (Event Photos) take pictures only (ASSUMPTIONS 425)."""
+    if document_type.name in settings.DOCUMENT_TYPES_IMAGES_ONLY and extension not in ("jpg", "png"):
+        return IMAGES_ONLY_ERROR.format(name=document_type.name)
+    return None
 
 
 def _documents_by_type(activity: Activity) -> dict[int, list[Document]]:
@@ -760,24 +801,28 @@ def _required_item(document_type: DocumentType, activity: Activity, documents: l
     else:
         state = MISSING
     due = due_date(document_type, activity)
-    if is_creation_type(activity, document_type):
+    counts = counts_now(document_type, activity)
+    if not counts:
+        overdue = False  # a payment document before Conducted (ASSUMPTIONS 425)
+    elif is_creation_type(activity, document_type):
         # ASSUMPTIONS 405: uploaded at creation, so overdue only while nothing is uploaded (only possible in Draft);
         # a file waiting for the Director is never overdue. reports.metrics._overdue is the same rule in SQL.
         overdue = today > due and state == MISSING
     else:
         overdue = today > due and state != APPROVED
-    return ChecklistItem(document_type, due, state, overdue, documents)
+    return ChecklistItem(document_type, due, state, overdue, documents, counts)
 
 
 def document_checklist(activity: Activity, now: datetime | None = None) -> dict:
     """Every active required document type with its due date, state and overdue flag, plus the
-    optional (non-required) active types with their uploaded documents."""
+    optional (non-required) active types with their uploaded documents. A required type that does not apply to this
+    activity (type_applies: a payment type new in item 425 on an older activity) is listed with the optional ones."""
     today = today_in_manila(now)
     by_type = _documents_by_type(activity)
     required, optional = [], []
     for document_type in DocumentType.objects.filter(is_active=True).order_by("name"):
         documents = by_type.get(document_type.pk, [])
-        if document_type.is_required:
+        if document_type.is_required and type_applies(document_type, activity):
             required.append(_required_item(document_type, activity, documents, today))
         else:
             optional.append({"document_type": document_type, "documents": documents})
@@ -801,7 +846,8 @@ def required_items(activity: Activity, documents: list[Document], types: list[Do
     by_type: dict[int, list[Document]] = {}
     for document in documents:
         by_type.setdefault(document.document_type_id, []).append(document)
-    items = [_required_item(document_type, activity, by_type.get(document_type.pk, []), today) for document_type in types]
+    items = [_required_item(document_type, activity, by_type.get(document_type.pk, []), today)
+             for document_type in types if type_applies(document_type, activity)]
     return sorted(items, key=lambda item: (item.due_date, item.document_type.name))
 
 
@@ -861,14 +907,15 @@ def activity_document_overview(activities: list[Activity], now: datetime | None 
     the same rule (required_items / _required_item). Order of `activities` is kept."""
     today = today_in_manila(now)
     types = list(DocumentType.objects.filter(is_active=True, is_required=True).order_by("name"))
-    required_ids = {document_type.pk for document_type in types}
     by_activity = documents_by_activity([activity.pk for activity in activities])
     overview = []
     for activity in activities:
         documents = by_activity.get(activity.pk, [])
+        required = required_items(activity, documents, types, today)
+        required_ids = {item.document_type.pk for item in required}
         overview.append(ActivityDocuments(
             activity=activity,
-            required=required_items(activity, documents, types, today),
+            required=required,
             other=[document for document in documents if document.document_type_id not in required_ids],
         ))
     return overview
@@ -905,6 +952,8 @@ def _reminder_message(kind: str, item: ChecklistItem, activity: Activity) -> str
 
 
 def _reminder_kind(item: ChecklistItem, today: date, days_before: int) -> str | None:
+    if not item.counts_now:  # a payment document before Conducted (ASSUMPTIONS 425)
+        return None
     if item.is_overdue:
         return Notification.DOCUMENT_OVERDUE
     if item.state == MISSING and 0 <= (item.due_date - today).days <= days_before:
@@ -988,3 +1037,113 @@ def send_document_reminders(now: datetime | None = None) -> dict[str, int]:
         "already_sent": counts["already_sent"],
         "skipped_inactive_creator": counts["skipped_inactive_creator"],
     }
+
+
+# --- Payment packet for the Supply Office (ASSUMPTIONS 425) ----------------------------------------------------------
+
+PACKET_NOT_CONDUCTED = "The payment packet is ready once the activity is Conducted."
+PACKET_NOTHING_APPROVED = "No payment document is approved yet."
+PACKET_CONTENTS = "contents.txt"
+
+
+@dataclass
+class PacketEntry:
+    """One payment type in the packet: its Approved documents (included) and the others (listed in contents.txt)."""
+
+    document_type: DocumentType
+    approved: list[Document]
+    waiting: list[Document]
+    returned: list[Document]
+
+
+def payment_packet_entries(activity: Activity) -> list[PacketEntry]:
+    """The active payment types that apply to this activity (type_applies), in settings order, with their activity
+    documents split by review state (documents_for_listing: certificate evidence never included)."""
+    by_name = {t.name: t for t in DocumentType.objects.filter(is_active=True, name__in=settings.DOCUMENT_TYPES_FOR_PAYMENT)}
+    types = [by_name[name] for name in settings.DOCUMENT_TYPES_FOR_PAYMENT
+             if name in by_name and type_applies(by_name[name], activity)]
+    documents = documents_for_listing().filter(activity=activity, document_type__in=types).order_by("uploaded_at", "document_id")
+    entries = {t.pk: PacketEntry(t, [], [], []) for t in types}
+    for document in documents:
+        entry = entries[document.document_type_id]
+        state = document.review_state
+        (entry.approved if state == Document.APPROVED else entry.waiting if state == Document.WAITING_FOR_REVIEW
+         else entry.returned).append(document)
+    return list(entries.values())
+
+
+def payment_packet_refused_reason(activity: Activity, entries: list[PacketEntry] | None = None) -> str | None:
+    """Why there is no packet to download yet: not Conducted, or no Approved payment document. None = ready."""
+    if activity.status.name != ActivityStatus.CONDUCTED:
+        return PACKET_NOT_CONDUCTED
+    entries = payment_packet_entries(activity) if entries is None else entries
+    if not any(entry.approved for entry in entries):
+        return PACKET_NOTHING_APPROVED
+    return None
+
+
+def _packet_contents(activity: Activity, entries: list[PacketEntry], now: datetime) -> str:
+    """contents.txt: per type what is included, and what is missing or still waiting for approval (plain text)."""
+    local = timezone.localtime(now)
+    lines = [
+        f"Payment packet for the Supply Office: {activity.title}",
+        f"Activity dates: {_format_date(activity.start_date)} to {_format_date(activity.end_date)}",
+        f"Prepared on {_format_date(local.date())} {local:%I:%M %p} (Philippine time). Only APPROVED files are included.",
+        "",
+    ]
+    for entry in entries:
+        lines.append(f"{entry.document_type.name}:")
+        if entry.approved:
+            lines.append(f"  Included: {len(entry.approved)} approved file(s)")
+            lines += [f"    - {_packet_name(entry, index, document)} ({document.title})"
+                      for index, document in enumerate(entry.approved, start=1)]
+        else:
+            lines.append("  Included: nothing")
+        if entry.waiting:
+            lines.append(f"  Waiting for approval (not included): {len(entry.waiting)} file(s)")
+        if entry.returned:
+            lines.append(f"  Returned to the uploader (not included): {len(entry.returned)} file(s)")
+        if not entry.approved and not entry.waiting and not entry.returned:
+            lines.append("  MISSING: nothing uploaded yet")
+        elif not entry.approved:
+            lines.append("  MISSING: no approved file yet")
+        lines.append("")
+    return "\r\n".join(lines)  # Windows line endings: opened in Notepad at the office
+
+
+def _packet_name(entry: PacketEntry, index: int, document: Document) -> str:
+    """Folder per type, numbered files: '<type>/01-<stored file name>' (the stored name comes from build_file_path,
+    never the uploaded name)."""
+    folder = slugify(entry.document_type.name) or "documents"
+    return f"{folder}/{index:02d}-{PurePosixPath(document.file_path.name).name}"
+
+
+def build_payment_packet(member: TBIMember, activity: Activity, now: datetime | None = None):
+    """The zip of the activity's APPROVED payment documents plus contents.txt (ASSUMPTIONS 425). Made on request,
+    never stored. Any active staff member (like download_document). Returns (file object at position 0, file name).
+    Raises DocumentError with payment_packet_refused_reason; a missing stored file is listed in contents.txt."""
+    import tempfile
+
+    require_staff_member(member)
+    now = now or timezone.now()
+    entries = payment_packet_entries(activity)
+    if reason := payment_packet_refused_reason(activity, entries):
+        raise DocumentError(reason)
+    handle = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)
+    missing_files = []
+    with zipfile.ZipFile(handle, "w", zipfile.ZIP_DEFLATED) as archive:
+        for entry in entries:
+            for index, document in enumerate(entry.approved, start=1):
+                try:
+                    with document.file_path.open("rb") as source:
+                        archive.writestr(_packet_name(entry, index, document), source.read())
+                except (FileNotFoundError, ValueError):
+                    missing_files.append(_packet_name(entry, index, document))
+        contents = _packet_contents(activity, entries, now)
+        if missing_files:
+            contents += "\r\nThese files could not be read and are not in the zip:\r\n" + "\r\n".join(
+                f"  - {name}" for name in missing_files)
+        archive.writestr(PACKET_CONTENTS, contents)
+    handle.seek(0)
+    name = f"payment-packet-{slugify(activity.title)[:60] or 'activity'}-{activity.pk}.zip"
+    return handle, name

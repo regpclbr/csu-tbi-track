@@ -110,6 +110,7 @@ class DashboardPage:
     attention: list[AttentionItem]
     upcoming: list[dict]
     categories: dict
+    participant_mix: dict  # mix_chart of metrics.period_participant_mix (ASSUMPTIONS 424)
     statuses: dict
     conducted_by_type: list[dict]
     recent_changes: list[dict]
@@ -205,6 +206,7 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         upcoming=upcoming,
         spotlight=_spotlight(services.dashboard_spotlight(filters, now, cards["upcoming_activities"]["next"]), upcoming),
         categories=_categories(data["charts"]["by_category"]),
+        participant_mix=mix_chart(data["charts"]["participant_mix"], activity_count_note=True),
         statuses=_statuses(cards["activities_by_status"]["by_status"]),
         conducted_by_type=_bars(data["charts"]["by_type"]),
         recent_changes=[
@@ -430,6 +432,57 @@ def _categories(rows: list[dict]) -> dict:
     return {"total": total, "legend": legend, "segments": [s for s in segments if s], "stroke": DONUT_STROKE,
             "label": "attended", "caption": "Attendees by participant category (the chart shows the same numbers)",
             "count_header": "Attendees", "aria_label": f"Attendees by category, {total:,} attended: {described}"}
+
+
+def mix_chart(mix: dict, activity_count_note: bool = False) -> dict:
+    """Lay out a participant mix (reports.metrics.participant_mix / period_participant_mix, ASSUMPTIONS 424) for
+    components/participant_mix.html: two 100 % bars (Registered, Attended), a text table with counts and whole
+    percentages, NAVIGATU's guideline and the result of metrics' check. Display only: never counts or checks here.
+    `activity_count_note`: the dashboard's line "N of M checked activities are outside the guideline"."""
+    rows = []
+    for index, row in enumerate(mix["rows"]):
+        rows.append({
+            "group": row["group"], "color": category_color(index),
+            "registered": row["registered"], "registered_text": _share_text(row["registered_share"]),
+            "attended": row["attended"], "attended_text": _share_text(row["attended_share"]),
+            "registered_width": round(_percent(row["registered"], mix["registered"]), 2),
+            "attended_width": round(_percent(row["attended"], mix["attended"]), 2),
+        })
+    bars = []
+    for key, label in (("registered", "Registered"), ("attended", "Attended")):
+        described = ", ".join(f"{row['group']} {row[key]:,} ({row[key + '_text']})" for row in rows)
+        bars.append({
+            "label": label, "total": mix[key],
+            "segments": [{"color": row["color"], "width": row[key + "_width"]} for row in rows if row[key]],
+            "aria_label": f"{label}: {mix[key]:,} in total" + (f": {described}" if mix[key] else ""),
+        })
+    check = mix.get("check")
+    if check is None:
+        status = None
+    elif check["within"]:
+        status = {"within": True, "text": f"Within the guideline ({_basis_word(mix['basis'])})."}
+    else:
+        status = {"within": False,
+                  "text": f"Outside the guideline ({_basis_word(mix['basis'])}): {'; '.join(check['problems'])}. "
+                          "Registration stays open."}
+    note = ""
+    if activity_count_note:
+        checked, outside = mix.get("activities_checked", 0), mix.get("activities_outside", 0)
+        note = (f"{outside} of {checked} checked {'activity is' if checked == 1 else 'activities are'} outside the "
+                "guideline (only activities open to Faculty and to Incubatees or MSMEs are checked)." if checked else
+                "No activity in this period is open to both Faculty and Incubatees or MSMEs, so none is checked.")
+    elif not mix.get("checked"):
+        note = "Not checked: this activity is not open to both Faculty and Incubatees or MSMEs."
+    return {"rows": rows, "bars": bars, "guideline": metrics.guideline_text(), "status": status, "note": note,
+            "empty": not mix["registered"]}
+
+
+def _share_text(share: float | None) -> str:
+    return "–" if share is None else f"{round(share * 100)}%"
+
+
+def _basis_word(basis: str | None) -> str:
+    return "attendees" if basis == "attended" else "registrations, nobody is marked as attended yet"
 
 
 STATUS_COLORS = {"Draft": "bg-status-draft", "Scheduled": "bg-status-scheduled", "Ongoing": "bg-status-ongoing", "Conducted": "bg-status-conducted"}

@@ -41,7 +41,7 @@ from django.db.models.functions import Cast, Coalesce, Lower, Trim, TruncMonth
 from activities.models import Activity, ActivityParticipantCategory, ActivityStatus, ActivityType, ParticipantCategory
 from certificates.models import Certificate
 from documents.models import Document, DocumentStatus, DocumentType
-from documents.services import due_date, today_in_manila
+from documents.services import due_date, today_in_manila, type_applies
 from registrations.models import EvaluationSubmission, FieldType, FormAnswer, FormField, FormType, Registration
 from startups.models import Startup
 
@@ -391,6 +391,130 @@ def participants_by_category(activity_ids: list[int]) -> dict[int, dict]:
     return result
 
 
+# --- Participant mix (ASSUMPTIONS 424, NAVIGATU guideline) ----------------------------------------------------------
+
+MIX_OTHER = "Other categories"
+
+
+def _mix_groups() -> list[str]:
+    """The rows of the mix, in order: Faculty, Incubatees, MSMEs (settings), then MIX_OTHER."""
+    return [settings.PARTICIPANT_MIX_FACULTY, *settings.PARTICIPANT_MIX_INCUBATEES, MIX_OTHER]
+
+
+def _mix_group(category_name: str) -> str:
+    """The mix row of a category: matched by name ignoring case and outer spaces (seeded names cannot be renamed);
+    any other category is MIX_OTHER."""
+    key = (category_name or "").strip().lower()
+    return next((group for group in _mix_groups()[:-1] if group.lower() == key), MIX_OTHER)
+
+
+def incubatee_group_name() -> str:
+    """"Incubatees and MSMEs": the categories counted together for the minimum."""
+    names = settings.PARTICIPANT_MIX_INCUBATEES
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def guideline_text() -> str:
+    """NAVIGATU's guideline in words (shown next to every mix chart)."""
+    return (f"NAVIGATU's guideline: {settings.PARTICIPANT_MIX_FACULTY} at most "
+            f"{settings.PARTICIPANT_MIX_FACULTY_MAX_PERCENT}%, {incubatee_group_name()} at least "
+            f"{settings.PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT}% (MSMEs count with the Incubatees until NAVIGATU "
+            "confirms).")
+
+
+def mix_check(faculty: int, incubatees: int, total: int) -> dict | None:
+    """The one guideline check (integers only, never rounded first): Faculty at most PARTICIPANT_MIX_FACULTY_MAX_PERCENT %
+    and Incubatees + MSMEs at least PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT % of `total`. None when total is 0.
+    Returns {"within": bool, "problems": [short texts, e.g. "Faculty 45% (at most 30%)"]}."""
+    if not total:
+        return None
+    faculty_max = settings.PARTICIPANT_MIX_FACULTY_MAX_PERCENT
+    incubatees_min = settings.PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT
+    problems = []
+    if faculty * 100 > faculty_max * total:
+        problems.append(f"{settings.PARTICIPANT_MIX_FACULTY} {round(100 * faculty / total)}% (at most {faculty_max}%)")
+    if incubatees * 100 < incubatees_min * total:
+        problems.append(f"{incubatee_group_name()} {round(100 * incubatees / total)}% (at least {incubatees_min}%)")
+    return {"within": not problems, "problems": problems}
+
+
+def _mix(counts: dict[str, dict[str, int]], checked: bool) -> dict:
+    """The mix from {group: {"registered": n, "attended": n}}: rows with whole percentages (`shares`, units=100: they add
+    up to 100 %; None when the total is 0), the basis ("attended" once anybody attended, else "registered"; None when
+    nobody registered) and the guideline check on that basis (None when not `checked` or nothing to count)."""
+    groups = _mix_groups()
+    registered = [counts.get(group, {}).get("registered", 0) for group in groups]
+    attended = [counts.get(group, {}).get("attended", 0) for group in groups]
+    rows = [
+        {"group": group, "registered": reg, "registered_share": reg_share, "attended": att, "attended_share": att_share}
+        for group, reg, reg_share, att, att_share in zip(
+            groups, registered, shares(registered, 100), attended, shares(attended, 100))
+        if group != MIX_OTHER or reg or att  # "Other categories" only when someone is in it
+    ]
+    basis = "attended" if sum(attended) else "registered" if sum(registered) else None
+    check = None
+    if checked and basis:
+        values = attended if basis == "attended" else registered
+        check = mix_check(values[0], sum(values[1:-1]), sum(values))
+    return {"registered": sum(registered), "attended": sum(attended), "rows": rows, "basis": basis,
+            "checked": checked, "check": check}
+
+
+def _guideline_applies(category_names: set[str]) -> bool:
+    """The guideline is checked only for activities open to Faculty AND to Incubatees or MSMEs (owner decision
+    2026-11-22): a Faculty-only training is never "outside"."""
+    groups = {_mix_group(name) for name in category_names}
+    return settings.PARTICIPANT_MIX_FACULTY in groups and bool(groups & set(settings.PARTICIPANT_MIX_INCUBATEES))
+
+
+def participant_mix(activity_ids: list[int]) -> dict[int, dict]:
+    """Each activity's participant mix (Faculty, Incubatees, MSMEs, other categories) among registrations and among
+    attendees, with NAVIGATU's guideline check where it applies (`_guideline_applies`) (ASSUMPTIONS 424). Two queries,
+    whatever the number of activities. Used by the Overview, Needs attention and period_participant_mix."""
+    return _mixes(Q(activity_id__in=activity_ids), activity_ids)
+
+
+def _mixes(activities: Q, activity_ids: list[int] | None = None) -> dict[int, dict]:
+    """participant_mix for the activities that `activities` (a Q on REGISTRATION / ACTIVITY_PARTICIPANT_CATEGORY rows,
+    through "activity") selects: two queries. `activity_ids`: also list these when they have no rows."""
+    rows = (
+        Registration.objects.filter(activities).order_by()
+        .values("activity_id", "participant_category__name")
+        .annotate(registered=Count("pk"), attended=Count("pk", filter=Q(attendance_confirmed=True)))
+    )
+    links = ActivityParticipantCategory.objects.filter(activities).values_list("activity_id", "participant_category__name")
+    counts: dict[int, dict[str, dict[str, int]]] = {activity_id: {} for activity_id in activity_ids or []}
+    categories: dict[int, set[str]] = {activity_id: set() for activity_id in activity_ids or []}
+    for row in rows:
+        group = counts.setdefault(row["activity_id"], {}).setdefault(
+            _mix_group(row["participant_category__name"]), {"registered": 0, "attended": 0})
+        group["registered"] += row["registered"]
+        group["attended"] += row["attended"]
+    for activity_id, name in links:
+        categories.setdefault(activity_id, set()).add(name)
+    ids = set(counts) | set(categories)
+    return {activity_id: _mix(counts.get(activity_id, {}), _guideline_applies(categories.get(activity_id, set())))
+            for activity_id in ids}
+
+
+def period_participant_mix(filters: ReportFilters) -> dict:
+    """The dashboard's mix for the period (the period activities: Conducted, end date in the range, of the type): all
+    their registrations together (the guideline is shown next to it, not checked on the total), plus how many of those
+    activities are checked and how many are outside the guideline (each activity's own check, `participant_mix`)."""
+    per_activity = _mixes(in_period(filters))  # two queries (the dashboard's query count is fixed)
+    totals: dict[str, dict[str, int]] = {}
+    for mix in per_activity.values():
+        for row in mix["rows"]:
+            group = totals.setdefault(row["group"], {"registered": 0, "attended": 0})
+            group["registered"] += row["registered"]
+            group["attended"] += row["attended"]
+    result = _mix(totals, checked=False)
+    checked = [mix for mix in per_activity.values() if mix["check"] is not None]
+    result["activities_checked"] = len(checked)
+    result["activities_outside"] = sum(1 for mix in checked if not mix["check"]["within"])
+    return result
+
+
 def per_month(filters: ReportFilters) -> list[dict]:
     """N4: period activities per month of their end_date, with registered and attended.
     Every month of the range is listed, also with zero."""
@@ -591,11 +715,27 @@ def _uploaded(document_type: DocumentType) -> Exists:
     return Exists(_documents_of(document_type))
 
 
+def _applies(document_type: DocumentType) -> Q:
+    """documents.services.type_applies in SQL (ASSUMPTIONS 425): the payment types new in item 425 only on activities
+    ending on or after PAYMENT_DOCUMENTS_FROM."""
+    if document_type.name in settings.DOCUMENT_TYPES_FROM_PAYMENT_DATE:
+        return Q(end_date__gte=settings.PAYMENT_DOCUMENTS_FROM)
+    return Q()
+
+
+def _counts_now(document_type: DocumentType) -> Q:
+    """documents.services.counts_now in SQL (ASSUMPTIONS 425): a payment document counts only once Conducted."""
+    if document_type.name in settings.DOCUMENT_TYPES_FOR_PAYMENT:
+        return Q(status__name=ActivityStatus.CONDUCTED)
+    return Q()
+
+
 def _overdue(document_type: DocumentType, today: date) -> Q:
     """Today is after the due date and nothing is Approved. "today > reference + offset" is written as
-    "reference < today - offset", so it compares plain dates."""
+    "reference < today - offset", so it compares plain dates. Only where the type applies and counts now
+    (ASSUMPTIONS 425)."""
     due_before = {f"{document_type.due_reference}__lt": today - timedelta(days=document_type.due_offset_days)}
-    late = Q(**due_before) & ~Q(_approved(document_type))
+    late = Q(**due_before) & ~Q(_approved(document_type)) & _applies(document_type) & _counts_now(document_type)
     if document_type.name in settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION:
         # ASSUMPTIONS 405 (documents.services._required_item): on activities created with their creation documents,
         # an uploaded file (waiting or returned) is never overdue.
@@ -606,7 +746,9 @@ def _overdue(document_type: DocumentType, today: date) -> Q:
 def _all_approved(types: list[DocumentType]) -> Q:
     condition = Q()
     for document_type in types:
-        condition &= Q(_approved(document_type))
+        applies = _applies(document_type)
+        # A type that does not apply to the activity (ASSUMPTIONS 425) never makes it incomplete.
+        condition &= (Q(_approved(document_type)) | ~applies) if applies else Q(_approved(document_type))
     return condition
 
 
@@ -620,7 +762,8 @@ def fully_compliant_count(filters: ReportFilters, types: list[DocumentType] | No
 
 
 def document_compliance(activities: QuerySet, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
-    """N14: for each activity and each active required type: due date, state and overdue flag."""
+    """N14: for each activity and each active required type that applies to it (documents.services.type_applies,
+    ASSUMPTIONS 425): due date, state and overdue flag."""
     today = today_in_manila(now)
     types = required_document_types() if types is None else types
     rows = []
@@ -632,6 +775,8 @@ def document_compliance(activities: QuerySet, now: datetime | None = None, types
     for activity in activities.annotate(**annotations).order_by("end_date", "start_date", "title", "pk"):
         items = []
         for document_type in types:
+            if not type_applies(document_type, activity):
+                continue
             pk = document_type.pk
             approved, uploaded = getattr(activity, f"approved_{pk}"), getattr(activity, f"uploaded_{pk}")
             items.append({
@@ -714,7 +859,7 @@ def document_attention(filters: ReportFilters, now: datetime | None = None, type
         soon = Q(**{
             f"{reference}__gte": today - timedelta(days=offset),
             f"{reference}__lte": today + timedelta(days=days_before - offset),
-        }) & ~Q(_uploaded(document_type))
+        }) & ~Q(_uploaded(document_type)) & _applies(document_type) & _counts_now(document_type)
         late = _overdue(document_type, today)
         rows = (
             activities.filter(late | soon)
@@ -815,6 +960,7 @@ def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
             "per_month": [{**row, "month": f"{row['month']:%Y-%m}"} for row in per_month(filters)],
             "by_type": by_type(filters),
             "by_category": by_category(filters),
+            "participant_mix": period_participant_mix(filters),
             "average_rating_by_question": evaluation["questions"],
         },
         "notes": [

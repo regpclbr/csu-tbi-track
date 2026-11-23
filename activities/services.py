@@ -65,7 +65,8 @@ FIELD_LABELS: dict[str, str] = {
 EDITABLE_FIELDS = tuple(FIELD_LABELS)
 CATEGORIES = "participant_categories"  # many-to-many (ACTIVITY_PARTICIPANT_CATEGORY), not a column
 SCALAR_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != CATEGORIES)  # columns on ACTIVITY
-REQUIRED_FIELDS = tuple(field for field in SCALAR_FIELDS if field != "description")
+OPTIONAL_FIELDS = ("description", "evaluation_deadline")  # evaluation_deadline empty = stays open (ASSUMPTIONS 423)
+REQUIRED_FIELDS = tuple(field for field in SCALAR_FIELDS if field not in OPTIONAL_FIELDS)
 TEXT_FIELDS = ("title", "description", "venue")
 
 STATUS_LABEL = "Status"
@@ -241,7 +242,7 @@ def validate_activity_values(
         errors["end_date"] = "End date must be on or after the start date."
     if _local_date(values["registration_deadline"]) > start:
         errors.setdefault("registration_deadline", "Registration deadline must be on or before the start date.")
-    if _local_date(values["evaluation_deadline"]) < end:
+    if values.get("evaluation_deadline") is not None and _local_date(values["evaluation_deadline"]) < end:
         errors["evaluation_deadline"] = "Evaluation deadline must be on or after the end date."
     if start == end and values["end_time"] <= values["start_time"]:
         errors["end_time"] = "End time must be after the start time."

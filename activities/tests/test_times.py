@@ -99,7 +99,8 @@ def test_editing_times_writes_start_time_and_end_time_rows(director, new_activit
 def test_page_form_has_two_time_pickers(client, director) -> None:
     client.force_login(director)
     html = client.get(reverse("activities:create")).content.decode()
-    assert 'type="time" name="start_time"' in html and 'type="time" name="end_time"' in html
+    # Typed hh:mm boxes with AM/PM since ASSUMPTIONS 422.
+    assert 'name="start_time" value="" inputmode="numeric"' in html and 'name="end_time_period"' in html
     assert "time_schedule" not in html
 
 

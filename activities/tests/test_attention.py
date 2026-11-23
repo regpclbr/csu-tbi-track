@@ -184,7 +184,7 @@ def test_list_counts_use_a_fixed_number_of_queries(director, valid_data, move_to
         attention.attention_counts(activities[:1], now)
     with CaptureQueriesContext(connection) as many:
         attention.attention_counts(activities, now)
-    assert len(one) == len(many) <= 7  # + the signatory slots (ASSUMPTIONS 365-367)
+    assert len(one) == len(many) <= 9  # + the signatory slots (ASSUMPTIONS 365-367), + the participant mix (424)
 
 
 def test_list_shows_the_warning_count(client, director, new_activity) -> None:

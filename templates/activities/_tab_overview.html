@@ -42,6 +42,7 @@ Draft) and participants by category (right). Two stacked columns, so neither lea
       {% else %}
         {% include "components/empty_state.html" with title="No participant categories" text="This activity has no participant categories yet." %}
       {% endif %}
+      {% include "components/participant_mix.html" with mix=participant_mix heading_id="mix-title" %}
     </section>
   </div>
 </div>

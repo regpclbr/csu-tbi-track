@@ -63,17 +63,14 @@ def test_created_as_scheduled_with_two_history_rows(created, director) -> None:
 
 
 def test_the_page_opens_the_forms_tab_with_the_next_step(director, valid_data) -> None:
-    from conftest import creation_document_files
+    from conftest import creation_document_files, typed_schedule_fields
 
     from .test_pages import messages_of
     data = valid_data(title="Via the page")
     post = {
         "title": data["title"], "description": data["description"], "activity_type": data["activity_type"].pk,
         "participant_categories": [c.pk for c in data["participant_categories"]],
-        "start_date": data["start_date"].isoformat(), "end_date": data["end_date"].isoformat(),
-        "start_time": "08:00", "end_time": "17:00", "venue": data["venue"], "max_slots": data["max_slots"],
-        "registration_deadline": timezone.localtime(data["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
-        "evaluation_deadline": timezone.localtime(data["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
+        **typed_schedule_fields(data), "venue": data["venue"], "max_slots": data["max_slots"],
         "budget_amount": str(data["budget_amount"]), **creation_document_files(), "create_as": "Scheduled",
     }
     response = client_for(director).post(reverse("activities:create"), post, follow=True)

@@ -21,6 +21,8 @@ pytestmark = pytest.mark.django_db
 START = date(2026, 11, 10)  # Activity Design and Request Letter due Nov 5 (5-day rule, item 416; Invitation Letter,
 # Accomplishment Report: optional, item 386)
 REQUIRED_TYPES = 3  # Activity Design, Request Letter, Attendance Sheet
+# The Attendance Sheet is a payment document: reminded only once the activity is Conducted (ASSUMPTIONS 425).
+BEFORE_CONDUCTED = REQUIRED_TYPES - 1
 
 
 def reminders(kind: str | None = None):
@@ -114,14 +116,15 @@ def test_draft_activities_are_skipped(make_activity) -> None:
 def test_other_statuses_get_reminders(make_activity, status) -> None:
     make_activity(status=status, start=START)
     services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert reminders(Notification.DOCUMENT_OVERDUE).count() == REQUIRED_TYPES
+    expected = REQUIRED_TYPES if status == ActivityStatus.CONDUCTED else BEFORE_CONDUCTED
+    assert reminders(Notification.DOCUMENT_OVERDUE).count() == expected
 
 
 def test_inactive_types_are_skipped(activity) -> None:
     DocumentType.objects.filter(name="Request Letter").update(is_active=False)
     services.send_document_reminders(now=at(date(2026, 11, 30)))
     assert "Request Letter" not in types_of(Notification.DOCUMENT_OVERDUE)
-    assert len(types_of(Notification.DOCUMENT_OVERDUE)) == REQUIRED_TYPES - 1
+    assert len(types_of(Notification.DOCUMENT_OVERDUE)) == BEFORE_CONDUCTED - 1
 
 
 def test_deactivated_creator_is_skipped_and_logged(activity, director, caplog) -> None:
@@ -130,7 +133,7 @@ def test_deactivated_creator_is_skipped_and_logged(activity, director, caplog) -
     with caplog.at_level(logging.WARNING, logger="documents.reminders"):
         result = services.send_document_reminders(now=at(date(2026, 11, 30)))
     assert not reminders().exists()
-    assert result["skipped_inactive_creator"] == REQUIRED_TYPES
+    assert result["skipped_inactive_creator"] == BEFORE_CONDUCTED
     assert f"activity {activity.pk}" in caplog.text and "deactivated" in caplog.text
 
 
@@ -141,8 +144,8 @@ def test_running_twice_creates_nothing_new(activity) -> None:
     first = services.send_document_reminders(now=at(date(2026, 11, 30)))
     count = Notification.objects.count()
     second = services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert first["overdue"] == REQUIRED_TYPES
-    assert second["overdue"] == 0 and second["due_soon"] == 0 and second["already_sent"] == REQUIRED_TYPES
+    assert first["overdue"] == BEFORE_CONDUCTED
+    assert second["overdue"] == 0 and second["due_soon"] == 0 and second["already_sent"] == BEFORE_CONDUCTED
     assert Notification.objects.count() == count
 
 
@@ -164,7 +167,7 @@ def test_reminders_for_each_creator_separately(make_activity, head) -> None:
     make_activity(start=START)
     make_activity(start=START, created_by=head, title="Another")
     services.send_document_reminders(now=at(date(2026, 11, 30)))
-    assert reminders().filter(member=head).count() == REQUIRED_TYPES and reminders().count() == 2 * REQUIRED_TYPES
+    assert reminders().filter(member=head).count() == BEFORE_CONDUCTED and reminders().count() == 2 * BEFORE_CONDUCTED
 
 
 # --- Commands, task and schedule --------------------------------------------------------------------
@@ -173,14 +176,14 @@ def test_reminders_for_each_creator_separately(make_activity, head) -> None:
 def test_send_document_reminders_command(make_activity, capsys) -> None:
     make_activity(start=timezone.localdate() - timedelta(days=30))  # everything overdue today
     call_command("send_document_reminders")
-    assert f"overdue: {REQUIRED_TYPES} new" in capsys.readouterr().out
+    assert f"overdue: {BEFORE_CONDUCTED} new" in capsys.readouterr().out
     call_command("send_document_reminders")
-    assert "overdue: 0 new" in capsys.readouterr().out and reminders().count() == REQUIRED_TYPES
+    assert "overdue: 0 new" in capsys.readouterr().out and reminders().count() == BEFORE_CONDUCTED
 
 
 def test_task_runs_the_service(make_activity) -> None:
     make_activity(start=timezone.localdate() - timedelta(days=30))
-    assert tasks.run_document_reminders()["overdue"] == REQUIRED_TYPES
+    assert tasks.run_document_reminders()["overdue"] == BEFORE_CONDUCTED
 
 
 def test_setup_schedules_twice_creates_one_schedule() -> None:

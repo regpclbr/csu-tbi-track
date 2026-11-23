@@ -77,14 +77,14 @@ def test_overdue_after_the_due_date_and_never_twice(draft, head, director, clock
 
 
 def test_only_the_two_creation_types_never_other_types(draft, head, director, clock) -> None:
-    """A Draft whose dates have passed: the Attendance Sheet (due on the end date) is overdue in the checklist, but
-    Drafts still get no reminder for it."""
+    """A Draft whose dates have passed: Drafts get no reminder for the Attendance Sheet (a payment document, counted
+    only once Conducted since ASSUMPTIONS 425, so the checklist does not show it overdue either)."""
     activity = draft(start=date(2026, 11, 2), end=date(2026, 11, 3))
     clock(datetime(2026, 11, 21, 9, 0))
     assert services.send_document_reminders()["overdue"] == 4
     assert {name for _, name in reminders(activity)} == {DESIGN, REQUEST}
     sheet = {i.document_type.name: i for i in services.document_checklist(activity)["required"]}[SHEET]
-    assert sheet.is_overdue  # the checklist itself is unchanged
+    assert not sheet.is_overdue and not sheet.counts_now
 
 
 def test_an_uploaded_one_stops_its_reminders(draft, head, director, upload, clock) -> None:

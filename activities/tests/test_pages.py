@@ -15,7 +15,7 @@ from activities import pages, services
 from activities.models import Activity, ActivityType, ParticipantCategory, ResourcePerson
 from registrations.models import FormTemplate, FormType
 
-from conftest import creation_document_files
+from conftest import creation_document_files, typed_schedule_fields
 
 from .conftest import at
 
@@ -52,13 +52,9 @@ def post_data(valid_data):
             "description": values["description"],
             "activity_type": values["activity_type"].pk,
             "participant_categories": [category.pk for category in values["participant_categories"]],
-            "start_date": values["start_date"].isoformat(),
-            "end_date": values["end_date"].isoformat(),
-            "start_time": values["start_time"].strftime("%H:%M"), "end_time": values["end_time"].strftime("%H:%M"),
+            **typed_schedule_fields(values),  # typed dates, hh:mm + AM/PM (ASSUMPTIONS 422)
             "venue": values["venue"],
             "max_slots": values["max_slots"],
-            "registration_deadline": timezone.localtime(values["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
-            "evaluation_deadline": timezone.localtime(values["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
             "budget_amount": str(values["budget_amount"]),
             "create_as": "Draft",  # the New form's "Create as" default (ASSUMPTIONS 417); the edit form ignores it
         }
@@ -210,7 +206,8 @@ def test_create_shows_each_error_under_its_field(director, login, post_data, ove
 def test_end_before_start_and_deadline_rules_are_shown_on_their_fields(director, login, post_data) -> None:
     start = timezone.localdate() + timedelta(days=30)
     data = post_data(end_date=start - timedelta(days=1))
-    data["registration_deadline"] = (start + timedelta(days=1)).isoformat() + "T17:00"
+    data.update(registration_deadline=(start + timedelta(days=1)).isoformat(), registration_deadline_time="05:00",
+                registration_deadline_period="PM")
     html = login(director).post(CREATE, data).content.decode()
     assert field_error(html, "end_date") == "End date must be on or after the start date."
     assert field_error(html, "registration_deadline") == "Registration deadline must be on or before the start date."
@@ -219,7 +216,7 @@ def test_end_before_start_and_deadline_rules_are_shown_on_their_fields(director,
 def test_one_day_end_time_before_start_time_is_shown_on_end_time(director, login, post_data) -> None:
     start = timezone.localdate() + timedelta(days=30)
     data = post_data(end_date=start)
-    data.update(start_time="17:00", end_time="08:00")
+    data.update(start_time="05:00", start_time_period="PM", end_time="08:00", end_time_period="AM")
     html = login(director).post(CREATE, data).content.decode()
     assert field_error(html, "end_time") == "End time must be after the start time."
     assert not Activity.objects.exists()
@@ -243,12 +240,12 @@ def test_an_inactive_type_gets_the_services_message(director, login, post_data) 
 
 def test_deadlines_are_typed_and_shown_in_manila_time(director, login, post_data) -> None:
     data = {**post_data(title="Manila Time"), **creation_document_files()}
-    data["registration_deadline"] = data["registration_deadline"][:11] + "17:30"
+    data.update(registration_deadline_time="05:30", registration_deadline_period="PM")
     login(director).post(CREATE, data)
     activity = Activity.objects.get(title="Manila Time")
     assert timezone.localtime(activity.registration_deadline).strftime("%H:%M") == "17:30"
     html = login(director).get(reverse("activities:edit", args=[activity.pk])).content.decode()
-    assert f'value="{data["registration_deadline"]}"' in html
+    assert f'value="{data["registration_deadline"]}"' in html and 'value="05:30"' in html
 
 
 # --- Edit ------------------------------------------------------------------------------------------------------

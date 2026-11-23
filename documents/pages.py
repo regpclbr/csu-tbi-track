@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.http import HttpRequest, QueryDict
 from django.urls import reverse
@@ -105,15 +106,18 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
     types with their documents), each document with its actions, and the upload form."""
     member = request.user
     checklist = services.document_checklist(activity)
-    required = []
+    required, payment = [], []
     for item in checklist["required"]:
         label, tone = checklist_state(item)
-        required.append({
+        # Payment documents for the Supply Office get their own group (ASSUMPTIONS 425).
+        (payment if item.is_payment else required).append({
             "document_type": item.document_type,
             "due_date": item.due_date,
             "state": {"label": label, "tone": tone},
             "is_overdue": item.is_overdue,
             "rows": [document_row(member, document) for document in item.documents],
+            # Event Photos: one or more pictures, so an "Add a photo" link stays after the first (ASSUMPTIONS 425).
+            "accepts_more": item.document_type.name in settings.DOCUMENT_TYPES_IMAGES_ONLY,
         })
     optional = [  # only the optional types that have documents
         {"document_type": entry["document_type"], "rows": [document_row(member, d) for d in entry["documents"]]}
@@ -129,6 +133,11 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
     return {
         "today": checklist["today"],
         "required": required,
+        "payment": payment,
+        "payment_packet": {  # "Download payment packet": the reason replaces the button while refused
+            "url": reverse("activities:payment_packet", args=[activity.pk]),
+            "refused": services.payment_packet_refused_reason(activity) if payment else None,
+        },
         "optional": optional,
         "upload": upload,
         "upload_focus": focus,  # the first field with an error gets the focus (works without JavaScript)

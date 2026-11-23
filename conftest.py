@@ -276,6 +276,26 @@ def creation_document_files() -> dict:
     return data
 
 
+def typed_schedule_fields(values: dict) -> dict:
+    """The activity page form's dates and times as the browser sends them (ASSUMPTIONS 422): typed dates
+    ("June 5, 2026"), hh:mm + AM/PM, and each deadline as <name> (date), <name>_time, <name>_period. `values` holds
+    dates, times and aware date-times (valid_data); a missing or None evaluation_deadline is sent empty."""
+    from activities.typed_fields import format_typed_date, split_time
+
+    data = {"start_date": format_typed_date(values["start_date"]), "end_date": format_typed_date(values["end_date"])}
+    for name in ("start_time", "end_time"):
+        data[name], data[f"{name}_period"] = split_time(values[name])
+    for name in ("registration_deadline", "evaluation_deadline"):
+        moment = values.get(name)
+        if moment is None:
+            data[name] = data[f"{name}_time"] = data[f"{name}_period"] = ""
+            continue
+        local = timezone.localtime(moment)
+        data[name] = format_typed_date(local.date())
+        data[f"{name}_time"], data[f"{name}_period"] = split_time(local.time())
+    return data
+
+
 @pytest.fixture
 def roles() -> dict[str, Role]:
     """The five seeded roles, by name, plus the test-only VIEW_ONLY_ROLE (every flag off)."""

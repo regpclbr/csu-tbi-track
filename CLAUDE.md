@@ -66,6 +66,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   one transaction, files removed on commit, an ACTIVITY_DELETION record (no FK to the activity) + `activities.audit`.
   The audit log stays append-only except `ActivityAuditLog.objects.delete_for_deleted_activity` (only there).
   Certificate numbers come from CERTIFICATE_NUMBER_SEQUENCE (never reused, also after undo attendance).
+- ACTIVITY.evaluation_deadline is OPTIONAL (ASSUMPTIONS 423, migration activities/0011): empty = the evaluation stays open.
+  Every "closed" check goes through `registrations.services.evaluation_has_closed()` / `evaluation_open_q()` (never compare
+  the column yourself); "No evaluation = no certificate" is unchanged ("Waiting for evaluation" forever).
 - ACTIVITY has `start_time` / `end_time` (Manila, nullable only for old rows the migration could not read; both or
   neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
   `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
@@ -183,6 +186,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   the move; ASSUMPTIONS 362).
 - The audit log is append-only (enforced in the model). Format values only with
   `activities.formatting.format_audit_value()`.
+- The activity PAGE form types dates and times (ASSUMPTIONS 422): `activities/typed_fields.py` (TypedDateField "June 5, 2026"
+  / ISO / 06/05/2026; TypedTimeField hh:mm + `<name>_period` AM/PM; TypedDateTimeField `<name>` + `<name>_time` +
+  `<name>_period`), `components/typed_datetime.html`, `static/js/typed_dates.js` (helps typing only). The JSON API keeps ISO.
+  Tests posting the page form use `conftest.typed_schedule_fields(values)`.
 - Creating: start_date not before today and registration_deadline not in the past (Manila time).
   Editing: those checks apply only to fields being changed. Only tests/demo pass `now=`.
 - Offer status choices with `allowed_next_statuses()`; change status only with `change_status()` (or the automatic moves).
@@ -302,10 +309,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   computed (`due_date()`), never stored; overdue = after the due date (Manila) and not Approved.
   The due rule lives ONLY in the DOCUMENT_TYPE row (`due_reference` + `due_offset_days`); never hard-code a number of days.
   Activity Design and Request Letter: start_date - 5 (NAVIGATU's 5-day rule, ASSUMPTIONS 416; data migration documents/0005
-  moves only a row still on start_date / -10); Attendance Sheet: end_date + 0 (placeholder).
+  moves only a row still on start_date / -10); Attendance Sheet, Activity Report, Event Photos: end_date + 5 (payment
+  documents, ASSUMPTIONS 425; documents/0006 moves only an Attendance Sheet still on end_date / 0).
 - "Required" is only `DOCUMENT_TYPE.is_required` (per type, never per activity); every count reads it (ASSUMPTIONS 386).
   The Invitation Letter and the Accomplishment Report are OPTIONAL (data migrations documents/0003 and 0004, one row
-  each; uploaded ones stay, listed under Other documents). Still required: Activity Design, Request Letter, Attendance Sheet.
+  each; uploaded ones stay, listed under Other documents). Still required: Activity Design, Request Letter, Attendance Sheet (+ Activity Report and Event Photos, 425).
   `seed_data` sets `is_required` / the due rule only when it creates a type (reruns never undo admin changes) and adds the
   optional catch-all type `DocumentType.OTHER` ("Other"), whose documents need a title (`services.title_error`, the one
   title rule, also on the New activity form). The assistant's routing never matches "Other" from a question.
@@ -315,6 +323,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   one `ml-auto flex-wrap` group; never `min-w-0 flex-1` alone in a wrapping row (it squeezes the title to letters).
   Documents page cards (ASSUMPTIONS 408, 411): header + lines share one grid (`grid-cols-subgrid`), State `minmax(9rem,11rem)`,
   Actions a fixed `21rem` (columns line up across activity cards); `documents/_actions.html` always wraps (never `flex-nowrap`: buttons covered the State badges).
+- Payment documents (ASSUMPTIONS 425): `DOCUMENT_TYPES_FOR_PAYMENT` (Activity Report, Attendance Sheet, Event Photos; due
+  end + 5). The two new types apply only to activities ending on or after `PAYMENT_DOCUMENTS_FROM` (`type_applies`, SQL
+  `metrics._applies`); payment types count (overdue, due soon, reminders, Needs attention) only once Conducted (`counts_now`,
+  SQL `metrics._counts_now`). Event Photos: JPG/PNG only (`file_type_error`). Documents tab group "For payment (Supply
+  Office)"; `build_payment_packet` (`activities:payment_packet`) zips APPROVED files only + `contents.txt`, never stored.
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
@@ -497,6 +510,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   only from `services.preset_range(key, year)`; Alpine only looks up the server's table (`pages.date_presets`). Title and
   download name come from the dates (`content.period_name` / `report_title`, `services.download_name`; no column):
   "Accomplishment Report - Q3 2026", "Semi-annual … - January to June 2026", "Annual … - 2026", else "… - <range>".
+- Participant mix (ASSUMPTIONS 424): `metrics.participant_mix` / `period_participant_mix` / `mix_check` (Faculty at most 30 %,
+  Incubatees + MSMEs at least 70 %, settings `PARTICIPANT_MIX_*`; attendees once anybody attended, else registrations; only
+  activities open to Faculty and to Incubatees or MSMEs). Display only `reports.dashboard_page.mix_chart` +
+  `components/participant_mix.html` (Overview and Dashboard). Needs attention warns (informational once Conducted); never
+  blocks registration.
 - Participants by category per activity (ASSUMPTIONS 400): `metrics.participants_by_category` + `metrics.shares` (0.1 %,
   largest remainder, adds up to 100.0 %, None when the total is 0). Section `category_by_activity` (default in
   Accomplishment and Participation). The Overview card is a donut (ASSUMPTIONS 403): `activities.pages.category_donut`
@@ -896,6 +914,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (create-only, no data migration); approve, reissue and the default text stay with the flag; Retry and signature images
   also for can_create_activity; "ready for your review" to can_approve_certificates; new "waiting for your approval"
   notification once per activity (421). No database or migration change; ERD: the ROLE note only.
+
+- NAVIGATU UAT round 2 (2026-11-22): typed dates and times on the activity form (422); optional evaluation deadline (423);
+  participant mix with NAVIGATU's guideline on the Overview, the Dashboard and Needs attention (424); payment documents for
+  the Supply Office (Activity Report, Attendance Sheet, Event Photos; due end + 5, only after Conducted, new types only for
+  activities ending from 2026-11-22) + "Download payment packet" (425). Database: activities 0011
+  (evaluation_deadline nullable), documents 0006 (data). ERD: ACTIVITY.evaluation_deadline nullable, DOCUMENT_TYPE.name
+  note; still 34 tables.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the

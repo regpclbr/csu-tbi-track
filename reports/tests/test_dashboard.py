@@ -92,7 +92,7 @@ def test_every_card_says_its_scope(view_only, login, some_data) -> None:
     assert data["filters"] == {
         "start": "2026-01-01", "end": "2026-12-31", "range_text": "January 1 – December 31, 2026", "activity_type": None,
     }
-    assert set(data["charts"]) == {"per_month", "by_type", "by_category", "average_rating_by_question"}
+    assert set(data["charts"]) == {"per_month", "by_type", "by_category", "average_rating_by_question", "participant_mix"}
     assert len(data["charts"]["per_month"]) == 12
 
 

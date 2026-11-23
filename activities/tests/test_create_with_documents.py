@@ -7,6 +7,8 @@ the Request Letter are optional (ASSUMPTIONS 417; rows 0 and 1 here when given, 
 from pathlib import Path
 
 import pytest
+
+from conftest import typed_schedule_fields
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -252,10 +254,7 @@ def post_data(valid_data):
             "title": values["title"], "description": values["description"],
             "activity_type": values["activity_type"].pk,
             "participant_categories": [category.pk for category in values["participant_categories"]],
-            "start_date": values["start_date"].isoformat(), "end_date": values["end_date"].isoformat(),
-            "start_time": values["start_time"].strftime("%H:%M"), "end_time": values["end_time"].strftime("%H:%M"), "venue": values["venue"], "max_slots": values["max_slots"],
-            "registration_deadline": timezone.localtime(values["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
-            "evaluation_deadline": timezone.localtime(values["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
+            **typed_schedule_fields(values), "venue": values["venue"], "max_slots": values["max_slots"],
             "budget_amount": str(values["budget_amount"]),
             "create_as": "Draft",  # the default (ASSUMPTIONS 417)
         }

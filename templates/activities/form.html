@@ -52,20 +52,21 @@ default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 42
   <section class="card p-6" aria-labelledby="section-schedule">
     {% include "components/section_header.html" with id="section-schedule" title="Schedule" %}
     <div class="grid gap-4 md:grid-cols-2">
-      {% include "components/form_field.html" with field=form.start_date %}
-      {% include "components/form_field.html" with field=form.end_date %}
-      {% include "components/form_field.html" with field=form.start_time %}
-      {% include "components/form_field.html" with field=form.end_time %}
+      {% include "components/typed_datetime.html" with field=form.start_date %}
+      {% include "components/typed_datetime.html" with field=form.end_date %}
+      {% include "components/typed_datetime.html" with field=form.start_time %}
+      {% include "components/typed_datetime.html" with field=form.end_time %}
       <div class="md:col-span-2">{% include "components/form_field.html" with field=form.venue %}</div>
     </div>
   </section>
 
   <section class="card p-6" aria-labelledby="section-registration">
     {% include "components/section_header.html" with id="section-registration" title="Registration" subtitle="Registration closes at the deadline or when all slots are taken." %}
-    <div class="grid gap-4 md:grid-cols-3">
+    <div class="grid gap-4 md:grid-cols-2">
       {% include "components/form_field.html" with field=form.max_slots %}
-      {% include "components/form_field.html" with field=form.registration_deadline %}
-      {% include "components/form_field.html" with field=form.evaluation_deadline %}
+      <div class="hidden md:block" aria-hidden="true"></div>
+      {% include "components/typed_datetime.html" with field=form.registration_deadline %}
+      {% include "components/typed_datetime.html" with field=form.evaluation_deadline %}
     </div>
   </section>
 

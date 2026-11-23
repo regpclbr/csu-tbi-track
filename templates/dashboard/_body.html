@@ -247,6 +247,7 @@ next activity (beside the welcome banner, a filled block like the banner: ASSUMP
     {% else %}
       {% include "components/donut.html" with chart=page.categories %}
     {% endif %}
+    {% if conducted %}{% include "components/participant_mix.html" with mix=page.participant_mix heading_id="dashboard-mix-title" %}{% endif %}
   </section>
 
   <section class="card hover-lift p-6" aria-labelledby="status-title">

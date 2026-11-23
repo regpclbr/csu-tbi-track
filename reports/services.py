@@ -104,6 +104,13 @@ def activity_participants_by_category(member: TBIMember, activity) -> dict:
     return metrics.participants_by_category([activity.pk])[activity.pk]
 
 
+def activity_participant_mix(member: TBIMember, activity) -> dict:
+    """One activity's participant mix with NAVIGATU's guideline check (ASSUMPTIONS 424), for any active staff member
+    (counts only), like activity_participants_by_category."""
+    require_staff_member(member)
+    return metrics.participant_mix([activity.pk])[activity.pk]
+
+
 @dataclass
 class ActivityFile:
     """A PDF or Excel file made on request for one activity (never stored, never a GENERATED_REPORT row)."""

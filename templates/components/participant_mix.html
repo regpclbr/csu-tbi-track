@@ -1,0 +1,47 @@
+{% load ui %}
+{% comment %}Participant mix (ASSUMPTIONS 424): two 100% bars (Registered, Attended) with Faculty, Incubatees, MSMEs (and other
+categories), a text table with the same numbers, NAVIGATU's guideline and the result of reports.metrics' check.
+`mix`: reports.dashboard_page.mix_chart; `heading_id`: the heading's id. Display only: never counts or checks here. The
+numbers are in the table and the bars' aria-labels, never in the colour only.{% endcomment %}
+<div class="mt-6 border-t border-line pt-4">
+  <h3 id="{{ heading_id }}" class="font-semibold text-ink">Participant mix</h3>
+  <p class="caption mt-1 text-slate-700">{{ mix.guideline }}</p>
+  {% if mix.empty %}
+    <p class="mt-4 text-sm text-muted">Nobody has registered yet.</p>
+  {% else %}
+    <div class="mt-4 space-y-3">
+      {% for bar in mix.bars %}
+        <div class="flex items-center gap-3">
+          <span class="w-20 shrink-0 text-sm text-slate-700">{{ bar.label }}</span>
+          <div class="flex h-3 w-full gap-1 overflow-hidden rounded-full bg-slate-100" role="img" aria-label="{{ bar.aria_label }}">
+            {% for segment in bar.segments %}<div class="h-full rounded-full" style="width: {{ segment.width|stringformat:'f' }}%; background: {{ segment.color }}"></div>{% endfor %}
+          </div>
+          <span class="w-12 shrink-0 text-right text-sm font-semibold text-ink tabular-nums">{{ bar.total|number }}</span>
+        </div>
+      {% endfor %}
+    </div>
+    <table class="mt-4 w-full text-sm">
+      <caption class="sr-only">Participant mix: registrations and attendees per group (the bars show the same numbers)</caption>
+      <thead>
+        <tr class="text-left text-xs text-muted">
+          <th scope="col" class="py-1 font-medium">Group</th>
+          <th scope="col" class="py-1 text-right font-medium">Registered</th>
+          <th scope="col" class="py-1 text-right font-medium">Attended</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in mix.rows %}
+          <tr class="border-t border-line">
+            <th scope="row" class="py-2 text-left font-normal text-ink"><span class="mr-2 inline-block size-3 rounded-full align-[-1px]" style="background: {{ row.color }}" aria-hidden="true"></span>{{ row.group }}</th>
+            <td class="py-2 text-right text-ink tabular-nums">{{ row.registered|number }} <span class="text-muted">({{ row.registered_text }})</span></td>
+            <td class="py-2 text-right text-ink tabular-nums">{{ row.attended|number }} <span class="text-muted">({{ row.attended_text }})</span></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+  {% if mix.status %}
+    <p class="notice {% if mix.status.within %}notice-success{% else %}notice-warning{% endif %} mt-4 text-sm">{{ mix.status.text }}</p>
+  {% endif %}
+  {% if mix.note %}<p class="caption mt-2 text-muted">{{ mix.note }}</p>{% endif %}
+</div>

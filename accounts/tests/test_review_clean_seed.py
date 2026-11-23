@@ -51,7 +51,7 @@ def test_fresh_seed_role_defaults(fresh_seed) -> None:
 
 def test_fresh_seed_document_types(fresh_seed) -> None:
     required = set(DocumentType.objects.filter(is_required=True).values_list("name", flat=True))
-    assert required == {"Activity Design", "Request Letter", "Attendance Sheet"}
+    assert required == {"Activity Design", "Request Letter", "Attendance Sheet", "Activity Report", "Event Photos"}  # 425
     optional = set(DocumentType.objects.filter(is_required=False).values_list("name", flat=True))
     assert {"Invitation Letter", "Accomplishment Report", DocumentType.OTHER} <= optional
 

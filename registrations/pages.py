@@ -233,7 +233,8 @@ def link_explanation(activity: Activity) -> list[str]:
         f"the activity becomes Conducted; people marked as attended later get theirs too (checked every "
         f"{settings.ACTIVITY_STATUS_INTERVAL_MINUTES} minutes while qcluster is running). A failed email is not "
         "retried automatically: resend it below.",
-        f"The evaluation opens on {format_datetime(opens)} and closes on {format_datetime(closes)}.",
+        f"The evaluation opens on {format_datetime(opens)} and closes on {format_datetime(closes)}." if closes else
+        f"The evaluation opens on {format_datetime(opens)} and stays open (no evaluation deadline).",
     ]
     if services.get_form(activity, FormType.EVALUATION) is None:
         lines.append("There is no evaluation form yet: create it on the Forms tab. No link is sent without it.")

@@ -153,7 +153,8 @@ def test_a_new_draft_without_them_shows_missing_and_overdue(new_activity) -> Non
 
 
 def test_other_required_types_are_unchanged(new_activity) -> None:
-    activity = new_activity(ActivityStatus.ONGOING, start=date(2026, 10, 1), end=date(2026, 10, 2))
+    # Conducted: the Attendance Sheet is a payment document, counted only then (ASSUMPTIONS 425).
+    activity = new_activity(ActivityStatus.CONDUCTED, start=date(2026, 10, 1), end=date(2026, 10, 2))
     sheet = required_by_name(activity)["Attendance Sheet"]
     assert (sheet.state, sheet.is_overdue) == ("Missing", True)
 

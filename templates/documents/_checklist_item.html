@@ -1,0 +1,23 @@
+{# One required document type on the Documents tab (documents.pages.documents_tab: required and payment items). #}
+<li class="rounded-2xl border {% if item.is_overdue %}border-danger-line bg-danger-soft/60{% else %}border-line{% endif %} px-4 py-3">
+  <div class="flex flex-wrap items-center justify-between gap-2">
+    <div class="min-w-0">
+      <h3 class="font-semibold text-ink">{{ item.document_type.name }}</h3>
+      <p class="text-sm text-slate-700">Due <time datetime="{{ item.due_date|date:'Y-m-d' }}">{{ item.due_date|date:"M j, Y" }}</time></p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {% include "components/badge.html" with text=item.state.label tone=item.state.tone %}
+      {% if item.is_overdue %}<span class="badge badge-danger">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}Overdue</span>{% endif %}
+      {% if item.state.label == "Missing" %}
+        <a href="{{ activity_url }}?tab=documents&amp;type={{ item.document_type.pk }}#upload" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="upload" class="size-4" %}Upload<span class="sr-only"> {{ item.document_type.name }}</span></a>
+      {% elif item.accepts_more %}
+        <a href="{{ activity_url }}?tab=documents&amp;type={{ item.document_type.pk }}#upload" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="upload" class="size-4" %}Add a photo<span class="sr-only"> to {{ item.document_type.name }}</span></a>
+      {% endif %}
+    </div>
+  </div>
+  {% if item.rows %}
+    <ul class="mt-2 divide-y divide-line border-t border-line">
+      {% for row in item.rows %}{% include "documents/_document_item.html" with row=row next=back %}{% endfor %}
+    </ul>
+  {% endif %}
+</li>

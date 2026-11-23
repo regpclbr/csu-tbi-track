@@ -802,17 +802,31 @@ def registration_from_token(token: str) -> Registration:
         raise RegistrationError("This evaluation link is not valid.") from error
 
 
-def evaluation_window(activity: Activity) -> tuple[datetime, datetime]:
-    """(opens, closes): opens at 00:00 Manila time on the end date, closes at the deadline."""
+def evaluation_window(activity: Activity) -> tuple[datetime, datetime | None]:
+    """(opens, closes): opens at 00:00 Manila time on the end date, closes at the deadline. `closes` is None when the
+    activity has no evaluation deadline: the evaluation then stays open (ASSUMPTIONS 423)."""
     opens = timezone.make_aware(datetime.combine(activity.end_date, time(0, 0)))
     return opens, activity.evaluation_deadline
+
+
+def evaluation_has_closed(activity: Activity, now: datetime | None = None) -> bool:
+    """True once the evaluation deadline has passed; never without a deadline (ASSUMPTIONS 423). The one check every
+    "closed" rule uses (links, Needs attention, certificate readiness)."""
+    deadline = activity.evaluation_deadline
+    return deadline is not None and (now or timezone.now()) > deadline
+
+
+def evaluation_open_q(now: datetime) -> Q:
+    """Activities whose evaluation has not closed at `now` (no deadline, or the deadline not passed): the query
+    version of evaluation_has_closed."""
+    return Q(evaluation_deadline__isnull=True) | Q(evaluation_deadline__gte=now)
 
 
 def _window_reason(activity: Activity, now: datetime) -> str | None:
     opens, closes = evaluation_window(activity)
     if now < opens:
         return f"The evaluation opens on {format_datetime(opens)}."
-    if now > closes:
+    if evaluation_has_closed(activity, now):
         return f"The evaluation closed on {format_datetime(closes)}."
     return None
 
@@ -843,7 +857,7 @@ def evaluation_state(registration: Registration, now: datetime | None = None) ->
     now = now or timezone.now()
     activity = registration.activity
     submitted = EvaluationSubmission.objects.filter(registration=registration).exists()
-    shows_person = not submitted and now <= activity.evaluation_deadline
+    shows_person = not submitted and not evaluation_has_closed(activity, now)
     if not registration.attendance_confirmed:
         return EvaluationState("not_attended", NOT_ATTENDED, shows_person)
     if submitted:
@@ -1085,7 +1099,7 @@ def automatic_link_activities(now: datetime | None = None) -> list[Activity]:
     now = now or timezone.now()
     candidates = (
         Activity.objects.filter(
-            status__name__in=(ActivityStatus.ONGOING, ActivityStatus.CONDUCTED), evaluation_deadline__gte=now
+            evaluation_open_q(now), status__name__in=(ActivityStatus.ONGOING, ActivityStatus.CONDUCTED)
         )
         .filter(form_templates__form_type=FormType.EVALUATION)
         .select_related("status")

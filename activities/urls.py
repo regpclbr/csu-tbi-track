@@ -3,6 +3,7 @@ from django.urls import path
 from certificates import page_views as certificate_page_views
 from certificates import views as certificate_views
 from documents import page_views as document_page_views
+from documents import views as document_views
 
 from . import page_views, views
 
@@ -28,6 +29,8 @@ urlpatterns = [
     # Actions of the Documents and Certificates tabs (phase F4). Under /activities/ so the page that comes back
     # (an upload error, a refused bulk action) keeps "Activities" active in the sidebar; the views live in their apps.
     path("<int:activity_id>/documents/upload/", document_page_views.upload, name="document_upload"),
+    # "Download payment packet" (ASSUMPTIONS 425): a zip of the Approved payment documents, made on request.
+    path("<int:activity_id>/documents/payment-packet/", document_views.download_payment_packet, name="payment_packet"),
     # Certificates are created by the System (ASSUMPTIONS 362): no Generate. Each action redirects to the tab.
     # One approval per activity (ASSUMPTIONS 369); the wording of its certificates (ASSUMPTIONS 370).
     path("<int:activity_id>/certificates/approve/", certificate_page_views.approve_activity,

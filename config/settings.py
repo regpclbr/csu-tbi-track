@@ -6,6 +6,7 @@ loaded from the .env file in the project root (see .env.example).
 """
 
 import os
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -251,6 +252,25 @@ DOCUMENT_TYPES_AFTER_ACTIVITY = ["Accomplishment Report", "Certificate", "Evalua
 # Required uploads on the New activity form (ASSUMPTIONS 405, NAVIGATU): they exist when the activity is created. Only
 # active, required types with these names count (documents.services.creation_required_types).
 DOCUMENT_TYPES_REQUIRED_AT_CREATION = ["Activity Design", "Request Letter"]
+# Participant mix (ASSUMPTIONS 424, NAVIGATU guideline): at most 30 % Faculty and at least 70 % Incubatees. Until NAVIGATU
+# says how MSMEs count, they count WITH the Incubatees (owner decision 2026-11-22). Names of PARTICIPANT_CATEGORY rows
+# (the seeded names, which cannot be renamed). Only a warning: registration is never blocked.
+PARTICIPANT_MIX_FACULTY = "Faculty"
+PARTICIPANT_MIX_FACULTY_MAX_PERCENT = 30
+PARTICIPANT_MIX_INCUBATEES = ["Incubatees", "MSMEs"]  # counted together for the minimum
+PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT = 70
+# Payment documents for the Supply Office (ASSUMPTIONS 425, NAVIGATU UAT): required types needed after the activity
+# (due end date + 5, set in their DOCUMENT_TYPE rows). The Documents tab groups them under "For payment (Supply
+# Office)", they count in Needs attention, reminders and overdue numbers only once the activity is Conducted, and
+# "Download payment packet" zips their Approved files. Names of DOCUMENT_TYPE rows.
+DOCUMENT_TYPES_FOR_PAYMENT = ["Activity Report", "Attendance Sheet", "Event Photos"]
+# Of those, the types that are new in item 425 apply only to activities ENDING on or after PAYMENT_DOCUMENTS_FROM, so
+# older activities never show them as missing or overdue (owner decision 2026-11-22). The Attendance Sheet was
+# already required for every activity and stays so.
+DOCUMENT_TYPES_FROM_PAYMENT_DATE = ["Activity Report", "Event Photos"]
+PAYMENT_DOCUMENTS_FROM = date.fromisoformat(os.environ.get("PAYMENT_DOCUMENTS_FROM", "2026-11-22"))
+# Types whose files must be pictures (JPG or PNG); several may be uploaded (ASSUMPTIONS 425).
+DOCUMENT_TYPES_IMAGES_ONLY = ["Event Photos"]
 
 
 # --- Activities: automatic statuses and evaluation links (ASSUMPTIONS 346, 348) -------------

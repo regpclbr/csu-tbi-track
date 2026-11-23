@@ -17,7 +17,7 @@ from certificates.models import ActivitySignatory, Certificate, CertificateSigna
 from certificates.pages import tab_url
 
 from .conftest import S, appreciation_of, certificate_of, upload
-from conftest import image_bytes
+from conftest import image_bytes, typed_schedule_fields
 from conftest import VIEW_ONLY_ROLE, creation_document_files
 
 pytestmark = pytest.mark.django_db
@@ -44,11 +44,7 @@ def form_post(valid_data, **overrides) -> dict:
     data = {
         "title": values["title"], "description": values["description"], "activity_type": values["activity_type"].pk,
         "participant_categories": [c.pk for c in values["participant_categories"]],
-        "start_date": values["start_date"].isoformat(), "end_date": values["end_date"].isoformat(),
-        "start_time": values["start_time"].strftime("%H:%M"), "end_time": values["end_time"].strftime("%H:%M"),
-        "venue": values["venue"], "max_slots": values["max_slots"],
-        "registration_deadline": timezone.localtime(values["registration_deadline"]).strftime("%Y-%m-%dT%H:%M"),
-        "evaluation_deadline": timezone.localtime(values["evaluation_deadline"]).strftime("%Y-%m-%dT%H:%M"),
+        **typed_schedule_fields(values), "venue": values["venue"], "max_slots": values["max_slots"],
         "budget_amount": str(values["budget_amount"]),
         "create_as": "Draft",  # the New form's "Create as" (ASSUMPTIONS 417); the edit form ignores it
     }

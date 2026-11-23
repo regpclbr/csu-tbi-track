@@ -16,7 +16,8 @@ from functools import wraps
 from django.core.exceptions import ValidationError
 from django.http import FileResponse, Http404, HttpRequest
 from django.utils.http import content_disposition_header
-from django.shortcuts import get_object_or_404
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET, require_POST
@@ -25,6 +26,7 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from accounts.permissions import Permission, permission_required, staff_login_required
 from activities.models import Activity
+from config.links import activity_tab_url
 from config.parsing import parse_bool
 
 from . import services
@@ -243,6 +245,23 @@ def download_document(request: HttpRequest, document_id: int) -> FileResponse:
         raise Http404("The file is missing.") from error
     response = FileResponse(handle, as_attachment=True, filename=document.file_name)
     response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@staff_login_required
+@require_GET
+def download_payment_packet(request: HttpRequest, activity_id: int):
+    """The payment packet zip (ASSUMPTIONS 425): any active staff member, like download_document. Refused (not Conducted,
+    nothing Approved): back to the Documents tab with the reason. Never cached."""
+    activity = get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)
+    try:
+        handle, name = services.build_payment_packet(request.user, activity)
+    except services.DocumentError as error:
+        messages.error(request, str(error))
+        return redirect(activity_tab_url(activity.pk, "documents"))
+    response = FileResponse(handle, as_attachment=True, filename=name, content_type="application/zip")
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
     return response
 
 

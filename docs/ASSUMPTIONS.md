@@ -1881,3 +1881,98 @@ Still 34 tables.
        403 for both Project Heads, Admin Staff and the System Administrator on approve / reissue / the default text,
        creators keep signatories, custom text, prepare, Retry and thumbnails, the System Administrator cannot Retry,
        both notifications and their targets, once per activity, none after an early approval, the amber note).
+
+## NAVIGATU UAT: typed dates, optional evaluation deadline, participant mix, payment documents (2026-11-22)
+
+422. **Typing dates and times on the activity form** (NAVIGATU UAT, the TBI Director; New and Edit). Form and template
+     only: no service, database, ERD or API change (the JSON API keeps ISO dates and "08:00" times).
+     - **Dates** (`activities/typed_fields.py`, `TypedDateField`): one text box. The server accepts "June 5, 2026",
+       "Jun 5 2026", "5 June 2026", "2026-06-05" and "06/05/2026" (month/day/year, as in the Philippines), month names in
+       any case; anything else gets "Enter a valid date, for example June 5, 2026 or 06/05/2026.". A stored date is shown
+       as "June 5, 2026". On the page (`components/typed_datetime.html` + `static/js/typed_dates.js`, loaded before
+       Alpine) the box is an ARIA combobox: typing letters suggests months ("j" -> January, June, July; "ju" -> June,
+       July), then the day gives "June 5, <this year>" / "<next year>"; arrows + Enter choose, Escape closes; leaving the
+       box writes a readable date the same way. The calendar button opens the browser's own date picker (`showPicker()`)
+       and fills the box. Without JavaScript the box still works.
+     - **Times** (`TypedTimeField`): an hh:mm box (`inputmode="numeric"`, only digits can be typed, the colon is written:
+       730 -> 07:30; 1430 -> 02:30 + PM; 0015 -> 12:15 + AM) and an AM/PM select (`<name>_period`). Server rule
+       (`parse_typed_time`): 1–12 o'clock needs AM or PM ("Choose AM or PM."); 00:xx and 13:xx–23:xx are 24-hour times
+       (an AM/PM that contradicts them is refused, naming the 12-hour form to type instead); minutes 00–59; anything else
+       "Enter a valid time, for example 07:30 AM.".
+     - **Deadlines** (`TypedDateTimeField`): date box (`<name>`) + time box (`<name>_time`) + AM/PM (`<name>_period`),
+       combined into a Manila date-time; one box without the other is refused. The evaluation deadline may be left empty
+       (item 423).
+     - The New form's certificate sample preview (item 420) reads the dates with the same parser.
+     - Tests: `activities/tests/test_typed_dates.py`; page-form tests send `conftest.typed_schedule_fields(values)`.
+423. **The evaluation deadline is optional** (NAVIGATU UAT). Empty = the evaluation stays open.
+     - **Database:** `ACTIVITY.evaluation_deadline` becomes nullable (migration `activities/0011`, schema only). **Existing
+       activities keep their deadline** (owner's choice; no data change). Reversing the migration needs a deadline on
+       every row again.
+     - **One rule:** `registrations.services.evaluation_window()` returns `closes = None` without a deadline;
+       `evaluation_has_closed(activity, now)` (False without a deadline) and its query form `evaluation_open_q(now)` are
+       used by every "closed" check: personal links (`evaluation_state`, `shows_person`), the general link, the
+       automatic links (`automatic_link_activities`: item 419's links 3 hours before the end are unchanged), Needs
+       attention (the late-attendance item never appears without a deadline; "Evaluation form not built yet" and the
+       evaluation-link items stay while the evaluation is open) and certificates (`readiness`, `pdf_state`).
+     - **"No evaluation = no certificate" is unchanged:** without a deadline a participant's certificate shows "Waiting
+       for evaluation" until they evaluate (never "Evaluation closed without an answer").
+     - The service still refuses a given deadline before the end date. The Overview shows "No deadline (the evaluation
+       stays open)"; the Evaluation tab says "… and stays open (no evaluation deadline)".
+     - **ERD:** ACTIVITY.evaluation_deadline "nullable – empty = the evaluation stays open". Still 34 tables.
+     - Tests: `registrations/tests/test_optional_evaluation_deadline.py`.
+424. **Participant mix and NAVIGATU's guideline** (NAVIGATU UAT; owner decisions 2026-11-22). No database or ERD change.
+     - **Guideline** (settings): Faculty at most 30 % (`PARTICIPANT_MIX_FACULTY_MAX_PERCENT`), Incubatees at least 70 %
+       (`PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT`). **MSMEs count with the Incubatees** for the 70 %
+       (`PARTICIPANT_MIX_INCUBATEES`) until NAVIGATU answers (TBI_QUESTIONS). Categories are matched by the seeded names
+       (they cannot be renamed); any added category is "Other categories" (shown, counted in the total, in neither group).
+     - **The numbers and the check** live only in `reports/metrics.py`: `participant_mix(activity_ids)` (two queries,
+       registered and attended per group, whole percentages with `shares(units=100)`), `mix_check` (integers, never
+       rounded first: exactly 30 % / 70 % is inside), `period_participant_mix(filters)` (the dashboard: the period's
+       Conducted activities). The check uses **attendees once anybody is marked as attended, else registrations** (like
+       the donut, item 403).
+     - **Which activities are checked:** only those open to Faculty AND to Incubatees or MSMEs (a Faculty-only training is
+       never "outside").
+     - **Overview:** under the "Participants by category" donut, "Participant mix": two 100 % bars (Registered, Attended),
+       a text table (count and %), the guideline in words, and "Within the guideline" (green) / "Outside the guideline
+       (…): Faculty 45% (at most 30%) …. Registration stays open." (amber), or "Not checked: …".
+       `reports.dashboard_page.mix_chart` + `components/participant_mix.html` (display only).
+     - **Dashboard:** the same block in the "Attendees by category" card for the selected period (all registrations of the
+       period's Conducted activities together; the guideline is shown next to it, not checked on the total), plus "N of M
+       checked activities are outside the guideline".
+     - **Needs attention:** "Participant mix is outside NAVIGATU's guideline: …." (Overview), a warning while Scheduled /
+       Ongoing, informational (shown, never counted) once Conducted. **Registration is never blocked** (no rule in
+       `registrations.services`).
+     - Tests: `reports/tests/test_participant_mix.py`.
+425. **Payment documents for the Supply Office** (NAVIGATU UAT; owner decisions 2026-11-22). No schema or ERD column
+     change; data migration `documents/0006`.
+     - **Types:** "Activity Report" and "Event Photos" (new, required, due end date + 5) and the "Attendance Sheet"
+       (already required; its due rule moves from end date + 0 to + 5). `settings.DOCUMENT_TYPES_FOR_PAYMENT` names the
+       three. Migration `documents/0006_payment_documents` adds the two rows only in a database that already has
+       document types and only when the name is missing; it moves the Attendance Sheet only while it still has
+       end_date / 0 (a value changed in the Django admin is never touched; the reverse is guarded the same way and
+       removes the two rows only while unused). `seed_data` creates them (create-only, item 386).
+     - **Only newer activities:** the two NEW types apply only to activities **ending on or after
+       `PAYMENT_DOCUMENTS_FROM` (2026-11-22)** (`DOCUMENT_TYPES_FROM_PAYMENT_DATE`, `documents.services.type_applies`, SQL
+       `reports.metrics._applies`, parity tested), so older activities never show them missing or overdue; an older
+       activity lists such an upload under "Other documents", and the compliance report prints "Not required". The
+       Attendance Sheet stays required for every activity.
+     - **Only after Conducted:** a payment document is never overdue, never "due soon" and gets no reminder before the
+       activity is Conducted (`counts_now`, `ChecklistItem.counts_now`; SQL `_counts_now`); after Conducted it counts like
+       any required document. Needs attention gives them their own line: "Overdue payment documents for the Supply
+       Office: …" / "… due soon and not uploaded: …".
+     - **Event Photos** take JPG or PNG only (`DOCUMENT_TYPES_IMAGES_ONLY`, `file_type_error`, also on Replace); several
+       files may be uploaded, one at a time ("Add a photo" stays on the row). Complete = at least one Approved photo
+       (the checklist's usual rule).
+     - **Documents tab:** a "For payment (Supply Office)" card with the three types (the same row template as the required
+       ones, `documents/_checklist_item.html`) and "Download payment packet" (secondary).
+     - **Payment packet** (`documents.services.build_payment_packet`, `activities:payment_packet`, any active staff
+       member like a download, `private, no-store`): a zip made on request (never stored) with **only APPROVED files**,
+       one folder per type, numbered stored file names (never the uploaded name), and `contents.txt` (Windows line
+       endings) listing per type what is included, what is waiting for approval or returned (not included) and what is
+       MISSING. Refused (the reason replaces the button): before Conducted, or when no payment document is approved yet.
+     - **Activity Report vs Accomplishment Report:** kept SEPARATE. The Accomplishment Report stays optional (item 386)
+       and has been the TBI's own report; the Activity Report is the one the Supply Office asks for before paying. They
+       may be the same paper: asked in TBI_QUESTIONS; if so, one row is renamed later.
+     - **ERD:** no column change (new DOCUMENT_TYPE rows only); the DOCUMENT_TYPE.name note gets "activity report / event
+       photos". Still 34 tables.
+     - Tests: `documents/tests/test_payment_documents.py`.

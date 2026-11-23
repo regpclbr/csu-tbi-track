@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   {# Self-hosted, pinned (static/vendor/VERSIONS.md). The staff layout adds hx-headers, so HTMX sends the CSRF token. #}
   <script src="{% static 'vendor/htmx-2.0.11.min.js' %}" defer></script>
+  <script src="{% static 'js/typed_dates.js' %}" defer></script>{# before Alpine: typed dates and times, ASSUMPTIONS 422 #}
   <script src="{% static 'vendor/alpine-3.17.4.min.js' %}" defer></script>
   {% block head %}{% endblock %}
 </head>

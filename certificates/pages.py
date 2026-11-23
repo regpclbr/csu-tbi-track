@@ -281,11 +281,14 @@ def posted_texts(data: QueryDict) -> dict[str, dict]:
 
 
 def _parse_date(raw: str):
-    from datetime import date
+    """A typed date as the activity form accepts it ("June 5, 2026", ISO, 06/05/2026; ASSUMPTIONS 422), else None."""
+    from django.core.exceptions import ValidationError
+
+    from activities.typed_fields import parse_typed_date
 
     try:
-        return date.fromisoformat((raw or "").strip())
-    except ValueError:
+        return parse_typed_date(raw)
+    except ValidationError:
         return None
 
 
