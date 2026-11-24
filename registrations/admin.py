@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 from accounts.admin import ActivityDataAdminMixin, ReadOnlyAdminMixin
 
 from . import services
-from .models import DefaultFormField, EvaluationSubmission, FormAnswer, FormField, FormTemplate, Registration
+from .models import AttendanceDay, DefaultFormField, EvaluationSubmission, FormAnswer, FormField, FormTemplate, Registration
 
 
 class DefaultFormFieldForm(forms.ModelForm):
@@ -58,6 +58,14 @@ class FormFieldAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ("field_label", "template", "field_type", "is_required", "sort_order")
 
 
+class AttendanceDayInline(ReadOnlyAdminMixin, admin.TabularInline):
+    """The days attended (ASSUMPTIONS 434). View only: rows change only through registrations.attendance."""
+
+    model = AttendanceDay
+    extra = 0
+    fields = ("day", "method", "checked_in_at", "marked_by")
+
+
 class FormAnswerInline(ReadOnlyAdminMixin, admin.TabularInline):
     model = FormAnswer
     fk_name = "registration"
@@ -68,13 +76,13 @@ class FormAnswerInline(ReadOnlyAdminMixin, admin.TabularInline):
 @admin.register(Registration)
 class RegistrationAdmin(ActivityDataAdminMixin, ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = (
-        "name", "email", "activity", "participant_category", "registration_date",
-        "attendance_confirmed", "confirmation_method", "attendance_marked_by", "attendance_marked_at",
+        "name", "email", "activity", "participant_category", "registration_source", "registration_date",
+        "cancelled_at", "attendance_confirmed",
     )
-    list_filter = ("attendance_confirmed", "participant_category", "activity")
+    list_filter = ("attendance_confirmed", "registration_source", "participant_category", "activity")
     search_fields = ("name", "email")
-    inlines = [FormAnswerInline]
-    actions = ["mark_attended_email", "mark_attended_wet_signature", "unmark_attendance"]
+    inlines = [FormAnswerInline, AttendanceDayInline]
+    actions = ["mark_attended_staff", "unmark_attendance"]
 
     def _set(self, request, queryset, attended: bool, method: str | None) -> None:
         """Group by activity and call the attendance service (all or nothing per activity)."""
@@ -89,15 +97,11 @@ class RegistrationAdmin(ActivityDataAdminMixin, ReadOnlyAdminMixin, admin.ModelA
             else:
                 self.message_user(request, f'"{activity.title}": attendance updated for {changed}.', messages.SUCCESS)
 
-    @admin.action(description="Mark attended (confirmed by email)")
-    def mark_attended_email(self, request, queryset) -> None:
-        self._set(request, queryset, True, Registration.ConfirmationMethod.EMAIL)
+    @admin.action(description="Mark attended today (staff; the last day after the activity)")
+    def mark_attended_staff(self, request, queryset) -> None:
+        self._set(request, queryset, True, AttendanceDay.Method.STAFF)
 
-    @admin.action(description="Mark attended (wet signature)")
-    def mark_attended_wet_signature(self, request, queryset) -> None:
-        self._set(request, queryset, True, Registration.ConfirmationMethod.WET_SIGNATURE)
-
-    @admin.action(description="Unmark attendance")
+    @admin.action(description="Undo attendance (today; the last day after the activity)")
     def unmark_attendance(self, request, queryset) -> None:
         self._set(request, queryset, False, None)
 

@@ -37,6 +37,23 @@ Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back 
         <ul class="space-y-3">
           {% for item in payment %}{% include "documents/_checklist_item.html" %}{% endfor %}
         </ul>
+        {% if can_create and attendance_forms %}
+          {# The system-generated forms (ASSUMPTIONS 434): saved here as approved copies; a scanned paper sheet can still be uploaded. #}
+          <div class="mt-4 border-t border-line pt-4" data-attendance-forms>
+            <p class="text-sm text-slate-700">Make the Attendance (one sheet per day) and the Confirmation of Attendance from the check-ins and pre-registrations, with the participants' signatures. Each is saved here as a document.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              {% for form in attendance_forms %}
+                {% if form.refused %}
+                  <p class="caption w-full text-slate-700"><span class="font-semibold">{{ form.label }}:</span> {{ form.refused }}</p>
+                {% else %}
+                  <form method="post" action="{{ form.url }}">{% csrf_token %}
+                    <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="file-text" class="size-4" %}{{ form.label }}</button>
+                  </form>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
       </section>
     {% endif %}
 

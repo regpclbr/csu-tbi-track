@@ -4,6 +4,8 @@
 - Scheduled: the registration link, Open / Closed from registrations.services.registration_closed_reason.
 - Ongoing / Conducted: the general evaluation link, shown only while registrations.services.evaluation_request_state
   is open; otherwise when it opens or that it has closed.
+- Scheduled / Ongoing: also the "Attendance check-in" link (ASSUMPTIONS 434), shown (and printable) before it opens, with
+  registrations.attendance.checkin_state's Open / when it opens.
 Every link starts with settings.SITE_URL (registrations.services), never the Host of the request.
 """
 
@@ -12,6 +14,7 @@ from datetime import datetime
 
 import segno
 
+from registrations import attendance as registration_attendance
 from registrations import services as registration_services
 
 from . import services as activity_services
@@ -37,6 +40,18 @@ def share_card(activity: Activity, registration: dict, now: datetime | None = No
     """What the Share card shows; None for Draft. `registration` is activities.pages.registration_summary().
     `switch` (Scheduled only): the hand switch offered, "close" or "reopen" (services.registration_switch,
     ASSUMPTIONS 427); the template shows it only to members who can create activities."""
+    card = _share_card(activity, registration, now)
+    if card is not None and activity.status.name in CHECKIN_STATUSES:
+        state = registration_attendance.checkin_state(activity, now)
+        card["checkin"] = {"url": registration_attendance.checkin_url(activity), "open": state.kind == "open",
+                           "reason": state.reason}
+    return card
+
+
+CHECKIN_STATUSES = (ActivityStatus.SCHEDULED, ActivityStatus.ONGOING)  # the check-in link is shown (ASSUMPTIONS 434)
+
+
+def _share_card(activity: Activity, registration: dict, now: datetime | None = None) -> dict | None:
     status = activity.status.name
     if status == ActivityStatus.SCHEDULED:
         switch = activity_services.registration_switch(activity)
@@ -59,6 +74,8 @@ def qr_url(activity: Activity, kind: str, now: datetime | None = None) -> str | 
         if build_form_first(activity, registration_services.registration_closed_reason(activity, now)):
             return None  # ASSUMPTIONS 409: no QR code before the registration form is ready
         return registration_services.registration_page_url(activity)
+    if kind == "checkin" and status in CHECKIN_STATUSES:  # printable before it opens (ASSUMPTIONS 434)
+        return registration_attendance.checkin_url(activity)
     if kind == "evaluation" and status in EVALUATION_STATUSES:
         if registration_services.evaluation_request_state(activity, now).kind == "open":
             return registration_services.evaluation_request_url(activity)

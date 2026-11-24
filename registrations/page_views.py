@@ -6,6 +6,7 @@ Field actions answer an HTMX request with the updated form card (and a toast thr
 HTMX they redirect to the Forms tab with a message. The other actions always redirect with a message."""
 
 import json
+import logging
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -25,6 +26,8 @@ from reports import services as report_services
 from reports.page_views import activity_file_response
 
 from .models import EvaluationSubmission, FormField, FormTemplate, FormType, Registration
+
+logger = logging.getLogger("registrations")
 
 
 def _activity(activity_id: int) -> Activity:
@@ -193,8 +196,8 @@ def field_move(request: HttpRequest, field_id: int) -> HttpResponse:
 def registration_detail(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
     """HTMX: one registration's details and answers (for the modal)."""
     registration = get_object_or_404(
-        Registration.objects.select_related("participant_category", "startup", "evaluation_submission")
-        .prefetch_related("answers__field"),
+        Registration.objects.select_related("participant_category", "startup", "evaluation_submission", "signature")
+        .prefetch_related("answers__field", "attendance_days__marked_by"),
         pk=registration_id, activity_id=activity_id,
     )
     return render(request, "registrations/_registration_detail.html",
@@ -230,28 +233,93 @@ def _attendance_request(post) -> tuple[list[str], bool]:
 @permission_required(Permission.CREATE_ACTIVITY)
 @post_only_or_tab("registrations")
 def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
-    """POST method=wet_signature|email (the "Confirmed by" choice above the table, used by every mark button), then
-    either row_action=mark:<id>|undo:<id> or action=mark|undo with registration_ids. `filters` (the table's
-    query string) brings the member back to the same view."""
+    """POST day=<YYYY-MM-DD> (the tab's day choice, ASSUMPTIONS 434), then either row_action=mark:<id>|undo:<id> or
+    action=mark|undo with registration_ids. The signature dialog adds the signature fields (draw or typed) for one
+    person; "Skip" sends none. `filters` (the table's query string) brings the member back to the same view."""
+    from . import signatures
+
     activity = _activity(activity_id)
     back = _tab_url(activity, "registrations", pages.filters_query(request.POST.get("filters", "")))
     ids, mark = _attendance_request(request.POST)
     if not ids:
         messages.error(request, "Select at least one registration first.")
         return redirect(back)
-    method = (request.POST.get("method") or None) if mark else None
+    # The signature dialog: "Save signature and mark attended" (with_signature) needs a signature; "Mark without
+    # signature" (skip_signature) and the plain row / bulk buttons send none.
+    signature = None
+    if mark and request.POST.get("with_signature") and not request.POST.get("skip_signature"):
+        signature = signatures.from_post(request.POST, None)
+        if not signatures.is_given(signature):
+            messages.error(request, "Choose how the participant signs, or use “Mark without signature”.")
+            return redirect(back)
     try:
-        changed = services.set_attendance(request.user, activity, ids, mark, method)
+        changed = services.set_attendance(request.user, activity, ids, mark, day=request.POST.get("day") or None,
+                                          signature=signature)
     except services.RegistrationError as error:
         messages.error(request, str(error))
+    except ValidationError as error:
+        messages.error(request, " ".join(" ".join(text) for text in error.message_dict.values()))
     else:
         people = f"{changed} registration{'' if changed == 1 else 's'}"
         if mark:
-            method_label = dict(Registration.ConfirmationMethod.choices)[method].lower()
-            messages.success(request, f"Marked {people} as attended ({method_label}).")
+            messages.success(request, f"Marked {people} as attended" + (" (signature saved)." if signature else "."))
         else:
             messages.success(request, f"Attendance undone for {people}.")
     return redirect(back)
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_GET
+def attendance_signature(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
+    """HTMX: the "Mark attended" dialog body for a person without a signature (owner decision b): sign on this device
+    (draw or typed name + tick) or skip."""
+    activity = _activity(activity_id)
+    registration = get_object_or_404(Registration, pk=registration_id, activity=activity)
+    return render(request, "registrations/_attendance_signature.html", pages.signature_dialog(activity, registration, request.GET))
+
+
+@staff_login_required
+@require_GET
+def signature_image(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
+    """A participant's signature image (staff login only; never /media/). 404 for a typed or deleted signature."""
+    from . import signatures
+
+    registration = get_object_or_404(Registration.objects.select_related("signature"), pk=registration_id,
+                                     activity_id=activity_id)
+    signature = signatures.usable(registration)
+    content = signatures.image_bytes(signature) if signature else None
+    if content is None:
+        raise Http404("No signature image.")
+    response = HttpResponse(content, content_type="image/png")
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@post_only_or_tab("documents")
+def generate_attendance_form(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
+    """Generate "Attendance" or "Confirmation of Attendance" (ASSUMPTIONS 434) and save it as a document (an approved
+    copy); back to the Documents tab with a message."""
+    from certificates.pdf import ImageUnreadable, NotAPdf
+
+    from . import attendance_forms
+
+    activity = _activity(activity_id)
+    if kind not in attendance_forms.KINDS:
+        raise Http404("Unknown form.")
+    try:
+        document = attendance_forms.generate_form(request.user, activity, kind)
+    except attendance_forms.FormError as error:
+        messages.error(request, str(error))
+    except (ImageUnreadable, NotAPdf, OSError) as error:
+        messages.error(request, "The PDF could not be made. Run “python manage.py check_pdf” and try again.")
+        logger.error("Attendance form for activity %s was not generated: %s.", activity.pk, type(error).__name__)
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+    else:
+        messages.success(request, f"“{document.title}” was generated and saved to the documents.")
+    return redirect(_tab_url(activity, "documents"))
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
@@ -285,3 +353,19 @@ def attendance_sheet(request: HttpRequest, activity_id: int) -> HttpResponse:
     activity = _activity(activity_id)
     return render(request, "registrations/attendance_sheet.html",
                   {"activity": activity, "rows": pages.attendance_sheet_rows(activity)})
+
+
+@staff_login_required
+@require_GET
+def checkin_poster(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """A printable A4 page for the venue: the activity's "Attendance check-in" QR code and how to use it
+    (ASSUMPTIONS 434). The QR image comes from activities:qr_code (kind checkin). Draft: 404 (never public)."""
+    from .attendance import activity_days, checkin_url, day_window
+
+    activity = _activity(activity_id)
+    if activity.status.name not in ("Scheduled", "Ongoing"):  # activities.share.CHECKIN_STATUSES: the QR code exists
+        raise Http404("Check-in posters exist for Scheduled and Ongoing activities only.")
+    windows = [{"day": day, "opens": day_window(activity, day)[0], "closes": day_window(activity, day)[1]}
+               for day in activity_days(activity)]
+    return render(request, "registrations/checkin_poster.html",
+                  {"activity": activity, "url": checkin_url(activity), "windows": windows})

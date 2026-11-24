@@ -15,12 +15,11 @@ from activities.services import registered_count
 from config.mail import prints_emails
 from reports import services as report_services
 
-from . import services
-from .models import DefaultFormField, EvaluationSubmission, FieldType, FormField, FormTemplate, FormType, Registration
+from . import attendance, services, signatures
+from .models import AttendanceDay, DefaultFormField, EvaluationSubmission, FieldType, FormField, FormTemplate, FormType, Registration
 
 REGISTRATIONS_PER_PAGE = 20
 LINK_ROWS_PER_PAGE = 20
-DEFAULT_METHOD = Registration.ConfirmationMethod.WET_SIGNATURE  # the "Confirmed by" choice starts here
 
 # Type badges on the Forms tab (FieldType values -> label shown to staff).
 FIELD_TYPE_LABELS = {
@@ -123,10 +122,12 @@ class RegistrationFilters:
     attended: bool | None = None
     category: int | None = None
     page: str = "1"
+    day: str = ""  # the day the Mark / Undo buttons act on (ASSUMPTIONS 434), YYYY-MM-DD
 
     def query(self) -> str:
         """The filters as a query string for the pager (the tab is added by the template)."""
-        params = {"q": self.q, "attended": "" if self.attended is None else str(self.attended).lower(), "category": self.category or ""}
+        params = {"q": self.q, "attended": "" if self.attended is None else str(self.attended).lower(),
+                  "category": self.category or "", "day": self.day}
         return urlencode({key: value for key, value in params.items() if value})
 
     @property
@@ -143,6 +144,7 @@ def parse_registration_filters(params) -> RegistrationFilters:
         attended=attended,
         category=int(raw_category) if raw_category.isdigit() else None,
         page=(params.get("page") or "1").strip(),
+        day=(params.get("day") or "").strip()[:10],
     )
 
 
@@ -162,13 +164,49 @@ def counts(member, activity: Activity) -> dict:
     }
 
 
-def registrations_tab(member, activity: Activity, params) -> dict:
+def _day_label(day, activity: Activity) -> str:
+    days = attendance.activity_days(activity)
+    prefix = f"Day {days.index(day) + 1} · " if len(days) > 1 and day in days else ""
+    return f"{prefix}{day:%b} {day.day}"
+
+
+def _attended_days(registration: Registration, activity: Activity) -> list[dict]:
+    """The days this person attended, for the Attendance column: "Day 2 · Oct 22", how (QR / staff / older method),
+    when, and who marked it."""
+    return [{
+        "day": row.day, "label": _day_label(row.day, activity), "method": row.method,
+        "method_label": "QR" if row.method == AttendanceDay.Method.QR else row.get_method_display(),
+        "time": attendance.checked_in_text(row), "marked_by": row.marked_by.name if row.marked_by_id else "",
+    } for row in registration.attendance_days.all()]
+
+
+def registrations_tab(member, activity: Activity, params, now=None) -> dict:
+    """The Registrations tab. Staff mark or undo ONE day at a time (ASSUMPTIONS 434): `day_choices` are the activity's
+    days up to today (attendance.staff_days); the selected one (?day=, default attendance.default_staff_day) is what
+    every Mark / Undo button sends. Undo on someone's last day shows services.undo_refused_reason instead when refused.
+    A row without a usable signature opens the signature dialog (draw or typed, or skip) before marking."""
     filters = parse_registration_filters(params)
+    day_choices = attendance.staff_days(activity, now)
+    selected = attendance.parse_day(filters.day)
+    if selected not in day_choices:
+        default = attendance.default_staff_day(activity, now)
+        selected = default if default in day_choices else None
     registrations = services.list_registrations(
         activity, attended=filters.attended, participant_category_id=filters.category, search=filters.q
     )
     page = Paginator(registrations, REGISTRATIONS_PER_PAGE).get_page(filters.page)
-    rows = [{"registration": r, "undo_reason": services.undo_refused_reason(r)} for r in page.object_list]
+    rows = []
+    for registration in page.object_list:
+        days = _attended_days(registration, activity)
+        on_day = any(entry["day"] == selected for entry in days)
+        last_day = on_day and len(days) == 1
+        rows.append({
+            "registration": registration, "days": days, "on_day": on_day,
+            "undo_reason": services.undo_refused_reason(registration) if last_day else None,
+            "signature": signatures.label(registration),
+            "needs_signature": not signatures.has_signature(registration),
+            "walk_in": registration.registration_source == Registration.Source.WALK_IN,
+        })
     return {
         "rows": rows,
         "filters": filters,
@@ -178,15 +216,11 @@ def registrations_tab(member, activity: Activity, params) -> dict:
         "counts": counts(member, activity),
         "categories": list(activity.participant_categories.order_by("name")),
         "attendance_reason": services.attendance_closed_reason(activity),
-        "methods": _methods(),
-        "default_method": DEFAULT_METHOD,
+        "day_choices": [{"value": day.isoformat(), "label": _day_label(day, activity), "selected": day == selected}
+                        for day in day_choices],
+        "selected_day": selected.isoformat() if selected else "",
+        "selected_day_label": _day_label(selected, activity) if selected else "",
     }
-
-
-def _methods() -> list[tuple[str, str]]:
-    """The "Confirmed by" choices, wet signature first (the default)."""
-    choices = dict(Registration.ConfirmationMethod.choices)
-    return [(DEFAULT_METHOD, choices.pop(DEFAULT_METHOD)), *choices.items()]
 
 
 def answer_rows(registration: Registration) -> list[tuple[str, str]]:
@@ -210,6 +244,14 @@ def evaluation_detail(member, registration: Registration) -> dict | None:
         return services.evaluation_answers(member, registration)
     except EvaluationSubmission.DoesNotExist:
         return None
+
+
+def signature_dialog(activity: Activity, registration: Registration, params) -> dict:
+    """The "Mark attended" dialog for a person without a signature (owner decision b): they sign on the staff device
+    (draw or typed name + tick) or staff skip it (the generated sheet then says "Marked by staff")."""
+    filters = parse_registration_filters(params)
+    return {"activity": activity, "registration": registration, "day": filters.day, "filters": filters.query(),
+            "day_label": _day_label(attendance.parse_day(filters.day), activity) if attendance.parse_day(filters.day) else ""}
 
 
 def attendance_sheet_rows(activity: Activity) -> list[dict]:

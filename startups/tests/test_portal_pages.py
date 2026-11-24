@@ -20,6 +20,7 @@ from startups import portal_pages
 from startups.decorators import STAFF_REFUSED
 
 from .conftest import STARTUP_PASSWORD, answers_for
+from registrations.tests.conftest import SIGN_JSON, SIGN_POST
 
 pytestmark = pytest.mark.django_db
 
@@ -231,7 +232,7 @@ def test_registering_uses_the_portal_service_and_shows_the_success_page(portal, 
     with django_capture_on_commit_callbacks(execute=True):
         response = portal.post(reverse("startups:portal_register_page", args=[activity.pk]),
                                {f"field_{field_id}": "Kalinaw", "designation": "Founder", "office_agency": "Kalinaw Agritech",
-                                "privacy_consent": "yes"})
+                                "privacy_consent": "yes", **SIGN_POST})
     assert response["Location"] == reverse("startups:portal_registered", args=[activity.pk])
     registration = Registration.objects.get()
     assert registration.startup == startup and registration.email == startup.email
@@ -244,7 +245,7 @@ def test_registering_uses_the_portal_service_and_shows_the_success_page(portal, 
 
 def test_register_errors_appear_under_their_fields(portal, open_activity) -> None:
     activity = open_activity(categories=("Faculty", "Incubatees"))
-    response = portal.post(reverse("startups:portal_register_page", args=[activity.pk]), {"privacy_consent": "yes"})
+    response = portal.post(reverse("startups:portal_register_page", args=[activity.pk]), {"privacy_consent": "yes", **SIGN_POST})
     html = response.content.decode()
     assert response.status_code == 400 and 'id="id_participant_category-error"' in html
     # The category, the activity's field, Designation and Office / Agency (emptied: the page posts it) (ASSUMPTIONS 426).

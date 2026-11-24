@@ -74,13 +74,14 @@ def test_registrations_and_attendance_api(client, director, scheduled, signup) -
 
     activity_services.change_status(director, scheduled, "Ongoing")
     client.force_login(director)
-    marked = post_json(client, f"{API}/activities/{scheduled.pk}/attendance/", {"registration_ids": [ana.pk], "attended": True, "method": "email"})
+    marked = post_json(client, f"{API}/activities/{scheduled.pk}/attendance/", {"registration_ids": [ana.pk], "attended": True, "method": "staff"})
     assert body(marked) == {"changed": 1}
 
     rows = body(client.get(f"{API}/activities/{scheduled.pk}/registrations/", {"attended": "true"}))
     assert rows["total"] == 1
     row = rows["registrations"][0]
-    assert (row["email"], row["participant_category"], row["confirmation_method"]) == ("ana@example.com", "Incubatees", "email")
+    assert (row["email"], row["participant_category"], row["registration_source"]) == ("ana@example.com", "Incubatees", "online")
+    assert [day["method"] for day in row["attendance_days"]] == ["staff"]
     assert {a["field_label"] for a in row["answers"]} == {"Affiliation / Organization"}
     assert client.get(f"{API}/activities/{scheduled.pk}/registrations/", {"attended": "maybe"}).status_code == 400
 
@@ -147,13 +148,13 @@ def test_admin_attendance_actions(client, both_flags_member, director, scheduled
     person = signup(scheduled, "ana@example.com")
     client.force_login(both_flags_member)
     url = "/admin/registrations/registration/"
-    response = client.post(url, {"action": "mark_attended_email", "_selected_action": [person.pk]}, follow=True)
+    response = client.post(url, {"action": "mark_attended_staff", "_selected_action": [person.pk]}, follow=True)
     assert "Attendance opens when the activity starts on" in response.content.decode()
 
     activity_services.change_status(director, scheduled, "Ongoing")
-    client.post(url, {"action": "mark_attended_wet_signature", "_selected_action": [person.pk]})
+    client.post(url, {"action": "mark_attended_staff", "_selected_action": [person.pk]})
     person.refresh_from_db()
-    assert (person.attendance_confirmed, person.confirmation_method) == (True, "wet_signature")
+    assert (person.attendance_confirmed, person.attendance_days.get().method) == (True, "staff")
 
 
 @pytest.mark.django_db

@@ -40,7 +40,7 @@ def test_seed_loads_every_lookup(admin_env) -> None:
         "Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum",
     }
     assert set(DocumentStatus.objects.values_list("status_name", flat=True)) == {"For Review", "Approved"}
-    assert DocumentType.objects.count() == 10  # incl. "Other" (386), Activity Report, Event Photos (425); no Accomplishment Report (430)
+    assert DocumentType.objects.count() == 11  # incl. "Other" (386), Activity Report, Event Photos (425), Confirmation of Attendance (434); no Accomplishment Report (430)
 
 
 @pytest.mark.django_db
@@ -78,6 +78,7 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
         "Attendance Sheet": ("end_date", 5),  # payment documents for the Supply Office (ASSUMPTIONS 425)
         "Activity Report": ("end_date", 5),
         "Event Photos": ("end_date", 5),
+        "Confirmation of Attendance": ("end_date", 5),  # generated from the pre-registrations (ASSUMPTIONS 434)
     }
     optional = DocumentType.objects.filter(is_required=False)
     assert set(optional.values_list("name", flat=True)) == {

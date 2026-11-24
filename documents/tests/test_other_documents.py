@@ -133,7 +133,7 @@ def test_activities_with_and_without_the_optional_documents(director, make_activ
     compliance = metrics.document_compliance(metrics.period_activities(period), late)
     # The compliance report's columns: every required type (the payment types of ASSUMPTIONS 425 print "Not required"
     # for activities ending before PAYMENT_DOCUMENTS_FROM).
-    assert set(compliance["document_types"]) == REQUIRED | {"Activity Report", "Event Photos"}
+    assert set(compliance["document_types"]) == REQUIRED | {"Activity Report", "Event Photos", "Confirmation of Attendance"}
     rows = metrics.document_attention(period, late)
     assert not any(row["document_type"] in optional_names for row in rows["overdue"] + rows["due_soon"])
     # Dashboard S3: 2 per Scheduled activity (the Attendance Sheet counts only once Conducted, ASSUMPTIONS 425).
@@ -194,7 +194,8 @@ def test_dropdown_is_grouped_required_then_other(director, login, scheduled) -> 
     groups = re.findall(r'<optgroup label="([^"]+)">(.*?)</optgroup>', select, re.S)
     names = {label: re.findall(r">([^<]+)</option>", body) for label, body in groups}
     assert list(names) == ["Required", "Other documents"]
-    assert names["Required"] == ["Activity Design", "Activity Report", "Attendance Sheet", "Event Photos", "Request Letter"]
+    assert names["Required"] == ["Activity Design", "Activity Report", "Attendance Sheet", "Confirmation of Attendance",
+                                 "Event Photos", "Request Letter"]
     assert names["Other documents"] == ["Evaluation Form", "Invitation Letter", "Other",
                                         "Pre-registration Form"]
     assert "(required)" not in select and "Certificate" not in select  # evidence has its own upload

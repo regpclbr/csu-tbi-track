@@ -10,6 +10,7 @@
   <div>
     <p class="text-xs font-semibold text-muted uppercase md:sr-only">Attendance</p>
     {% include "components/badge.html" with text=row.attendance tone=row.attendance_tone %}
+    {% if row.cancel_url %}<a href="{{ row.cancel_url }}" class="mt-2 block text-sm font-semibold text-link underline underline-offset-2">{% if registration.cancelled_at %}I can attend after all{% else %}I can no longer attend{% endif %}<span class="sr-only">: {{ activity.title }}</span></a>{% endif %}
   </div>
   <div>
     <p class="text-xs font-semibold text-muted uppercase md:sr-only">Evaluation</p>

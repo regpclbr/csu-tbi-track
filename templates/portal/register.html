@@ -28,7 +28,7 @@ novalidate: every check is the service's; the first field with an error gets the
       <p class="mt-2 text-xs text-muted">From your Navigatu profile. Changes are made in Navigatu.</p>
     </div>
 
-    <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate class="space-y-6" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+    <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate enctype="multipart/form-data" class="space-y-6" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
       {% csrf_token %}
       {% include "public/_input.html" with name="designation" label="Designation / Position" value=values.designation error=errors.designation autocomplete="organization-title" maxlength="255" required=True focus=focus help="Your position in the startup, for example Founder or CEO." %}
       {% include "public/_input.html" with name="office_agency" label="Office / Agency" value=values.office_agency error=errors.office_agency autocomplete="organization" maxlength="255" required=True focus=focus help="Filled in with your startup's name; change it if needed." %}
@@ -36,6 +36,7 @@ novalidate: every check is the service's; the first field with an error gets the
 
       {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}
 
+      {% include "public/_signature_field.html" with values=values error=errors.signature focus=focus %}
       {% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
 
       <button type="submit" class="btn btn-primary btn-arrow w-full sm:w-auto sm:px-8" :disabled="busy">

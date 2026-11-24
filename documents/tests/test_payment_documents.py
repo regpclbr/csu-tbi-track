@@ -117,7 +117,7 @@ def test_needs_attention_lists_payment_documents_on_their_own_line_after_conduct
     conducted = make_activity(ActivityStatus.CONDUCTED, start=NEW_END, end=NEW_END)
     ongoing = make_activity(ActivityStatus.ONGOING, start=NEW_END, end=NEW_END)
     texts = [item.text for item in attention.activity_attention(conducted, AFTER_DUE)]
-    assert "Overdue payment documents for the Supply Office: Activity Report, Attendance Sheet, Event Photos." in texts
+    assert "Overdue payment documents for the Supply Office: Activity Report, Attendance Sheet, Confirmation of Attendance, Event Photos." in texts
     assert not any("payment documents" in item.text for item in attention.activity_attention(ongoing, AFTER_DUE))
 
 

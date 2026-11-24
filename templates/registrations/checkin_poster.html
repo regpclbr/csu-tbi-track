@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% comment %}
+The printable "Attendance check-in" poster for the venue (registrations.page_views.checkin_poster, ASSUMPTIONS 434): A4,
+browser print. The QR code (activities:qr_code, kind checkin), the link, when check-in is open each day, and how to
+use it. No personal data.
+{% endcomment %}
+{% block title %}Check-in poster · {{ activity.title }}{% endblock %}
+{% block head %}
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  @media print {
+    .no-print { display: none !important; }
+    body { background: #fff !important; }
+    .sheet { box-shadow: none !important; margin: 0 !important; padding: 0 !important; max-width: none !important; }
+  }
+</style>
+{% endblock %}
+{% block body_class %}bg-slate-100{% endblock %}
+{% block body %}
+<div class="no-print mx-auto flex max-w-[210mm] items-center justify-between gap-3 px-4 pt-6">
+  <a href="{% url 'activities:detail' activity.pk %}" class="link inline-flex items-center gap-2 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to the activity</a>
+  <button type="button" class="btn btn-primary" onclick="window.print()">{% include "components/icon.html" with name="file-text" class="size-4" %}Print</button>
+</div>
+<main class="sheet mx-auto my-6 max-w-[210mm] bg-white p-[12mm] text-center text-ink shadow-card" data-checkin-poster>
+  <p class="text-sm font-semibold tracking-wider text-slate-600 uppercase">Caraga State University · Technology Business Incubator</p>
+  <h1 class="mt-4 text-3xl font-bold">Attendance check-in</h1>
+  <p class="mt-2 text-xl font-semibold">{{ activity.title }}</p>
+  <p class="mt-1 text-base text-slate-700">{{ activity.venue }}</p>
+  <img src="{% url 'activities:qr_code' activity.pk 'checkin' %}" alt="QR code of the check-in link" width="320" height="320"
+       class="mx-auto mt-8 size-80 [image-rendering:pixelated]">
+  <p class="mt-4 font-mono text-sm break-all">{{ url }}</p>
+  <ol class="mx-auto mt-8 max-w-md space-y-2 text-left text-lg">
+    <li>1. Scan the QR code with your phone's camera.</li>
+    <li>2. Type the email address you registered with.</li>
+    <li>3. Sign once if asked. Not registered? Register there as a walk-in.</li>
+  </ol>
+  <p class="mt-8 text-sm text-slate-700">Check in on each day you attend:</p>
+  <ul class="mt-2 text-sm text-slate-700">
+    {% for window in windows %}<li>{{ window.day|date:"l, F j, Y" }}: {% if activity.start_time %}{{ window.opens|date:"g:i A" }} – {{ window.closes|date:"g:i A" }}{% else %}all day{% endif %}</li>{% endfor %}
+  </ul>
+</main>
+{% endblock %}

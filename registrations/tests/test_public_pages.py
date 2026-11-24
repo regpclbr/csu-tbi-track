@@ -16,6 +16,7 @@ from registrations import public_pages, services
 from registrations.models import EvaluationSubmission, FormType, Registration
 
 from .conftest import CERT, FIXED, evaluation_answers, field_id, form_of, registration_answers
+from .conftest import SIGN_JSON, SIGN_POST
 
 pytestmark = pytest.mark.django_db
 
@@ -34,7 +35,7 @@ def registration_post(activity, email: str = "ana@example.com", **extra) -> dict
         **FIXED,  # Designation / Position and Office / Agency (ASSUMPTIONS 426)
         f"field_{field_id(form, 'Affiliation / Organization')}": "CSU",
         services.HONEYPOT_FIELD: "",
-        services.PRIVACY_CONSENT_FIELD: "yes",  # the privacy notice checkbox (ASSUMPTIONS 394)
+        services.PRIVACY_CONSENT_FIELD: "yes", **SIGN_POST,  # the privacy notice checkbox (ASSUMPTIONS 394)
     }
     data.update(extra)
     return data
@@ -214,7 +215,7 @@ def small_limits(settings):
 
 def api_post(client, activity, email: str, ip: str = "203.0.113.5"):
     body = {"name": "Ana Cruz", "email": email, **FIXED, "answers": registration_answers(activity),
-            services.PRIVACY_CONSENT_FIELD: True}
+            services.PRIVACY_CONSENT_FIELD: True, "signature": SIGN_JSON}
     return client.post(f"/api/register/{activity.pk}/", json.dumps(body), content_type="application/json", REMOTE_ADDR=ip)
 
 
@@ -319,7 +320,7 @@ def eval_url(person) -> str:
 
 
 def evaluation_post(activity, step: str = "review", **extra) -> dict:
-    data = {"step": step, "comments": "Great.", services.PRIVACY_CONSENT_FIELD: "yes", **CERT}
+    data = {"step": step, "comments": "Great.", services.PRIVACY_CONSENT_FIELD: "yes", **SIGN_POST, **CERT}
     for key, value in evaluation_answers(activity).items():
         data[f"field_{key}"] = str(value)
     data.update(extra)

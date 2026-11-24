@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Count, F, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 
 from certificates.models import ActivitySignatory, Certificate
@@ -20,7 +20,7 @@ from documents import services as document_services
 from documents.models import Document, DocumentType
 from notifications.models import Notification
 from registrations import services as registration_services
-from registrations.models import FormTemplate, FormType, Registration
+from registrations.models import AttendanceDay, FormTemplate, FormType, Registration
 
 from .formatting import format_date
 from .models import Activity, ActivityStatus
@@ -115,10 +115,11 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
         .annotate(
             registered=Count("registrations"),
             attended=Count("registrations", filter=Q(registrations__attendance_confirmed=True)),
-            # Marked attended after the evaluation deadline and not evaluated: their link can never work.
+            # Marked attended after the evaluation deadline and not evaluated: their link can never work. Since
+            # ASSUMPTIONS 434: no attendance day of theirs was recorded on or before the deadline.
             attended_after_evaluation=Count("registrations", filter=_WAITING_TO_EVALUATE & Q(
-                registrations__attendance_marked_at__gt=F("evaluation_deadline"),
-            )),
+                evaluation_deadline__isnull=False) & ~Q(Exists(AttendanceDay.objects.filter(
+                    registration=OuterRef("registrations"), created_at__lte=OuterRef("evaluation_deadline"))))),
             links_failed=Count("registrations", filter=_WAITING_TO_EVALUATE & Q(registrations__evaluation_link_failed_at__isnull=False)),
             links_not_sent=Count("registrations", filter=_WAITING_TO_EVALUATE & Q(
                 registrations__evaluation_link_sent_at__isnull=True, registrations__evaluation_link_failed_at__isnull=True,

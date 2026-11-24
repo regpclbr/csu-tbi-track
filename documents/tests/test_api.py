@@ -211,4 +211,4 @@ def test_checklist_api(client, view_only, make_activity) -> None:
     # The activity ends before PAYMENT_DOCUMENTS_FROM: Activity Report and Event Photos are not required (ASSUMPTIONS 425).
     assert {row["document_type"] for row in data["optional"]} == {
         "Invitation Letter", "Pre-registration Form", "Evaluation Form", "Certificate", "Other",
-        "Activity Report", "Event Photos"}
+        "Activity Report", "Event Photos", "Confirmation of Attendance"}  # 434: only from CONFIRMATION_DOCUMENTS_FROM

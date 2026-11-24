@@ -14,6 +14,7 @@ from registrations import services
 from registrations.models import FormAnswer, FormType, Registration
 
 from .conftest import FIXED, cat, form_of, registration_answers
+from .conftest import SIGN_JSON, SIGN_POST
 
 # --- Who is visible, and when registration is open ----------------------------------------
 
@@ -238,7 +239,7 @@ def test_no_email_when_registration_fails(scheduled, django_capture_on_commit_ca
 def test_public_register_endpoint(client, scheduled) -> None:
     payload = {"name": "Ana Cruz", "email": "ana@example.com", "contact_number": "0917", **FIXED,
                "answers": registration_answers(scheduled),
-               "privacy_consent": True}
+               "privacy_consent": True, "signature": SIGN_JSON}
     response = client.post(f"/api/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
     assert response.status_code == 201
     assert json.loads(response.content) == {
@@ -253,7 +254,7 @@ def test_public_register_endpoint(client, scheduled) -> None:
 
 @pytest.mark.django_db
 def test_public_register_shows_field_errors(client, scheduled) -> None:
-    body = {"name": "", "email": "x", "privacy_consent": True}
+    body = {"name": "", "email": "x", "privacy_consent": True, "signature": SIGN_JSON}
     response = client.post(f"/api/register/{scheduled.pk}/", json.dumps(body), content_type="application/json")
     assert response.status_code == 400
     assert {"name", "email"} <= set(json.loads(response.content)["errors"])

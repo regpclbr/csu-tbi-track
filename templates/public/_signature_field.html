@@ -1,0 +1,52 @@
+{% comment %}
+The participant's signature (ASSUMPTIONS 434), required at pre-registration (public page and startup portal), at the QR
+check-in for anyone without one, for walk-ins, and (staff=True: draw or typed only) in the staff "Mark attended" dialog.
+{% include "public/_signature_field.html" with values=values error=errors.signature focus=focus %}
+Three ways: draw on the screen (static/js/signature_pad.js writes signature_drawn), upload a JPG/PNG picture
+(signature_file; the form needs enctype="multipart/form-data"), or type the full name + tick "I confirm this is my
+signature". The check is registrations.signatures.clean_signature. Without JavaScript every part shows and the chosen radio
+decides; drawing then needs JavaScript (a note says so).
+{% endcomment %}
+<fieldset x-data="{ kind: '{{ values.signature_kind|default:'' }}' }" class="space-y-3"{% if error %} aria-describedby="id_signature-error"{% endif %} data-signature-field>
+  <legend class="text-sm font-semibold text-ink">Your signature <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span></legend>
+  <p class="text-sm text-slate-700">Given once and printed on the attendance forms of this activity{% if not staff %} instead of signing on paper{% endif %}. Choose one way:</p>
+  <div class="flex flex-wrap gap-x-4 gap-y-1">
+    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
+      <input type="radio" name="signature_kind" value="draw" x-model="kind" class="size-5 accent-primary"{% if values.signature_kind == "draw" %} checked{% endif %}{% if focus == "signature" %} autofocus{% endif %}{% if error %} aria-invalid="true"{% endif %}>Draw it on the screen</label>
+    {% if not staff %}
+    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
+      <input type="radio" name="signature_kind" value="upload" x-model="kind" class="size-5 accent-primary"{% if values.signature_kind == "upload" %} checked{% endif %}>Upload a picture of it</label>
+    {% endif %}
+    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
+      <input type="radio" name="signature_kind" value="typed" x-model="kind" class="size-5 accent-primary"{% if values.signature_kind == "typed" %} checked{% endif %}>Type my full name</label>
+  </div>
+
+  <div x-show="kind === 'draw'" x-cloak x-data="signaturePad()" class="space-y-2" data-signature-draw>
+    <canvas x-ref="canvas" class="block h-40 w-full touch-none rounded-xl border border-line-strong bg-white" aria-label="Signature drawing area: draw with your finger, a pen or the mouse" role="img"
+            @pointerdown="start($event)" @pointermove="move($event)" @pointerup="end()" @pointerleave="end()" @pointercancel="end()"></canvas>
+    <input type="hidden" name="signature_drawn" x-ref="value" value="">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <span class="text-sm text-slate-700">Sign inside the box with your finger, a pen or the mouse.</span>
+      <button type="button" class="btn btn-ghost btn-sm" @click="clear()">Clear</button>
+    </div>
+  </div>
+  <noscript><p class="text-sm text-slate-700">Drawing needs JavaScript. Upload a picture or type your full name instead.</p></noscript>
+
+  {% if not staff %}
+  <div x-show="kind === 'upload'" data-signature-upload>
+    <label for="id_signature_file" class="text-sm font-semibold text-ink">Picture of your signature</label>
+    <input id="id_signature_file" type="file" name="signature_file" accept="image/png,image/jpeg" class="mt-2 block w-full text-sm text-ink">
+    <p class="mt-2 text-sm text-slate-700">JPG or PNG, at most {{ signature_max_kb|default:"2048" }} KB. A photo of your signature on white paper works.</p>
+  </div>
+  {% endif %}
+
+  <div x-show="kind === 'typed'" class="space-y-2" data-signature-typed>
+    <label for="id_signature_typed_name" class="text-sm font-semibold text-ink">Your full name</label>
+    <input id="id_signature_typed_name" type="text" name="signature_typed_name" value="{{ values.signature_typed_name|default:'' }}" maxlength="150" autocomplete="name" class="field-input">
+    <label class="flex min-h-11 cursor-pointer items-start gap-3 text-sm text-ink">
+      <input type="checkbox" name="signature_confirm" value="yes" class="mt-1 size-5 shrink-0 accent-primary">
+      <span>I confirm this is my signature.</span>
+    </label>
+  </div>
+  {% if error %}<p id="id_signature-error" class="field-error">{{ error }}</p>{% endif %}
+</fieldset>

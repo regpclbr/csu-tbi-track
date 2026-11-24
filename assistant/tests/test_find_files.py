@@ -160,7 +160,8 @@ def test_the_page_activity_filter_limits_find_files(director, chat, files, event
     assert card_ids(answer) == [files["old"].pk]
 
 
-def test_attendance_sheet_content_never_reaches_gemini(director, chat, files, fake_gemini) -> None:
+def test_attendance_sheet_content_never_reaches_gemini(director, chat, files, fake_gemini, settings) -> None:
+    settings.ASSISTANT_EXCLUDED_DOCUMENT_TYPES = ["Attendance Sheet"]  # an excluded type (none by default since 434)
     fake_gemini.add_topics("attendee", "juan")
     assert indexing.index_document(files["attendance"].pk)["status"] != "indexed"  # never indexed
     find(director, chat, "attendance sheet of the Ideation Bootcamp")  # listed by our code

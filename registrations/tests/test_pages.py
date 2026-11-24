@@ -235,13 +235,13 @@ def test_mark_attended_is_refused_until_ongoing_then_works(director, login, sche
     person = signup(scheduled, "ana@example.com")
     url = reverse("registrations:attendance", args=[scheduled.pk])
     client = login(director)
-    data = {"registration_ids": [person.pk], "action": "mark", "method": "email"}
+    data = {"registration_ids": [person.pk], "action": "mark"}
     assert services.attendance_closed_reason(scheduled) in messages_of(client.post(url, data, follow=True))
     activity_services.change_status(director, scheduled, "Ongoing")
     response = client.post(url, data, follow=True)
-    assert "Marked 1 registration as attended (email)." in messages_of(response)
+    assert "Marked 1 registration as attended." in messages_of(response)
     person.refresh_from_db()
-    assert person.attendance_confirmed and person.confirmation_method == "email"
+    assert person.attendance_confirmed and person.attendance_days.get().method == "staff"
     assert 'name="registration_ids"' in response.content.decode()
 
 
@@ -283,7 +283,7 @@ def test_send_links_while_the_window_is_open(director, login, scheduled, signup)
     today = timezone.localdate()
     Activity.objects.filter(pk=scheduled.pk).update(start_date=today, end_date=today)  # the evaluation window opens today
     activity_services.change_status(director, scheduled, "Ongoing")
-    services.set_attendance(director, scheduled, [person.pk], True, "email")
+    services.set_attendance(director, scheduled, [person.pk], True, "staff")
     client = login(director)
     html = client.get(tab_url(scheduled, "evaluation")).content.decode()
     assert "Attendees who have not answered (1)" in html and person.name in html and "Not sent yet" in html
@@ -298,7 +298,7 @@ def test_read_functions_for_attendance_and_links(director, scheduled, signup) ->
     person = signup(scheduled, "ana@example.com")
     activity_services.change_status(director, scheduled, "Ongoing")
     assert services.attendance_closed_reason(scheduled) is None
-    services.set_attendance(director, scheduled, [person.pk], True, "email")
+    services.set_attendance(director, scheduled, [person.pk], True, "staff")
     assert list(services.evaluation_link_recipients(scheduled)) == [person]
 
 

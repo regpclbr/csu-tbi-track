@@ -1,0 +1,18 @@
+{% extends "layouts/public.html" %}
+{% comment %}
+/checkin/<id>/done/ (ASSUMPTIONS 434): only for the browser that just checked in (session flag). The day and time only;
+never the name or the email. "Check in someone else" goes back to the empty form (one phone at the desk).
+{% endcomment %}
+{% block title %}Checked in · CSU-TBI Track{% endblock %}
+{% block content %}
+<section class="public-card p-6 sm:p-8" data-checkin-done>
+  {% include "public/_notice_card.html" with icon="circle-check" tone="success" title="Thank you!" text=text %}
+  <p class="mt-4 text-base text-slate-700">A short confirmation is on its way to your email.</p>
+  <div class="mt-6">
+    <a href="{% url 'checkin' activity.pk %}" class="btn btn-secondary">Check in someone else</a>
+  </div>
+</section>
+<section class="public-card mt-6 p-6 sm:p-8" aria-label="Activity">
+  {% include "public/_activity_summary.html" with activity=activity %}
+</section>
+{% endblock %}

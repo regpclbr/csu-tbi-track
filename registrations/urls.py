@@ -29,6 +29,13 @@ urlpatterns = [
         name="evaluation_pdf",
     ),
     path("activities/<int:activity_id>/attendance/", page_views.attendance, name="attendance"),
+    path("activities/<int:activity_id>/attendance/<int:registration_id>/sign/", page_views.attendance_signature,
+         name="attendance_signature"),
+    path("activities/<int:activity_id>/registrations/<int:registration_id>/signature.png", page_views.signature_image,
+         name="signature_image"),
+    path("activities/<int:activity_id>/attendance-forms/<str:kind>/", page_views.generate_attendance_form,
+         name="generate_attendance_form"),
+    path("activities/<int:activity_id>/checkin-poster/", page_views.checkin_poster, name="checkin_poster"),
     path("activities/<int:activity_id>/evaluation-links/", page_views.send_links, name="send_links"),
     path("activities/<int:activity_id>/attendance-sheet/", page_views.attendance_sheet, name="attendance_sheet"),
     # JSON API

@@ -4,7 +4,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from accounts.views import admin_login_redirect
-from registrations import public_views
+from registrations import checkin_views, public_views
 from registrations import views as registration_views
 from reports.views import dashboard_page
 from startups import page_views as startup_page_views
@@ -30,6 +30,10 @@ urlpatterns = [
     path("evaluate/<str:token>/thanks/", public_views.evaluate_done, name="evaluate_done"),
     # The general evaluation link of an activity (one per activity, shared as a QR code): emails the personal link.
     path("evaluation/<int:activity_id>/", public_views.evaluation_request_page, name="evaluation_request"),
+    # QR attendance check-in and walk-ins (ASSUMPTIONS 434); the confirmation email's "I can no longer attend" link
+    path("checkin/<int:activity_id>/", checkin_views.checkin_page, name="checkin"),
+    path("checkin/<int:activity_id>/done/", checkin_views.checkin_done, name="checkin_done"),
+    path("registration/cancel/<str:token>/", checkin_views.cancel_page, name="cancel_registration"),
     path("evaluation/<int:activity_id>/sent/", public_views.evaluation_request_sent, name="evaluation_request_sent"),
     # "done" first: otherwise it would be read as a token.
     path("startups/set-password/done/", startup_page_views.set_password_done, name="startup_set_password_done"),

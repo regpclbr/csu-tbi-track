@@ -494,7 +494,7 @@ SPACING_UTILITY = re.compile(
     r"(?<![\w\[-])-?(?:[a-z0-9-]+:)*(p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y)"
     r"-(\[[^\]]*\]|[0-9.]+)(?![\w.\[-])")
 ICON_CLEARANCE = {"8", "9", "10", "11", "12", "14"}  # one-sided pl / pr inside a field-input (room for its icon)
-PRINT_TEMPLATES = {"attendance_sheet.html", "certificate_pdf.html", "report_pdf.html", "individual_evaluation_pdf.html"}
+PRINT_TEMPLATES = {"attendance_sheet.html", "checkin_poster.html", "attendance_forms_pdf.html", "certificate_pdf.html", "report_pdf.html", "individual_evaluation_pdf.html"}
 
 
 def spacing_offenders(classes: str) -> list[str]:

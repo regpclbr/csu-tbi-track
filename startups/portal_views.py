@@ -21,6 +21,7 @@ from documents.pages import safe_next
 from notifications import services as notification_services
 from registrations import public_pages
 from registrations import services as registration_services
+from registrations import signatures
 from registrations.models import FormType
 
 from . import portal_pages as pages
@@ -120,12 +121,15 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
             "privacy_consent": registration_services.has_privacy_consent(
                 request.POST.get(registration_services.PRIVACY_CONSENT_FIELD)
             ),
+            "signature_kind": request.POST.get("signature_kind", ""),
+            "signature_typed_name": request.POST.get("signature_typed_name", ""),
         }
         try:
             registration_services.check_privacy_consent(request.POST.get(registration_services.PRIVACY_CONSENT_FIELD))
             services.register_as_startup(
                 startup, activity, designation=values["designation"], office_agency=values["office_agency"],
                 participant_category=values["participant_category"] or None, answers=values["answers"],
+                signature=signatures.from_post(request.POST, request.FILES),  # required (ASSUMPTIONS 434)
             )
         except registration_services.RegistrationError as refused:
             message, status = str(refused), 400
@@ -143,7 +147,7 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
         return notice(request, title="Registration is closed", text=reason, icon="lock", tone="warning", status=status,
                       link_url=reverse("startups:portal_activities"), link_label="See other open activities")
     focus = public_pages.first_error(
-        public_pages.field_order(form, ("designation", "office_agency", "participant_category")), errors)
+        public_pages.field_order(form, ("designation", "office_agency", "participant_category", "signature")), errors)
     summary = registration_services.public_activity_summary(activity)
     context = {
         "activity": activity,

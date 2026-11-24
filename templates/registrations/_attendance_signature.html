@@ -1,0 +1,19 @@
+{% comment %}
+The "Mark attended" dialog body for a person without a signature (owner decision b, ASSUMPTIONS 434), loaded with HTMX
+into #registration-dialog-body (registrations.page_views.attendance_signature). The participant signs on this staff
+device (draw or typed name + tick: public/_signature_field.html with staff=True), or staff skip it ("Mark without
+signature": the generated sheet then says "Marked by staff"). Both post to registrations:attendance for the chosen day.
+{% endcomment %}
+<p class="text-lg font-semibold [overflow-wrap:anywhere] text-ink">{{ registration.name }}</p>
+<p class="mt-1 text-sm text-slate-700">Mark attended{% if day_label %} on {{ day_label }}{% endif %}. This person has no signature yet: they can sign on this device now. It is printed on the generated attendance forms.</p>
+<form method="post" action="{% url 'registrations:attendance' activity.pk %}" class="mt-4 space-y-4" data-staff-signature>
+  {% csrf_token %}
+  <input type="hidden" name="filters" value="{{ filters }}">
+  <input type="hidden" name="day" value="{{ day }}">
+  <input type="hidden" name="row_action" value="mark:{{ registration.pk }}">
+  {% include "public/_signature_field.html" with staff=True values=None error=None %}
+  <div class="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
+    <button type="submit" name="skip_signature" value="1" class="btn btn-secondary btn-sm" data-skip-signature>Mark without signature</button>
+    <button type="submit" name="with_signature" value="1" class="btn btn-primary btn-sm">Save signature and mark attended</button>
+  </div>
+</form>

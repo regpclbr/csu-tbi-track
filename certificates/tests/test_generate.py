@@ -54,7 +54,7 @@ def test_generating_again_adds_only_the_missing_ones(conducted, design, director
     activity, people = conducted
     services.generate_missing_certificates(activity)
     late = activity.registrations.get(name="No Show")
-    registration_services.set_attendance(director, activity, [late.pk], True, "wet_signature")  # creates it
+    registration_services.set_attendance(director, activity, [late.pk], True, "staff")  # creates it
     assert services.generate_missing_certificates(activity)["participation_created"] == 0
     assert Certificate.objects.get(registration=late).certificate_number == f"TBI-{YEAR}-00004"
 

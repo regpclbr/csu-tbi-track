@@ -59,7 +59,7 @@ can_manage_users and only for an active startup (the service refuses inactive on
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ activity.start_date|date:"M j" }}{% if activity.end_date != activity.start_date %} – {{ activity.end_date|date:"M j" }}{% endif %}, {{ activity.end_date|date:"Y" }}</td>
                 <td class="px-3 py-3 text-slate-700">{{ registration.participant_category.name }}</td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700"><time datetime="{{ registration.registration_date|date:'c' }}">{{ registration.registration_date|date:"M j, Y" }}</time>{% if not registration.startup_id %}<br><span class="text-xs text-muted">Public form (email match)</span>{% endif %}</td>
-                <td class="px-3 py-3 whitespace-nowrap">{% if registration.attendance_confirmed %}{% include "components/badge.html" with text="Attended" tone="success" %}<span class="block text-xs text-muted">{{ registration.get_confirmation_method_display|default:"" }}</span>{% else %}{% include "components/badge.html" with text="Not marked" tone="neutral" %}{% endif %}</td>
+                <td class="px-3 py-3 whitespace-nowrap">{% if registration.attendance_confirmed %}{% include "components/badge.html" with text="Attended" tone="success" %}{% else %}{% include "components/badge.html" with text="Not marked" tone="neutral" %}{% endif %}</td>
               </tr>
             {% endwith %}{% endfor %}
           </tbody>

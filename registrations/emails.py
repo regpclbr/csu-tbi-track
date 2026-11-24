@@ -18,8 +18,13 @@ def _activity_lines(registration: Registration) -> str:
     return f"Activity: {activity.title}\nDate: {dates}\nTime: {times}\nVenue: {activity.venue}\n"
 
 
-def send_registration_confirmation(registration: Registration) -> None:
-    """Tell the registrant they are registered. It never mentions other registrants."""
+def send_registration_confirmation(registration: Registration, cancel_link: str | None = None) -> None:
+    """Tell the registrant they are registered, with their "I can no longer attend" link (ASSUMPTIONS 434; the task
+    always passes it). It never mentions other registrants."""
+    cancel = (
+        "If you can no longer attend, please tell us, so we can free your slot and plan the meals:\n"
+        f"{cancel_link}\n\n"
+    ) if cancel_link else ""
     send_mail(
         subject=f"You are registered: {registration.activity.title}",
         message=(
@@ -27,7 +32,30 @@ def send_registration_confirmation(registration: Registration) -> None:
             "You are registered for this CSU-TBI activity.\n\n"
             f"{_activity_lines(registration)}"
             f"Registered as: {registration.participant_category}\n\n"
-            "Please bring this email. Thank you!\n"
+            "On each day of the activity, scan the attendance QR code at the venue and type this email address to "
+            "check in.\n\n"
+            f"{cancel}"
+            "Thank you!\n"
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[registration.email],
+    )
+
+
+def send_checkin_notice(registration: Registration, day, checked_in_at) -> None:
+    """After every QR check-in (ASSUMPTIONS 434), so a person checked in by someone else who typed their email finds
+    out (the proxy check-in risk, docs/TBI_QUESTIONS.md)."""
+    from django.utils import timezone
+
+    from activities.formatting import format_time
+
+    send_mail(
+        subject=f"Checked in: {registration.activity.title}",
+        message=(
+            f"Hello {registration.name},\n\n"
+            f"You were checked in to {registration.activity.title} on {format_date(day)} at "
+            f"{format_time(timezone.localtime(checked_in_at).time())}. If this wasn't you, contact the TBI.\n\n"
+            f"{_activity_lines(registration)}"
         ),
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[registration.email],

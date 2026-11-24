@@ -20,31 +20,33 @@ from .conftest import CERT, cat, evaluation_answers, form_of, opens_at
 def test_attendance_only_when_ongoing_or_conducted(director, scheduled, signup, move_to) -> None:
     person = signup(scheduled, "ana@example.com")
     with pytest.raises(services.RegistrationError, match="Attendance opens when the activity starts on"):
-        services.set_attendance(director, scheduled, [person.pk], True, "email")
+        services.set_attendance(director, scheduled, [person.pk], True, "staff")
 
     activity_services.change_status(director, scheduled, "Ongoing")
-    assert services.set_attendance(director, scheduled, [person.pk], True, "wet_signature") == 1
+    assert services.set_attendance(director, scheduled, [person.pk], True, "staff") == 1
 
     activity_services.change_status(director, scheduled, "Conducted")  # Conducted locks the activity, not attendance
     assert services.set_attendance(director, scheduled, [person.pk], False) == 1
 
 
 @pytest.mark.django_db
-def test_mark_many_and_unmark_clears_method(director, attended) -> None:
+def test_mark_many_and_unmark_removes_the_day(director, attended) -> None:
     people = attended(3)
-    assert all(p.attendance_confirmed and p.confirmation_method == "email" for p in people)
+    assert all(p.attendance_confirmed and list(p.attendance_days.values_list("method", flat=True)) == ["staff"]
+               for p in people)
     activity = people[0].activity
     services.set_attendance(director, activity, [people[0].pk, people[1].pk], False)
-    statuses = dict(Registration.objects.filter(activity=activity).values_list("email", "confirmation_method"))
-    assert statuses == {"person0@example.com": None, "person1@example.com": None, "person2@example.com": "email"}
+    days = {r.email: r.attendance_days.count() for r in Registration.objects.filter(activity=activity)}
+    assert days == {"person0@example.com": 0, "person1@example.com": 0, "person2@example.com": 1}
     assert not Registration.objects.get(pk=people[0].pk).attendance_confirmed
 
 
 @pytest.mark.django_db
-def test_marking_needs_a_valid_method(director, attended) -> None:
+def test_staff_marking_is_always_method_staff(director, attended) -> None:
+    """ASSUMPTIONS 434: email / wet_signature exist only on rows copied by the migration."""
     person = attended(1)[0]
-    for method in (None, "selfie"):
-        with pytest.raises(services.RegistrationError, match="email or wet_signature"):
+    for method in ("selfie", "email", "wet_signature", "qr"):
+        with pytest.raises(services.RegistrationError, match="method “staff”"):
             services.set_attendance(director, person.activity, [person.pk], True, method)
 
 
@@ -65,7 +67,7 @@ def test_registrations_of_another_activity_are_refused(director, attended, valid
     other = with_forms(activity_services.create_activity(director, valid_data(title="Other")))
     move_to(other, "Ongoing")
     with pytest.raises(services.RegistrationError, match="not found for this activity"):
-        services.set_attendance(director, other, [person.pk], True, "email")
+        services.set_attendance(director, other, [person.pk], True, "staff")
 
 
 @pytest.mark.django_db
@@ -81,7 +83,7 @@ def test_list_registrations_filters(director, scheduled, signup) -> None:
     ana = signup(scheduled, "ana@example.com", participant_category=cat("Faculty").pk)
     signup(scheduled, "ben@example.com", participant_category=cat("Incubatees").pk)
     activity_services.change_status(director, scheduled, "Ongoing")
-    services.set_attendance(director, scheduled, [ana.pk], True, "email")
+    services.set_attendance(director, scheduled, [ana.pk], True, "staff")
 
     emails = lambda **f: [r.email for r in services.list_registrations(scheduled, **f)]  # noqa: E731
     assert emails() == ["ana@example.com", "ben@example.com"]

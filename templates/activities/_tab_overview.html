@@ -29,6 +29,22 @@ Draft) and participants by category (right). Two stacked columns, so neither lea
         {% endif %}
       </div>
     </section>
+    {% comment %}Attendance (ASSUMPTIONS 434): the pre-registration answers for the meal estimate and the check-ins per day (activities.pages.attendance_card).{% endcomment %}
+    <section class="card p-6" aria-labelledby="attendance-title" data-attendance-card>
+      {% include "components/section_header.html" with id="attendance-title" title="Attendance" subtitle="For the snacks and lunch: who said they will attend (from the pre-registrations), and who came." %}
+      <dl class="grid grid-cols-3 gap-4 text-center">
+        <div><dt class="caption text-muted">Will attend</dt><dd class="text-2xl font-bold text-ink tabular-nums">{{ attendance_card.will_attend }}</dd></div>
+        <div><dt class="caption text-muted">Will not attend</dt><dd class="text-2xl font-bold text-ink tabular-nums">{{ attendance_card.will_not_attend }}</dd></div>
+        <div><dt class="caption text-muted">Walk-ins</dt><dd class="text-2xl font-bold text-ink tabular-nums">{{ attendance_card.walk_ins }}</dd></div>
+      </dl>
+      {% if attendance_card.any_attendance %}
+        <ul class="mt-4 space-y-2 border-t border-line pt-4 text-sm">
+          {% for day in attendance_card.days %}
+            <li class="flex items-baseline justify-between gap-3"><span class="text-slate-700">{{ day.label }}</span><span class="font-semibold text-ink tabular-nums">{{ day.total }} attended{% if day.qr %} <span class="font-normal text-muted">({{ day.qr }} by QR)</span>{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
     {% if share %}{% include "activities/_share_card.html" %}{% endif %}
     {% comment %}Participants by category (ASSUMPTIONS 400, 403): a donut from activities.pages.category_donut (counts from reports.metrics), never counted here.{% endcomment %}
     <section class="card p-6" aria-labelledby="by-category-title" id="by-category">

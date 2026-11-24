@@ -1,0 +1,59 @@
+{% extends "layouts/public.html" %}
+{% comment %}
+/checkin/<id>/ (registrations.checkin_views.checkin_page, ASSUMPTIONS 434): the venue's "Attendance check-in" QR code.
+step "email": type the registered email. step "signature": a registered person without a signature signs (+ privacy
+consent). step "walkin": someone who did not pre-register fills in a short registration (+ signature, consent) and is
+checked in at once. novalidate: every check is the server's. The honeypot is the same hidden field as registration.
+{% endcomment %}
+{% block title %}Check in: {{ activity.title }} · CSU-TBI Track{% endblock %}
+{% block content %}
+<section class="public-card p-6 sm:p-8" aria-label="Activity">
+  {% include "public/_activity_summary.html" with activity=activity summary=summary %}
+</section>
+
+<section class="public-card mt-6 p-6 sm:p-8" aria-labelledby="checkin-heading" data-checkin-step="{{ step }}">
+  {% if step == "email" %}
+    <h2 id="checkin-heading" class="text-xl font-bold tracking-tight text-ink">Attendance check-in</h2>
+    <p class="mt-1 mb-6 text-base text-slate-700">Type the email address you registered with. Did not register? Type your email anyway: you can register here as a walk-in.</p>
+  {% elif step == "signature" %}
+    <h2 id="checkin-heading" class="text-xl font-bold tracking-tight text-ink">Add your signature</h2>
+    <p class="mt-1 mb-6 text-base text-slate-700">We don't have your signature yet. Give it once; it is printed on this activity's attendance forms.</p>
+  {% else %}
+    <h2 id="checkin-heading" class="text-xl font-bold tracking-tight text-ink">Register as a walk-in</h2>
+    <p class="mt-1 mb-6 text-base text-slate-700">This email is not registered for this activity. Fill in this short form to register and check in now. Already registered with another email? <a href="{% url 'checkin' activity.pk %}" class="font-semibold text-link underline underline-offset-2">Type that one instead</a>.</p>
+  {% endif %}
+  {% include "public/_form_alerts.html" %}
+
+  <form method="post" action="{% url 'checkin' activity.pk %}" novalidate class="space-y-6"{% if step != "email" %} enctype="multipart/form-data"{% endif %} x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+    {% csrf_token %}
+    <input type="hidden" name="step" value="{{ step }}">
+    {% if step == "email" %}
+      {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="email" required=True focus=focus|default:"email" %}
+    {% elif step == "signature" %}
+      <input type="hidden" name="email" value="{{ values.email }}">
+      <p class="text-sm text-slate-700">Checking in: <span class="font-semibold text-ink">{{ values.email }}</span></p>
+      {% include "public/_signature_field.html" with values=values error=errors.signature focus=focus %}
+      {% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
+    {% else %}
+      {% include "public/_input.html" with name="name" label="Full name" value=values.name error=errors.name autocomplete="name" required=True focus=focus %}
+      {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="email" required=True focus=focus %}
+      {% include "public/_input.html" with name="contact_number" label="Contact number" type="tel" inputmode="tel" value=values.contact_number error=errors.contact_number autocomplete="tel" optional=True focus=focus %}
+      {% include "public/_input.html" with name="designation" label="Designation / Position" value=values.designation error=errors.designation autocomplete="organization-title" maxlength="255" required=True focus=focus help="For example Owner, Faculty member, Student." %}
+      {% include "public/_input.html" with name="office_agency" label="Office / Agency" value=values.office_agency error=errors.office_agency autocomplete="organization" maxlength="255" required=True focus=focus help="Your office, company, school or agency." %}
+      {% include "components/category_choice.html" %}
+      {% include "public/_signature_field.html" with values=values error=errors.signature focus=focus %}
+      {% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
+    {% endif %}
+
+    <div class="hp-field" aria-hidden="true">
+      <label for="id_{{ honeypot_field }}">Leave this field empty</label>
+      <input type="text" id="id_{{ honeypot_field }}" name="{{ honeypot_field }}" value="" tabindex="-1" autocomplete="off">
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-arrow w-full sm:w-auto sm:px-8" :disabled="busy">
+      <span x-show="!busy">{% if step == "walkin" %}Register and check in{% else %}Check in{% endif %}</span><span x-show="busy" x-cloak>Checking in…</span>
+      {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}
+    </button>
+  </form>
+</section>
+{% endblock %}

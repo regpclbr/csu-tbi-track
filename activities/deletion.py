@@ -27,7 +27,7 @@ from assistant.models import AIMessageSource
 from certificates.models import Certificate, CertificateText
 from documents.models import Document, DocumentStatus
 from notifications.models import Notification
-from registrations.models import EvaluationSubmission, FormTemplate, Registration
+from registrations.models import EvaluationSubmission, FormTemplate, ParticipantSignature, Registration
 
 from .models import Activity, ActivityAuditLog, ActivityDeletion
 
@@ -179,6 +179,9 @@ def delete_activity(member: TBIMember, activity: Activity, typed_title: str) -> 
         documents = Document.objects.filter(activity=activity)
         files = [(Document, name) for name in documents.values_list("file_path", flat=True) if name]
         files += [(Certificate, name) for name in certificates.values_list("file_path", flat=True) if name]
+        # Participant signature images (ASSUMPTIONS 434); their rows and the attendance days cascade with the registrations.
+        files += [(ParticipantSignature, name) for name in ParticipantSignature.objects.filter(
+            registration__activity=activity).values_list("file_path", flat=True) if name]
 
         record = ActivityDeletion.objects.create(
             deleted_activity_id=activity.pk,

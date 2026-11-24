@@ -87,7 +87,7 @@ def test_optional_types_are_listed_with_their_documents(upload, director, activi
     optional = {entry["document_type"].name: entry["documents"] for entry in checklist["optional"]}
     # Activity Report / Event Photos: required only for activities ending from PAYMENT_DOCUMENTS_FROM (ASSUMPTIONS 425).
     assert set(optional) == {"Invitation Letter", "Pre-registration Form", "Evaluation Form",
-                             "Certificate", "Other", "Activity Report", "Event Photos"}
+                             "Certificate", "Other", "Activity Report", "Event Photos", "Confirmation of Attendance"}
     assert optional["Evaluation Form"] == [document]
     assert "Evaluation Form" not in by_name(checklist)
 

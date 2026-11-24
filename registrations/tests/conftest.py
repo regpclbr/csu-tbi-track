@@ -34,6 +34,9 @@ def field_id(form: FormTemplate, label: str) -> str:
 
 # The fixed fields every new registration needs (ASSUMPTIONS 426).
 FIXED = {"designation": "Project officer", "office_agency": "CSU"}
+# The signature every public registration entry point now requires (ASSUMPTIONS 434): a typed one.
+SIGN_JSON = {"kind": "typed", "typed_name": "Ana Cruz", "confirmed": True}
+SIGN_POST = {"signature_kind": "typed", "signature_typed_name": "Ana Cruz", "signature_confirm": "yes"}
 OLD_FIELD = "Affiliation / Organization"  # no longer a default field (ASSUMPTIONS 426); some tests add it by hand
 
 
@@ -120,7 +123,7 @@ def attended(scheduled, signup, director):
     def make(count: int = 1) -> list[Registration]:
         people = [signup(scheduled, f"person{n}@example.com") for n in range(count)]
         activity_services.change_status(director, scheduled, "Ongoing")
-        services.set_attendance(director, scheduled, [p.pk for p in people], True, "email")
+        services.set_attendance(director, scheduled, [p.pk for p in people], True, "staff")
         for person in people:
             person.refresh_from_db()
         return people

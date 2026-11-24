@@ -16,7 +16,7 @@ from activities.models import ActivityStatus
 from config.headers import private_token_page
 
 from . import public_pages as pages
-from . import services
+from . import services, signatures
 from .models import EvaluationSubmission, FormType
 from .public import guard_evaluation_request, guard_registration_request
 
@@ -105,6 +105,8 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
             "participant_category": post.get("participant_category", ""),
             "answers": pages.answers_from_post(form, post),
             "privacy_consent": services.has_privacy_consent(post.get(services.PRIVACY_CONSENT_FIELD)),
+            "signature_kind": post.get("signature_kind", ""),
+            "signature_typed_name": post.get("signature_typed_name", ""),
         }
         try:
             guard_registration_request(request, values["email"], post.get(services.HONEYPOT_FIELD))
@@ -118,6 +120,7 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
                 office_agency=values["office_agency"],
                 participant_category=values["participant_category"] or None,
                 answers=values["answers"],
+                signature=signatures.from_post(post, request.FILES),  # required here (ASSUMPTIONS 434)
             )
         except services.RegistrationRateLimited as error:
             message, status = str(error), 429

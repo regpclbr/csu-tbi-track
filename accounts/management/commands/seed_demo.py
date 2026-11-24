@@ -402,6 +402,7 @@ class Command(BaseCommand):
                 participant_category=incubatees if startup else self.rng.choice(categories),
                 name=name,
                 email=email,
+                registration_source=Registration.Source.PORTAL if startup else Registration.Source.ONLINE,
                 contact_number=f"09{self.rng.randint(100000000, 999999999)}",
                 # The fixed fields of every registration (ASSUMPTIONS 426).
                 designation="Founder" if startup else self.rng.choice(
@@ -419,11 +420,25 @@ class Command(BaseCommand):
         return registrations
 
     def mark_attendance(self, registrations: list[Registration], share: float) -> None:
+        """Demo attendance (ASSUMPTIONS 434): one ATTENDANCE_DAY row per attended day (the first day, later days most of
+        the time), by QR at 7:30-8:59 AM or marked by staff, and the flag the attendance service keeps in step."""
+        from registrations.attendance import activity_days
+        from registrations.models import AttendanceDay
+
         for registration in registrations:
-            if self.rng.random() < share:
-                registration.attendance_confirmed = True
-                registration.confirmation_method = self.rng.choice(list(Registration.ConfirmationMethod))
-                registration.save(update_fields=["attendance_confirmed", "confirmation_method", "updated_at"])
+            if self.rng.random() >= share:
+                continue
+            days = activity_days(registration.activity)
+            attended = [days[0]] + [day for day in days[1:] if self.rng.random() < 0.85]
+            for day in attended:
+                moment = timezone.make_aware(datetime.combine(day, time(7, self.rng.randint(30, 59))))
+                moment += timedelta(minutes=self.rng.randint(0, 89))
+                AttendanceDay.objects.get_or_create(registration=registration, day=day, defaults={
+                    "checked_in_at": moment, "created_at": moment,
+                    "method": self.rng.choice([AttendanceDay.Method.QR, AttendanceDay.Method.QR, AttendanceDay.Method.STAFF]),
+                })
+            registration.attendance_confirmed = True
+            registration.save(update_fields=["attendance_confirmed", "updated_at"])
 
     def create_evaluations(self, registrations: list[Registration], form: FormTemplate, end: date) -> None:
         fields = list(form.fields.all())

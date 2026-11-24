@@ -26,7 +26,7 @@ def test_attendance_takes_true_or_false(client, director, attended, value, expec
     person = attended(1)[0]  # marked attended already, so false unmarks
     client.force_login(director)
     url = f"/registrations/api/activities/{person.activity_id}/attendance/"
-    response = post_json(client, url, {"registration_ids": [person.pk], "attended": value, "method": "wet_signature"})
+    response = post_json(client, url, {"registration_ids": [person.pk], "attended": value, "method": "staff"})
     assert response.status_code == 200
     person.refresh_from_db()
     assert person.attendance_confirmed is expected

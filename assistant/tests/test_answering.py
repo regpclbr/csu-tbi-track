@@ -182,7 +182,8 @@ def test_an_answer_without_any_tool_is_not_found(director, chat, fake_gemini) ->
     assert ask(director, chat, "What is the capital of France?").answered_from == "not_found"
 
 
-def test_excluded_types_are_never_retrieved_even_with_old_rows(director, chat, make_document, fake_gemini) -> None:
+def test_excluded_types_are_never_retrieved_even_with_old_rows(director, chat, make_document, fake_gemini, settings) -> None:
+    settings.ASSISTANT_EXCLUDED_DOCUMENT_TYPES = ["Attendance Sheet"]  # none by default since ASSUMPTIONS 434
     fake_gemini.add_topics("budget")
     sheet = make_document(docx_file("budget attendees"), type_name="Attendance Sheet")
     DocumentEmbedding.objects.create(document=sheet, chunk_index=0, chunk_text="budget attendees",

@@ -352,6 +352,21 @@ def registration_summary(activity: Activity, now: datetime | None = None) -> dic
     }
 
 
+def attendance_card(activity: Activity) -> dict:
+    """The Overview's "Attendance" card (ASSUMPTIONS 434): the pre-registration answers for the meal estimate (Will
+    attend / Will not attend, walk-ins) and how many attended each day. Counts from registrations.attendance only."""
+    from registrations import attendance
+
+    days = attendance.checkins_by_day(activity)
+    labels = len(days) > 1
+    return {
+        **attendance.pre_registration_counts(activity),
+        "days": [{**day, "label": (f"Day {number} · " if labels else "") + format_date(day["day"])}
+                 for number, day in enumerate(days, start=1)],
+        "any_attendance": any(day["total"] for day in days),
+    }
+
+
 def detail_rows(detail: dict) -> list[tuple[str, str]]:
     """The Overview's fields as readable text (services.get_activity_detail values, formatted like the audit log)."""
     return [

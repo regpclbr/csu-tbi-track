@@ -3,6 +3,7 @@ The Share card of the Overview tab (activities.share.share_card; not shown for D
 Scheduled: the registration link with Open / Closed (registrations.services.registration_closed_reason); an activity
 created with its documents shows no link or QR code until its registration form is ready (share.BUILD_FORM_FIRST, 409).
 Ongoing / Conducted: the general evaluation link, only while evaluation_request_state is open; otherwise the reason.
+Scheduled / Ongoing: also the "Attendance check-in" link and QR (ASSUMPTIONS 434), with a printable page for the venue.
 {% endcomment %}
 <section class="card p-6" aria-labelledby="share-title">
   {% include "components/section_header.html" with id="share-title" title="Share" %}
@@ -43,5 +44,17 @@ Ongoing / Conducted: the general evaluation link, only while evaluation_request_
     {% else %}
       <p class="mt-2 flex gap-2 text-sm text-slate-700">{% include "components/icon.html" with name="info" class="mt-1 size-4.5 text-muted" %}{{ share.evaluation.reason }}</p>
     {% endif %}
+  {% endif %}
+  {% if share.checkin %}
+    <div class="mt-6 border-t border-line pt-4" data-checkin-share>
+      <div class="flex flex-wrap items-center gap-2">
+        <h3 class="text-sm font-semibold text-ink">Attendance check-in</h3>
+        {% if share.checkin.open %}{% include "components/badge.html" with text="Open now" tone="success" %}{% else %}{% include "components/badge.html" with text="Not open" tone="neutral" %}{% endif %}
+      </div>
+      <p class="mt-2 text-sm text-slate-700">Print it for the venue. On each day of the activity, participants scan it and type the email they registered with; people who did not register can sign up as walk-ins.{% if not share.checkin.open and share.checkin.reason %} {{ share.checkin.reason }}{% endif %}</p>
+      {% include "activities/_share_link.html" with kind="checkin" url=share.checkin.url label="Check-in link" done="Check-in link copied." %}
+      <a href="{% url 'registrations:checkin_poster' activity.pk %}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm mt-4">
+        {% include "components/icon.html" with name="file-text" class="size-4" %}Print check-in poster<span class="sr-only"> (opens in a new tab)</span></a>
+    </div>
   {% endif %}
 </section>

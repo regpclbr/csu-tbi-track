@@ -15,6 +15,7 @@ from startups import services
 from startups.models import Startup
 
 from .conftest import STARTUP_PASSWORD, answers_for, record
+from registrations.tests.conftest import SIGN_JSON, SIGN_POST
 
 pytestmark = pytest.mark.django_db
 
@@ -33,6 +34,7 @@ def register(client, activity, **body):
     body.setdefault("answers", answers_for(activity))
     body.setdefault("designation", "Founder")  # Office / Agency is left out: the startup's name (ASSUMPTIONS 426)
     body.setdefault("privacy_consent", True)  # the privacy notice checkbox (ASSUMPTIONS 394)
+    body.setdefault("signature", SIGN_JSON)  # required since ASSUMPTIONS 434
     return client.post(f"{PORTAL}/activities/{activity.pk}/register/", body, content_type="application/json")
 
 
@@ -90,7 +92,7 @@ def test_step5_rules_still_apply(portal, startup, open_activity) -> None:
     assert response.status_code == 400 and "all slots are taken" in response.json()["error"]
 
     no_form = open_activity(with_form=False, title="No form")
-    assert "form is not ready" in portal.post(f"{PORTAL}/activities/{no_form.pk}/register/", {"privacy_consent": True}, content_type="application/json").json()["error"]
+    assert "form is not ready" in portal.post(f"{PORTAL}/activities/{no_form.pk}/register/", {"privacy_consent": True, "signature": SIGN_JSON}, content_type="application/json").json()["error"]
 
     open_one = open_activity(title="Open")
     assert "errors" in register(portal, open_one, answers={}).json()  # required answer missing
@@ -190,12 +192,12 @@ def test_staff_list_search_filters_and_pages(client, view_only, provider) -> Non
 def test_staff_detail_shows_history(client, view_only, startup, open_activity, director) -> None:
     activity = open_activity()
     registration = services.register_as_startup(startup, activity, designation="Founder", answers=answers_for(activity))
-    Registration.objects.filter(pk=registration.pk).update(attendance_confirmed=True, confirmation_method="email")
+    Registration.objects.filter(pk=registration.pk).update(attendance_confirmed=True)
     client.force_login(view_only)
     data = client.get(f"/startups/api/{startup.pk}/").json()
     assert data["startup"]["email"] == startup.email
     assert data["registrations"][0]["attendance_confirmed"] is True
-    assert data["registrations"][0]["confirmation_method"] == "email"
+    assert data["registrations"][0]["days_attended"] == 0  # set directly in this test (no day rows)
 
 
 def test_sync_and_links_need_can_manage_users(client, view_only, admin_member, startup, provider) -> None:

@@ -19,7 +19,7 @@ from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission
 from registrations.models import FormTemplate, FormType, Registration
 
-from .formatting import format_audit_value, format_time_range
+from .formatting import format_audit_value, format_date, format_time_range
 from .models import (
     Activity,
     ActivityAuditLog,
@@ -102,8 +102,10 @@ class ActivityError(Exception):
 
 
 def registered_count(activity: Activity) -> int:
-    """How many people registered. Everyone who registers is in (no approval step)."""
-    return activity.registrations.count()
+    """How many registrations take a slot: everyone who registered (no approval step) except those who cancelled
+    ("Will not attend", ASSUMPTIONS 434). Walk-ins count too (they register at the venue, when registration is closed
+    anyway)."""
+    return activity.registrations.filter(cancelled_at__isnull=True).count()
 
 
 def slots_remaining(activity: Activity) -> int:
@@ -564,6 +566,16 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
         validate_activity_values({**old_values, **changes}, current, changed_fields=set(changed), now=now)
     except ValidationError as error:
         errors = {**error.message_dict, **errors}
+    if {"start_date", "end_date"}.intersection(changed) and "end_date" not in errors:
+        # ASSUMPTIONS 434: never leave a recorded attendance day outside the activity's dates.
+        from registrations.models import AttendanceDay
+
+        start, end = changes.get("start_date", old_values["start_date"]), changes.get("end_date", old_values["end_date"])
+        outside = AttendanceDay.objects.filter(registration__activity=current).exclude(day__range=(start, end))
+        if outside.exists():
+            day = outside.order_by("day").values_list("day", flat=True).first()
+            errors["end_date" if day > end else "start_date"] = [
+                f"Attendance is already recorded on {format_date(day)}: the dates must still include that day."]
     if errors:
         raise ValidationError(errors)
 
@@ -973,7 +985,8 @@ def open_for_registration(queryset: QuerySet | None = None, now: datetime | None
     queryset = Activity.objects.all() if queryset is None else queryset
     has_form = FormTemplate.objects.filter(activity=OuterRef("pk"), form_type=FormType.REGISTRATION)
     ready_form = Exists(has_form.filter(ready_at__isnull=False)) | (Q(creation_documents_required=False) & Exists(has_form))
-    registered = Registration.objects.filter(activity=OuterRef("pk")).values("activity").annotate(n=Count("pk")).values("n")
+    registered = Registration.objects.filter(activity=OuterRef("pk"), cancelled_at__isnull=True).values(
+        "activity").annotate(n=Count("pk")).values("n")  # registered_count() in SQL
     return queryset.filter(
         ready_form,
         status__name=SCHEDULED,

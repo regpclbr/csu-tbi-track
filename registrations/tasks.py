@@ -9,7 +9,7 @@ A failed email is not retried automatically; staff can resend the evaluation lin
 import logging
 
 from . import emails, services
-from .models import Registration
+from .models import AttendanceDay, Registration
 
 logger = logging.getLogger("registrations")
 
@@ -24,7 +24,7 @@ def run_send_registration_confirmation(registration_id: int) -> dict:
         registration = _registration(registration_id)
         if registration is None:
             return {"registration_id": registration_id, "result": "not found"}
-        emails.send_registration_confirmation(registration)
+        emails.send_registration_confirmation(registration, services.cancel_link(registration))
         return {"registration_id": registration_id, "result": "sent"}
     except Exception as error:
         logger.error("Registration confirmation %s was not sent: %s.", registration_id, type(error).__name__)
@@ -42,3 +42,29 @@ def run_send_evaluation_link(registration_id: int) -> dict:
     except Exception as error:  # e.g. the database is unreachable
         logger.error("Evaluation link for registration %s was not sent: %s.", registration_id, type(error).__name__)
         return {"registration_id": registration_id, "result": "failed", "reason": type(error).__name__}
+
+
+def run_send_checkin_email(attendance_day_id: int) -> dict:
+    """Queued after a QR check-in (registrations.attendance): "You were checked in to … If this wasn't you, contact
+    the TBI." Never raises; a failure is logged with the ID and the error type only."""
+    try:
+        row = AttendanceDay.objects.select_related("registration__activity").filter(pk=attendance_day_id).first()
+        if row is None:
+            return {"attendance_day_id": attendance_day_id, "result": "not found"}
+        emails.send_checkin_notice(row.registration, row.day, row.checked_in_at)
+        return {"attendance_day_id": attendance_day_id, "result": "sent"}
+    except Exception as error:
+        logger.error("Check-in email %s was not sent: %s.", attendance_day_id, type(error).__name__)
+        return {"attendance_day_id": attendance_day_id, "result": "failed", "reason": type(error).__name__}
+
+
+def run_purge_signatures() -> dict:
+    """The daily job (config.schedules, 7:45): delete the participant signatures that are due (ASSUMPTIONS 434,
+    registrations.signatures.purge_signatures). Never raises."""
+    from . import signatures
+
+    try:
+        return signatures.purge_signatures()
+    except Exception as error:
+        logger.error("Signature deletion failed: %s.", type(error).__name__)
+        return {"result": "failed", "reason": type(error).__name__}

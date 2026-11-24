@@ -4,7 +4,7 @@
 
 1. Registration has no approval step. Everyone who registers is registered.
 2. When all slots are taken, registration closes. There is no waiting list.
-3. Walk-ins are not allowed. Only registered people can be marked present or evaluate.
+3. Walk-ins are not allowed. Only registered people can be marked present or evaluate. *(Replaced 2026-11-24 by item 434: walk-ins register at the QR check-in and are checked in at once.)*
 4. Evaluation is tied to the person (not anonymous). It opens after the activity ends and only for people marked present.
 5. Certificates are emailed automatically after the certificate is approved and the evaluation is submitted. *(Built in Step 9: items 174–194. The name printed and the address come from the evaluation, item 175.)*
 6. Participants get a Certificate of Participation by email. Resource persons get a Certificate of Appreciation in hard copy. *(Step 9: items 180, 186.)*
@@ -220,7 +220,7 @@
 108. Emails are stored trimmed and in lower case, and are unique per activity ignoring case and surrounding spaces (database constraint on `LOWER(TRIM(email))`). A second registration gets "This email is already registered for this activity."
 109. The REGISTRATION and its FORM_ANSWER rows are saved in one transaction. The confirmation email is sent only after the save succeeds, **as a Django-Q2 task** (`registrations.tasks.run_send_registration_confirmation`, queued on commit with `robust=True`; backend review, item 216), so a mail-server failure never turns a saved registration into an error; it names the activity, dates, venue and the chosen category, and nothing about other registrants. `startup` stays empty until Step 7.
 110. The public endpoints are JSON under `/api/`: `/api/register/<id>/`, `/api/evaluate/<token>/` and `/api/startups/set-password/<token>/` (owner decision, backend review). The user-facing URLs `/register/<id>/`, `/evaluate/<token>/` and `/startups/set-password/<token>/` are **reserved for the HTML pages of the frontend phase**; emails always link to these page URLs. Until the frontend exists they show a plain placeholder page that reads neither the activity nor the token. *(Phase F3: the placeholder is gone; these URLs are now the real pages, item 278.)* The POSTs keep Django's CSRF protection; the frontend pages will include the token.
-111. **Attendance.**
+111. **Attendance.** *(Replaced 2026-11-24 by item 434: attendance per day, QR self check-in, walk-ins; staff marking stays, one day at a time, method "staff".)*
     - Marked or unmarked by a member with `can_create_activity`, one or many at a time (all or nothing), only while the activity is Ongoing or Conducted. **Conducted locks the activity's own fields, not its registrations.**
     - Marking needs a method: `email` or `wet_signature`. Unmarking ("Undo") clears the method and is refused for anyone who has already submitted the evaluation. *(2026-11-06:)* marking also records who marked it and when; undo clears them (item 349).
     - Attendance changes are not written to ACTIVITY_AUDIT_LOG (they are not activity fields).
@@ -2240,3 +2240,120 @@ REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and
      - Tests: `activities/tests/test_budget.py` (calculations and rounding, every refusal message, blank rows, inactive
        category, limits, fund source rules, History, Conducted, no approval, the migration both ways, the New / Edit forms,
        the preview, the API, the reports, the assistant routing / answer / tool).
+
+## NAVIGATU UAT: QR attendance per day, signatures, walk-ins and the generated forms (2026-11-24)
+
+434. **The system replaces the paper "Confirmation of Attendance" and "Attendance" forms** (NAVIGATU UAT; owner decisions
+     2026-11-24). **Replaces item 111** (only staff marked attendance, no self check-in) and business rule 3 (no walk-ins).
+     The flow: (1) pre-registration online = "Will attend" (the meal estimate); (2) on each day participants scan an
+     "Attendance check-in" QR code; (3) the system generates the two forms. *(Pending NAVIGATU, see TBI_QUESTIONS.)*
+     - **Database (37 -> 39 tables).** REGISTRATION + `registration_source` (online / portal / walk_in, NOT NULL, default
+       online) and `cancelled_at` (nullable: "Will not attend"); REGISTRATION − `confirmation_method`,
+       `attendance_marked_at`, `attendance_marked_by_id`. New PARTICIPANT_SIGNATURE (`signature_id`, `registration_id` FK
+       unique CASCADE, `kind` draw / upload / typed, `file_path` max 255 (blank for typed or deleted), `typed_name` max 150
+       nullable, `signed_at`, `deleted_at` nullable; check: deleted, or typed with a name, or draw / upload with a file).
+       New ATTENDANCE_DAY (`attendance_day_id`, `registration_id` FK CASCADE, `day`, `checked_in_at`, `method` qr / staff /
+       email / wet_signature, `marked_by_id` FK TBI_MEMBER nullable PROTECT, `created_at`; unique (registration, day)).
+       Migrations `registrations/0011` (add), `0012` (data), `0013` (drop the three columns); `documents/0010` (the
+       DOCUMENT_TYPE row "Confirmation of Attendance": required, end_date + 5, no review; only in a seeded database and
+       only when missing; `seed_data` creates it on new databases).
+     - **What happened to the old values (owner decision):** `0012` gives every registration marked as attended ONE
+       ATTENDANCE_DAY row: day = the Manila date of `attendance_marked_at` when it is inside the activity's dates, else
+       the start date; method = the old `confirmation_method` ("email" / "wet_signature"; "wet_signature" when empty);
+       marked_by and the time copied. `email` and `wet_signature` exist ONLY on these copied rows: staff marking is
+       always "staff". Registrations of a startup get source "portal". The migration prints the counts and stops if the
+       number of day rows differs from the number of attended registrations. Reversible (the first day row fills the
+       old columns back; qr / staff become wet_signature).
+     - **"Attended" stays one rule:** `REGISTRATION.attendance_confirmed` = attended AT LEAST ONE DAY = the registration
+       has an ATTENDANCE_DAY row. Only `registrations.attendance` writes it (`_sync_attended`, same transaction as the
+       rows; every change also saves the registration). Every other module keeps reading the flag (reports, the
+       participant mix, Needs attention, certificates, evaluations, the portal), so they all use "attended at least one
+       day" without a change. Parity test in `registrations/tests/test_attendance_days.py`. Certificate rule (owner
+       decision): attended at least one day + evaluated; only people who attended at least one day can evaluate.
+     - **Activity days:** every calendar day from start_date to end_date (weekends included). `update_activity` refuses
+       new dates that would leave a recorded attendance day outside them.
+     - **QR check-in** (`/checkin/<id>/`, `registrations.checkin_views`, rules in `registrations.attendance`):
+       `checkin_state()` is the one rule: on each activity day from `PARTICIPANT_CHECKIN_EARLY_MINUTES` (60, owner
+       decision) before start_time until end_time (Manila; no times = the whole day), while the activity is Scheduled or
+       Ongoing (so on day 1 also while still Scheduled; the page runs `refresh_status` first). Draft = 404; Conducted =
+       closed. The participant types the email they registered with: registered -> today's row (method qr); a second
+       scan the same day -> "Already checked in today at 8:42 AM."; no usable signature -> the signature step (+ privacy
+       consent) before anything is recorded; not registered -> the walk-in form. A cancelled registration who comes
+       anyway is checked in (the Confirmation still shows what they signified). After each QR check-in an email (Django-Q2
+       task `run_send_checkin_email`, queued on commit, robust: never blocks): "You were checked in to <activity> on
+       <date> at <time>. If this wasn't you, contact the TBI." (owner decision c). Every POST goes through
+       `attendance.guard_checkin` (CHECKIN_MAX_ATTEMPTS_PER_IP 600, _PER_EMAIL 10 per 60 minutes, HMAC cache keys,
+       honeypot). The done page shows only the day and the time, never the name or the email. **Known risk:** anyone who
+       knows a registered email can check that person in while the window is open, and the page reveals whether an email
+       is registered (the walk-in step). Kept small by the time window, the rate limits, staff undo and the notice email.
+     - **Walk-ins** (`register_walk_in`): only inside `checkin_state()`, even when online registration is closed
+       (deadline, slots or by hand) and regardless of max_slots. Name, email, contact number, category, Designation /
+       Position, Office / Agency (item 426, the same check as `register()`: `services.clean_registrant`), signature and
+       privacy consent; source walk_in; checked in at once. The same email twice in one activity is refused ("This email
+       is already registered for this activity. Go back and type it on the check-in page instead."). Their template is
+       the activity's registration form (its own questions are not asked of walk-ins); without a registration form
+       walk-ins are refused with "see the TBI staff". Marked "Walk-in" on the Registrations tab and the Attendance form.
+     - **Staff marking per day** (`services.set_attendance` -> `attendance.mark_by_staff`): unchanged permission and
+       status rule (can_create_activity, Ongoing or Conducted); one day at a time (`day`, the tab's "Day" choice = the
+       activity's days up to today; before day 1 has started, the first day); method "staff"; undoing someone's LAST day
+       keeps the old undo rules (refused after an evaluation or an approved certificate; a waiting certificate is
+       deleted). The row's "Mark attended" for a person without a signature opens a dialog (owner decision b): they sign
+       on the staff device (draw or typed name + tick) or staff choose "Mark without signature" (the sheet then says
+       "Marked by staff"). Django admin actions: "Mark attended today (staff ...)" / "Undo attendance ...".
+     - **Signatures** (`registrations/signatures.py`, the one place): REQUIRED at pre-registration (public page and
+       `/api/register/`, startup portal page and API: they pass the raw fields to `register(signature=...)`; the Django
+       admin, `seed_demo` and tests pass nothing, like the privacy consent), at the check-in for anyone without one, and
+       for walk-ins. Given once per registration, reused on every form. Draw (canvas, `static/js/signature_pad.js`, a
+       PNG data URL at most `PARTICIPANT_SIGNATURE_DRAWN_MAX_KB` 500; a blank canvas is refused), upload (JPG / PNG by
+       name AND content, at most `PARTICIPANT_SIGNATURE_MAX_KB` 2048) or typed full name + "I confirm this is my
+       signature" (printed as the typed name). Images are re-encoded by Pillow to a PNG fitting 900 x 300 (metadata
+       dropped) under `signatures/activity-<id>/<random>.png`; never served from `/media/` (staff only:
+       `registrations:signature_image`); data: URIs in the PDFs. Without JavaScript the participant uploads or types.
+     - **Retention (owner decision, with the extra condition):** the daily job "Delete participant signatures" (7:45,
+       `setup_schedules`; command `purge_participant_signatures`) deletes an activity's signatures (file removed after
+       the commit, typed name cleared, `deleted_at` set; the row stays) when EITHER 1 year after the end date
+       (`PARTICIPANT_SIGNATURE_RETENTION_DAYS`) OR: the activity is Conducted, an Approved Attendance Sheet,
+       Confirmation of Attendance and Activity Report are all uploaded (approved copies, item 432; generated or scanned),
+       AND the newest Attendance Sheet and Confirmation of Attendance are newer than the last attendance / registration
+       change (`signatures.last_change`: a registration saved, a day recorded, a signature given), so the official forms
+       show everyone. The generated PDFs keep the printed signatures (official records). After deletion, generating
+       again is refused ("upload a scanned sheet instead"). Activity deletion (item 389) also removes the files.
+     - **"I can no longer attend":** the confirmation email links to `/registration/cancel/<token>/` (signed, salt
+       `registrations.cancel-link`). GET only shows the page (mail scanners open links); a POST cancels: `cancelled_at`
+       set, the row kept ("Will not attend"), the slot freed (`registered_count()` and its SQL twin in
+       `open_for_registration()` leave cancelled rows out). Allowed while Scheduled, before the start, and not checked in
+       (`services.cancellation_state`). "I can attend after all" restores it while `registration_closed_reason()` is None
+       (open, a free slot). The startup portal's My registrations links to the same page. The reports' "registered"
+       numbers still count every registration (a cancellation is still a registration); "attended" is unchanged.
+     - **Overview "Attendance" card:** Will attend / Will not attend (pre-registrations: online + portal) / Walk-ins, and
+       how many attended each day (by QR). The Registrations tab's first card is "Will attend / max slots".
+     - **Share card:** for Scheduled and Ongoing, also "Attendance check-in" (link, QR code `activities:qr_code` kind
+       `checkin`, shown and printable before it opens) and "Print check-in poster" (`registrations:checkin_poster`, A4).
+     - **Generated forms** (`registrations/attendance_forms.py`, template `registrations/attendance_forms_pdf.html`, A4
+       portrait through `certificates.pdf.get_renderer()`): "ATTENDANCE", one sheet per activity day with attendance
+       (Title of Event, Venue, Date; No., Name of Participant (walk-ins marked), Designation/Position, Office, Signature
+       (image / typed name / "Marked by staff" / "Signed on paper" for copied rows), Time in), and "CONFIRMATION OF
+       ATTENDANCE", one sheet (Date "October 21-22, 2026"; No., Name, Designation/Position, the signature under "Will
+       attend" or "Will not attend"; online and portal registrations only: walk-ins never signified). Both: "Prepared
+       by:" the member who generates it with their POSITION (item 429), the NOTE about meals, the form code "F-PROC-COA-005
+       Rev.03, 10-10-2023" and a plain placeholder header (no CSU logos until NAVIGATU gives the letterhead). Buttons on
+       the Documents tab's payment group (can_create_activity); saved through `upload_document` as approved copies of
+       the Attendance Sheet / Confirmation of Attendance types, so they count in the checklist and the payment packet.
+       Generating again adds a new document. Staff can still upload a scanned paper sheet instead.
+     - **Confirmation of Attendance as a document type: yes, and a payment document** (`DOCUMENT_TYPES_FOR_PAYMENT`;
+       attached to the Activity Report after the Attendance), required only for activities ending on or after
+       `CONFIRMATION_DOCUMENTS_FROM` (2026-11-25). `type_applies` / `metrics._applies` now read one dict
+       `DOCUMENT_TYPES_REQUIRED_FROM` (name -> date; the item 425 types keep PAYMENT_DOCUMENTS_FROM).
+     - **AI assistant (owner decision a):** `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` is now EMPTY: the assistant reads every
+       approved file, names included, also the Attendance Sheet and the Confirmation of Attendance (they are part of the
+       Activity Report). Signature images are pictures, never text, so they never reach Gemini. (Item 165's question to
+       NAVIGATU about the free tier still applies.)
+     - **Privacy notice** (version November 24, 2026): signatures, daily check-in times, the check-in email and the
+       signature retention added to `/privacy/` and the consent summary.
+     - **Backup:** before `migrate`, the development database and the `MEDIA_ROOT` folder (signatures are stored there
+       from now on).
+     - Tests: `registrations/tests/test_attendance_days.py` (window per day, duplicate check-in, the email, walk-ins and
+       duplicate email, staff per day, parity, cancellation, the three kinds, upload checks, retention, the page steps,
+       rate limits, Share card), `test_attendance_forms.py` (the right people per page, Prepared by, documents),
+       `test_migration_attendance_days.py`, `certificates/tests/test_automatic_flow.py` (one day is enough); opt-in
+       Chromium `registrations/tests/test_checkin_browser.py` (drawing, the check-in page at 390 px).

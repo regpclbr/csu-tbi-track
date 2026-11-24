@@ -99,11 +99,16 @@ class FormField(models.Model):
 
 
 class Registration(models.Model):
-    """A person registered for an activity. No approval step; no walk-ins."""
+    """A person registered for an activity (online, through the startup portal, or as a walk-in at the QR check-in,
+    ASSUMPTIONS 434). No approval step."""
 
-    class ConfirmationMethod(models.TextChoices):
-        EMAIL = "email", "Email"
-        WET_SIGNATURE = "wet_signature", "Wet signature"
+    class Source(models.TextChoices):
+        """How the person registered (ASSUMPTIONS 434). Walk-ins never signified beforehand, so they are not on the
+        Confirmation of Attendance."""
+
+        ONLINE = "online", "Online"
+        PORTAL = "portal", "Startup portal"
+        WALK_IN = "walk_in", "Walk-in"
 
     registration_id = models.BigAutoField(primary_key=True)
     activity = models.ForeignKey("activities.Activity", on_delete=models.PROTECT, related_name="registrations")
@@ -129,15 +134,15 @@ class Registration(models.Model):
     designation = models.CharField(max_length=255, blank=True, default="")
     office_agency = models.CharField(max_length=255, blank=True, default="")
     registration_date = models.DateTimeField(auto_now_add=True)
+    registration_source = models.CharField(max_length=20, choices=Source.choices, default=Source.ONLINE)
+    # "Will not attend" (ASSUMPTIONS 434): set by services.cancel_registration ("I can no longer attend"), cleared by
+    # services.restore_registration. The row is kept; a cancelled registration does not take a slot.
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    # Attended AT LEAST ONE DAY (ASSUMPTIONS 434): true exactly when the registration has an ATTENDANCE_DAY row. Written
+    # ONLY by registrations.attendance (_sync_attended), in the same transaction as the day rows; every other module
+    # reads this flag (reports, certificates, evaluations, Needs attention). A parity test keeps the two in step.
     attendance_confirmed = models.BooleanField(default=False)
-    confirmation_method = models.CharField(
-        max_length=20, choices=ConfirmationMethod.choices, null=True, blank=True
-    )
-    # Who marked the attendance and when (set by services.set_attendance; cleared together with the method on undo).
-    attendance_marked_at = models.DateTimeField(null=True, blank=True)
-    attendance_marked_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="attendance_marked"
-    )
+
     class LinkRequestResult(models.TextChoices):
         """What happened to the latest request on the general evaluation page (/evaluation/<id>/) for this
         registration's email (services.request_evaluation_link)."""
@@ -181,6 +186,88 @@ class Registration(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} - {self.activity}"
+
+    @property
+    def will_attend(self) -> bool:
+        """Pre-registration answer for the Confirmation of Attendance: not cancelled."""
+        return self.cancelled_at is None
+
+
+def signature_upload_to(instance: "ParticipantSignature", filename: str) -> str:
+    """signatures/activity-<id>/<random>.png: never the uploaded name (registrations.signatures picks the name)."""
+    return filename
+
+
+class ParticipantSignature(models.Model):
+    """The participant's signature for one registration (ASSUMPTIONS 434): given once (pre-registration, QR check-in,
+    walk-in, or on a staff device), reused on every generated Attendance and Confirmation of Attendance form.
+
+    kind draw / upload: a PNG re-encoded by Pillow (registrations.signatures), file_path set. kind typed: the typed full
+    name (printed as the signature), file_path empty. Deleted by the retention job (registrations.signatures
+    .purge_signatures): the file is removed, typed_name cleared and deleted_at set; the row stays as a record."""
+
+    class Kind(models.TextChoices):
+        DRAW = "draw", "Drawn on the screen"
+        UPLOAD = "upload", "Uploaded image"
+        TYPED = "typed", "Typed name"
+
+    signature_id = models.BigAutoField(primary_key=True)
+    registration = models.OneToOneField(Registration, on_delete=models.CASCADE, related_name="signature")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    file_path = models.FileField(upload_to=signature_upload_to, max_length=255, blank=True, default="")
+    typed_name = models.CharField(max_length=150, null=True, blank=True)
+    signed_at = models.DateTimeField()
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "participant_signature"
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(deleted_at__isnull=False) | Q(kind="typed", typed_name__isnull=False) | (
+                    Q(kind__in=["draw", "upload"]) & ~Q(file_path="")),
+                name="participant_signature_has_content",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Signature of {self.registration}"
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+
+class AttendanceDay(models.Model):
+    """One registration's attendance on one day of the activity (ASSUMPTIONS 434). Rows are created and removed ONLY by
+    registrations.attendance (QR check-in, walk-ins, staff marking); REGISTRATION.attendance_confirmed follows them."""
+
+    class Method(models.TextChoices):
+        QR = "qr", "QR check-in"
+        STAFF = "staff", "Marked by staff"
+        # Only on rows copied by migration registrations/0012 from the old REGISTRATION.confirmation_method.
+        EMAIL = "email", "Email (before November 2026)"
+        WET_SIGNATURE = "wet_signature", "Wet signature (before November 2026)"
+
+    attendance_day_id = models.BigAutoField(primary_key=True)
+    registration = models.ForeignKey(Registration, on_delete=models.CASCADE, related_name="attendance_days")
+    day = models.DateField()
+    checked_in_at = models.DateTimeField()
+    method = models.CharField(max_length=20, choices=Method.choices)
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="attendance_days_marked",
+        help_text="The staff member who marked it (method staff); empty for a QR check-in.",
+    )
+    created_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "attendance_day"
+        ordering = ["day", "checked_in_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["registration", "day"], name="one_attendance_per_registration_day"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.registration} on {self.day}"
 
 
 class EvaluationSubmission(models.Model):

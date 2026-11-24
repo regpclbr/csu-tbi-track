@@ -28,6 +28,7 @@ from config.parsing import parse_bool
 from notifications import services as notification_services
 from notifications.views import notification_json
 from registrations import services as registration_services
+from registrations import signatures
 from registrations.models import Registration
 
 from . import services
@@ -98,7 +99,8 @@ def registration_json(registration: Registration) -> dict:
         "office_agency": registration.office_agency,
         "registered_at": registration.registration_date,
         "attendance_confirmed": registration.attendance_confirmed,
-        "confirmation_method": registration.confirmation_method,
+        "days_attended": registration.attendance_days.count(),  # ASSUMPTIONS 434
+        "cancelled": registration.cancelled_at is not None,
         "linked_to_startup": registration.startup_id is not None,  # False = older public registration (email match)
     }
 
@@ -234,7 +236,9 @@ def portal_open_activities(request: HttpRequest) -> JsonResponse:
 def portal_register(request: HttpRequest, activity_id: int) -> JsonResponse:
     """POST {"designation": "...", "office_agency": "..." (optional: the startup's name when not sent; ASSUMPTIONS 426),
     "participant_category": id (optional if only one), "answers": {"<field_id>": value},
-    "privacy_consent": true (required, the privacy notice /privacy/)}"""
+    "privacy_consent": true (required, the privacy notice /privacy/),
+    "signature": {"kind": "draw" | "upload" | "typed", "image": "data:…", "typed_name": "…", "confirmed": true}
+    (required, ASSUMPTIONS 434; the format of /api/register/)}"""
     activity = registration_services.get_public_activity(activity_id)  # Scheduled only, like the public page
     if activity is None:
         raise Http404("Activity not found.")
@@ -245,6 +249,7 @@ def portal_register(request: HttpRequest, activity_id: int) -> JsonResponse:
         request.startup, activity, designation=str(data.get("designation", "")),
         office_agency=None if office_agency is None else str(office_agency),
         participant_category=data.get("participant_category"), answers=data.get("answers") or {},
+        signature=signatures.from_json(data.get("signature")),
     )
     return JsonResponse({"registration": registration_json(registration)}, status=201)
 

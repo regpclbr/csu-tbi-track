@@ -20,7 +20,8 @@ from . import services
 from .models import FieldType, FormField, FormTemplate
 
 # Fixed fields of the registration page, in page order (the first one with an error gets the focus).
-REGISTRATION_FIELDS = ("name", "email", "contact_number", "designation", "office_agency", "participant_category")
+REGISTRATION_FIELDS = ("name", "email", "contact_number", "designation", "office_agency", "participant_category",
+                       "signature")
 EVALUATION_FIELDS = ("certificate_name", "certificate_email")
 
 # Activity IDs this browser registered for (the success page is shown only to them).

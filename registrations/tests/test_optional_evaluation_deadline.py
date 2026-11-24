@@ -13,7 +13,7 @@ from activities import services as activity_services
 from activities.models import FundSource, Activity, ActivityStatus
 from certificates import services as certificate_services
 from registrations import services
-from registrations.models import FormTemplate, FormType, Registration
+from registrations.models import AttendanceDay, FormTemplate, FormType, Registration
 
 pytestmark = pytest.mark.django_db
 
@@ -84,8 +84,10 @@ def test_automatic_links_still_go_out_before_the_end(no_deadline) -> None:
 
 
 def test_no_late_attendance_warning_without_a_deadline(no_deadline, registration) -> None:
-    Registration.objects.filter(pk=registration.pk).update(
-        attendance_confirmed=True, attendance_marked_at=manila(no_deadline.end_date + timedelta(days=60)))
+    late = manila(no_deadline.end_date + timedelta(days=60))
+    Registration.objects.filter(pk=registration.pk).update(attendance_confirmed=True)
+    AttendanceDay.objects.create(registration=registration, day=no_deadline.end_date, checked_in_at=late,
+                                 created_at=late, method="staff")
     texts = [item.text for item in attention.activity_attention(no_deadline)]
     assert attention.ATTENDANCE_AFTER_EVALUATION not in texts
 

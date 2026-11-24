@@ -19,6 +19,7 @@ from registrations.models import DefaultFormField, FormAnswer, FormField, FormTy
 from startups.models import Startup
 
 from .conftest import FIXED, OLD_FIELD, form_of, registration_answers
+from .conftest import SIGN_JSON, SIGN_POST
 
 pytestmark = pytest.mark.django_db
 
@@ -76,7 +77,7 @@ def test_public_page_asks_both_and_saves_them(client, scheduled) -> None:
     assert "Designation / Position" in page and "Office / Agency" in page
     form = form_of(scheduled)
     data = {"name": "Ana Cruz", "email": "ana@example.com", "designation": "", "office_agency": "",
-            f"field_{form.fields.get(field_label=OLD_FIELD).pk}": "CSU", "privacy_consent": "yes", "website": ""}
+            f"field_{form.fields.get(field_label=OLD_FIELD).pk}": "CSU", "privacy_consent": "yes", **SIGN_POST, "website": ""}
     refused = client.post(url, data)
     assert refused.status_code == 400 and 'id="id_designation-error"' in refused.content.decode()
     assert 'id="id_office_agency-error"' in refused.content.decode()
@@ -87,7 +88,7 @@ def test_public_page_asks_both_and_saves_them(client, scheduled) -> None:
 def test_public_api_needs_and_saves_both(client, scheduled) -> None:
     url = f"/api/register/{scheduled.pk}/"
     body = {"name": "Ana Cruz", "email": "ana@example.com", "answers": registration_answers(scheduled),
-            "privacy_consent": True}
+            "privacy_consent": True, "signature": SIGN_JSON}
     refused = client.post(url, json.dumps(body), content_type="application/json")
     assert refused.status_code == 400 and {"designation", "office_agency"} <= set(refused.json()["errors"])
     assert client.post(url, json.dumps({**body, **FIXED}), content_type="application/json").status_code == 201
@@ -129,7 +130,7 @@ def test_portal_page_prefills_office_with_the_startup_name(startup_client, sched
     assert 'name="office_agency"' in page and 'value="Kape Caraga"' in page and 'name="designation"' in page
     answers = {f"field_{key}": value for key, value in registration_answers(scheduled).items()}
     response = startup_client.post(url, {**answers, "designation": "Founder", "office_agency": "Kape Caraga Inc.",
-                                         "privacy_consent": "yes"})
+                                         "privacy_consent": "yes", **SIGN_POST})
     assert response.status_code == 302
     registration = Registration.objects.get()
     assert (registration.designation, registration.office_agency) == ("Founder", "Kape Caraga Inc.")
@@ -137,7 +138,7 @@ def test_portal_page_prefills_office_with_the_startup_name(startup_client, sched
 
 def test_portal_api_defaults_office_to_the_startup_name_but_needs_a_designation(startup_client, scheduled) -> None:
     url = reverse("startups:portal_register", args=[scheduled.pk])
-    body = {"answers": registration_answers(scheduled), "privacy_consent": True}
+    body = {"answers": registration_answers(scheduled), "privacy_consent": True, "signature": SIGN_JSON}
     refused = startup_client.post(url, json.dumps(body), content_type="application/json")
     assert refused.status_code == 400 and set(refused.json()["errors"]) == {"designation"}
     cleared = startup_client.post(url, json.dumps({**body, "designation": "CEO", "office_agency": ""}),

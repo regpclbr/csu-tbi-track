@@ -12,7 +12,7 @@ from django.utils import timezone
 from activities import attention, services
 from activities.models import Activity
 from registrations import services as registration_services
-from registrations.models import EvaluationSubmission, FormType, Registration
+from registrations.models import AttendanceDay, EvaluationSubmission, FormType, Registration
 
 pytestmark = pytest.mark.django_db
 
@@ -86,16 +86,17 @@ def test_attendance_marked_after_the_evaluation_closed(new_activity, move_to, re
     form = registration_services.create_form(director, new_activity, FormType.EVALUATION)
     move_to(new_activity, "Ongoing")
     late, on_time, evaluated = register(new_activity, 3)
-    registration_services.set_attendance(director, new_activity, [late.pk, on_time.pk, evaluated.pk], True, "email")
+    registration_services.set_attendance(director, new_activity, [late.pk, on_time.pk, evaluated.pk], True, "staff")
     after_deadline = new_activity.evaluation_deadline + timedelta(hours=5)
-    Registration.objects.filter(pk__in=[late.pk, evaluated.pk]).update(attendance_marked_at=after_deadline)
-    Registration.objects.filter(pk=on_time.pk).update(attendance_marked_at=new_activity.evaluation_deadline - timedelta(days=1))
+    # ASSUMPTIONS 434: when each attendance DAY was recorded (ATTENDANCE_DAY.created_at).
+    AttendanceDay.objects.filter(registration__in=[late, evaluated]).update(created_at=after_deadline)
+    AttendanceDay.objects.filter(registration=on_time).update(created_at=new_activity.evaluation_deadline - timedelta(days=1))
     services.change_status(director, new_activity, "Conducted")
     now = after_deadline + timedelta(hours=1)
     assert attention.ATTENDANCE_AFTER_EVALUATION in texts(new_activity, now)
     assert attention.ATTENDANCE_AFTER_EVALUATION == "Attendance was marked after the evaluation closed. These attendees can't evaluate."
     # Only attendees who still have to evaluate count: when the late one is the only one and has evaluated, no item
-    Registration.objects.filter(pk=late.pk).update(attendance_marked_at=on_time.attendance_marked_at)
+    AttendanceDay.objects.filter(registration=late).update(created_at=new_activity.evaluation_deadline - timedelta(days=1))
     EvaluationSubmission.objects.create(template=form, registration=evaluated, certificate_name="X", certificate_email="x@example.com")
     assert attention.ATTENDANCE_AFTER_EVALUATION not in texts(new_activity, now)
 
@@ -103,7 +104,7 @@ def test_attendance_marked_after_the_evaluation_closed(new_activity, move_to, re
 def test_conducted_with_attendees_but_no_certificates(new_activity, move_to, register, director) -> None:
     move_to(new_activity, "Ongoing")
     person = register(new_activity)[0]
-    registration_services.set_attendance(director, new_activity, [person.pk], True, "email")
+    registration_services.set_attendance(director, new_activity, [person.pk], True, "staff")
     services.change_status(director, new_activity, "Conducted")
     items = attention.activity_attention(new_activity, manila(new_activity.end_date, 18))
     assert attention.AttentionItem(
@@ -145,7 +146,7 @@ def test_failed_and_unsent_evaluation_links(new_activity, move_to, register, dir
     registration_services.create_form(director, new_activity, FormType.EVALUATION)
     move_to(new_activity, "Ongoing")
     people = register(new_activity, 3)
-    registration_services.set_attendance(director, new_activity, [p.pk for p in people], True, "email")
+    registration_services.set_attendance(director, new_activity, [p.pk for p in people], True, "staff")
     services.change_status(director, new_activity, "Conducted")
     Registration.objects.filter(pk=people[0].pk).update(evaluation_link_failed_at=timezone.now())
     Registration.objects.filter(pk=people[1].pk).update(evaluation_link_sent_at=timezone.now())
@@ -161,7 +162,7 @@ def _activities_in_many_states(director, valid_data, move_to, register) -> list[
     ongoing = move_to(services.create_activity(director, valid_data(title="Ongoing")), "Ongoing")
     conducted = move_to(services.create_activity(director, valid_data(title="Conducted")), "Ongoing")
     person = register(conducted)[0]
-    registration_services.set_attendance(director, conducted, [person.pk], True, "email")
+    registration_services.set_attendance(director, conducted, [person.pk], True, "staff")
     services.change_status(director, conducted, "Conducted")
     no_times = services.create_activity(director, valid_data(title="No times"))
     Activity.objects.filter(pk=no_times.pk).update(start_time=None, end_time=None)

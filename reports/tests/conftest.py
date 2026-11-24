@@ -90,8 +90,7 @@ def register():
         email = email or f"{name.lower().replace(' ', '.')}.{activity.pk}@example.com"
         return Registration.objects.create(
             activity=activity, template=_form(activity, FormType.REGISTRATION), participant_category=category_row,
-            name=name, email=email, attendance_confirmed=attended,
-            confirmation_method=Registration.ConfirmationMethod.EMAIL if attended else "", startup=startup,
+            name=name, email=email, attendance_confirmed=attended, startup=startup,
         )
 
     return make

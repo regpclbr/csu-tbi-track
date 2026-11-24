@@ -1,0 +1,2 @@
+{# The Signature cell of a generated attendance form: the image, the typed name, or a short note. #}
+{% if cell.image %}<img src="{{ cell.image }}" alt="Signature">{% elif cell.typed_name %}<span class="typed">{{ cell.typed_name }}</span>{% elif cell.note %}<span class="note">{{ cell.note }}</span>{% endif %}

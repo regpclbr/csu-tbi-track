@@ -1,11 +1,13 @@
 {% load ui %}
 {% comment %}
 The registrations table (swapped by the filters). With can_create_activity and while attendance can be recorded
-(registrations.services.attendance_closed_reason is None): one "Confirmed by" choice above the table (wet signature by
-default) used by every mark button, a "Mark attended" / "Undo" button on each row (Undo is hidden, with the reason, once
-the person has evaluated: services.undo_refused_reason), and checkboxes with "Mark selected as attended" / "Undo
-selected". Everything goes to services.set_attendance (all or nothing). Before the activity starts: the reason instead.
-The table scrolls sideways inside the card on narrow screens.
+(registrations.services.attendance_closed_reason is None): one "Day" choice above the table (ASSUMPTIONS 434: the
+activity's days up to today, registrations.pages.registrations_tab) used by every mark / undo button, a "Mark attended" /
+"Undo" button on each row for that day (Undo on someone's last day is hidden, with the reason, once refused:
+services.undo_refused_reason), and checkboxes with "Mark selected as attended" / "Undo selected". A row without a
+signature opens the signature dialog first (sign on this device, or skip). Everything goes to services.set_attendance
+(all or nothing). Before the activity starts: the reason instead. The Attendance column lists every day attended (QR
+or staff, with the time). The table scrolls sideways inside the card on narrow screens.
 {% endcomment %}
 <div id="registrations-results" class="htmx-dim">
   {% if attendance_reason %}
@@ -21,15 +23,21 @@ The table scrolls sideways inside the card on narrow screens.
       {% csrf_token %}
       <input type="hidden" name="filters" value="{{ filters.query }}">
       {% if can_create and not attendance_reason %}
+        <input type="hidden" name="day" value="{{ selected_day }}">
         <div class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-slate-50 px-4 py-3">
-          <fieldset class="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <legend class="float-left mr-1 text-sm font-semibold text-ink">Confirmed by:</legend>
-            {% for value, label in methods %}
-              <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-                <input type="radio" name="method" value="{{ value }}" class="size-4 accent-primary"{% if value == default_method %} checked{% endif %}>{{ label }}
-              </label>
-            {% endfor %}
-          </fieldset>
+          <div class="flex flex-wrap items-center gap-2" data-attendance-day>
+            <span class="text-sm font-semibold text-ink">Day:</span>
+            {% if day_choices|length > 1 %}
+              <div class="segmented">
+              {% for choice in day_choices %}
+                <a href="{{ activity_url }}?tab=registrations&amp;day={{ choice.value }}{% if filters.q %}&amp;q={{ filters.q|urlencode }}{% endif %}"
+                   class="segmented-item{% if choice.selected %} is-selected{% endif %}"{% if choice.selected %} aria-current="true"{% endif %}>{{ choice.label }}</a>
+              {% endfor %}
+              </div>
+            {% else %}
+              <span class="text-sm text-slate-700">{{ selected_day_label }}</span>
+            {% endif %}
+          </div>
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-sm text-slate-700" x-text="selected.length ? selected.length + ' selected' : ''"></span>
             <button type="submit" name="action" value="mark" class="btn btn-primary btn-sm" :disabled="!selected.length">
@@ -57,6 +65,7 @@ The table scrolls sideways inside the card on narrow screens.
               <th scope="col" class="px-3 py-3">Category</th>
               <th scope="col" class="px-3 py-3">Registered</th>
               <th scope="col" class="px-3 py-3">Attendance</th>
+              <th scope="col" class="px-3 py-3">Signature</th>
               <th scope="col" class="px-3 py-3">Evaluation</th>
               <th scope="col" class="px-3 py-3">Startup</th>
               <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
@@ -69,7 +78,9 @@ The table scrolls sideways inside the card on narrow screens.
                 {% if can_create and not attendance_reason %}
                   <td class="px-3 py-3"><input type="checkbox" name="registration_ids" value="{{ registration.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ registration.name }}"></td>
                 {% endif %}
-                <th scope="row" class="min-w-44 px-3 py-3 font-semibold text-ink">{{ registration.name }}</th>
+                <th scope="row" class="min-w-44 px-3 py-3 font-semibold text-ink">{{ registration.name }}
+                  {% if row.walk_in %}<span class="badge badge-info ml-1">Walk-in</span>{% endif %}
+                  {% if registration.cancelled_at %}<span class="badge badge-neutral ml-1" title="Cancelled {{ registration.cancelled_at|date:'M j, g:i A' }}">Will not attend</span>{% endif %}</th>
                 <td class="min-w-36 px-3 py-3 text-slate-700">{{ registration.designation|default:"–" }}</td>
                 <td class="min-w-44 px-3 py-3 text-slate-700">{{ registration.office_agency|default:"–" }}</td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.email }}</td>
@@ -77,13 +88,13 @@ The table scrolls sideways inside the card on narrow screens.
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.participant_category.name }}</td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700"><time datetime="{{ registration.registration_date|date:'c' }}">{{ registration.registration_date|date:"M j, Y g:i A" }}</time></td>
                 <td class="px-3 py-3 whitespace-nowrap">
-                  {% if registration.attendance_confirmed %}
-                    <span class="badge badge-success">Attended · {{ registration.get_confirmation_method_display|lower }}</span>
-                    {% if registration.attendance_marked_at %}
-                      <p class="mt-1 text-xs text-muted">Marked by {{ registration.attendance_marked_by.name|default:"–" }} · <time datetime="{{ registration.attendance_marked_at|date:'c' }}">{{ registration.attendance_marked_at|date:"M j, g:i A" }}</time></p>
-                    {% endif %}
-                  {% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
+                  {% for day in row.days %}
+                    <span class="badge badge-success mb-1">{{ day.label }} · {{ day.method_label }} {{ day.time }}</span>{% if day.marked_by %}<span class="block text-xs text-muted">by {{ day.marked_by }}</span>{% endif %}
+                  {% empty %}
+                    {% if registration.attendance_confirmed %}<span class="badge badge-success">Attended</span>{% else %}<span class="badge badge-neutral">Not yet</span>{% endif %}
+                  {% endfor %}
                 </td>
+                <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ row.signature }}</td>
                 <td class="px-3 py-3">
                   {% if registration.evaluation_submission %}
                     {% comment %}Opens the registration dialog, which shows the answers only to can_create_activity (ASSUMPTIONS 402).{% endcomment %}
@@ -96,8 +107,15 @@ The table scrolls sideways inside the card on narrow screens.
                 <td class="min-w-36 px-3 py-3 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
                 <td class="px-3 py-3 text-right whitespace-nowrap">
                   {% if can_create and not attendance_reason %}
-                    {% if not registration.attendance_confirmed %}
-                      <button type="submit" name="row_action" value="mark:{{ registration.pk }}" class="btn btn-secondary btn-sm">Mark attended<span class="sr-only"> {{ registration.name }}</span></button>
+                    {% if not row.on_day %}
+                      {% if row.needs_signature %}
+                        <button type="button" class="btn btn-secondary btn-sm" aria-haspopup="dialog" @click="opener = $el"
+                                hx-get="{% url 'registrations:attendance_signature' activity.pk registration.pk %}?day={{ selected_day }}&amp;{{ filters.query }}" hx-target="#registration-dialog-body"
+                                hx-on::after-request="if (event.detail.successful) document.getElementById('registration-dialog').showModal()">
+                          Mark attended<span class="sr-only"> {{ registration.name }}</span></button>
+                      {% else %}
+                        <button type="submit" name="row_action" value="mark:{{ registration.pk }}" class="btn btn-secondary btn-sm">Mark attended<span class="sr-only"> {{ registration.name }}</span></button>
+                      {% endif %}
                     {% elif row.undo_reason %}
                       <span class="text-xs text-muted">{{ row.undo_reason }}</span>
                     {% else %}

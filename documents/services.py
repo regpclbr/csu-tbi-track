@@ -903,11 +903,11 @@ def is_payment_type(document_type: DocumentType) -> bool:
 
 
 def type_applies(document_type: DocumentType, activity: Activity) -> bool:
-    """Whether a required type is required for this activity: the types new in item 425
-    (DOCUMENT_TYPES_FROM_PAYMENT_DATE) only for activities ending on or after PAYMENT_DOCUMENTS_FROM; every other type
-    always. reports.metrics._applies is the same rule in SQL."""
-    return (document_type.name not in settings.DOCUMENT_TYPES_FROM_PAYMENT_DATE
-            or activity.end_date >= settings.PAYMENT_DOCUMENTS_FROM)
+    """Whether a required type is required for this activity: a type in DOCUMENT_TYPES_REQUIRED_FROM (the types new in
+    item 425, and the Confirmation of Attendance of item 434) only for activities ending on or after its date; every other
+    type always. reports.metrics._applies is the same rule in SQL."""
+    since = settings.DOCUMENT_TYPES_REQUIRED_FROM.get(document_type.name)
+    return since is None or activity.end_date >= since
 
 
 def counts_now(document_type: DocumentType, activity: Activity) -> bool:

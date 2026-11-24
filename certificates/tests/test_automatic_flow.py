@@ -105,7 +105,7 @@ def test_attendance_marked_after_conducted_creates_that_certificate(ongoing, des
     activity, _ = ongoing
     activity_services.change_status(director, activity, "Conducted")
     late = Registration.objects.get(name="No Show")
-    registration_services.set_attendance(director, activity, [late.pk], True, "wet_signature")
+    registration_services.set_attendance(director, activity, [late.pk], True, "staff")
     assert certificate_of(late).status == S.GENERATED
     assert history(activity)[-1] == (None, "", "1 created automatically (1 Participation)")
 
@@ -130,7 +130,7 @@ def test_undo_deletes_a_waiting_certificate_and_logs_it(generated, director) -> 
     assert not Certificate.objects.filter(registration=people[0]).exists()
     assert history(activity)[-1] == (director.pk, f"{number} ({people[0].name})", "Deleted: attendance undone")
     # The number is never reused (a gap)
-    registration_services.set_attendance(director, activity, [people[0].pk], True, "email")
+    registration_services.set_attendance(director, activity, [people[0].pk], True, "staff")
     assert certificate_of(people[0]).certificate_number != number
 
 
@@ -245,3 +245,16 @@ def test_attention_parity_with_the_list_count(generated, evaluate) -> None:
     evaluate(people[0])
     counts = attention.attention_counts([activity])
     assert counts[activity.pk] == len(attention.activity_attention(activity))
+
+
+def test_one_day_of_a_two_day_activity_is_enough_for_a_certificate(ongoing, design, director) -> None:
+    """Owner decision 2026-11-24 (ASSUMPTIONS 434): attended at least ONE day + evaluated."""
+    activity, people = ongoing
+    assert activity.start_date != activity.end_date
+    assert [list(p.attendance_days.values_list("day", flat=True)) for p in people] == [[activity.start_date]] * 2
+    activity_services.change_status(director, activity, "Conducted")
+    assert certificate_of(people[0]).status == S.GENERATED
+    assert registration_services.evaluation_state(people[0], now=registration_services.evaluation_window(activity)[0]).kind == "open"
+    no_show = Registration.objects.get(name="No Show")  # no day at all: no certificate, cannot evaluate
+    assert not Certificate.objects.filter(registration=no_show).exists()
+    assert registration_services.evaluation_state(no_show).kind == "not_attended"

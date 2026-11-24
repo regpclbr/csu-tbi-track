@@ -101,6 +101,15 @@ def checklist_state(item: services.ChecklistItem) -> tuple[str, str]:
     return STATE_LABELS[Document.RETURNED]
 
 
+def _attendance_forms(activity: Activity) -> list[dict]:
+    from registrations import attendance_forms
+
+    return [{"kind": kind, "label": label, "refused": attendance_forms.refused_reason(activity, kind),
+             "url": reverse("registrations:generate_attendance_form", args=[activity.pk, kind])}
+            for kind, label in ((attendance_forms.ATTENDANCE, "Generate Attendance"),
+                                (attendance_forms.CONFIRMATION, "Generate Confirmation of Attendance"))]
+
+
 def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm | None = None) -> dict:
     """The checklist (services.document_checklist: required types with due date, state and overdue flag; optional
     types with their documents), each document with its actions, and the upload form."""
@@ -138,6 +147,8 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
             "url": reverse("activities:payment_packet", args=[activity.pk]),
             "refused": services.payment_packet_refused_reason(activity) if payment else None,
         },
+        # The system-generated attendance forms (ASSUMPTIONS 434): a button each, or the reason instead.
+        "attendance_forms": _attendance_forms(activity) if payment else [],
         "optional": optional,
         "upload": upload,
         "upload_focus": focus,  # the first field with an error gets the focus (works without JavaScript)

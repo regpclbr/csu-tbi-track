@@ -273,6 +273,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         context["objectives"] = detail["objectives"]  # ASSUMPTIONS 428
         context["budget_card"] = pages.budget_card(activity)  # ASSUMPTIONS 433
         context["share"] = share.share_card(activity, context["registration"])
+        context["attendance_card"] = pages.attendance_card(activity)  # ASSUMPTIONS 434
         context["by_category"] = pages.category_donut(
             report_services.activity_participants_by_category(request.user, activity))
         context["participant_mix"] = mix_chart(report_services.activity_participant_mix(request.user, activity))
@@ -300,7 +301,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
 @staff_login_required
 @require_GET
 def qr_code(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
-    """The QR code (PNG) of a link on the Share card: kind "registration" or "evaluation" (activities.share.qr_url;
+    """The QR code (PNG) of a link on the Share card: kind "registration", "evaluation" or "checkin" (activities.share.qr_url;
     anything the card does not show, Draft included, is 404). Any active staff member. ?download=1 sends it as a
     file for posters."""
     activity = get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)

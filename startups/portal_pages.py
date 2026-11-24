@@ -83,9 +83,20 @@ class RegistrationRow:
     evaluation: str  # "open" (with url), "submitted", or "closed" (with reason)
     evaluation_url: str = ""
     evaluation_reason: str = ""
+    cancel_url: str = ""  # "I can no longer attend" / "I can attend after all" (ASSUMPTIONS 434), only when offered
 
 
 def _row(registration, upcoming: bool, now: datetime | None) -> RegistrationRow:
+    row = _base_row(registration, upcoming, now)
+    state = registration_services.cancellation_state(registration, now)
+    if state.kind == "can_cancel" or (state.kind == "cancelled" and state.can_restore):
+        row.cancel_url = reverse("cancel_registration", args=[registration_services.cancel_token(registration)])
+    if registration.cancelled_at is not None and not registration.attendance_confirmed:
+        row.attendance, row.attendance_tone = "Will not attend", "neutral"
+    return row
+
+
+def _base_row(registration, upcoming: bool, now: datetime | None) -> RegistrationRow:
     if registration.attendance_confirmed:
         attendance, tone = "Attended", "success"
     elif upcoming:

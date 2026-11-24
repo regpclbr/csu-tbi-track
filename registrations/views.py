@@ -21,7 +21,7 @@ from accounts.permissions import Permission, permission_required, staff_login_re
 from activities.models import Activity
 from config.parsing import parse_bool
 
-from . import services
+from . import services, signatures
 from .public import guard_registration_request
 from .models import FormField, FormTemplate
 
@@ -76,7 +76,9 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
     POST {"name", "email", "contact_number", "designation", "office_agency" (both required, ASSUMPTIONS 426),
           "participant_category": id (optional if only one),
           "answers": {"<field_id>": value}, "website": "" (the hidden honeypot field; leave empty),
-          "privacy_consent": true (required: the person agreed to the privacy notice, /privacy/)}
+          "privacy_consent": true (required: the person agreed to the privacy notice, /privacy/),
+          "signature": {"kind": "draw" | "upload" | "typed", "image": "data:image/png;base64,…" (draw / upload: PNG or
+                        JPG), "typed_name": "…", "confirmed": true (typed)} (required, ASSUMPTIONS 434)}
     Too many attempts from one IP address or for one email: 429.
     """
     activity = services.get_public_activity(activity_id)
@@ -97,6 +99,7 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
         office_agency=str(data.get("office_agency", "")),
         participant_category=data.get("participant_category"),
         answers=data.get("answers") or {},
+        signature=signatures.from_json(data.get("signature")),
     )
     return JsonResponse(
         {
@@ -239,7 +242,10 @@ def registrations_api(request: HttpRequest, activity_id: int) -> JsonResponse:
             "participant_category": r.participant_category.name if r.participant_category else None,
             "registration_date": r.registration_date,
             "attendance_confirmed": r.attendance_confirmed,
-            "confirmation_method": r.confirmation_method,
+            "attendance_days": [{"day": d.day, "method": d.method, "checked_in_at": d.checked_in_at}
+                                for d in r.attendance_days.all()],
+            "registration_source": r.registration_source,
+            "cancelled": r.cancelled_at is not None,
             "evaluation_submitted": hasattr(r, "evaluation_submission"),
             "answers": [{"field_label": a.field.field_label, "answer_value": a.answer_value} for a in r.answers.all()],
         }

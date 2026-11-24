@@ -73,7 +73,7 @@ def test_ongoing_without_attendance_stays_ongoing_after_the_end(scheduled, direc
 def test_ongoing_becomes_conducted_after_the_end_once_attendance_is_recorded(scheduled, register, director) -> None:
     services.change_status(director, scheduled, "Ongoing")
     person = register(scheduled)[0]
-    registration_services.set_attendance(director, scheduled, [person.pk], True, "wet_signature")
+    registration_services.set_attendance(director, scheduled, [person.pk], True, "staff")
     assert services.apply_automatic_statuses(now=manila(scheduled.end_date, 16, 59)) == 0  # not ended yet
     assert services.apply_automatic_statuses(now=manila(scheduled.end_date, 17)) == 1
     assert status_of(scheduled) == "Conducted"
@@ -82,7 +82,7 @@ def test_ongoing_becomes_conducted_after_the_end_once_attendance_is_recorded(sch
 
 def test_two_step_catch_up_writes_two_rows(scheduled, register) -> None:
     person = register(scheduled)[0]
-    Registration.objects.filter(pk=person.pk).update(attendance_confirmed=True, confirmation_method="email")
+    Registration.objects.filter(pk=person.pk).update(attendance_confirmed=True)
     assert services.apply_automatic_statuses(now=manila(scheduled.end_date + timedelta(days=1), 9)) == 2
     assert status_of(scheduled) == "Conducted"
     assert system_rows(scheduled) == [("Scheduled", "Ongoing"), ("Ongoing", "Conducted")]
@@ -95,7 +95,7 @@ def test_draft_is_never_touched(new_activity) -> None:
 
 
 def test_conducted_is_never_touched_and_running_twice_changes_nothing(scheduled, register) -> None:
-    Registration.objects.filter(pk=register(scheduled)[0].pk).update(attendance_confirmed=True, confirmation_method="email")
+    Registration.objects.filter(pk=register(scheduled)[0].pk).update(attendance_confirmed=True)
     later = manila(scheduled.end_date + timedelta(days=2), 9)
     services.apply_automatic_statuses(now=later)
     assert services.apply_automatic_statuses(now=later) == 0
@@ -117,7 +117,7 @@ def test_refresh_status_moves_one_activity_and_reloads_it(scheduled) -> None:
 def test_activity_page_load_refreshes_the_status_without_emails(client, director, scheduled, register, clock) -> None:
     registration_services.create_form(director, scheduled, FormType.EVALUATION)
     person = register(scheduled)[0]
-    Registration.objects.filter(pk=person.pk).update(attendance_confirmed=True, confirmation_method="email")
+    Registration.objects.filter(pk=person.pk).update(attendance_confirmed=True)
     clock(datetime.combine(scheduled.end_date + timedelta(days=1), time(9)))
     client.force_login(director)
     response = client.get(reverse("activities:detail", args=[scheduled.pk]))

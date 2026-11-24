@@ -64,6 +64,9 @@ SCHEDULES: list[DailySchedule | MinutesSchedule] = [
     DailySchedule("Index pending documents", "assistant.tasks.run_index_pending", "ASSISTANT_INDEX_HOUR", "ASSISTANT_INDEX_MINUTE"),
     # Renders/issues Approved + evaluated certificates and sends Issued + unsent ones (Step 9).
     DailySchedule("Retry certificate PDFs and emails", "certificates.tasks.run_certificate_retries", "CERTIFICATE_RETRY_HOUR", "CERTIFICATE_RETRY_MINUTE"),
+    # Participant signatures kept only until the attendance forms are kept, at most a year (ASSUMPTIONS 434).
+    DailySchedule("Delete participant signatures", "registrations.tasks.run_purge_signatures", "SIGNATURE_PURGE_HOUR",
+                  "SIGNATURE_PURGE_MINUTE"),
     # Scheduled -> Ongoing -> Conducted on time, then the first evaluation link to each attendee (ASSUMPTIONS 346, 348).
     MinutesSchedule("Activity statuses and evaluation links", "activities.tasks.run_activity_automation", "ACTIVITY_STATUS_INTERVAL_MINUTES"),
 ]

@@ -752,10 +752,11 @@ def _uploaded(document_type: DocumentType) -> Exists:
 
 
 def _applies(document_type: DocumentType) -> Q:
-    """documents.services.type_applies in SQL (ASSUMPTIONS 425): the payment types new in item 425 only on activities
-    ending on or after PAYMENT_DOCUMENTS_FROM."""
-    if document_type.name in settings.DOCUMENT_TYPES_FROM_PAYMENT_DATE:
-        return Q(end_date__gte=settings.PAYMENT_DOCUMENTS_FROM)
+    """documents.services.type_applies in SQL (ASSUMPTIONS 425, 434): a type in DOCUMENT_TYPES_REQUIRED_FROM only on
+    activities ending on or after its date."""
+    since = settings.DOCUMENT_TYPES_REQUIRED_FROM.get(document_type.name)
+    if since is not None:
+        return Q(end_date__gte=since)
     return Q()
 
 

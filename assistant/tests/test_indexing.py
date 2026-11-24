@@ -87,7 +87,16 @@ def test_certificate_document_is_not_indexed(make_document, activity, certificat
     assert indexing.index_document(document.pk)["reason"] == "Certificate files are not indexed."
 
 
-def test_attendance_sheet_is_never_indexed(make_document, fake_gemini) -> None:
+def test_attendance_sheet_is_indexed_since_434(make_document, fake_gemini, settings) -> None:
+    """Owner decision 2026-11-24 (ASSUMPTIONS 434): no type is excluded by default; the AI reads every file, names
+    included. A type put back in ASSISTANT_EXCLUDED_DOCUMENT_TYPES is still refused (next test)."""
+    assert settings.ASSISTANT_EXCLUDED_DOCUMENT_TYPES == []
+    document = make_document(docx_file("Ana Cruz, Project officer, CSU"), type_name="Attendance Sheet")
+    assert indexing.index_document(document.pk)["status"] == "indexed" and rows(document)
+
+
+def test_an_excluded_type_is_never_indexed(make_document, fake_gemini, settings) -> None:
+    settings.ASSISTANT_EXCLUDED_DOCUMENT_TYPES = ["Attendance Sheet"]
     document = make_document(docx_file("Ana Cruz, ana@example.com, 0917…"), type_name="Attendance Sheet")
     result = indexing.index_document(document.pk)
     assert result["status"] == "not_indexable" and "personal data" in result["reason"]
@@ -213,7 +222,8 @@ def test_queue_indexing_creates_a_django_q_task(make_document) -> None:
 # --- Backfill command and schedule ----------------------------------------------------------------------
 
 
-def test_backfill_command_twice(make_document, capsys) -> None:
+def test_backfill_command_twice(make_document, capsys, settings) -> None:
+    settings.ASSISTANT_EXCLUDED_DOCUMENT_TYPES = ["Attendance Sheet"]  # an excluded type is never pending
     good = make_document(docx_file(*DESIGN))
     make_document(PNG_BYTES, name="poster.png", type_name="Invitation Letter")  # never pending: an image
     make_document(docx_file("Ana, ana@example.com"), type_name="Attendance Sheet")  # never pending: excluded
@@ -251,7 +261,7 @@ def test_setup_schedules_adds_index_pending_at_7_30() -> None:
     call_command("setup_schedules")
     call_command("setup_schedules")
     schedule = Schedule.objects.get(name=tasks.INDEX_SCHEDULE_NAME)
-    assert Schedule.objects.count() == 5  # plus the certificate retry (Step 9) and the 5-minute activity job
+    assert Schedule.objects.count() == 6  # plus the certificate retry (Step 9), the 5-minute job and the signature deletion (434)
     assert schedule.func == tasks.INDEX_PENDING_TASK and schedule.schedule_type == Schedule.DAILY
     local = timezone.localtime(schedule.next_run)
     assert (local.hour, local.minute) == (7, 30)

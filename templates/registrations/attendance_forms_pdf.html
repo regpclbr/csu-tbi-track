@@ -1,0 +1,102 @@
+{% comment %}
+The generated "ATTENDANCE" (one page per activity day) and "CONFIRMATION OF ATTENDANCE" forms (ASSUMPTIONS 434),
+registrations.attendance_forms.form_html. Print only (WeasyPrint, A4 portrait). Images are data: URIs only. The header is
+a plain placeholder until NAVIGATU gives the letterhead files. Everything is escaped (names are typed by participants).
+{% endcomment %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% if kind == "attendance" %}Attendance{% else %}Confirmation of Attendance{% endif %} – {{ activity.title }}</title>
+<style>
+  @page { size: A4 portrait; margin: 14mm 12mm 18mm 12mm;
+          @bottom-left { content: "{{ form_code }}"; font: 7.5pt "DejaVu Sans", sans-serif; color: #444; }
+          @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt "DejaVu Sans", sans-serif; color: #444; } }
+  body { font: 9.5pt "DejaVu Sans", Arial, sans-serif; color: #111; margin: 0; }
+  .sheet { page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  .letterhead { text-align: center; border-bottom: 1.5pt solid #2A4494; padding-bottom: 4pt; margin-bottom: 8pt; }
+  .letterhead .university { font-weight: bold; font-size: 11pt; text-transform: uppercase; letter-spacing: .5pt; }
+  .letterhead .office { font-size: 9.5pt; }
+  h1 { text-align: center; font-size: 14pt; letter-spacing: 1pt; margin: 6pt 0 8pt; }
+  .facts { width: 100%; margin-bottom: 8pt; border-collapse: collapse; }
+  .facts td { padding: 1.5pt 0; vertical-align: top; }
+  .facts td.label { width: 28mm; font-weight: bold; }
+  table.list { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.list th, table.list td { border: .6pt solid #333; padding: 3pt 4pt; vertical-align: middle; word-wrap: break-word; }
+  table.list th { background: #eef1f8; font-size: 8.5pt; text-align: center; }
+  table.list td.no { text-align: center; }
+  table.list td.sig { height: 13mm; text-align: center; }
+  table.list td.time { text-align: center; white-space: nowrap; }
+  .sig img { max-height: 12mm; max-width: 100%; }
+  .typed { font-family: "Gelasio", "DejaVu Serif", serif; font-style: italic; font-size: 11pt; }
+  .note { font-size: 7.5pt; color: #444; }
+  .walk { font-size: 7pt; color: #444; }
+  .prepared { margin-top: 14pt; width: 70mm; }
+  .prepared .line { border-bottom: .6pt solid #111; height: 8mm; }
+  .prepared .name { font-weight: bold; text-transform: uppercase; margin-top: 2pt; }
+  .footer-note { margin-top: 12pt; font-size: 8pt; font-style: italic; }
+  .generated { margin-top: 4pt; font-size: 7pt; color: #555; }
+</style>
+</head>
+<body>
+{% if kind == "attendance" %}
+  {% for page in pages %}
+  <section class="sheet">
+    {% include "registrations/_attendance_forms_header.html" %}
+    <h1>ATTENDANCE</h1>
+    <table class="facts">
+      <tr><td class="label">Title of Event:</td><td>{{ activity.title }}</td></tr>
+      <tr><td class="label">Venue:</td><td>{{ activity.venue }}</td></tr>
+      <tr><td class="label">Date:</td><td>{{ page.date }}</td></tr>
+    </table>
+    <table class="list">
+      <colgroup><col style="width: 9mm"><col style="width: 50mm"><col style="width: 35mm"><col style="width: 36mm"><col style="width: 38mm"><col style="width: 18mm"></colgroup>
+      <thead><tr><th>No.</th><th>Name of Participant</th><th>Designation/Position</th><th>Office</th><th>Signature</th><th>Time in</th></tr></thead>
+      <tbody>
+        {% for row in page.rows %}
+        <tr>
+          <td class="no">{{ row.number }}</td>
+          <td>{{ row.name }}{% if row.walk_in %}<div class="walk">Walk-in</div>{% endif %}</td>
+          <td>{{ row.designation|default:"" }}</td>
+          <td>{{ row.office|default:"" }}</td>
+          <td class="sig">{% include "registrations/_attendance_forms_signature.html" with cell=row.signature %}</td>
+          <td class="time">{{ row.time }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% include "registrations/_attendance_forms_footer.html" %}
+  </section>
+  {% endfor %}
+{% else %}
+  <section class="sheet">
+    {% include "registrations/_attendance_forms_header.html" %}
+    <h1>CONFIRMATION OF ATTENDANCE</h1>
+    <table class="facts">
+      <tr><td class="label">Title of Event:</td><td>{{ activity.title }}</td></tr>
+      <tr><td class="label">Venue:</td><td>{{ activity.venue }}</td></tr>
+      <tr><td class="label">Date:</td><td>{{ dates }}</td></tr>
+    </table>
+    <table class="list">
+      <colgroup><col style="width: 9mm"><col style="width: 54mm"><col style="width: 42mm"><col style="width: 40mm"><col style="width: 41mm"></colgroup>
+      <thead>
+        <tr><th rowspan="2">No.</th><th rowspan="2">Name of Participant</th><th rowspan="2">Designation/Position</th><th colspan="2">Signature</th></tr>
+        <tr><th>Will attend</th><th>Will not attend</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="no">{{ row.number }}</td>
+          <td>{{ row.name }}</td>
+          <td>{{ row.designation|default:"" }}</td>
+          <td class="sig">{% if row.will_attend %}{% include "registrations/_attendance_forms_signature.html" with cell=row.signature %}{% endif %}</td>
+          <td class="sig">{% if not row.will_attend %}{% include "registrations/_attendance_forms_signature.html" with cell=row.signature %}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% include "registrations/_attendance_forms_footer.html" %}
+  </section>
+{% endif %}
+</body>
+</html>

@@ -10,6 +10,7 @@ from registrations import services
 from registrations.models import Registration
 
 from .conftest import FIXED, registration_answers
+from .conftest import SIGN_JSON, SIGN_POST
 
 pytestmark = pytest.mark.django_db
 
@@ -48,7 +49,7 @@ def small_limits(settings, db):
 
 def post(client, activity, email: str, ip: str = "203.0.113.5", forwarded_for: str | None = None, **extra):
     """POST a registration from `ip` (REMOTE_ADDR); `extra` goes into the JSON body (e.g. website=)."""
-    body = {"name": "Ana Cruz", "email": email, **FIXED, "answers": registration_answers(activity), "privacy_consent": True,
+    body = {"name": "Ana Cruz", "email": email, **FIXED, "answers": registration_answers(activity), "privacy_consent": True, "signature": SIGN_JSON,
             **extra}
     headers = {"HTTP_X_FORWARDED_FOR": forwarded_for} if forwarded_for else {}
     return client.post(f"/api/register/{activity.pk}/", json.dumps(body), content_type="application/json", REMOTE_ADDR=ip, **headers)

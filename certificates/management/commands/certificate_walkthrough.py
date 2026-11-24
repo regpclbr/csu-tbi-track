@@ -154,7 +154,7 @@ class Command(BaseCommand):
         speaker = activity_services.create_resource_person(self.member, f"Dr. Walkthrough Speaker {stamp}")
         activity_services.add_resource_person(self.member, activity, speaker, topic="Pitch Decks That Work")
         activity_services.change_status(self.member, activity, "Ongoing")
-        registration_services.set_attendance(self.member, activity, [people[0].pk, people[1].pk], True, "email")
+        registration_services.set_attendance(self.member, activity, [people[0].pk, people[1].pk], True, "staff")
         activity_services.change_status(self.member, activity, "Conducted")
         self.say(f"Activity {activity.pk} '{activity.title}' is Conducted.")
         for person in people:

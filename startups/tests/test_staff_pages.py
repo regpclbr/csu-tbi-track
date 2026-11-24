@@ -79,8 +79,7 @@ def test_detail_shows_the_profile_and_the_history(view_only, login, startup, ope
     form = FormTemplate.objects.get(activity=activity, form_type=FormType.REGISTRATION)
     category = activity.participant_categories.get()
     Registration.objects.create(activity=activity, template=form, participant_category=category, startup=startup,
-                                name="Kalinaw", email=startup.email, attendance_confirmed=True,
-                                confirmation_method=Registration.ConfirmationMethod.EMAIL)
+                                name="Kalinaw", email=startup.email, attendance_confirmed=True)
     Registration.objects.create(activity=open_activity(title="Old Forum"), template=FormTemplate.objects.filter(
         activity__title="Old Forum").get(), participant_category=category, name="K", email=startup.email.upper())
     html = login(view_only).get(reverse("startups:detail", args=[startup.pk])).content.decode()

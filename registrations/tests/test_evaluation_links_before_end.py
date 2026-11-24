@@ -39,7 +39,7 @@ def ongoing(director, valid_data, with_forms, signup):
         activity_services.change_status(director, activity, "Scheduled")
         people = [signup(activity, f"person{n}@example.com") for n in range(attendees)]
         activity_services.change_status(director, activity, "Ongoing")
-        services.set_attendance(director, activity, [p.pk for p in people], True, "email")
+        services.set_attendance(director, activity, [p.pk for p in people], True, "staff")
         if no_times:
             Activity.objects.filter(pk=activity.pk).update(start_time=None, end_time=None)
             activity.refresh_from_db()
@@ -149,7 +149,7 @@ def test_people_marked_later_get_theirs_automatically(ongoing, clock, director) 
                                         participant_category=people[0].participant_category,
                                         template=people[0].template)
     # Marked while still Ongoing: the next run sends it.
-    services.set_attendance(director, activity, [extra.pk], True, "wet_signature", now=manila(day, 15))
+    services.set_attendance(director, activity, [extra.pk], True, "staff", now=manila(day, 15))
     assert run(clock, manila(day, 15, 5))["sent"] == 1
     # Marked after Conducted (as today, ASSUMPTIONS 348): sent too.
     after = Registration.objects.create(activity=activity, name="After Conducted", email="after@example.com",
@@ -158,7 +158,7 @@ def test_people_marked_later_get_theirs_automatically(ongoing, clock, director) 
     activity_services.apply_automatic_statuses(now=manila(day, 17, 5))
     activity.refresh_from_db()
     assert activity.status.name == "Conducted"
-    services.set_attendance(director, activity, [after.pk], True, "wet_signature", now=manila(day + timedelta(days=1), 9))
+    services.set_attendance(director, activity, [after.pk], True, "staff", now=manila(day + timedelta(days=1), 9))
     assert run(clock, manila(day + timedelta(days=1), 9, 5))["sent"] == 1
     assert [m.to[0] for m in mail.outbox][-2:] == ["late@example.com", "after@example.com"]
     assert history(activity) == ["Sent automatically to 2 attendees", "Sent automatically to 1 attendee",
@@ -211,7 +211,7 @@ def test_evaluation_tab_says_the_links_were_sent_automatically(ongoing, clock, c
     extra = Registration.objects.create(activity=activity, name="Late Marked", email="late@example.com",
                                         participant_category=people[0].participant_category,
                                         template=people[0].template)
-    services.set_attendance(director, activity, [extra.pk], True, "email", now=manila(day, 15))
+    services.set_attendance(director, activity, [extra.pk], True, "staff", now=manila(day, 15))
     run(clock, manila(day, 15, 5))
     html = client.get(url).content.decode()
     assert f"Later, 1 more attendee got theirs automatically (latest {day:%b} {day.day}, {day.year} 3:05 PM)." in html

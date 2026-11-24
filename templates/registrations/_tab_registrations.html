@@ -6,7 +6,7 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
 {% endcomment %}
 <div class="space-y-6" x-data="{ opener: null }">
   <div class="grid grid-cols-2 gap-4 xl:grid-cols-4">
-    {% include "components/kpi_card.html" with label="Registered / max slots" value=counts.slots icon="users" chip="blue" %}
+    {% include "components/kpi_card.html" with label="Will attend / max slots" value=counts.slots icon="users" chip="blue" %}
     {% include "components/kpi_card.html" with label="Attended" value=counts.attended|number icon="circle-check" chip="green" %}
     {% include "components/kpi_card.html" with label="Evaluations submitted" value=counts.evaluations|number icon="file-check" chip="teal" %}
     {% include "components/kpi_card.html" with label="Response rate" value=counts.response_rate|percent icon="chart-column" chip="violet" pill="of attendees" pill_tone="neutral" %}

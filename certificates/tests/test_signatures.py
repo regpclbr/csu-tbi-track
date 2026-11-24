@@ -78,7 +78,7 @@ def conduct(director, with_forms, move_to, signup):
         move_to(activity, "Scheduled")
         registration = signup(activity, f"{activity.title.split()[0].lower()}@example.com")
         activity_services.change_status(director, activity, "Ongoing")
-        registration_services.set_attendance(director, activity, [registration.pk], True, "email")
+        registration_services.set_attendance(director, activity, [registration.pk], True, "staff")
         activity_services.change_status(director, activity, "Conducted")
         activity.refresh_from_db()
         return activity

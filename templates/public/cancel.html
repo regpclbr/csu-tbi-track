@@ -1,0 +1,39 @@
+{% extends "layouts/public.html" %}
+{% comment %}
+/registration/cancel/<token>/ (registrations.checkin_views.cancel_page, ASSUMPTIONS 434): the confirmation email's
+"I can no longer attend" link. Opening it changes nothing; only the button (POST) cancels, or restores while
+registration is open and a slot is free (services.cancellation_state). Never the name or the email.
+{% endcomment %}
+{% block title %}Your registration · CSU-TBI Track{% endblock %}
+{% block content %}
+<section class="public-card p-6 sm:p-8" aria-label="Activity">
+  {% include "public/_activity_summary.html" with activity=activity %}
+</section>
+<section class="public-card mt-6 p-6 sm:p-8" data-cancel-state="{{ state.kind }}">
+  {% if message %}
+    <p class="mb-4 rounded-xl border border-line bg-white/70 px-4 py-3 text-base text-ink" role="status">{{ message }}</p>
+  {% endif %}
+  {% if state.kind == "can_cancel" %}
+    <h2 class="text-xl font-bold tracking-tight text-ink">Can you no longer attend?</h2>
+    <p class="mt-2 text-base text-slate-700">Tell us, so we can free your slot for someone else and plan the meals. You will be listed as “Will not attend”.</p>
+    <form method="post" class="mt-6">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="cancel">
+      <button type="submit" class="btn btn-primary w-full sm:w-auto">I can no longer attend</button>
+    </form>
+  {% elif state.kind == "cancelled" %}
+    <h2 class="text-xl font-bold tracking-tight text-ink">Registration cancelled</h2>
+    <p class="mt-2 text-base text-slate-700">{{ state.reason }}</p>
+    {% if state.can_restore %}
+      <form method="post" class="mt-6">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="restore">
+        <button type="submit" class="btn btn-secondary w-full sm:w-auto">I can attend after all</button>
+      </form>
+    {% endif %}
+  {% else %}
+    <h2 class="text-xl font-bold tracking-tight text-ink">Your registration</h2>
+    <p class="mt-2 text-base text-slate-700">{{ state.reason }}</p>
+  {% endif %}
+</section>
+{% endblock %}

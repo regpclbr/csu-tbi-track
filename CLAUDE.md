@@ -149,7 +149,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
   decimal places for quantity and price, `save_lines`). ACTIVITY.budget_amount = the grand total, written ONLY by
   `save_lines` (a typed budget_amount is refused: `BUDGET_TYPED`). Lines go through create/update_activity as
   `budget_lines` (History "Budget", "Budget Amount", "Fund Source", "Fund Account"). Display: `budget_summary` /
-  `budget_table` (the Activity Report's Running Budget, Prompt 6). 37 tables.
+  `budget_table` (the Activity Report's Running Budget, Prompt 6). 39 tables (ASSUMPTIONS 434).
+- Attendance per day (ASSUMPTIONS 434, replaces 111): ATTENDANCE_DAY (registration, day, checked_in_at, method qr / staff,
+  email / wet_signature ONLY on rows copied by migration registrations/0012, marked_by nullable; unique (registration,
+  day)) is written ONLY by `registrations/attendance.py`. `REGISTRATION.attendance_confirmed` = attended at least one day,
+  kept in step there (`_sync_attended`, parity test); every other module reads the flag. PARTICIPANT_SIGNATURE (one per
+  registration: draw / upload / typed, `deleted_at`) only through `registrations/signatures.py`. REGISTRATION
+  `registration_source` (online / portal / walk_in) and `cancelled_at` ("Will not attend"). No confirmation_method,
+  attendance_marked_at / _by columns any more.
 
 ## Login and permissions
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
@@ -238,9 +245,29 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Registrations and evaluations
 - All rules live in `registrations/services.py`: forms (`create_form`, field edits, locked once
   submitted), `validate_answers` (the only answer check), `register` (locks the activity row;
-  reuses `is_registration_open`), `set_attendance` (records `attendance_marked_by/_at`, cleared on undo, logged on
-  `registrations.audit` with IDs only; `attendance_closed_reason` = "Attendance opens when …"), evaluation links and
-  `submit_evaluation`. General-link requests are recorded on the matching registrations only
+  reuses `is_registration_open`; `clean_registrant` = the fixed fields, shared with walk-ins), `set_attendance` (ONE DAY,
+  `day=`, method "staff", optional `signature=` from the staff device; delegates to `attendance.mark_by_staff`; undoing
+  someone's LAST day keeps the old undo rules; logged on `registrations.audit` with IDs only; `attendance_closed_reason` =
+  "Attendance opens when …"), evaluation links and `submit_evaluation`.
+- QR check-in (ASSUMPTIONS 434): `/checkin/<id>/` (`registrations/checkin_views.py`), `attendance.checkin_state()` is the
+  one rule (each activity day, `PARTICIPANT_CHECKIN_EARLY_MINUTES` (60) before start_time to end_time, Manila; Scheduled or
+  Ongoing), `check_in` (one per person per day, "Already checked in today at …", signature step when none), walk-ins
+  `register_walk_in` (even when registration is closed, no slot limit, same email refused), `guard_checkin` on every POST
+  (rate limits per IP / email, honeypot), the check-in email task `run_send_checkin_email` (never blocks). Share card
+  "Attendance check-in" + `registrations:checkin_poster`.
+- Signatures (ASSUMPTIONS 434): REQUIRED at every public pre-registration entry point (they pass `signature=` to
+  `register`, None = not asked: admin, demo, tests), at check-in without one and for walk-ins; `signatures.clean_signature`
+  is the one check (draw PNG data URL, upload JPG/PNG by name and content, typed + confirm; re-encoded by Pillow); never
+  served from /media/ (`registrations:signature_image`, staff). Retention: `signatures.purge_signatures` (daily 7:45,
+  command `purge_participant_signatures`): 1 year after the end, or once Conducted with Approved Attendance Sheet,
+  Confirmation of Attendance and Activity Report whose two forms are newer than `signatures.last_change`.
+- "I can no longer attend" (ASSUMPTIONS 434): signed link `/registration/cancel/<token>/` in the confirmation email; GET
+  only shows, POST cancels (`cancel_registration`) or restores (`restore_registration`); rule `cancellation_state`.
+  `registered_count()` (and `open_for_registration`) leave cancelled rows out; reports still count every registration.
+- Generated forms (ASSUMPTIONS 434): `registrations/attendance_forms.py` ("ATTENDANCE" one sheet per day, "CONFIRMATION
+  OF ATTENDANCE" without walk-ins; Prepared by + POSITION, form code, footer note, placeholder header), saved through
+  `upload_document` as approved copies (Attendance Sheet / Confirmation of Attendance types); Documents tab payment
+  group buttons (can_create_activity). General-link requests are recorded on the matching registrations only
   (`evaluation_link_requested_at`, `evaluation_link_request_result`), the last email's `evaluation_link_delivery`
   (sent / printed_dev / printed_demo) by `deliver_evaluation_link`; the Evaluation tab shows them
   (`pages.link_requests`). An email that matches nobody is never stored (ASSUMPTIONS 354).
@@ -367,9 +394,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
   one `ml-auto flex-wrap` group; never `min-w-0 flex-1` alone in a wrapping row (it squeezes the title to letters).
   Documents page cards (ASSUMPTIONS 408, 411): header + lines share one grid (`grid-cols-subgrid`), State `minmax(9rem,11rem)`,
   Actions a fixed `21rem` (columns line up across activity cards); `documents/_actions.html` always wraps (never `flex-nowrap`: buttons covered the State badges).
-- Payment documents (ASSUMPTIONS 425): `DOCUMENT_TYPES_FOR_PAYMENT` (Activity Report, Attendance Sheet, Event Photos; due
-  end + 5). The two new types apply only to activities ending on or after `PAYMENT_DOCUMENTS_FROM` (`type_applies`, SQL
-  `metrics._applies`); payment types count (overdue, due soon, reminders, Needs attention) only once Conducted (`counts_now`,
+- Payment documents (ASSUMPTIONS 425, 434): `DOCUMENT_TYPES_FOR_PAYMENT` (Activity Report, Attendance Sheet, Confirmation
+  of Attendance, Event Photos; due end + 5). Types in `DOCUMENT_TYPES_REQUIRED_FROM` apply only to activities ending on or
+  after their date (item 425 types: `PAYMENT_DOCUMENTS_FROM`; Confirmation of Attendance: `CONFIRMATION_DOCUMENTS_FROM`)
+  (`type_applies`, SQL `metrics._applies`); payment types count (overdue, due soon, reminders, Needs attention) only once Conducted (`counts_now`,
   SQL `metrics._counts_now`). Event Photos: JPG/PNG only (`file_type_error`). Documents tab group "For payment (Supply
   Office)"; `build_payment_packet` (`activities:payment_packet`) zips APPROVED files only + `contents.txt`, never stored.
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
@@ -404,7 +432,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - A terminal opened before `.env` changed keeps the old values (VS Code `python.terminal.useEnvFile`;
   `load_dotenv` never overrides). Open a new terminal; `check_gemini` shows where each value comes from.
 - Indexing rules live only in `assistant.indexing.why_not_indexable()`: Approved activity documents,
-  not `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` (Attendance Sheet: personal data), pdf/docx/xlsx with text.
+  not `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` (EMPTY since ASSUMPTIONS 434, owner decision: the AI reads every file, names
+  included; signature images are never text), pdf/docx/xlsx with text.
   `index_document()` replaces a document's chunks in one transaction; failures keep old chunks.
   Approval queues it on commit, and so does an approved-copy upload or replace (ASSUMPTIONS 432); `index_documents` (and
   the 7:30 schedule) backfills.
@@ -424,7 +453,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `list_activities_by_period` / `find_files` tools take the user's words; when only they ran, the reply is our text).
   Activities = the list's rules (`activities.services.activities_in_range`, `activity_group`, `happening_now`), drafts
   only when asked, max 20 + "N more". Files = `documents_for_listing()` (any review state; attendance sheets listed and
-  downloadable, their content never sent to Gemini), grouped by activity, max 20, empty → `document_checklist()` missing.
+  downloadable; since ASSUMPTIONS 434 their content is indexed like every file), grouped by activity, max 20, empty → `document_checklist()` missing.
 - Links and file cards come from markers in the saved text (`[activity:<id>]`, `[file:<id>]`, `[activities-list:…]`,
   `[documents-list:…]`): `assistant.pages` reads digits/dates only, builds URLs with `reverse()`, only for rows that exist;
   staff titles go through `listings.safe_text`. Found files are NEVER saved as AI_MESSAGE_SOURCE (its document FK is
@@ -705,8 +734,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `evaluation_links_closed_reason()` (the same functions the services use). A locked form shows no edit controls,
   not even move up/down (271). The attendance sheet never shows emails or contact numbers. Participant-facing fields:
   `components/answer_field.html` (F3 reuses it). A scroll box with sr-only text inside must be `relative`.
-- Attendance and evaluation links UI (2026-11-06, ASSUMPTIONS 275–276, 347–349): Registrations tab = one "Confirmed by"
-  choice (wet signature default) + row "Mark attended"/"Undo" (`row_action=mark:<id>`) + bulk buttons; before Ongoing only
+- Attendance and evaluation links UI (2026-11-06, ASSUMPTIONS 275–276, 347–349): Registrations tab = one "Day"
+  choice (ASSUMPTIONS 434; no "Confirmed by" any more) + row "Mark attended"/"Undo" (`row_action=mark:<id>`) + bulk buttons; before Ongoing only
   the `attendance_closed_reason()` text. Evaluation tab = `registrations/_evaluation_links.html` (explanation from the rules,
   counts, attendees who have not answered, resend). Activity page: `activities/_attention.html` below the title.
 - Public pages (F3, ASSUMPTIONS 278–288, no login, phones first): `registrations/public_views.py` + `public_pages.py`
@@ -787,9 +816,10 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`, or when the TBI closes it by hand (ASSUMPTIONS 427).
-  No walk-ins, no approval step: everyone who registers is in.
+  No approval step: everyone who registers is in. Walk-ins register only at the QR check-in (ASSUMPTIONS 434).
 - Evaluation opens after the activity's `end_date`, only for registrations with
-  `attendance_confirmed = True`, and closes at `evaluation_deadline`. Never anonymous.
+  `attendance_confirmed = True` (attended at least one day, ASSUMPTIONS 434), and closes at `evaluation_deadline`.
+  Never anonymous.
 - A certificate is emailed only when its status is Approved, its delivery method is email,
   and its evaluation has been submitted. Participants get a Certificate of Participation by
   email; resource persons get a Certificate of Appreciation in hard copy.
@@ -983,6 +1013,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Activity budget (2026-11-24, NAVIGATU UAT): fund source + account, budget lines with server totals, Overview Budget
   card, budget by fund source in the Accomplishment report, assistant budget answer (433). Database: activities 0013
   (FUND_SOURCE, BUDGET_CATEGORY, BUDGET_LINE, ACTIVITY.fund_source / fund_account) + 0014 (data); 37 tables.
+- QR attendance (2026-11-24, NAVIGATU UAT): attendance per day with a QR check-in (1 hour early), signatures (draw /
+  upload / typed, required, deleted after the forms are kept or 1 year), walk-ins, "I can no longer attend", the
+  generated Attendance and Confirmation of Attendance forms (approved copies, payment documents), check-in email, the
+  assistant reads every file (434). Database: registrations 0011 (schema) + 0012 (data) + 0013 (drop
+  confirmation_method / attendance_marked_*), documents 0010 (data); 39 tables. ERD: PARTICIPANT_SIGNATURE,
+  ATTENDANCE_DAY, REGISTRATION.registration_source / cancelled_at.
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
@@ -1044,6 +1080,7 @@ python manage.py send_test_email you@example.com [--smtp]   # one test email (--
 python manage.py create_first_admin       # SERVER: the first System Administrator of a clean database (asks; once only)
 python manage.py create_review_startup --email you@example.com   # SERVER: one TEST startup, set-password link emailed
 python manage.py retry_certificates       # render/issue ready certificates and send unsent emails now (the 8:30 retry)
+python manage.py purge_participant_signatures   # delete the signatures that are due now (the 7:45 job, ASSUMPTIONS 434)
 python manage.py make_sample_certificate_images <folder>    # DEMO: invented background + 2 signatures (PNG)
 python manage.py certificate_walkthrough <step> ...         # DEMO ONLY (DEBUG): certificate flow step by step (approve = as the Director)
 python manage.py show_dashboard [--start --end --activity-type]   # dashboard numbers as JSON (same as the API)
@@ -1055,6 +1092,7 @@ pytest -n 0 -x activities/tests/test_services.py   # one process, stop at the fi
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Remove-Item Env:BROWSER_TESTS   # modals in Chromium
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_browser.py; Remove-Item Env:BROWSER_TESTS   # document rows: titles wrap by words, badges and buttons never overlap
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s certificates/tests/test_signatories_browser.py; Remove-Item Env:BROWSER_TESTS   # Signatories page: names never squeezed
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_checkin_browser.py; Remove-Item Env:BROWSER_TESTS   # drawing a signature, the QR check-in page at 390 px
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time

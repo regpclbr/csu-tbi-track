@@ -18,21 +18,22 @@ pytestmark = pytest.mark.django_db
 
 
 def test_marking_records_who_and_when(scheduled, signup, director) -> None:
+    """ASSUMPTIONS 349, 434: the day row records the member, the time and the method "staff"."""
     person = signup(scheduled, "ana@example.com")
     activity_services.change_status(director, scheduled, "Ongoing")
-    moment = timezone.make_aware(datetime(2026, 11, 6, 10, 52))
-    services.set_attendance(director, scheduled, [person.pk], True, "wet_signature", now=moment)
+    moment = timezone.make_aware(datetime.combine(scheduled.start_date, datetime.min.time().replace(hour=10, minute=52)))
+    services.set_attendance(director, scheduled, [person.pk], True, "staff", now=moment, day=scheduled.start_date)
     person.refresh_from_db()
-    assert person.attendance_confirmed and person.confirmation_method == "wet_signature"
-    assert person.attendance_marked_by == director and person.attendance_marked_at == moment
+    row = person.attendance_days.get()
+    assert person.attendance_confirmed and row.method == "staff" and row.day == scheduled.start_date
+    assert row.marked_by == director and row.checked_in_at == moment
 
 
-def test_undo_clears_method_marker_and_time(attended, director, scheduled) -> None:
+def test_undo_removes_the_day_row(attended, director, scheduled) -> None:
     person = attended(1)[0]
     services.set_attendance(director, scheduled, [person.pk], False)
     person.refresh_from_db()
-    assert not person.attendance_confirmed
-    assert person.confirmation_method is None and person.attendance_marked_by is None and person.attendance_marked_at is None
+    assert not person.attendance_confirmed and not person.attendance_days.exists()
 
 
 def test_marks_and_undos_are_logged_with_ids_only(attended, director, scheduled, caplog) -> None:
@@ -41,7 +42,7 @@ def test_marks_and_undos_are_logged_with_ids_only(attended, director, scheduled,
         services.set_attendance(director, scheduled, [person.pk], False)
     text = caplog.text
     assert f"registrations [{person.pk}], by member {director.pk}" in text
-    assert "marked (email)" in text and "undone" in text
+    assert "marked (staff)" in text and "undone" in text
     assert person.name not in text and person.email not in text
 
 
@@ -67,27 +68,29 @@ def test_the_tab_shows_the_same_reason_and_no_buttons(client, director, schedule
     assert "Mark selected as attended" not in html and 'name="row_action"' not in html
 
 
-def test_row_buttons_marker_and_confirmed_by_choice(client, director, attended, scheduled) -> None:
+def test_row_buttons_marker_and_day(client, director, attended, scheduled) -> None:
     people = attended(2)
     client.force_login(director)
     services.set_attendance(director, scheduled, [people[1].pk], False)
     html = client.get(reverse("activities:detail", args=[scheduled.pk]) + "?tab=registrations").content.decode()
-    assert "Confirmed by:" in html and 'value="wet_signature" class="size-4 accent-primary" checked' in html
-    assert f'value="undo:{people[0].pk}"' in html and f'value="mark:{people[1].pk}"' in html
-    assert f"Marked by {director.name}" in html
+    assert "Day:" in html and f'name="day" value="{scheduled.start_date.isoformat()}"' in html
+    assert f'value="undo:{people[0].pk}"' in html
+    # people[1] has no signature: their Mark button opens the signature dialog first (owner decision b).
+    assert reverse("registrations:attendance_signature", args=[scheduled.pk, people[1].pk]) in html
+    assert f"by {director.name}" in html
     assert "Mark selected as attended" in html and "Undo selected" in html
 
 
-def test_row_mark_uses_the_confirmed_by_choice(client, director, scheduled, signup) -> None:
+def test_row_mark_marks_only_its_own_registration(client, director, scheduled, signup) -> None:
     person = signup(scheduled, "ana@example.com")
     other = signup(scheduled, "ben@example.com", name="Ben")
     activity_services.change_status(director, scheduled, "Ongoing")
     client.force_login(director)
     url = reverse("registrations:attendance", args=[scheduled.pk])
     # The row button sends only its own registration, even when other rows are checked.
-    client.post(url, {"row_action": f"mark:{person.pk}", "method": "email", "registration_ids": [other.pk]})
+    client.post(url, {"row_action": f"mark:{person.pk}", "registration_ids": [other.pk]})
     person.refresh_from_db(), other.refresh_from_db()
-    assert person.attendance_confirmed and person.confirmation_method == "email" and person.attendance_marked_by == director
+    assert person.attendance_confirmed and person.attendance_days.get().marked_by == director
     assert not other.attendance_confirmed
     client.post(url, {"action": "undo", "registration_ids": [person.pk]})
     person.refresh_from_db()
@@ -115,12 +118,12 @@ def test_django_admin_action_records_the_marker(director, scheduled, signup, mon
     monkeypatch.setattr(model_admin, "message_user", lambda *args, **kwargs: None)
     request = RequestFactory().post("/admin/")
     request.user = director
-    model_admin.mark_attended_wet_signature(request, Registration.objects.filter(pk=person.pk))
+    model_admin.mark_attended_staff(request, Registration.objects.filter(pk=person.pk))
     person.refresh_from_db()
-    assert person.attendance_marked_by == director and person.attendance_marked_at is not None
+    assert person.attendance_days.get().marked_by == director and person.attendance_confirmed
     model_admin.unmark_attendance(request, Registration.objects.filter(pk=person.pk))
     person.refresh_from_db()
-    assert person.attendance_marked_by is None and person.attendance_marked_at is None
+    assert not person.attendance_days.exists() and not person.attendance_confirmed
 
 
 def test_upload_box_text(client, director, scheduled) -> None:

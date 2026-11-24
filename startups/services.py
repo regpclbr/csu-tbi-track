@@ -399,7 +399,7 @@ def maturity_stages() -> list[str]:
 
 def register_as_startup(
     startup: Startup, activity: Activity, *, designation: str = "", office_agency: str | None = None,
-    participant_category=None, answers: dict | None = None, now: datetime | None = None,
+    participant_category=None, answers: dict | None = None, now: datetime | None = None, signature: dict | None = None,
 ) -> Registration:
     """A logged-in startup registers: the same service and rules as public registration (Step 5),
     with name, email and contact number from the startup's profile, and registration.startup set.
@@ -420,4 +420,5 @@ def register_as_startup(
         answers=answers,
         now=now,
         startup=startup,
+        signature=signature,  # the portal page and API pass it (required there, ASSUMPTIONS 434)
     )

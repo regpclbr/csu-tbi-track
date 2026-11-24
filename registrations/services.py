@@ -596,36 +596,12 @@ def _choose_category(activity: Activity, category_id) -> ParticipantCategory:
     return chosen
 
 
-@transaction.atomic
-def register(
-    activity: Activity,
-    *,
-    name: str,
-    email: str,
-    contact_number: str = "",
-    designation: str = "",
-    office_agency: str = "",
-    participant_category=None,
-    answers: dict | None = None,
-    now: datetime | None = None,
-    startup=None,
-) -> Registration:
-    """Public registration. Everyone who registers is in (no approval step).
-
-    `designation` (Designation / Position) and `office_agency` (Office / Agency) are required fixed fields of every
-    registration (ASSUMPTIONS 426): the public page and API, the startup portal and any later entry point.
-
-    `startup` is set only by the startup portal (a logged-in startup registering); every
-    other rule is exactly the same as for a public registration.
-
-    The activity row is locked first, so two people cannot take the last slot at the
-    same time. The registration and its answers are saved together; the confirmation
-    email is sent only after the save succeeds.
-    """
-    locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
-    if reason := registration_closed_reason(locked, now):
-        raise RegistrationError(reason)
-
+def clean_registrant(
+    activity: Activity, *, name, email, contact_number="", designation="", office_agency="", participant_category=None,
+) -> dict:
+    """The person's fixed fields, checked the same way for a registration and a walk-in (registrations.attendance):
+    name and email required, Designation / Position and Office / Agency required (ASSUMPTIONS 426), one of the
+    activity's categories. Returns the Registration column values; raises one ValidationError with every problem."""
     errors: dict[str, str] = {}
     name, email, contact_number = (name or "").strip(), (email or "").strip().lower(), (contact_number or "").strip()
     if not name:
@@ -642,7 +618,58 @@ def register(
         errors["email"] = "Enter a valid email address."
     category = None
     try:
-        category = _choose_category(locked, participant_category)
+        category = _choose_category(activity, participant_category)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    if errors:
+        raise ValidationError(errors)
+    return {"name": name, "email": email, "contact_number": contact_number, "designation": designation,
+            "office_agency": office_agency, "participant_category": category}
+
+
+@transaction.atomic
+def register(
+    activity: Activity,
+    *,
+    name: str,
+    email: str,
+    contact_number: str = "",
+    designation: str = "",
+    office_agency: str = "",
+    participant_category=None,
+    answers: dict | None = None,
+    now: datetime | None = None,
+    startup=None,
+    signature: dict | None = None,
+) -> Registration:
+    """Public registration ("Will attend", ASSUMPTIONS 434). Everyone who registers is in (no approval step).
+
+    `designation` (Designation / Position) and `office_agency` (Office / Agency) are required fixed fields of every
+    registration (ASSUMPTIONS 426): the public page and API, the startup portal and any later entry point.
+
+    `signature` (ASSUMPTIONS 434): the raw signature fields (registrations.signatures.from_post / from_json). Every public
+    entry point (registration page and API, startup portal page and API) passes it, even empty, so it is REQUIRED there
+    and checked together with the other fields; None = not asked (Django admin, demo seed, tests), like the privacy
+    consent, which the entry points check before calling this.
+
+    `startup` is set only by the startup portal (a logged-in startup registering; source "portal"); every
+    other rule is exactly the same as for a public registration.
+
+    The activity row is locked first, so two people cannot take the last slot at the same time. The registration, its
+    answers and its signature are saved together; the confirmation email is sent only after the save succeeds.
+    """
+    from . import signatures
+
+    locked = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
+    if reason := registration_closed_reason(locked, now):
+        raise RegistrationError(reason)
+
+    errors: dict[str, str] = {}
+    values: dict = {}
+    try:
+        values = clean_registrant(locked, name=name, email=email, contact_number=contact_number,
+                                  designation=designation, office_agency=office_agency,
+                                  participant_category=participant_category)
     except ValidationError as error:
         errors.update({key: messages[0] for key, messages in error.message_dict.items()})
     form = get_form(locked, FormType.REGISTRATION)
@@ -650,20 +677,27 @@ def register(
         stored_answers = validate_answers(form, answers)
     except ValidationError as error:
         errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    clean_signature = None
+    if signature is not None:
+        try:
+            clean_signature = signatures.clean_signature(signature)
+        except ValidationError as error:
+            errors.update({key: messages[0] for key, messages in error.message_dict.items()})
     if errors:
         raise ValidationError(errors)
-    if locked.registrations.filter(email__iexact=email).exists():
+    if locked.registrations.filter(email__iexact=values["email"]).exists():
         raise RegistrationError("This email is already registered for this activity.")
 
+    source = Registration.Source.PORTAL if startup is not None else Registration.Source.ONLINE
     registration = Registration.objects.create(
-        activity=locked, template=form, participant_category=category,
-        name=name, email=email, contact_number=contact_number, startup=startup,
-        designation=designation, office_agency=office_agency,
+        activity=locked, template=form, startup=startup, registration_source=source, **values,
     )
     for field, value in stored_answers.items():
         FormAnswer.objects.create(
             field=field, answer_source=FormAnswer.AnswerSource.REGISTRATION, registration=registration, answer_value=value
         )
+    if clean_signature is not None:
+        signatures.save_signature(registration, clean_signature, now)
     # The confirmation email is a background task queued after the commit. robust=True: a problem
     # queueing it never turns the saved registration into an error (the task itself never raises).
     registration_id = registration.pk
@@ -701,61 +735,24 @@ def set_attendance(
     attended: bool,
     method: str | None = None,
     now: datetime | None = None,
+    *,
+    day=None,
+    signature: dict | None = None,
 ) -> int:
-    """Mark (or undo) attendance for one or many registrations. Returns how many were changed.
+    """Staff mark (or undo) ONE DAY's attendance for one or many registrations (ASSUMPTIONS 434; replaces item 111's
+    one-off mark). Returns how many registrations were handled. Needs can_create_activity; Ongoing or Conducted only.
 
-    Allowed only while the activity is Ongoing or Conducted (Conducted locks the activity's own fields, not its
-    registrations). Marking records the method, who marked it and when (attendance_marked_by / _at); undo clears
-    all three. Undo is refused for anyone who has already submitted the evaluation or whose certificate was approved;
-    a certificate still waiting for approval is deleted with the undo (History row). Marking someone on a Conducted
-    activity creates their certificate (ASSUMPTIONS 362).
-    All or nothing. Every mark and undo is logged on registrations.audit (IDs only).
-    """
-    require_permission(member, Permission.CREATE_ACTIVITY)
-    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
-    if reason := attendance_closed_reason(locked):
-        raise RegistrationError(reason)
-    if attended and method not in Registration.ConfirmationMethod.values:
-        raise RegistrationError("Choose how attendance was confirmed: email or wet_signature.")
+    `day`: a date (or "YYYY-MM-DD") of the activity up to today; default registrations.attendance.default_staff_day.
+    `method`: None or "staff" (email / wet_signature exist only on rows copied by migration registrations/0012).
+    `signature`: draw or typed, collected on the staff device for one person who has none (owner decision b).
+    Undoing someone's LAST day: refused after an evaluation or an approved certificate; a certificate still waiting is
+    deleted (History row). Marking someone on a Conducted activity creates their certificate (ASSUMPTIONS 362).
+    All or nothing. Every mark and undo is logged on registrations.audit (IDs only). The rules live in
+    registrations.attendance.mark_by_staff."""
+    from .attendance import mark_by_staff
 
-    ids = {int(registration_id) for registration_id in registration_ids}
-    registrations = list(locked.registrations.select_for_update(of=("self",)).filter(pk__in=ids))
-    if not ids or len(registrations) != len(ids):
-        raise RegistrationError("Some registrations were not found for this activity.")
-    if not attended:
-        evaluated = [r.name for r in registrations if EvaluationSubmission.objects.filter(registration=r).exists()]
-        if evaluated:
-            raise RegistrationError(
-                f"Cannot undo attendance for {', '.join(sorted(evaluated))}: already submitted the evaluation."
-            )
-        # A certificate still waiting for approval is deleted with the undo; an approved one blocks it (ASSUMPTIONS 362).
-        from certificates import services as certificate_services
-
-        blocked = sorted(f"{r.name} ({reason[:-1]})" for r in registrations
-                         if (reason := certificate_services.undo_attendance_refused_reason(r)))
-        if blocked:
-            raise RegistrationError(f"Cannot undo attendance for {', '.join(blocked)}.")
-        for registration in registrations:
-            certificate_services.delete_certificate_for_undone_attendance(member, registration)
-
-    now = now or timezone.now()
-    for registration in registrations:
-        registration.attendance_confirmed = attended
-        registration.confirmation_method = method if attended else None
-        registration.attendance_marked_by = member if attended else None
-        registration.attendance_marked_at = now if attended else None
-        registration.save(update_fields=[
-            "attendance_confirmed", "confirmation_method", "attendance_marked_by", "attendance_marked_at", "updated_at",
-        ])
-    audit_log.info(
-        "Attendance %s: activity %s, registrations %s, by member %s.",
-        f"marked ({method})" if attended else "undone", locked.pk, sorted(ids), member.pk,
-    )
-    if attended and locked.status.name == ActivityStatus.CONDUCTED:  # marked after Conducted: their certificate too
-        from certificates.services import auto_generate_certificates
-
-        auto_generate_certificates(locked, registration_ids=sorted(ids), now=now)
-    return len(registrations)
+    return mark_by_staff(member, activity, registration_ids, attended, day=day, method=method, signature=signature,
+                         now=now)
 
 
 UNDO_REFUSED_EVALUATED = "Already evaluated: attendance can no longer be undone."
@@ -787,9 +784,9 @@ def list_registrations(
     `search` matches the name, the email or the office / agency (ignoring case)."""
     registrations = (
         activity.registrations.select_related(
-            "participant_category", "startup", "evaluation_submission", "attendance_marked_by"
+            "participant_category", "startup", "evaluation_submission", "signature"
         )
-        .prefetch_related("answers__field", "certificates")
+        .prefetch_related("answers__field", "certificates", "attendance_days__marked_by")
         .order_by("name", "registration_id")
     )
     if search := (search or "").strip():
@@ -1318,3 +1315,99 @@ def request_evaluation_link(activity: Activity, email, now: datetime | None = No
         raise ValidationError({"email": "Enter a valid email address."})
     for registration_id in _record_request(activity, email, page_open=True, now=now):
         transaction.on_commit(lambda registration_id=registration_id: queue_evaluation_link(registration_id), robust=True)
+
+
+
+# --- "I can no longer attend" (ASSUMPTIONS 434) -----------------------------------------------------------------------
+# The confirmation email carries a signed link (/registration/cancel/<token>/). Opening it only SHOWS the page; only a
+# POST cancels (mail scanners open links). A cancelled registration is kept ("Will not attend" on the Confirmation of
+# Attendance) and no longer takes a slot. "I can attend after all" undoes it while registration is open and a slot is free.
+
+CANCEL_SALT = "registrations.cancel-link"
+CANCEL_LINK_INVALID = "This link is not valid."
+CANCEL_STARTED = "The activity has already started, so the registration can no longer be cancelled."
+CANCEL_ATTENDED = "You were already checked in, so the registration can no longer be cancelled."
+CANCELLED_TEXT = "Your registration is cancelled: you are listed as “Will not attend”."
+
+
+def cancel_token(registration: Registration) -> str:
+    return signing.Signer(salt=CANCEL_SALT).sign_object(registration.pk)
+
+
+def cancel_link(registration: Registration) -> str:
+    """The "I can no longer attend" page of one registration (SITE_URL, never the request's Host)."""
+    return settings.SITE_URL + reverse("cancel_registration", args=[cancel_token(registration)])
+
+
+def registration_from_cancel_token(token: str) -> Registration:
+    try:
+        registration_id = signing.Signer(salt=CANCEL_SALT).unsign_object(token)
+        return Registration.objects.select_related("activity__status").get(pk=registration_id)
+    except (signing.BadSignature, Registration.DoesNotExist, TypeError, ValueError) as error:
+        raise RegistrationError(CANCEL_LINK_INVALID) from error
+
+
+@dataclass(frozen=True)
+class CancellationState:
+    """kind: "can_cancel", "cancelled" (can_restore: registration is open and a slot is free) or "closed" (reason)."""
+
+    kind: str
+    reason: str | None = None
+    can_restore: bool = False
+
+
+def cancellation_state(registration: Registration, now: datetime | None = None) -> CancellationState:
+    """The one rule of the cancel link: cancelling is possible while the activity is Scheduled and has not started
+    (activity_start_end) and the person has not checked in; a cancelled registration can be restored while
+    registration_closed_reason() is None (open, deadline, a free slot, form ready)."""
+    now = now or timezone.now()
+    activity = registration.activity
+    started = activity.status.name != ActivityStatus.SCHEDULED or now >= activity_start_end(activity)[0]
+    if registration.cancelled_at is not None:
+        restorable = not started and registration_closed_reason(activity, now) is None
+        return CancellationState("cancelled", CANCELLED_TEXT, can_restore=restorable)
+    if registration.attendance_confirmed:
+        return CancellationState("closed", CANCEL_ATTENDED)
+    if started:
+        return CancellationState("closed", CANCEL_STARTED)
+    return CancellationState("can_cancel")
+
+
+@transaction.atomic
+def cancel_registration(registration: Registration, now: datetime | None = None) -> Registration:
+    """"I can no longer attend": sets cancelled_at (the row is kept). Refused outside cancellation_state()."""
+    now = now or timezone.now()
+    Activity.objects.select_for_update(of=("self",)).filter(pk=registration.activity_id).first()
+    registration = Registration.objects.select_for_update(of=("self",)).select_related("activity__status").get(
+        pk=registration.pk)
+    state = cancellation_state(registration, now)
+    if state.kind == "cancelled":
+        return registration
+    if state.kind != "can_cancel":
+        raise RegistrationError(state.reason)
+    registration.cancelled_at = now
+    registration.save(update_fields=["cancelled_at", "updated_at"])
+    audit_log.info("Registration cancelled by the participant: activity %s, registration %s.",
+                   registration.activity_id, registration.pk)
+    return registration
+
+
+@transaction.atomic
+def restore_registration(registration: Registration, now: datetime | None = None) -> Registration:
+    """"I can attend after all": clears cancelled_at while registration is open and a slot is free (the activity row is
+    locked, like register())."""
+    now = now or timezone.now()
+    Activity.objects.select_for_update(of=("self",)).filter(pk=registration.activity_id).first()
+    registration = Registration.objects.select_for_update(of=("self",)).select_related("activity__status").get(
+        pk=registration.pk)
+    state = cancellation_state(registration, now)
+    if state.kind != "cancelled":
+        return registration
+    if not state.can_restore:
+        reason = registration_closed_reason(registration.activity, now) or CANCEL_STARTED
+        raise RegistrationError(reason)
+    registration.cancelled_at = None
+    registration.save(update_fields=["cancelled_at", "updated_at"])
+    audit_log.info("Registration restored by the participant: activity %s, registration %s.",
+                   registration.activity_id, registration.pk)
+    return registration

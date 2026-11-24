@@ -93,7 +93,7 @@ def test_attendance_marked_later_is_approved_after_its_evaluation(generated, dir
     late = Registration.objects.create(activity=activity, template=people[0].template,
                                        participant_category=people[0].participant_category, name="Late Comer",
                                        email="late.comer@example.com")
-    registration_services.set_attendance(director, activity, [late.pk], True, "wet_signature")
+    registration_services.set_attendance(director, activity, [late.pk], True, "staff")
     assert certificate_of(late).status == S.GENERATED  # waits for the evaluation
     with django_capture_on_commit_callbacks(execute=True):
         evaluate(late, name="Late Comer", email="late.cert@example.com")
