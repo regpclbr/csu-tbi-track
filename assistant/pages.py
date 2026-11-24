@@ -339,4 +339,4 @@ def suggestions(now: datetime | None = None) -> list[str]:
     upcoming = metrics.upcoming_activities(metrics.default_filters(now), now)["next"]
     first = (f"Which documents are missing for {upcoming[0]['title']}?" if upcoming
              else "Which required documents are missing for our activities?")
-    return [first, "Which documents are overdue right now?", "Which documents are waiting for review?"]
+    return [first, "Which documents are overdue right now?", "Which required documents are missing?"]

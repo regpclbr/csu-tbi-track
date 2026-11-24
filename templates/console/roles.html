@@ -27,7 +27,7 @@ set_role_signatory_management / set_role_activity_deletion, ASSUMPTIONS 344, 357
   {% endif %}
   {% if no_approver %}
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
-      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can approve documents. Uploaded documents will wait for review until a role with active members can approve them.</p>
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can approve documents. Documents of a type that needs review will wait until a role with active members can approve them.</p>
   {% endif %}
   {% if no_certificate_approver %}
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">

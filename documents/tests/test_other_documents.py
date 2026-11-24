@@ -76,9 +76,10 @@ def test_migration_makes_only_the_invitation_letter_optional_and_keeps_its_files
 
 def test_migration_0004_makes_only_the_accomplishment_report_optional_and_keeps_its_files(
         roles, director, make_activity, upload) -> None:
-    """A database migrated to 0003 before: the Accomplishment Report was required (end + 7) and has a file."""
-    DocumentType.objects.filter(name="Accomplishment Report").update(is_required=True, due_reference="end_date",
-                                                                     due_offset_days=7)
+    """A database migrated to 0003 before: the Accomplishment Report was required (end + 7) and has a file. (seed_data
+    no longer creates the type, ASSUMPTIONS 430: the old row is made here.)"""
+    DocumentType.objects.create(name="Accomplishment Report", is_required=True, due_reference="end_date",
+                                due_offset_days=7)
     activity = make_activity()
     document = upload(director, activity, document_type=type_named("Accomplishment Report"))
     others_before = list(DocumentType.objects.exclude(name="Accomplishment Report").values())
@@ -115,6 +116,7 @@ def test_activities_with_and_without_the_optional_documents(director, make_activ
     """Every count reads DOCUMENT_TYPE.is_required: checklist, Documents page, Needs attention, compliance, S3. Neither
     the Invitation Letter nor the Accomplishment Report counts, uploaded or not."""
     optional_names = ("Invitation Letter", "Accomplishment Report")
+    DocumentType.objects.create(name="Accomplishment Report")  # as migration 0004 left it (seed: none since item 430)
     with_files = make_activity(title="With both", start=date(2026, 11, 10))
     without = make_activity(title="Without them", start=date(2026, 11, 10))
     uploaded = [upload(director, with_files, document_type=type_named(name)) for name in optional_names]
@@ -179,7 +181,7 @@ def test_upload_other_document_button_focuses_the_type(director, login, schedule
     optional_card = html.split('id="optional-title"')[1].split('id="upload"')[0]
     link = f'{reverse("activities:detail", args=[scheduled.pk])}?tab=documents&amp;focus=type#upload'
     assert f'href="{link}"' in optional_card and "Upload other document" in optional_card
-    assert ("Optional types: Accomplishment Report, Evaluation Form, Invitation Letter, Other, Pre-registration Form."
+    assert ("Optional types: Evaluation Form, Invitation Letter, Other, Pre-registration Form."
             in optional_card)
     assert not re.search(r'<select id="upload-type"[^>]*autofocus', html)  # no focus on a plain visit
     focused = login(director).get(tab(scheduled, focus="type")).content.decode()
@@ -193,7 +195,7 @@ def test_dropdown_is_grouped_required_then_other(director, login, scheduled) -> 
     names = {label: re.findall(r">([^<]+)</option>", body) for label, body in groups}
     assert list(names) == ["Required", "Other documents"]
     assert names["Required"] == ["Activity Design", "Activity Report", "Attendance Sheet", "Event Photos", "Request Letter"]
-    assert names["Other documents"] == ["Accomplishment Report", "Evaluation Form", "Invitation Letter", "Other",
+    assert names["Other documents"] == ["Evaluation Form", "Invitation Letter", "Other",
                                         "Pre-registration Form"]
     assert "(required)" not in select and "Certificate" not in select  # evidence has its own upload
 

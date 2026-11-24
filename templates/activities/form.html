@@ -4,8 +4,8 @@ Create / edit an activity (activities.page_views.activity_create / activity_edit
 in four sections. The rules are checked by activities.services; their messages appear under the right field, and
 the first field with an error gets the focus. Date-times are typed and shown in Manila time.
 New only: the Activity Design and Request Letter and other documents, all optional (activities/_new_documents.html,
-ASSUMPTIONS 405, 417), and "Create as: Draft / Scheduled" (activities/_create_as.html, 417), saved with the activity in
-one service call.
+ASSUMPTIONS 405, 417), saved with the activity in one service call: with both the Activity Design and the Request Letter
+it is created as Scheduled, otherwise as Draft (ASSUMPTIONS 431; no "Create as" choice any more).
 "Who signs the certificates" (activities/_signatories_fields.html, ASSUMPTIONS 365): saved with the activity. Edit only;
 the New form has the optional "Prepare the certificates now" instead (activities/_prepare_certificates.html, closed by
 default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 420).
@@ -18,7 +18,7 @@ default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 42
         {% include "components/icon.html" with name="arrow-left" class="size-4" %}{% if activity %}Back to the activity{% else %}All activities{% endif %}
       </a>
       <h1 class="page-title mt-1">{% if activity %}Edit activity{% else %}New activity{% endif %}</h1>
-      <p class="page-description">{% if activity %}Every change is written to the activity's History.{% else %}Create it as a Draft and finish later, or as Scheduled once its Activity Design and Request Letter are uploaded. Every field except the description and the documents is required.{% endif %}</p>
+      <p class="page-description">{% if activity %}Every change is written to the activity's History.{% else %}With its Activity Design and Request Letter it is created as Scheduled; without them it stays Draft until both are uploaded. Every field except the description, the objectives and the documents is required.{% endif %}</p>
     </div>
   </div>
 {% endblock %}
@@ -42,6 +42,7 @@ default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 42
     <div class="space-y-4">
       {% include "components/form_field.html" with field=form.title %}
       {% include "components/form_field.html" with field=form.description %}
+      {% include "components/form_field.html" with field=form.objectives %}
       <div class="grid gap-4 md:grid-cols-2">
         {% include "components/form_field.html" with field=form.activity_type %}
       </div>
@@ -81,7 +82,6 @@ default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 42
 
   {% if not activity %}
     {% include "activities/_new_documents.html" %}
-    {% include "activities/_create_as.html" %}
   {% endif %}
 
   <div class="flex items-center justify-end gap-2">

@@ -108,11 +108,13 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
                       link_url=reverse("startups:portal_registrations_page"), link_label="My registrations")
 
     form = registration_services.get_form(activity, FormType.REGISTRATION)
-    values: dict = {"participant_category": "", "answers": {}}
+    values: dict = {"designation": "", "office_agency": startup.name, "participant_category": "", "answers": {}}
     errors: dict[str, str] = {}
     message, status = "", 200
     if request.method == "POST":
         values = {
+            "designation": request.POST.get("designation", ""),
+            "office_agency": request.POST.get("office_agency", ""),
             "participant_category": request.POST.get("participant_category", ""),
             "answers": public_pages.answers_from_post(form, request.POST),
             "privacy_consent": registration_services.has_privacy_consent(
@@ -122,7 +124,8 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
         try:
             registration_services.check_privacy_consent(request.POST.get(registration_services.PRIVACY_CONSENT_FIELD))
             services.register_as_startup(
-                startup, activity, participant_category=values["participant_category"] or None, answers=values["answers"]
+                startup, activity, designation=values["designation"], office_agency=values["office_agency"],
+                participant_category=values["participant_category"] or None, answers=values["answers"],
             )
         except registration_services.RegistrationError as refused:
             message, status = str(refused), 400
@@ -139,7 +142,8 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
     if reason is not None:
         return notice(request, title="Registration is closed", text=reason, icon="lock", tone="warning", status=status,
                       link_url=reverse("startups:portal_activities"), link_label="See other open activities")
-    focus = public_pages.first_error(public_pages.field_order(form, ("participant_category",)), errors)
+    focus = public_pages.first_error(
+        public_pages.field_order(form, ("designation", "office_agency", "participant_category")), errors)
     summary = registration_services.public_activity_summary(activity)
     context = {
         "activity": activity,

@@ -126,7 +126,7 @@ def test_django_admin_action_records_the_marker(director, scheduled, signup, mon
 def test_upload_box_text(client, director, scheduled) -> None:
     client.force_login(director)
     html = client.get(reverse("activities:detail", args=[scheduled.pk]) + "?tab=documents").content.decode()
-    assert "It starts as “Waiting for review”. The Director (a member with approval rights) approves it." in html
+    assert "Upload the approved copy: it is saved as Approved and counts at once." in html
 
 
 def test_time_is_in_the_confirmation_email(scheduled, signup) -> None:

@@ -15,7 +15,7 @@ from activities.models import Activity, ParticipantCategory
 from registrations import public_pages, services
 from registrations.models import EvaluationSubmission, FormType, Registration
 
-from .conftest import CERT, evaluation_answers, field_id, form_of, registration_answers
+from .conftest import CERT, FIXED, evaluation_answers, field_id, form_of, registration_answers
 
 pytestmark = pytest.mark.django_db
 
@@ -31,6 +31,7 @@ def registration_post(activity, email: str = "ana@example.com", **extra) -> dict
         "name": "Ana Cruz",
         "email": email,
         "contact_number": "09171234567",
+        **FIXED,  # Designation / Position and Office / Agency (ASSUMPTIONS 426)
         f"field_{field_id(form, 'Affiliation / Organization')}": "CSU",
         services.HONEYPOT_FIELD: "",
         services.PRIVACY_CONSENT_FIELD: "yes",  # the privacy notice checkbox (ASSUMPTIONS 394)
@@ -133,7 +134,7 @@ def test_field_errors_are_shown_under_their_fields_with_the_values_kept(client, 
     assert 'id="id_name-error"' in text and 'id="id_email-error"' in text and "Enter a valid email address." in text
     assert f'id="answer-{field_id(form, "Affiliation / Organization")}-error"' in text and "This field is required." in text
     assert 'value="not-an-email"' in text and 'value="09179998888"' in text  # values kept
-    assert "Please check the 3 fields marked below." in text
+    assert "Please check the 3 fields marked below." in text  # name, email, the form's field (the fixed two are filled)
     # Only the first field with an error gets the focus.
     assert text.count("autofocus") == 1 and re.search(r'<input id="id_name"[^>]*autofocus', text)
 
@@ -212,7 +213,8 @@ def small_limits(settings):
 
 
 def api_post(client, activity, email: str, ip: str = "203.0.113.5"):
-    body = {"name": "Ana Cruz", "email": email, "answers": registration_answers(activity), services.PRIVACY_CONSENT_FIELD: True}
+    body = {"name": "Ana Cruz", "email": email, **FIXED, "answers": registration_answers(activity),
+            services.PRIVACY_CONSENT_FIELD: True}
     return client.post(f"/api/register/{activity.pk}/", json.dumps(body), content_type="application/json", REMOTE_ADDR=ip)
 
 
@@ -259,7 +261,8 @@ def test_both_endpoints_use_client_ip(client, scheduled, settings, endpoint) -> 
         if endpoint == "html":
             client.post(page(scheduled), registration_post(scheduled), REMOTE_ADDR="10.0.0.1", HTTP_X_FORWARDED_FOR="203.0.113.77")
         else:
-            body = {"name": "Ana Cruz", "email": "ana@example.com", "answers": registration_answers(scheduled), "website": ""}
+            body = {"name": "Ana Cruz", "email": "ana@example.com", **FIXED, "answers": registration_answers(scheduled),
+                    "website": ""}
             client.post(f"/api/register/{scheduled.pk}/", json.dumps(body), content_type="application/json",
                         REMOTE_ADDR="10.0.0.1", HTTP_X_FORWARDED_FOR="203.0.113.77")
     guard.assert_called_once_with("203.0.113.77", "ana@example.com", "")

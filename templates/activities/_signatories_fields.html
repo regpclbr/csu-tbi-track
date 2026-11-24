@@ -6,6 +6,8 @@ dropdowns and chosen here). Next to each, the optional "Title on this certificat
 person's usual position). A chosen slot has no empty option: it can be switched, never emptied. The rules are checked by
 certificates.services (assign_default_signatories / set_activity_signatories); errors appear under the fields.
 `embedded`: inside the New activity form's "Prepare the certificates now" (ASSUMPTIONS 420): no card, a smaller heading.
+Without can_approve_certificates (`signatories.editable` False, ASSUMPTIONS 431) the slots are read only (person and
+printed title) with "Only the Director chooses who signs."; nothing is posted for them.
 {% endcomment %}
 <section class="{% if embedded %}space-y-4{% else %}card p-6{% endif %}" aria-labelledby="section-signatories"
          x-data="{
@@ -48,6 +50,22 @@ certificates.services (assign_default_signatories / set_activity_signatories); e
   {% else %}
     {% include "components/section_header.html" with id="section-signatories" title="Who signs the certificates" subtitle="The two people printed on this activity's certificates (left and right). New activities start with the default signatories; change them here or later on the Certificates tab." %}
   {% endif %}
+  {% if not signatories.editable %}
+    <p class="notice notice-info text-sm" role="note">{{ signatories.only_director }}</p>
+    <dl class="grid gap-4 md:grid-cols-2">
+      {% for slot in signatories.slots %}
+        <div class="rounded-2xl border border-line p-4">
+          <dt class="text-sm font-semibold text-ink">{{ slot.label }}</dt>
+          {% if slot.person %}
+            <dd class="mt-2 text-sm font-semibold break-words text-ink">{{ slot.person.name }}{% if slot.inactive %} <span class="font-normal text-muted">(inactive)</span>{% endif %}</dd>
+            <dd class="text-sm break-words text-slate-700">{{ slot.printed_title }}</dd>
+          {% else %}
+            <dd class="mt-2 text-sm text-slate-700">Not chosen yet</dd>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </dl>
+  {% else %}
   {% if signatories.no_defaults %}
     <p class="mb-4 flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">
       {% include "components/icon.html" with name="triangle-alert" class="mt-1 size-4 text-warning" %}<span>There are no default signatories yet. Choose two people here, or later on the Certificates tab: certificates are created only once both are chosen.</span></p>
@@ -76,4 +94,5 @@ certificates.services (assign_default_signatories / set_activity_signatories); e
       </div>
     {% endfor %}
   </div>
+  {% endif %}
 </section>

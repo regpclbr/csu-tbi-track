@@ -124,6 +124,10 @@ class Registration(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField()
     contact_number = models.CharField(max_length=30, blank=True)
+    # ASSUMPTIONS 426: fixed fields of every registration, required for NEW registrations by services.register().
+    # Empty on older rows (designation) or copied from their "Affiliation / Organization" answer (office_agency).
+    designation = models.CharField(max_length=255, blank=True, default="")
+    office_agency = models.CharField(max_length=255, blank=True, default="")
     registration_date = models.DateTimeField(auto_now_add=True)
     attendance_confirmed = models.BooleanField(default=False)
     confirmation_method = models.CharField(

@@ -14,6 +14,7 @@ import segno
 
 from registrations import services as registration_services
 
+from . import services as activity_services
 from .models import Activity, ActivityStatus
 
 EVALUATION_STATUSES = (ActivityStatus.ONGOING, ActivityStatus.CONDUCTED)  # the evaluation section instead of registration
@@ -33,13 +34,17 @@ def build_form_first(activity: Activity, reason: str | None) -> bool:
 
 
 def share_card(activity: Activity, registration: dict, now: datetime | None = None) -> dict | None:
-    """What the Share card shows; None for Draft. `registration` is activities.pages.registration_summary()."""
+    """What the Share card shows; None for Draft. `registration` is activities.pages.registration_summary().
+    `switch` (Scheduled only): the hand switch offered, "close" or "reopen" (services.registration_switch,
+    ASSUMPTIONS 427); the template shows it only to members who can create activities."""
     status = activity.status.name
     if status == ActivityStatus.SCHEDULED:
+        switch = activity_services.registration_switch(activity)
         if build_form_first(activity, registration["reason"]):
-            return {"registration": {"url": None, "open": False, "reason": BUILD_FORM_FIRST, "build_form_first": True}}
+            return {"registration": {"url": None, "open": False, "reason": BUILD_FORM_FIRST, "build_form_first": True,
+                                     "switch": switch}}
         return {"registration": {"url": registration_services.registration_page_url(activity),
-                                 "open": registration["open"], "reason": registration["reason"]}}
+                                 "open": registration["open"], "reason": registration["reason"], "switch": switch}}
     if status in EVALUATION_STATUSES:
         state = registration_services.evaluation_request_state(activity, now)
         return {"evaluation": {"url": registration_services.evaluation_request_url(activity),

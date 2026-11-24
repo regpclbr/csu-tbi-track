@@ -90,6 +90,8 @@ class Activity(models.Model):
     )
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
+    # ASSUMPTIONS 428: optional, one objective per line (services._clean_values tidies the lines); the reports use it.
+    objectives = models.TextField(null=True, blank=True)
     start_date = models.DateField()
     end_date = models.DateField()
     # Manila time of day. Nullable only for activities whose old free-text time could not be read
@@ -123,6 +125,10 @@ class Activity(models.Model):
     # activities created before 2026-11-19 (current rules). Set only when the activity is created (the New activity
     # form, the JSON API); never changed afterwards.
     creation_documents_required = models.BooleanField(default=False)
+    # ASSUMPTIONS 427: True = registration closed by hand ("Close registration"). Changed ONLY by
+    # activities.services.set_registration_closed_by_hand (History row); read by is_registration_open /
+    # open_for_registration. The automatic rules (deadline, slots, Scheduled) still apply when it is False.
+    registration_closed_by_hand = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

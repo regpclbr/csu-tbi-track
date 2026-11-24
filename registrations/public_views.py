@@ -100,6 +100,8 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
             "name": post.get("name", ""),
             "email": post.get("email", ""),
             "contact_number": post.get("contact_number", ""),
+            "designation": post.get("designation", ""),
+            "office_agency": post.get("office_agency", ""),
             "participant_category": post.get("participant_category", ""),
             "answers": pages.answers_from_post(form, post),
             "privacy_consent": services.has_privacy_consent(post.get(services.PRIVACY_CONSENT_FIELD)),
@@ -112,6 +114,8 @@ def register_page(request: HttpRequest, activity_id: int) -> HttpResponse:
                 name=values["name"],
                 email=values["email"],
                 contact_number=values["contact_number"],
+                designation=values["designation"],
+                office_agency=values["office_agency"],
                 participant_category=values["participant_category"] or None,
                 answers=values["answers"],
             )

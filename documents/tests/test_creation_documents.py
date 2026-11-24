@@ -87,10 +87,11 @@ def test_uploaded_is_enough_waiting_or_returned(new_activity, director, head, up
     activity = new_activity(start=date(2026, 12, 1))
     add(upload, head, activity, DESIGN)  # waiting for the Director
     returned = add(upload, head, activity, REQUEST)
-    services.return_document(director, returned, "Wrong date", now=TEST_NOW)
-    activity_services.change_status(director, activity, ActivityStatus.SCHEDULED)
     activity.refresh_from_db()
-    assert activity.status.name == ActivityStatus.SCHEDULED
+    assert activity.status.name == ActivityStatus.SCHEDULED  # by itself on the second upload (ASSUMPTIONS 431)
+    services.return_document(director, returned, "Wrong date", now=TEST_NOW)
+    activity.refresh_from_db()
+    assert activity.status.name == ActivityStatus.SCHEDULED  # a returned one still counts as uploaded
 
 
 def test_old_drafts_schedule_without_them(new_activity, director) -> None:

@@ -50,6 +50,7 @@ ALLOWED_STATUS_MOVES: dict[str, set[str]] = {
 FIELD_LABELS: dict[str, str] = {
     "title": "Title",
     "description": "Description",
+    "objectives": "Objectives",
     "activity_type": "Activity Type",
     "participant_categories": "Participant Categories",
     "start_date": "Start Date",
@@ -65,15 +66,21 @@ FIELD_LABELS: dict[str, str] = {
 EDITABLE_FIELDS = tuple(FIELD_LABELS)
 CATEGORIES = "participant_categories"  # many-to-many (ACTIVITY_PARTICIPANT_CATEGORY), not a column
 SCALAR_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != CATEGORIES)  # columns on ACTIVITY
-OPTIONAL_FIELDS = ("description", "evaluation_deadline")  # evaluation_deadline empty = stays open (ASSUMPTIONS 423)
+OPTIONAL_FIELDS = ("description", "objectives", "evaluation_deadline")  # evaluation_deadline empty = stays open (ASSUMPTIONS 423)
 REQUIRED_FIELDS = tuple(field for field in SCALAR_FIELDS if field not in OPTIONAL_FIELDS)
 TEXT_FIELDS = ("title", "description", "venue")
+OBJECTIVES_MAX = 5000  # characters, all lines together (ASSUMPTIONS 428)
 
 STATUS_LABEL = "Status"
 RESOURCE_PERSON_ADDED = "Resource Person Added"
 RESOURCE_PERSON_REMOVED = "Resource Person Removed"
 CERTIFICATES_LABEL = "Certificates"  # created automatically / deleted with an undone attendance (ASSUMPTIONS 362)
 EVALUATION_LINKS_LABEL = "Evaluation Links"  # sent automatically by the 5-minute job (ASSUMPTIONS 419)
+DOCUMENTS_LABEL = "Documents"  # uploaded as an approved copy, replaced, deleted (documents.services, ASSUMPTIONS 432)
+# Close / reopen registration by hand (ASSUMPTIONS 427): the History row's label and values.
+REGISTRATION_LABEL = "Registration"
+REGISTRATION_CLOSED_VALUE = "Closed by the TBI"
+REGISTRATION_REOPENED_VALUE = "Reopened by the TBI"
 
 DEFAULT_PAGE_SIZE = 20
 
@@ -95,10 +102,12 @@ def slots_remaining(activity: Activity) -> int:
 
 
 def is_registration_open(activity: Activity, now: datetime | None = None) -> bool:
-    """Open only when the activity is Scheduled, the deadline has not passed, and slots remain."""
+    """Open only when the activity is Scheduled, not closed by hand (ASSUMPTIONS 427), the deadline has not passed,
+    and slots remain."""
     now = now or timezone.now()
     return (
         activity.status.name == SCHEDULED
+        and not activity.registration_closed_by_hand
         and now <= activity.registration_deadline
         and slots_remaining(activity) > 0
     )
@@ -164,6 +173,19 @@ def _local_date(value: datetime) -> date:
     return timezone.localtime(value).date() if timezone.is_aware(value) else value.date()
 
 
+def clean_objectives(value) -> str | None:
+    """Objectives (ASSUMPTIONS 428): one per line; each line trimmed, empty lines dropped; nothing left = None."""
+    if not isinstance(value, str):
+        return value
+    lines = [" ".join(line.split()) for line in value.splitlines()]
+    return "\n".join(line for line in lines if line) or None
+
+
+def objective_lines(activity: Activity) -> list[str]:
+    """The activity's objectives as a list (the Overview and, later, the reports)."""
+    return [line for line in (activity.objectives or "").splitlines() if line.strip()]
+
+
 def _clean_values(data: dict) -> dict:
     """Strip text fields and treat an empty description as no description."""
     unknown = set(data) - set(EDITABLE_FIELDS)
@@ -175,6 +197,8 @@ def _clean_values(data: dict) -> dict:
             cleaned[field] = cleaned[field].strip()
     if cleaned.get("description") == "":
         cleaned["description"] = None
+    if "objectives" in cleaned:
+        cleaned["objectives"] = clean_objectives(cleaned["objectives"])
     if CATEGORIES in cleaned:
         cleaned[CATEGORIES] = _category_set(cleaned[CATEGORIES])
     return cleaned
@@ -253,6 +277,9 @@ def validate_activity_values(
     elif activity is not None and max_slots < (count := registered_count(activity)):
         errors["max_slots"] = f"Max slots cannot be lower than the {count} people already registered."
 
+    if values.get("objectives") and len(values["objectives"]) > OBJECTIVES_MAX:
+        errors["objectives"] = f"The objectives can be at most {OBJECTIVES_MAX} characters."
+
     if Decimal(values["budget_amount"]) < 0:
         errors["budget_amount"] = "Budget amount must be zero or more."
 
@@ -318,6 +345,12 @@ def write_certificate_text_history(activity: Activity, member: TBIMember | None,
     from certificates.services import TEXT_HISTORY_LABEL
 
     _write_audit(activity, member, [(TEXT_HISTORY_LABEL, old, new)])
+
+
+def write_document_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
+    """One History row about one of the activity's documents (documents.services, ASSUMPTIONS 432): "Documents":
+    "" -> 'Activity Design "Design v1" uploaded as an approved copy', or a replace / delete."""
+    _write_audit(activity, member, [(DOCUMENTS_LABEL, old, new)])
 
 
 def write_signatory_history(activity: Activity, member: TBIMember | None, label: str, old: str, new: str) -> None:
@@ -408,10 +441,17 @@ def save_new_activity(
     custom text (certificates.services.save_activity_text) and the certificates are prepared
     (prepare_activity_certificates: the reviewers are told). False = the default signatories and the default text,
     whatever `signatories` / `certificate_texts` hold (the flow before item 420).
+    A signatory or title choice needs can_approve_certificates (ASSUMPTIONS 431: only the Director chooses who signs;
+    PermissionDenied otherwise); without a choice the defaults are used, so anyone who creates activities can still
+    prepare the certificates and write their text.
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     if not prepare_certificates:
         signatories, certificate_texts = None, None
+    from certificates.services import has_signatory_choice, require_signatory_choice  # imports this module
+
+    if has_signatory_choice(signatories):
+        require_signatory_choice(member)
     categories = _category_set(participant_categories)
     validate_activity_values({**activity_values(activity), CATEGORIES: categories}, now=now)
     activity.created_by = member
@@ -462,7 +502,8 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
 
     The edit and its audit rows are saved in one transaction: if anything fails, nothing is saved.
     `signatories`: the edit form's "Who signs the certificates" ({slot: (person or None, title)}), saved in the same
-    transaction by certificates.services.set_activity_signatories (its History rows, certificates refreshed).
+    transaction by certificates.services.set_activity_signatories (its History rows, certificates refreshed). Only
+    with can_approve_certificates (ASSUMPTIONS 431); others pass None (the form shows the signatories read only).
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     changes = _clean_values(data)
@@ -496,6 +537,37 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
     return activity
 
 
+# --- Registration closed by hand (ASSUMPTIONS 427) -------------------------------------------
+
+
+def registration_switch(activity: Activity) -> str | None:
+    """Which hand switch the Share card offers: "close", "reopen" or None (not Scheduled). The permission is checked
+    by the view and again by set_registration_closed_by_hand."""
+    if activity.status.name != SCHEDULED:
+        return None
+    return "reopen" if activity.registration_closed_by_hand else "close"
+
+
+@transaction.atomic
+def set_registration_closed_by_hand(member: TBIMember, activity: Activity, closed: bool) -> Activity:
+    """Close registration by hand (closed=True) or reopen it (False) on a Scheduled activity; one History row
+    "Registration". Reopening only removes the hand closing: the deadline, the slots, Scheduled and a ready
+    registration form still decide (registrations.services.registration_closed_reason)."""
+    require_permission(member, Permission.CREATE_ACTIVITY)
+    current = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    if current.status.name != SCHEDULED:
+        raise ActivityError("Registration can be closed or reopened by hand only while the activity is Scheduled.")
+    if current.registration_closed_by_hand == closed:
+        raise ActivityError("Registration is already closed by the TBI." if closed
+                            else "Registration was not closed by hand.")
+    current.registration_closed_by_hand = closed
+    current.save(update_fields=["registration_closed_by_hand", "updated_at"])
+    change = ("", REGISTRATION_CLOSED_VALUE) if closed else (REGISTRATION_CLOSED_VALUE, REGISTRATION_REOPENED_VALUE)
+    _write_audit(current, member, [(REGISTRATION_LABEL, *change)])
+    activity.refresh_from_db()
+    return activity
+
+
 # --- Status changes ------------------------------------------------------------------------
 
 
@@ -512,9 +584,10 @@ def allowed_next_statuses(activity: Activity) -> list[str]:
     return [name for name in order if name in allowed]
 
 
-def _move_status(current: Activity, new_status: str, member: TBIMember | None) -> None:
+def _move_status(current: Activity, new_status: str, member: TBIMember | None, note: str = "") -> None:
     """The one status transition, for staff (change_status) and the system (member None). `current` must be
-    locked (select_for_update). Checks ALLOWED_STATUS_MOVES, saves, and writes the audit row."""
+    locked (select_for_update). Checks ALLOWED_STATUS_MOVES, saves, and writes the audit row. `note`: why the System
+    moved it, added to the History value ("Scheduled (both documents uploaded)", ASSUMPTIONS 431)."""
     target = ActivityStatus.objects.filter(name=new_status).first()
     if target is None:
         raise ActivityError(f'Unknown status "{new_status}".')
@@ -537,7 +610,7 @@ def _move_status(current: Activity, new_status: str, member: TBIMember | None) -
     old_status = current.status
     current.status = target
     current.save(update_fields=["status", "updated_at"])
-    _write_audit(current, member, [(STATUS_LABEL, old_status, target)])
+    _write_audit(current, member, [(STATUS_LABEL, old_status, f"{target.name} ({note})" if note else target)])
     if target.name == CONDUCTED:  # the System creates the certificates (ASSUMPTIONS 362); never blocks the move
         from certificates.services import auto_generate_certificates
 
@@ -553,6 +626,20 @@ def change_status(member: TBIMember, activity: Activity, new_status: str) -> Act
     _move_status(current, new_status, member)
     activity.refresh_from_db()
     return activity
+
+
+def schedule_automatically(activity: Activity, note: str) -> bool:
+    """Draft -> Scheduled by the System (ASSUMPTIONS 431: both creation documents uploaded; the caller,
+    documents.services.schedule_when_documents_complete, decides when). The same transition rule as change_status
+    (_move_status, incl. scheduling_refused_reason), in a savepoint: a refusal raises ActivityError and changes nothing.
+    False when the activity is no longer a Draft. History: "Status: Draft -> Scheduled (<note>)" by System."""
+    with transaction.atomic():
+        current = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+        if current.status.name != DRAFT:
+            return False
+        _move_status(current, SCHEDULED, None, note=note)
+    activity.refresh_from_db()
+    return True
 
 
 def automatic_next_status(activity: Activity, now: datetime | None = None) -> str | None:
@@ -836,6 +923,7 @@ def open_for_registration(queryset: QuerySet | None = None, now: datetime | None
     return queryset.filter(
         ready_form,
         status__name=SCHEDULED,
+        registration_closed_by_hand=False,
         registration_deadline__gte=now,
         max_slots__gt=Coalesce(Subquery(registered), 0),
     )
@@ -916,7 +1004,9 @@ def get_activity_detail(activity: Activity) -> dict:
         "activity_id": activity.pk,
         "title": activity.title,
         "description": activity.description or "",
+        "objectives": objective_lines(activity),  # ASSUMPTIONS 428
         "status": activity.status.name,
+        "registration_closed_by_hand": activity.registration_closed_by_hand,  # ASSUMPTIONS 427
         "activity_type_id": activity.activity_type_id,
         "activity_type": activity.activity_type.name,
         "registration_form_id": form_ids.get("registration"),

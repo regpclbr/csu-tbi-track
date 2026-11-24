@@ -377,32 +377,21 @@ def history(activity: Activity, page) -> tuple[services.PageResult, list[dict]]:
 def signatory_form_options(member, activity: Activity | None = None) -> dict:
     """The activity form's "Who signs the certificates" (ASSUMPTIONS 365): who is shown first per slot (the activity's
     saved person; on a new activity the active default, or nobody) and whether "Add a person…" is offered
-    (can_manage_signatories, ASSUMPTIONS 418)."""
+    (can_manage_signatories, ASSUMPTIONS 418), the saved "Title on this certificate" per slot, and whether the member
+    may choose at all (can_approve_certificates, ASSUMPTIONS 431; otherwise the slots are read only)."""
     from certificates import services as certificate_services
 
+    titles = {}
     if activity is not None:
-        current = certificate_services.activity_signatories(activity)
+        rows = certificate_services.activity_slots(activity)
+        current = {slot: row.signatory if row else None for slot, row in rows.items()}
+        titles = {slot: row.position_on_certificate or "" for slot, row in rows.items() if row}
     else:
         current = {slot: person if person is not None and person.is_active else None
                    for slot, person in certificate_services.default_signatories().items()}
-    return {"current_signatories": current, "can_add_person": has_permission(member, Permission.MANAGE_SIGNATORIES)}
-
-
-def create_as_section(form) -> dict:
-    """The New activity form's "Create as" choice (ASSUMPTIONS 417): each option with its help line and whether it is
-    selected (the posted value is kept after an error), and the field's error (the service's refusal goes here).
-    Display only: the service and change_status decide."""
-    from .forms import CREATE_AS_HELP
-
-    field = form["create_as"]
-    selected = str(field.value() or "")
-    return {
-        "name": field.html_name,
-        "label": field.label,
-        "options": [{"value": value, "label": label, "help": CREATE_AS_HELP[value], "selected": value == selected}
-                    for value, label in form.fields["create_as"].choices],
-        "errors": list(field.errors),
-    }
+    return {"current_signatories": current, "current_titles": titles,
+            "can_add_person": has_permission(member, Permission.MANAGE_SIGNATORIES),
+            "can_choose_signatories": certificate_services.can_choose_signatories(member)}
 
 
 TEXT_MODE_FIELD = "certificate_text_mode"  # "default" | "custom" inside "Prepare the certificates now"
@@ -448,7 +437,9 @@ def prepare_section(form, data, text_errors: dict | None = None) -> dict:
 def signatory_form_section(form, member) -> dict:
     """What the form template shows for "Who signs the certificates": per slot the bound select and title fields,
     each option's usual position (the title's placeholder follows the chosen person) and the amber note for an
-    inactive person; the "Add a person…" dialog for can_manage_signatories (ASSUMPTIONS 418)."""
+    inactive person; the "Add a person…" dialog for can_manage_signatories (ASSUMPTIONS 418). Without
+    can_approve_certificates (ASSUMPTIONS 431) `editable` is False: the template shows each slot's person and printed
+    title read only with "Only the Director chooses who signs." (the service refuses a change anyway)."""
     from certificates import services as certificate_services
 
     slots = []
@@ -472,10 +463,15 @@ def signatory_form_section(form, member) -> dict:
             "placeholder": chosen.position if chosen else "The person's usual position",
             "inactive": current is not None and not current.is_active,
             "locked": current is not None,  # a chosen slot can be switched but never emptied
+            "person": current,  # read-only display (ASSUMPTIONS 431)
+            "printed_title": (form.fields[f"title_{slot}"].initial or (current.position if current else "")),
         })
+    editable = form.signatory_editable
     return {
         "slots": slots,
-        "can_add": has_permission(member, Permission.MANAGE_SIGNATORIES),  # "Add a person…" (ASSUMPTIONS 418)
+        "editable": editable,
+        "only_director": certificate_services.ONLY_DIRECTOR_CHOOSES,
+        "can_add": editable and has_permission(member, Permission.MANAGE_SIGNATORIES),  # "Add a person…" (418)
         "add_url": reverse("certificates:signatory_add_inline"),
         "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
         "no_defaults": all(slot["field"].value() in (None, "") for slot in slots),

@@ -30,8 +30,8 @@ class Role(models.Model):
     # Approve certificates and add signatures (ASSUMPTIONS 357, 361): Director, both Project Heads and the System
     # Administrator by default; switched like can_approve_documents. Allowed together with can_manage_users.
     can_approve_certificates = models.BooleanField(default=False, db_default=False)
-    # Delete an activity that has no Issued certificate and no Approved document (ASSUMPTIONS 389): System
-    # Administrator by default; switched in the Admin Console. Allowed together with can_manage_users (cleaning up).
+    # Delete an activity that has no Issued certificate (nor approved evidence or a cited document; ASSUMPTIONS 389, 432):
+    # System Administrator by default; switched in the Admin Console. Allowed together with can_manage_users (cleaning up).
     can_delete_activities = models.BooleanField(default=False, db_default=False)
     # Manage the certificate signatory list: add, edit, signature images (new versions), deactivate, the defaults
     # (ASSUMPTIONS 418, NAVIGATU: only the TBI Director). Director only by default; switched in the Admin Console. Never

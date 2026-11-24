@@ -32,7 +32,7 @@ the Director is notified. Alpine only shows / hides parts and builds that URL; e
   {% include "components/section_header.html" with id="section-prepare" title="Prepare the certificates now (optional)" subtitle="Not needed: certificates are created automatically when the activity is Conducted, with the default signatories and the default text, and then wait for approval. Prepare them now if the Director should review and approve them before the activity." %}
   <label class="flex items-start gap-3 rounded-2xl border border-line p-4 text-sm text-ink">
     <input type="checkbox" name="{{ prepare.field.html_name }}" id="{{ prepare.field.id_for_label }}" value="on" class="mt-1" x-model="prepare"{% if prepare.checked %} checked{% endif %}>
-    <span><span class="font-semibold">Prepare the certificates now</span><span class="block text-slate-700">Choose who signs and the text, check the preview, and the Director is asked to approve them. Once approved, each participant's certificate is emailed as soon as they submit their evaluation.</span></span>
+    <span><span class="font-semibold">Prepare the certificates now</span><span class="block text-slate-700">{% if signatories.editable %}Choose who signs and the text{% else %}Choose the text (the Director chooses who signs){% endif %}, check the preview, and the Director is asked to approve them. Once approved, each participant's certificate is emailed as soon as they submit their evaluation.</span></span>
   </label>
 
   <div class="mt-6 space-y-6" x-show="prepare"{% if not prepare.checked %} style="display: none"{% endif %}>

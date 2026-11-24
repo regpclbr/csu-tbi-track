@@ -65,7 +65,7 @@ def test_empty_chat_shows_three_suggestions_naming_the_next_activity(director, l
     html = login(director).get(reverse("assistant:chat")).content.decode()
     assert "is coming soon" not in html and "No chats yet" in html
     assert f"Which documents are missing for {activity.title}?" in html
-    assert "Which documents are overdue right now?" in html and "Which documents are waiting for review?" in html
+    assert "Which documents are overdue right now?" in html and "Which required documents are missing?" in html
     assert 'id="ask-form"' in html and 'hx-sync="this:drop"' in html and "Stop waiting" in html
     assert f'<option value="{activity.pk}">{activity.title}</option>' in html  # the activity filter
 

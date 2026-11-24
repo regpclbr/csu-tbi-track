@@ -261,10 +261,10 @@ CREATION_PDF = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 
 
 def creation_document_files() -> dict:
-    """The New activity form's Activity Design and Request Letter (ASSUMPTIONS 405; optional since 417, needed for
-    "Create as: Scheduled") as POST data: `required-<type id>-file` and its `required-<type id>-title` (required with a
+    """The New activity form's Activity Design and Request Letter (ASSUMPTIONS 405; optional since 417; with both the
+    activity is created as Scheduled, ASSUMPTIONS 431) as POST data: `required-<type id>-file` and its `required-<type id>-title` (required with a
     file, ASSUMPTIONS 410) for every documents.services.creation_required_types() type (needs the `roles` fixture: it
-    seeds the types). Tests that post the New activity form also send `create_as` ("Draft" or "Scheduled")."""
+    seeds the types)."""
     from django.core.files.uploadedfile import SimpleUploadedFile
 
     from documents.services import creation_required_types

@@ -189,9 +189,9 @@ def approval_panel(member, activity: Activity, certificates: list[Certificate]) 
     by_email = sum(1 for c in not_issued if c.delivery_method == DeliveryMethod.EMAIL)
     state = services.approval_state(activity, Counter(c.status for c in certificates))
     offered = can_approve and not approved and state.offers_approval
-    # Before Conducted (ASSUMPTIONS 420): "Prepare the certificates now" while not prepared, for members who choose
-    # the signatories (can_create_activity or can_approve_certificates); the service refuses anything else.
-    can_prepare = (state.kind == services.NOT_PREPARED_KIND and services.can_choose_signatories(member)
+    # Before Conducted (ASSUMPTIONS 420): "Prepare the certificates now" while not prepared, for can_create_activity or
+    # can_approve_certificates (unchanged by 431: preparing is not choosing the signatories); the service checks again.
+    can_prepare = (state.kind == services.NOT_PREPARED_KIND and services.can_prepare_certificates(member)
                    and services.prepare_closed_reason(activity) is None)
     return {
         "approved": approved,
@@ -381,7 +381,8 @@ def signatures_panel(member, activity: Activity) -> dict:
     """The Signatures section (ASSUMPTIONS 363, 365, 367): the left and right slot with the activity's signatory, the
     title printed for them (services.printed_title: "Title on this certificate", else the position), "(inactive)",
     whether the image is there; a dropdown of active people (+ "Add a person…" for can_manage_signatories) and the title
-    field for can_create_activity / can_approve_certificates (unchanged); for an inactive person an amber note with "Use
+    field for can_approve_certificates only (ASSUMPTIONS 431: only the Director chooses who signs; everyone else reads
+    `only_director`); for an inactive person an amber note with "Use
     the current version" when a newer active version exists (services.inactive_slots); the image form (with the impact
     of a new version, services.version_impact), "Add a person" and "All signatories" for can_manage_signatories only
     (ASSUMPTIONS 418). Without these flags: view only."""
@@ -417,6 +418,7 @@ def signatures_panel(member, activity: Activity) -> dict:
     return {
         "slots": slots,
         "can_choose": can_choose,
+        "only_director": services.ONLY_DIRECTOR_CHOOSES,
         "can_upload": can_upload,
         "can_edit": can_upload,
         "missing_reason": services.missing_slots_reason({slot: row.signatory if row else None for slot, row in rows.items()}) or "",

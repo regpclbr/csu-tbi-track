@@ -89,11 +89,12 @@ def test_other_roles_cannot_approve_reissue_or_edit_the_default_text(generated, 
 
 
 @pytest.mark.parametrize("role_name", CREATORS)
-def test_creators_keep_signatories_prepare_custom_text_and_thumbnails(new_activity, design, make_member,
-                                                                      role_name) -> None:
+def test_creators_keep_prepare_custom_text_and_thumbnails(new_activity, design, make_member, role_name) -> None:
+    """Since ASSUMPTIONS 431 they no longer choose the signatories (only the Director); the rest is kept."""
     _, vp, head = design
     member = make_member(role_name)
-    services.set_activity_signatory(member, new_activity, "right", vp, title="Vice President, CSU")
+    with pytest.raises(PermissionDenied, match="Only the Director chooses who signs."):
+        services.set_activity_signatory(member, new_activity, "right", vp, title="Vice President, CSU")
     values = services.text_values(services.current_texts(new_activity)[P])
     services.save_activity_text(member, new_activity, {P: {**values, "title": "Certificate of Attendance"}})
     services.prepare_activity_certificates(member, new_activity)

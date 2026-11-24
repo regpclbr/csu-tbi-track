@@ -45,7 +45,7 @@ def _document(document_id: int) -> Document:
 def _list_context(request: HttpRequest, tab: str) -> dict:
     return {
         "page_title": "Documents",
-        "page_subtitle": "Required documents of every activity: missing, waiting for review, returned or approved",
+        "page_subtitle": "Required documents of every activity: uploaded (approved copies) or missing",
         "list_tab": tab,
         "review_count": services.review_queue(request.user).count(),  # the same number as the sidebar badge
         "can_review": has_permission(request.user, Permission.APPROVE_DOCUMENTS),  # shows the review tab
@@ -129,7 +129,12 @@ def upload(request: HttpRequest, activity_id: int) -> HttpResponse:
         except ValidationError as error:
             form.errors = {key: " ".join(messages_) for key, messages_ in error.message_dict.items()}
         else:
-            messages.success(request, f'"{document.title}" was uploaded. It is waiting for review.')
+            text = (f'"{document.title}" was uploaded as an approved copy.' if services.is_approved_copy(document)
+                    else f'"{document.title}" was uploaded. It is waiting for review.')  # ASSUMPTIONS 432
+            if getattr(document, "scheduled_activity", False):  # ASSUMPTIONS 431: both documents are now uploaded
+                text += (" Both the Activity Design and the Request Letter are uploaded, so the activity is now "
+                         "Scheduled. Registration opens once its registration form is marked ready.")
+            messages.success(request, text)
             return redirect(pages.place_of(document))
     return render_activity_page(request, activity, "documents", {"upload": form}, status=400)
 
@@ -221,7 +226,8 @@ def replace(request: HttpRequest, document_id: int) -> HttpResponse:
     except (PermissionDenied, services.DocumentError) as error:
         _refused(request, error)
     else:
-        messages.success(request, f'The file of "{document.title}" was replaced. It is waiting for review again.')
+        messages.success(request, f'The file of "{document.title}" was replaced.' + (
+            "" if services.is_approved_copy(document) else " It is waiting for review again."))  # ASSUMPTIONS 432
     return _done(request, back)
 
 

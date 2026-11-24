@@ -3,7 +3,9 @@ A typed date, time or date-time field (ASSUMPTIONS 422; activities.typed_fields,
 {% include "components/typed_datetime.html" with field=form.start_date %}
 - date: a text box with month suggestions (an ARIA combobox: type "j" -> January, June, July; arrows + Enter choose,
   Escape closes) and a calendar button that opens the browser's date picker.
-- time: an hh:mm box where only digits can be typed (730 -> 07:30, 1430 -> 02:30 PM) and an AM/PM select.
+- time: an hh:mm box and an AM/PM select. Typed freely (11:00, 1100, 1:30, 130, 9); nothing is rewritten while typing
+  except the colon after 4 digits; leaving the box tidies it (130 -> 01:30, 1430 -> 02:30 PM). The AM/PM choice is changed
+  only by a typed a/p or a 24-hour time (ASSUMPTIONS 432).
 - datetime: both, side by side (names: <name>, <name>_time, <name>_period).
 The server checks every value again (static/js/typed_dates.js only helps typing); without JavaScript the boxes accept
 "June 5, 2026", "06/05/2026", "07:30" + AM/PM. Labels, help and errors like components/form_field.html.
@@ -54,9 +56,9 @@ The server checks every value again (static/js/typed_dates.js only helps typing)
       {% endif %}
       <div class="flex gap-2" x-data="tbiTimeInput()">
         <input type="text" id="{{ time_id }}" name="{{ time_name }}" value="{{ clock }}" inputmode="numeric" autocomplete="off"
-               maxlength="5" placeholder="hh:mm" class="field-input w-28" x-ref="text"
+               maxlength="8" placeholder="hh:mm" class="field-input w-28" x-ref="text"
                {% if kind == "datetime" %}aria-label="{{ field.label }}: time"{% endif %}
-               @keydown="keydown($event)" @input="format()" @blur="pad()"
+               @keydown="keydown($event)" @input="typed($event)" @blur="tidy()"
                {% if field.field.required %} required{% endif %}{% if field.errors %} aria-invalid="true"{% endif %}{% if described %} aria-describedby="{{ described }}"{% endif %}>
         <select name="{{ field.html_name }}_period" class="field-input field-select w-28" x-ref="period" aria-label="{{ field.label }}: AM or PM">
           <option value=""{% if not period %} selected{% endif %}>AM/PM</option>

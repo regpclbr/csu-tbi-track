@@ -31,6 +31,7 @@ def portal(client, startup):
 
 def register(client, activity, **body):
     body.setdefault("answers", answers_for(activity))
+    body.setdefault("designation", "Founder")  # Office / Agency is left out: the startup's name (ASSUMPTIONS 426)
     body.setdefault("privacy_consent", True)  # the privacy notice checkbox (ASSUMPTIONS 394)
     return client.post(f"{PORTAL}/activities/{activity.pk}/register/", body, content_type="application/json")
 
@@ -84,7 +85,7 @@ def test_only_scheduled_activities(portal, open_activity, status) -> None:
 
 def test_step5_rules_still_apply(portal, startup, open_activity) -> None:
     full = open_activity(max_slots=1, title="Full")
-    registration_services.register(full, name="Ana", email="ana@example.com", answers=answers_for(full))
+    registration_services.register(full, name="Ana", email="ana@example.com", designation="Owner", office_agency="CSU", answers=answers_for(full))
     response = register(portal, full)
     assert response.status_code == 400 and "all slots are taken" in response.json()["error"]
 
@@ -102,19 +103,19 @@ def test_deadline_passed_is_refused(startup, open_activity) -> None:
     activity = open_activity()
     later = activity.registration_deadline + timedelta(minutes=1)
     with pytest.raises(registration_services.RegistrationError, match="deadline"):
-        services.register_as_startup(startup, activity, answers=answers_for(activity), now=later)
+        services.register_as_startup(startup, activity, designation="Founder", answers=answers_for(activity), now=later)
 
 
 def test_email_already_used_by_a_public_registration_is_refused(portal, startup, open_activity) -> None:
     activity = open_activity()
-    registration_services.register(activity, name="Rep", email=startup.email.upper(), answers=answers_for(activity))
+    registration_services.register(activity, name="Rep", email=startup.email.upper(), designation="Owner", office_agency="CSU", answers=answers_for(activity))
     response = register(portal, activity)
     assert response.status_code == 400 and "already registered" in response.json()["error"]
 
 
 def test_public_registration_never_sets_startup(open_activity) -> None:
     activity = open_activity()
-    registration = registration_services.register(activity, name="Ana", email="ana@example.com", answers=answers_for(activity))
+    registration = registration_services.register(activity, name="Ana", email="ana@example.com", designation="Owner", office_agency="CSU", answers=answers_for(activity))
     assert registration.startup is None
 
 
@@ -125,11 +126,10 @@ def test_my_registrations_include_older_email_matches_without_changing_them(port
     older_activity, linked_activity, other_activity = (
         open_activity(title="Older"), open_activity(title="Linked"), open_activity(title="Someone else")
     )
-    older = registration_services.register(
-        older_activity, name="Old rep", email="KALINAW@demo.example.com", answers=answers_for(older_activity)
+    older = registration_services.register(older_activity, name="Old rep", email="KALINAW@demo.example.com", designation="Owner", office_agency="CSU", answers=answers_for(older_activity)
     )
     register(portal, linked_activity)
-    registration_services.register(other_activity, name="Bea", email="bea@example.com", answers=answers_for(other_activity))
+    registration_services.register(other_activity, name="Bea", email="bea@example.com", designation="Owner", office_agency="CSU", answers=answers_for(other_activity))
     # A registration with my email but linked to ANOTHER startup is not mine.
     other_startup = make_startup(email="other@demo.example.com", name="Other")
     Registration.objects.filter(activity=other_activity).update(startup=other_startup)
@@ -189,7 +189,7 @@ def test_staff_list_search_filters_and_pages(client, view_only, provider) -> Non
 
 def test_staff_detail_shows_history(client, view_only, startup, open_activity, director) -> None:
     activity = open_activity()
-    registration = services.register_as_startup(startup, activity, answers=answers_for(activity))
+    registration = services.register_as_startup(startup, activity, designation="Founder", answers=answers_for(activity))
     Registration.objects.filter(pk=registration.pk).update(attendance_confirmed=True, confirmation_method="email")
     client.force_login(view_only)
     data = client.get(f"/startups/api/{startup.pk}/").json()

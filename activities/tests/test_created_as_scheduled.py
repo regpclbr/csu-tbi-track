@@ -1,5 +1,5 @@
-"""A new activity created as Scheduled (ASSUMPTIONS 409; since 417 when "Create as: Scheduled" is chosen with its Activity
-Design and Request Letter), but nobody can register until its registration form exists AND staff marked it ready ("Open
+"""A new activity created as Scheduled (ASSUMPTIONS 409; since 431 automatically when its Activity Design and Request
+Letter are uploaded on the New activity form), but nobody can register until its registration form exists AND staff marked it ready ("Open
 registration"): the public page and API, the startup portal, the open lists and cards, the Share card link and its QR
 code all follow registrations.services.registration_form_ready. Older activities keep the rule before (a form is enough)."""
 
@@ -39,13 +39,13 @@ def client_for(member) -> Client:
 @pytest.fixture
 def created(director, valid_data) -> Activity:
     """Created through the New activity form's service, by the Director."""
-    return create_activity_with_documents(director, valid_data(title="Investor Day"), required_rows(),
-                                          status="Scheduled")
+    return create_activity_with_documents(director, valid_data(title="Investor Day"), required_rows())
 
 
 def register_someone(activity: Activity):
     """One category: the service chooses it (ASSUMPTIONS 331)."""
-    return registration_services.register(activity, name="Ana Cruz", email="ana@example.com")
+    return registration_services.register(activity, name="Ana Cruz", email="ana@example.com",
+                                          designation="Owner", office_agency="CSU")
 
 
 def is_open(activity: Activity) -> bool:
@@ -58,7 +58,7 @@ def is_open(activity: Activity) -> bool:
 
 def test_created_as_scheduled_with_two_history_rows(created, director) -> None:
     assert created.status.name == "Scheduled" and created.creation_documents_required
-    rows = list(created.audit_logs.order_by("log_id").values_list("field_changed", "old_value", "new_value", "changed_by"))
+    rows = list(created.audit_logs.filter(field_changed="Status").order_by("log_id").values_list("field_changed", "old_value", "new_value", "changed_by"))
     assert rows == [("Status", "", "Draft", director.pk), ("Status", "Draft", "Scheduled", director.pk)]
 
 
@@ -71,12 +71,12 @@ def test_the_page_opens_the_forms_tab_with_the_next_step(director, valid_data) -
         "title": data["title"], "description": data["description"], "activity_type": data["activity_type"].pk,
         "participant_categories": [c.pk for c in data["participant_categories"]],
         **typed_schedule_fields(data), "venue": data["venue"], "max_slots": data["max_slots"],
-        "budget_amount": str(data["budget_amount"]), **creation_document_files(), "create_as": "Scheduled",
+        "budget_amount": str(data["budget_amount"]), **creation_document_files(),
     }
     response = client_for(director).post(reverse("activities:create"), post, follow=True)
     activity = Activity.objects.get(title="Via the page")
     assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk]) + "?tab=forms"
-    expected = ('"Via the page" was created as Scheduled with 2 documents waiting for review. Registration stays closed '
+    expected = ('"Via the page" was created as Scheduled with 2 documents. Registration stays closed '
             "until you create the registration form")
     assert any(text.startswith(expected) for text in messages_of(response))
 
@@ -103,12 +103,11 @@ def test_it_can_go_back_to_draft_while_nobody_registered(created, director) -> N
 def test_no_extra_notifications_or_emails(created, director, make_member, valid_data) -> None:
     """Creating as Scheduled and opening registration tell nobody anything new (no status-change notifications exist)."""
     head = make_member("Incubation Project Head")
-    activity = create_activity_with_documents(head, valid_data(title="By the head"), required_rows(), status="Scheduled")
+    activity = create_activity_with_documents(head, valid_data(title="By the head"), required_rows())
     registration_services.create_form(head, activity, FormType.REGISTRATION)
     registration_services.mark_registration_form_ready(head, activity)
     types = sorted(Notification.objects.filter(activity=activity).values_list("type", flat=True))
-    assert types == [Notification.ACTIVITY_CREATED, Notification.DOCUMENT_WAITING_FOR_REVIEW,
-                     Notification.DOCUMENT_WAITING_FOR_REVIEW]
+    assert types == [Notification.ACTIVITY_CREATED]  # approved copies tell nobody (ASSUMPTIONS 432)
     assert mail.outbox == []
 
 
@@ -184,7 +183,7 @@ def test_open_registration_opens_it_with_a_history_row(created, director) -> Non
     assert "Registration is open" in response.content.decode()
     assert is_open(created) and registration_services.registration_closed_reason(created) is None
     assert attention.FORM_NOT_READY not in [item.text for item in attention.activity_attention(created)]
-    row = created.audit_logs.order_by("-log_id").values_list("field_changed", "new_value", "changed_by").first()
+    row = created.audit_logs.exclude(field_changed="Documents").order_by("-log_id").values_list("field_changed", "new_value", "changed_by").first()
     assert row == ("Registration form", registration_services.REGISTRATION_FORM_READY_VALUE, director.pk)
     register_someone(created)
     assert Registration.objects.count() == 1

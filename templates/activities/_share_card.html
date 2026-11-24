@@ -17,6 +17,21 @@ Ongoing / Conducted: the general evaluation link, only while evaluation_request_
       {% if not share.registration.open %}<p class="mt-2 text-sm text-slate-700">{{ share.registration.reason }}</p>{% endif %}
       {% include "activities/_share_link.html" with kind="registration" url=share.registration.url label="Registration link" done="Registration link copied." %}
     {% endif %}
+    {% if can_create and share.registration.switch %}
+      {# Close / reopen by hand (ASSUMPTIONS 427): activities.services.set_registration_closed_by_hand; the deadline, slots and status still apply. #}
+      <form method="post" action="{% url 'activities:registration_switch' activity.pk %}" class="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4" data-registration-switch>
+        {% csrf_token %}
+        {% if share.registration.switch == "close" %}
+          <input type="hidden" name="action" value="close">
+          <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="lock" class="size-4" %}Close registration</button>
+          <span class="text-xs text-muted">Stops new registrations now, before the deadline.</span>
+        {% else %}
+          <input type="hidden" name="action" value="reopen">
+          <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="lock-open" class="size-4" %}Reopen registration</button>
+          <span class="text-xs text-muted">The deadline and the slots still apply.</span>
+        {% endif %}
+      </form>
+    {% endif %}
   {% elif share.evaluation %}
     <div class="flex flex-wrap items-center gap-2">
       <h3 class="text-sm font-semibold text-ink">Evaluation</h3>

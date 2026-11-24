@@ -2,8 +2,10 @@
 certificates, documents and registrations, which themselves import activities.services).
 
 - Only members whose role has can_delete_activities (System Administrator by default).
-- REFUSED while the activity holds real records: any Issued certificate, any Approved document (activity documents
-  and certificate evidence), or a document an AI answer cites (`deletion_refused_reason`, the one rule).
+- REFUSED while the activity holds real records: any Issued certificate, any Approved certificate evidence, or a
+  document an AI answer cites (`deletion_refused_reason`, the one rule). Approved activity documents no longer block it
+  (ASSUMPTIONS 432: uploads are approved copies of paper documents); they are deleted with the activity, and the
+  confirm dialog and ACTIVITY_DELETION.counts say how many documents and files.
 - Otherwise, after the member typed the activity's title: one transaction deletes the certificates (waiting and approved
   not issued), their evidence, the documents (and their AI index rows), evaluations, registrations and answers, forms,
   the activity's own certificate text, signatory slots, category and resource person links, notifications, the
@@ -46,9 +48,11 @@ class DeletionSummary:
     certificates_approved: int = 0  # Approved, not issued yet (a resource person's copy may already be printed)
     certificates_issued: int = 0  # blocks the delete
     certificate_numbers: list[str] = field(default_factory=list)  # of the certificates that would be deleted
-    documents: int = 0  # activity documents
+    documents: int = 0  # activity documents (deleted with the activity, also approved copies: ASSUMPTIONS 432)
+    documents_approved: int = 0  # of which Approved (approved copies or reviewed)
+    document_files: int = 0  # stored files of those documents
     evidence: int = 0  # certificate evidence (documents with related_certificate)
-    approved_documents: int = 0  # blocks the delete (documents and evidence)
+    approved_evidence: int = 0  # blocks the delete (certificate evidence keeps its own approval)
     cited_documents: int = 0  # blocks the delete (AI_MESSAGE_SOURCE is PROTECT)
     files: int = 0  # stored files (documents, evidence, certificate PDFs)
     forms: int = 0
@@ -60,7 +64,8 @@ class DeletionSummary:
         return {
             "registrations": self.registrations, "attended": self.attended, "evaluations": self.evaluations,
             "certificates_waiting": self.certificates_waiting, "certificates_approved": self.certificates_approved,
-            "documents": self.documents, "evidence": self.evidence, "files": self.files, "forms": self.forms,
+            "documents": self.documents, "documents_approved": self.documents_approved,
+            "document_files": self.document_files, "evidence": self.evidence, "files": self.files, "forms": self.forms,
             "history": self.history, "notifications": self.notifications,
         }
 
@@ -77,6 +82,8 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
     statuses = list(certificates.values_list("status", "certificate_number", "file_path"))
     deleted_numbers = sorted(number for status, number, _ in statuses if status != Certificate.Status.ISSUED)
     document_files = [name for name in documents.values_list("file_path", flat=True) if name]
+    activity_documents = documents.filter(related_certificate__isnull=True)
+    approved = {"status__status_name": DocumentStatus.APPROVED}
     return DeletionSummary(
         registrations=registrations.count(),
         attended=registrations.filter(attendance_confirmed=True).count(),
@@ -85,9 +92,11 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
         certificates_approved=sum(status == Certificate.Status.APPROVED for status, _, _ in statuses),
         certificates_issued=sum(status == Certificate.Status.ISSUED for status, _, _ in statuses),
         certificate_numbers=deleted_numbers,
-        documents=documents.filter(related_certificate__isnull=True).count(),
+        documents=activity_documents.count(),
+        documents_approved=activity_documents.filter(**approved).count(),
+        document_files=sum(1 for name in activity_documents.values_list("file_path", flat=True) if name),
         evidence=documents.filter(related_certificate__isnull=False).count(),
-        approved_documents=documents.filter(status__status_name=DocumentStatus.APPROVED).count(),
+        approved_evidence=documents.filter(related_certificate__isnull=False, **approved).count(),
         cited_documents=AIMessageSource.objects.filter(document__activity=activity).values("document").distinct().count(),
         files=len(document_files) + sum(1 for _, _, name in statuses if name),
         forms=FormTemplate.objects.filter(activity=activity).count(),
@@ -98,13 +107,14 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
 
 def deletion_refused_reason(activity: Activity, summary: DeletionSummary | None = None) -> str | None:
     """None when the activity may be deleted; otherwise why not, in plain words. Real records are kept: an Issued
-    certificate, an Approved document (or certificate evidence), or a document an AI answer cites."""
+    certificate, Approved certificate evidence, or a document an AI answer cites. Approved activity documents (approved
+    copies, ASSUMPTIONS 432) never block it: they are deleted with the activity."""
     summary = summary or deletion_summary(activity)
     blockers = []
     if summary.certificates_issued:
         blockers.append(_plural(summary.certificates_issued, "issued certificate"))
-    if summary.approved_documents:
-        blockers.append(_plural(summary.approved_documents, "approved document"))
+    if summary.approved_evidence:
+        blockers.append(_plural(summary.approved_evidence, "approved certificate evidence file"))
     if summary.cited_documents:
         blockers.append(_plural(summary.cited_documents, "document cited by the AI Assistant",
                                 "documents cited by the AI Assistant"))
@@ -129,7 +139,13 @@ def what_will_be_deleted(summary: DeletionSummary) -> list[str]:
                              "approved certificates not yet issued")
                      + " (resource persons' copies may already be printed)")
     if summary.documents:
-        lines.append(_plural(summary.documents, "document") + " waiting for review or returned")
+        line = _plural(summary.documents, "document")
+        if summary.documents_approved:
+            approved = "approved" if summary.documents_approved == summary.documents else f"{summary.documents_approved} approved"
+            line += f" ({approved})"
+        if summary.document_files:
+            line += f" and {'its' if summary.document_files == 1 else 'their'} {_plural(summary.document_files, 'file')}"
+        lines.append(line)
     if summary.evidence:
         lines.append(_plural(summary.evidence, "certificate evidence file"))
     if summary.files:

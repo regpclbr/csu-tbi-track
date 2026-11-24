@@ -18,6 +18,7 @@ urlpatterns = [
     path("console/", console_views.members, name="console"),
     path("console/members/invite/", console_views.invite, name="console_invite"),
     path("console/members/<int:member_id>/role/", console_views.change_role, name="console_member_role"),
+    path("console/members/<int:member_id>/position/", console_views.change_position, name="console_member_position"),
     path("console/members/<int:member_id>/deactivate/", console_views.deactivate, name="console_member_deactivate"),
     path("console/members/<int:member_id>/reactivate/", console_views.reactivate, name="console_member_reactivate"),
     path("console/members/<int:member_id>/reset-password/", console_views.reset_password, name="console_member_reset"),

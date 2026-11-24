@@ -106,30 +106,49 @@
 
   var ALLOWED_KEYS = ["Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", "Escape"];
 
+  // The time box (ASSUMPTIONS 422, 432): nothing is rewritten while typing, except that a 4th digit in a row adds the
+  // colon (1100 -> 11:00). Leaving the box tidies it the way the server reads it (activities.typed_fields.TIME_PATTERN):
+  // 9 -> 09:00, 130 -> 01:30, 1:30 -> 01:30, 0015 / 00:15 -> 12:15 + AM, 1430 -> 02:30 + PM, "7:30 pm" -> 07:30 + PM.
+  // The AM/PM select is changed ONLY by a typed a/p or a 24-hour time; never otherwise (the person's choice stays).
+  // Anything unreadable is left as typed: the server's message says what to type.
+  var TIME = /^\s*(\d{1,2})(?::?(\d{2}))?\s*([AaPp])?\.?\s*(?:[Mm]\.?)?\s*$/;
+
+  function tidyTime(text) {
+    var match = TIME.exec(text || "");
+    if (!match) return null;
+    var hours = +match[1], minutes = +(match[2] || 0), letter = (match[3] || "").toUpperCase(), period = "";
+    if (minutes > 59 || hours > 23) return null;
+    if (letter) period = letter + "M";
+    if (hours === 0 || hours > 12) {  // a 24-hour time
+      if (letter) return null;  // "14:30 am": let the server explain
+      period = hours >= 12 ? "PM" : "AM";
+      hours = hours % 12 || 12;
+    }
+    return {text: String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0"), period: period};
+  }
+
   window.tbiTimeInput = function () {
     return {
-      // Only digits can be typed (the colon is written for you).
+      // Digits, the colon, a/p/m and a space can be typed (a pasted "7:30 pm" works too).
       keydown: function (event) {
         if (event.ctrlKey || event.metaKey || event.altKey || ALLOWED_KEYS.indexOf(event.key) >= 0) return;
-        if (!/^\d$/.test(event.key)) event.preventDefault();
+        if (!/^[0-9:aApPmM. ]$/.test(event.key)) event.preventDefault();
       },
-      // 730 -> 07:30, 1430 -> 02:30 + PM, 0015 -> 12:15 + AM. A pasted "7:30 pm" keeps its PM.
-      format: function () {
-        var raw = this.$refs.text.value, digits = raw.replace(/\D/g, "").slice(0, 4);
-        if (/p/i.test(raw)) this.$refs.period.value = "PM";
-        else if (/a/i.test(raw)) this.$refs.period.value = "AM";
-        if (digits.length < 3) { this.$refs.text.value = digits; return; }
-        var hours = +digits.slice(0, digits.length - 2), minutes = digits.slice(-2);
-        if (digits.length === 4 && (hours > 12 && hours < 24 || hours === 0)) {
-          this.$refs.period.value = hours >= 12 ? "PM" : "AM";
-          hours = hours % 12 || 12;
-        }
-        this.$refs.text.value = String(hours).padStart(2, "0") + ":" + minutes;
+      // While typing: only four digits in a row get their colon (1100 -> 11:00, 0140 -> 01:40).
+      typed: function (event) {
+        if (event && event.inputType && event.inputType.indexOf("delete") === 0) return;  // Backspace / Delete: as is
+        var box = this.$refs.text;
+        if (/^\d{4}$/.test(box.value)) box.value = box.value.slice(0, 2) + ":" + box.value.slice(2);
       },
-      pad: function () {
-        var digits = this.$refs.text.value.replace(/\D/g, "");
-        if (digits.length === 1 || digits.length === 2) this.$refs.text.value = digits.padStart(2, "0") + ":00";
+      // On leaving the box: the tidy form and, only when typed, the AM/PM.
+      tidy: function () {
+        var result = tidyTime(this.$refs.text.value);
+        if (!result) return;
+        this.$refs.text.value = result.text;
+        if (result.period) this.$refs.period.value = result.period;
       },
     };
   };
+
+  window.tbiTidyTime = tidyTime;  // for the browser test only
 })();

@@ -160,7 +160,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
                   </form>
                 {% endif %}
               {% else %}
-                <span class="min-w-0 flex-1">{{ slot.signatory.name }} is inactive. Choose someone else{% if not signatures.can_choose %} (a member who creates activities or approves certificates does this){% endif %}.</span>
+                <span class="min-w-0 flex-1">{{ slot.signatory.name }} is inactive. Choose someone else{% if not signatures.can_choose %} ({{ signatures.only_director }}){% endif %}.</span>
               {% endif %}
             </div>
           {% endif %}
@@ -189,7 +189,7 @@ Every action redirects back to /activities/<id>/?tab=certificates.
               <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the {{ slot.label|lower }} signatory</span></button>
             </form>
           {% elif slot.signatory %}
-            <p class="mt-3 text-xs text-muted">Members who create activities or approve certificates choose who signs.</p>
+            <p class="mt-3 text-xs text-muted">{{ signatures.only_director }}</p>
           {% endif %}
 
           {% if signatures.can_upload %}

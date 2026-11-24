@@ -108,21 +108,25 @@ REGISTRATION_NEXT_STEP = ("Registration stays closed until you create the regist
 
 
 def _draft_next_step(activity: Activity) -> str:
-    """After creating a Draft (ASSUMPTIONS 417): what is still needed before it can be Scheduled (the service's list)."""
+    """After creating a Draft (ASSUMPTIONS 431): what is still needed (the service's list); it becomes Scheduled by
+    itself once both are uploaded. When the move was refused for another reason, that reason."""
+    if reason := getattr(activity, "not_scheduled_reason", ""):
+        return f"It could not be Scheduled: {reason}"
     missing = document_services.missing_creation_types(activity)
     if missing:
-        return f"Upload the {' and the '.join(missing)} on the Documents tab, then change the status to Scheduled."
+        return (f"Upload the {' and the '.join(missing)} on the Documents tab: it becomes Scheduled as soon as both "
+                "documents are uploaded.")
     return "Change the status to Scheduled when it is ready."
 
 
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
-    """The activity, its signatories (pre-filled with the defaults, ASSUMPTIONS 365), its Activity Design and Request
-    Letter (optional, ASSUMPTIONS 405 / 417), its other documents and the "Create as" status (Draft / Scheduled,
-    ASSUMPTIONS 417) are saved by one service call, all or nothing (documents.services.create_activity_with_documents,
-    ASSUMPTIONS 327). The two fixed rows come first (when filled in), so the service's row errors (by position) map
-    back onto `required + rows`; a refused Scheduled goes under the "Create as" field."""
+    """The activity, its signatories (the defaults unless the Director chooses, ASSUMPTIONS 365, 431), its Activity
+    Design and Request Letter (optional, ASSUMPTIONS 405 / 417), its other documents are saved by one service call,
+    all or nothing (documents.services.create_activity_with_documents, ASSUMPTIONS 327). With both documents the
+    service makes it Scheduled, otherwise Draft (ASSUMPTIONS 431: no "Create as" choice). The two fixed rows come first
+    (when filled in), so the service's row errors (by position) map back onto `required + rows`."""
     form = ActivityPageForm(request.POST or None, **pages.signatory_form_options(request.user))
     required = document_pages.required_document_rows(request)
     rows = document_pages.new_document_rows(request) if request.method == "POST" else []
@@ -135,11 +139,10 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             # "Prepare the certificates now" (ASSUMPTIONS 420): not ticked = the defaults (the service ignores the rest).
             prepare = form.certificate_preparation()
             signatories = form.signatory_choices()
-            status = form.creation_status()
             texts = pages.posted_certificate_texts(request.POST) if prepare else None
             try:
                 activity = document_services.create_activity_with_documents(
-                    request.user, form.cleaned_data, uploads, signatories=signatories, status=status,
+                    request.user, form.cleaned_data, uploads, signatories=signatories,
                     prepare_certificates=prepare, certificate_texts=texts)
             except document_services.NewActivityError as error:
                 if error.activity_error:
@@ -149,15 +152,13 @@ def activity_create(request: HttpRequest) -> HttpResponse:
                     if text_errors:
                         form.add_error(None, "Please correct the certificate text marked below.")
                 document_pages.put_row_errors(all_rows, error.row_errors)
-                if error.status_error:
-                    form.add_error("create_as", error.status_error)
             except ValidationError as error:
                 _put_errors_on_fields(form, error)
             except services.ActivityError as error:
                 form.add_error(None, str(error))
             else:
                 count = len(uploads)
-                extra = f" with {count} document{'s' if count != 1 else ''} waiting for review" if count else ""
+                extra = f" with {count} document{'s' if count != 1 else ''}" if count else ""  # approved copies (432)
                 created = f'"{activity.title}" was created as {activity.status.name}{extra}.'
                 if prepare:
                     created += " Its certificates are prepared and wait for the Director's approval."
@@ -172,7 +173,7 @@ def activity_create(request: HttpRequest) -> HttpResponse:
         if any(row.errors for row in all_rows):
             form.add_error(None, "Please correct the documents marked below.")
     context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows, required),
-               "signatories": pages.signatory_form_section(form, request.user), "create_as": pages.create_as_section(form),
+               "signatories": pages.signatory_form_section(form, request.user),
                "prepare": pages.prepare_section(form, request.POST if request.method == "POST" else None, text_errors)}
     return render(request, "activities/form.html", context)
 
@@ -200,6 +201,7 @@ def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
                "signatories": pages.signatory_form_section(form, request.user)}
     if activity.status.name == ActivityStatus.CONDUCTED:
         context["detail_rows"] = pages.detail_rows(services.get_activity_detail(activity))
+        context["objectives"] = services.objective_lines(activity)
         return render(request, "activities/read_only.html", context)
     return render(request, "activities/form.html", context)
 
@@ -240,6 +242,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     }
     if tab == "overview":
         context["detail_rows"] = pages.detail_rows(detail)
+        context["objectives"] = detail["objectives"]  # ASSUMPTIONS 428
         context["share"] = share.share_card(activity, context["registration"])
         context["by_category"] = pages.category_donut(
             report_services.activity_participants_by_category(request.user, activity))
@@ -297,6 +300,29 @@ def activity_change_status(request: HttpRequest, activity_id: int) -> HttpRespon
         messages.success(request, f'Status of "{activity.title}" changed from {old_status} to {new_status}.')
     if request.POST.get("next") == "list":  # a fixed name, never a URL from the request (no open redirect)
         return redirect("activities:list")
+    return redirect(_detail_url(activity))
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@post_only_or_tab("overview")
+def registration_switch(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """POST action=close|reopen: the Share card's "Close registration" / "Reopen registration" (ASSUMPTIONS 427).
+    The rule is services.set_registration_closed_by_hand; the message after reopening is the real state."""
+    activity = get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)
+    action = request.POST.get("action", "")
+    if action not in ("close", "reopen"):
+        messages.error(request, "Choose Close registration or Reopen registration.")
+        return redirect(_detail_url(activity))
+    try:
+        services.set_registration_closed_by_hand(request.user, activity, closed=action == "close")
+    except services.ActivityError as error:
+        messages.error(request, str(error))
+    else:
+        if action == "close":
+            messages.success(request, "Registration is closed. The registration page now says it was closed by the TBI.")
+        else:
+            reason = registration_services.registration_closed_reason(activity)
+            messages.success(request, "Registration reopened." + (" It is open again." if reason is None else f" {reason}"))
     return redirect(_detail_url(activity))
 
 

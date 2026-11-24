@@ -15,7 +15,7 @@ Summary cards: click = filter by that state (again = clear). Rendered from the U
 (aria-pressed) is always the current ?state=. Links with role="button" (they work without JavaScript; Space works too).
 .stat-card-link: no outline on click, rounded ring on keyboard focus.
 {% endcomment %}
-<ul class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4{% if filters.state %} stat-cards-selected{% endif %}" aria-label="Filter by state">
+<ul class="mb-6 grid grid-cols-2 gap-3 {% if summary_cards|length == 2 %}md:grid-cols-2{% else %}md:grid-cols-4{% endif %}{% if filters.state %} stat-cards-selected{% endif %}" aria-label="Filter by state">
   {% for card in summary_cards %}
     <li>
       <a href="{{ card.url }}" hx-get="{{ card.url }}" hx-target="#document-repository" hx-push-url="true"

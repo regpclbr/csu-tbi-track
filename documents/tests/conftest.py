@@ -146,3 +146,17 @@ def certificate_for(director):
         )
 
     return make
+
+
+# --- The review flow (ASSUMPTIONS 432) -------------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _review_flow_on(request):
+    """Since ASSUMPTIONS 432 uploads are approved copies unless the type's needs_review is on. The document tests
+    written for the review flow (approve, return, waiting, the queue) keep testing it on types with needs_review; a
+    module that tests the default sets APPROVED_COPIES = True (test_approved_copies.py)."""
+    if getattr(request.module, "APPROVED_COPIES", False) or "roles" not in request.fixturenames:
+        return  # no seeded types in this test (or the default flow is tested)
+    request.getfixturevalue("roles")
+    DocumentType.objects.update(needs_review=True)

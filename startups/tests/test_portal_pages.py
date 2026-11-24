@@ -230,7 +230,8 @@ def test_registering_uses_the_portal_service_and_shows_the_success_page(portal, 
     field_id = next(iter(answers_for(activity)))
     with django_capture_on_commit_callbacks(execute=True):
         response = portal.post(reverse("startups:portal_register_page", args=[activity.pk]),
-                               {f"field_{field_id}": "Kalinaw", "privacy_consent": "yes"})
+                               {f"field_{field_id}": "Kalinaw", "designation": "Founder", "office_agency": "Kalinaw Agritech",
+                                "privacy_consent": "yes"})
     assert response["Location"] == reverse("startups:portal_registered", args=[activity.pk])
     registration = Registration.objects.get()
     assert registration.startup == startup and registration.email == startup.email
@@ -246,7 +247,8 @@ def test_register_errors_appear_under_their_fields(portal, open_activity) -> Non
     response = portal.post(reverse("startups:portal_register_page", args=[activity.pk]), {"privacy_consent": "yes"})
     html = response.content.decode()
     assert response.status_code == 400 and 'id="id_participant_category-error"' in html
-    assert "Please check the 2 fields marked below." in html and not Registration.objects.exists()
+    # The category, the activity's field, Designation and Office / Agency (emptied: the page posts it) (ASSUMPTIONS 426).
+    assert "Please check the 4 fields marked below." in html and not Registration.objects.exists()
 
 
 def test_the_success_page_only_right_after_registering(portal, open_activity) -> None:

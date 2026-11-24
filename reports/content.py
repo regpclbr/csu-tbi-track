@@ -361,7 +361,8 @@ def _documents(filters: ReportFilters, now: datetime | None) -> Section:
         "documents", SECTIONS["documents"],
         tables=[overview, Table("Required documents per activity", columns, rows)],
         note=f"As of {long_date(data['today'])}. Same rules as the activity checklist: a type is complete when one of "
-             "its documents is Approved; overdue means after the due date and not Approved.",
+             "its documents is Approved (uploads are approved copies); overdue means after the due date and not "
+             "Approved.",
     )
 
 

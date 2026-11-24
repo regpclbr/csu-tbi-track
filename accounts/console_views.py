@@ -50,6 +50,7 @@ def _page(request: HttpRequest, template: str, tab: str, context: dict, status: 
 def _members_context(request: HttpRequest, invite: dict | None = None, invite_errors: dict | None = None) -> dict:
     filters = pages.parse_member_filters(request.GET)
     result = services.list_members(filters.for_service(), page=filters.page)
+    pages.attach_position_choices(result.items)
     return {
         "filters": filters,
         "result": result,
@@ -116,6 +117,25 @@ def change_role(request: HttpRequest, member_id: int) -> HttpResponse:
         messages.error(request, str(error))
     else:
         messages.success(request, f"{member.name} is now {role.role_name}.")
+    return _back(request)
+
+
+@manage_users
+@require_POST
+def change_position(request: HttpRequest, member_id: int) -> HttpResponse:
+    """POST position=<id> or empty (no position): services.set_member_position (ASSUMPTIONS 429)."""
+    member = _member(member_id)
+    raw = request.POST.get("position", "").strip()
+    if raw and not raw.isdigit():
+        messages.error(request, services.POSITION_NOT_OFFERED)
+        return _back(request)
+    try:
+        services.set_member_position(request.user, member, int(raw) if raw else None)
+    except services.MemberManagementError as error:
+        messages.error(request, str(error))
+    else:
+        title = member.position.name if member.position else "no position"
+        messages.success(request, f"{member.name}'s position is now {title}.")
     return _back(request)
 
 

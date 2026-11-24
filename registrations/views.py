@@ -73,7 +73,8 @@ def public_open_activities(request: HttpRequest) -> JsonResponse:
 def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
     """GET: activity info, categories, slots left and the form. POST: register.
 
-    POST {"name", "email", "contact_number", "participant_category": id (optional if only one),
+    POST {"name", "email", "contact_number", "designation", "office_agency" (both required, ASSUMPTIONS 426),
+          "participant_category": id (optional if only one),
           "answers": {"<field_id>": value}, "website": "" (the hidden honeypot field; leave empty),
           "privacy_consent": true (required: the person agreed to the privacy notice, /privacy/)}
     Too many attempts from one IP address or for one email: 429.
@@ -92,6 +93,8 @@ def public_register(request: HttpRequest, activity_id: int) -> JsonResponse:
         name=str(data.get("name", "")),
         email=str(data.get("email", "")),
         contact_number=str(data.get("contact_number", "")),
+        designation=str(data.get("designation", "")),
+        office_agency=str(data.get("office_agency", "")),
         participant_category=data.get("participant_category"),
         answers=data.get("answers") or {},
     )
@@ -231,6 +234,8 @@ def registrations_api(request: HttpRequest, activity_id: int) -> JsonResponse:
             "name": r.name,
             "email": r.email,
             "contact_number": r.contact_number,
+            "designation": r.designation,
+            "office_agency": r.office_agency,
             "participant_category": r.participant_category.name if r.participant_category else None,
             "registration_date": r.registration_date,
             "attendance_confirmed": r.attendance_confirmed,

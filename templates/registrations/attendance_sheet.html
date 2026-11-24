@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% load ui %}
 {% comment %}
-Printable attendance sheet (registrations.page_views.attendance_sheet): A4, browser print. Name, participant category
-and an empty signature column, by name. Never emails or contact numbers (it is passed around on paper).
+Printable attendance sheet (registrations.page_views.attendance_sheet): A4, browser print. Name, designation / position,
+office / agency (ASSUMPTIONS 426), participant category and an empty signature column, by name. Never emails or contact numbers (it is passed around on paper).
 {% endcomment %}
 {% block title %}Attendance sheet · {{ activity.title }}{% endblock %}
 {% block head %}
@@ -36,8 +36,10 @@ and an empty signature column, by name. Never emails or contact numbers (it is p
         <tr class="text-left">
           <th scope="col" class="w-10 border border-slate-400 px-2 py-1.5">No.</th>
           <th scope="col" class="border border-slate-400 px-2 py-1.5">Name</th>
-          <th scope="col" class="w-40 border border-slate-400 px-2 py-1.5">Participant category</th>
-          <th scope="col" class="w-56 border border-slate-400 px-2 py-1.5">Signature</th>
+          <th scope="col" class="border border-slate-400 px-2 py-1.5">Designation / Position</th>
+          <th scope="col" class="border border-slate-400 px-2 py-1.5">Office / Agency</th>
+          <th scope="col" class="w-32 border border-slate-400 px-2 py-1.5">Participant category</th>
+          <th scope="col" class="w-44 border border-slate-400 px-2 py-1.5">Signature</th>
         </tr>
       </thead>
       <tbody>
@@ -45,6 +47,8 @@ and an empty signature column, by name. Never emails or contact numbers (it is p
           <tr>
             <td class="border border-slate-400 px-2 py-3 text-right tabular-nums">{{ forloop.counter }}</td>
             <td class="border border-slate-400 px-2 py-3">{{ row.name }}</td>
+            <td class="border border-slate-400 px-2 py-3">{{ row.designation|default:"" }}</td>
+            <td class="border border-slate-400 px-2 py-3">{{ row.office_agency|default:"" }}</td>
             <td class="border border-slate-400 px-2 py-3">{{ row.category }}</td>
             <td class="border border-slate-400 px-2 py-3"></td>
           </tr>

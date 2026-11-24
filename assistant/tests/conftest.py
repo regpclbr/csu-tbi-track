@@ -163,3 +163,14 @@ def make_document(director, head, activity):
         return Document.objects.get(pk=document.pk)
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def _review_flow_on(request):
+    """ASSUMPTIONS 432: uploads are approved copies unless the type needs review. These tests upload and then approve
+    (indexing on approval, the review states in answers), so their types need review; test_approved_copies.py and
+    documents' tests cover the default."""
+    if "roles" not in request.fixturenames:
+        return
+    request.getfixturevalue("roles")
+    DocumentType.objects.update(needs_review=True)

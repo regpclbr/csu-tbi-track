@@ -6,8 +6,8 @@ Conversion only: every rule about the values (not in the past, end after start, 
   as in the Philippines). The page adds month suggestions and a calendar button (static/js/typed_dates.js); without
   JavaScript the box still works.
 - Time: a text box "hh:mm" and an AM/PM choice. 1-12 o'clock needs AM or PM; 00:xx and 13:xx-23:xx are 24-hour times
-  (an AM/PM that contradicts them is refused). The page lets only digits be typed and writes "07:30"
-  (1430 -> 02:30 PM).
+  (an AM/PM that contradicts them is refused). Accepted as typed: 11:00, 1100, 1:30, 130, 9, 12:15, "7:30 pm". The page
+  rewrites nothing while typing (only the colon after 4 digits) and tidies the box when it is left (ASSUMPTIONS 432).
 - Deadline: a date box + a time box + AM/PM, combined into a Manila date-time.
 Each field's error says what to type, for example "Enter a valid time, for example 07:30 AM.".
 """

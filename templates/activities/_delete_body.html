@@ -1,6 +1,7 @@
 {% comment %}
 Deleting an activity (ASSUMPTIONS 389): activities.page_views.activity_delete, rules in activities.deletion. `refused`:
-why it can't be deleted (an Issued certificate, an Approved document, a cited document): no form. Otherwise `lines` (what
+why it can't be deleted (an Issued certificate, approved certificate evidence, a cited document; approved documents
+are deleted with it, ASSUMPTIONS 432): no form. Otherwise `lines` (what
 goes with it) and a form that needs the activity's title typed exactly. A normal POST (works without JavaScript).
 {% endcomment %}
 {% if refused %}

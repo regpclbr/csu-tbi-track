@@ -2,6 +2,7 @@
 {% comment %}
 /startups/portal/activities/<id>/register/ (startups.portal_views.register_page): the activity, then the form. Name, email
 and contact number come from the startup's Navigatu profile (read-only here; services.register_as_startup uses them).
+Designation / Position and Office / Agency are typed here (ASSUMPTIONS 426): Office / Agency starts with the startup's name.
 The category (components/category_choice.html: one category is preselected) and the activity's fields (components/answer_field.html).
 novalidate: every check is the service's; the first field with an error gets the focus.
 {% endcomment %}
@@ -29,6 +30,8 @@ novalidate: every check is the service's; the first field with an error gets the
 
     <form method="post" action="{% url 'startups:portal_register_page' activity.pk %}" novalidate class="space-y-6" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
       {% csrf_token %}
+      {% include "public/_input.html" with name="designation" label="Designation / Position" value=values.designation error=errors.designation autocomplete="organization-title" maxlength="255" required=True focus=focus help="Your position in the startup, for example Founder or CEO." %}
+      {% include "public/_input.html" with name="office_agency" label="Office / Agency" value=values.office_agency error=errors.office_agency autocomplete="organization" maxlength="255" required=True focus=focus help="Filled in with your startup's name; change it if needed." %}
       {% include "components/category_choice.html" %}
 
       {% for row in rows %}{% include "components/answer_field.html" with row=row %}{% endfor %}

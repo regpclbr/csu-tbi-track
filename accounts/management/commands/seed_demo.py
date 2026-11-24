@@ -107,8 +107,8 @@ DEMO_ACTIVITIES = [
                  "CSU Audio-Visual Room", [2]),
     DemoActivity("Mentoring Session", "Mentoring", ["Incubatees"], "Ongoing", 0, 1, 15, 12, "5000.00",
                  "TBI Meeting Room", [4]),
-    # Starts in 4 days: its Activity Design (For Review) and Request Letter were due yesterday (start - 5, ASSUMPTIONS
-    # 416), so Needs attention shows an overdue Activity Design.
+    # Starts in 4 days: its Activity Design and Request Letter were due yesterday (start - 5, ASSUMPTIONS 416) and are not
+    # uploaded (uploads are approved copies since 432), so Needs attention shows an overdue Activity Design.
     DemoActivity("Product Development Workshop", "Workshop", ["MSMEs"], "Scheduled", 4, 2, 25, 14, "20000.00",
                  "CSU Engineering Laboratory", [1]),
     DemoActivity("Market Research Training", "Training", ["MSMEs"], "Scheduled", 14, 1, 30, 9, "15000.00",
@@ -143,39 +143,39 @@ CONDUCTED_DOCUMENTS = {
         "Request Letter": "Approved",
         "Invitation Letter": "Approved",
         "Attendance Sheet": "Approved",
-        "Accomplishment Report": "Approved",
+        "Activity Report": "Approved",
     },
     "Business Model Training": {
         "Activity Design": "Approved",
         "Request Letter": "Approved",
         "Invitation Letter": "Approved",
         "Attendance Sheet": "For Review",
-        # Accomplishment Report missing
+        # Activity Report missing
     },
     "Intellectual Property Seminar": {
         "Activity Design": "Approved",
         "Invitation Letter": "For Review",
-        # Request Letter, Attendance Sheet and Accomplishment Report missing
+        # Request Letter, Attendance Sheet and Activity Report missing
     },
     "Design Thinking Workshop": {
         "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
-        "Attendance Sheet": "Approved", "Accomplishment Report": "Approved",
+        "Attendance Sheet": "Approved", "Activity Report": "Approved",
     },
     "Startup Finance Seminar": {
         "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
-        "Attendance Sheet": "Approved", "Accomplishment Report": "For Review",
+        "Attendance Sheet": "Approved", "Activity Report": "For Review",
     },
     "Women in Tech Forum": {
         "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
-        "Attendance Sheet": "Approved", "Accomplishment Report": "Approved",
+        "Attendance Sheet": "Approved", "Activity Report": "Approved",
     },
     "Digital Marketing Training": {
         "Activity Design": "Approved", "Invitation Letter": "Approved", "Attendance Sheet": "For Review",
-        # Request Letter and Accomplishment Report missing
+        # Request Letter and Activity Report missing
     },
     "Founder Mentoring Clinic": {
         "Activity Design": "Approved", "Request Letter": "Approved", "Invitation Letter": "Approved",
-        "Attendance Sheet": "Approved", "Accomplishment Report": "Approved",
+        "Attendance Sheet": "Approved", "Activity Report": "Approved",
     },
     "Industry-Academe Networking Night": {
         "Activity Design": "Approved", "Invitation Letter": "For Review",
@@ -197,7 +197,7 @@ DEMO_CERTIFICATES = {
 }
 UPCOMING_DOCUMENTS = {
     "Mentoring Session": {"Activity Design": "Approved", "Invitation Letter": "Approved"},
-    "Product Development Workshop": {"Activity Design": "For Review"},
+    "Product Development Workshop": {},  # nothing uploaded yet: both overdue (ASSUMPTIONS 416, 432)
 }
 
 
@@ -381,6 +381,11 @@ class Command(BaseCommand):
                 name=name,
                 email=email,
                 contact_number=f"09{self.rng.randint(100000000, 999999999)}",
+                # The fixed fields of every registration (ASSUMPTIONS 426).
+                designation="Founder" if startup else self.rng.choice(
+                    ["Owner", "Faculty member", "Student", "Project officer", "Freelancer"]),
+                office_agency=startup.name if startup else self.rng.choice(
+                    ["CSU", "Freelance", "Family business", "LGU", "DTI Caraga"]),
             )
             # registration_date is filled automatically; move it before the deadline so it looks real.
             Registration.objects.filter(pk=registration.pk).update(
@@ -423,13 +428,16 @@ class Command(BaseCommand):
         file_name = f"{slugify(title)}.txt"
         saved_path = default_storage.save(f"demo/{slugify(activity.title)}/{file_name}", ContentFile(content))
 
+        document_type = DocumentType.objects.get(name=type_name)
+        if not document_type.needs_review:  # ASSUMPTIONS 432: uploads are approved copies (Approved by System)
+            status_name = DocumentStatus.APPROVED
         approved = status_name == DocumentStatus.APPROVED
         Document.objects.create(
             activity=activity,
-            document_type=DocumentType.objects.get(name=type_name),
+            document_type=document_type,
             uploaded_by=activity.created_by,
             status=DocumentStatus.objects.get(status_name=status_name),
-            reviewed_by=self.staff["Director"] if approved else None,
+            reviewed_by=self.staff["Director"] if approved and document_type.needs_review else None,
             reviewed_at=timezone.now() if approved else None,
             title=title,
             file_name=file_name,

@@ -230,7 +230,7 @@ def two_documents(make_document, fake_gemini, events):
     first = make_document(docx_file(long_part, "Second part: the budget is 30,000 pesos. " + long_part), name="d1.docx",
                           on=events["bootcamp"], title="Design v2")
     second = make_document(text_pdf("The budget was approved at 25,000 pesos."), name="d2.pdf",
-                           type_name="Accomplishment Report", on=events["bootcamp"], title="Report")
+                           type_name="Activity Report", on=events["bootcamp"], title="Report")
     third = make_document(docx_file("Budget notes nobody cites"), name="d3.docx", type_name="Invitation Letter",
                           on=events["bootcamp"], title="Uncited")
     for document in (first, second, third):

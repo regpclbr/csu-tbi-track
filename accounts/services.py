@@ -620,6 +620,30 @@ def offered_positions(member: TBIMember) -> list[Position]:
     return list(positions.distinct().order_by("name"))
 
 
+POSITION_NOT_OFFERED = "Choose a position from the list."
+
+
+def set_member_position(acting_member: TBIMember, member: TBIMember, position_id: int | None) -> TBIMember:
+    """Admin Console: set a member's position (ASSUMPTIONS 429): the official job title from the Positions list, shown
+    under the name and printed under "Prepared by" on generated reports and forms. Same choices as My profile
+    (offered_positions: active ones, plus the member's own); None = no position. Never a permission. Logged on
+    accounts.audit (IDs only)."""
+    require_permission(acting_member, Permission.MANAGE_USERS)
+    position = None
+    if position_id is not None:
+        position = Position.objects.filter(pk=position_id).first()
+        if position is None or (not position.is_active and position.pk != member.position_id):
+            raise MemberManagementError(POSITION_NOT_OFFERED)
+    new_id = position.pk if position else None
+    if member.position_id != new_id:
+        old_id = member.position_id
+        member.position = position
+        member.save(update_fields=["position", "updated_at"])
+        audit_log.info("Member position changed: %s position %s -> %s by %s", _who(member), old_id, new_id,
+                       _who(acting_member))
+    return member
+
+
 def update_own_profile(member: TBIMember, *, name: str, position_id: int | None) -> TBIMember:
     """My profile: the member changes their OWN name and position (any active staff member). Email and role are not
     changed here (only the System Administrator changes them). Logged on accounts.audit (IDs and names only)."""
@@ -634,7 +658,7 @@ def update_own_profile(member: TBIMember, *, name: str, position_id: int | None)
     if position_id is not None:
         position = Position.objects.filter(pk=position_id).first()
         if position is None or (not position.is_active and position.pk != member.position_id):
-            errors["position"] = ["Choose a position from the list."]
+            errors["position"] = [POSITION_NOT_OFFERED]
     if errors:
         raise ValidationError(errors)
     changes = []

@@ -259,9 +259,11 @@ def parse_repository_filters(query: QueryDict) -> RepositoryFilters:
     )
 
 
-def summary_cards(counts: dict[str, int], filters: RepositoryFilters, can_approve: bool) -> list[dict]:
-    """The four cards at the top (services.document_state_counts). A card is a link that filters the page by its
-    state; the selected one links back to no state. "Missing" opens the "By activity" view."""
+def summary_cards(counts: dict[str, int], filters: RepositoryFilters, can_approve: bool,
+                  review: bool = True) -> list[dict]:
+    """The cards at the top (services.document_state_counts). A card is a link that filters the page by its
+    state; the selected one links back to no state. "Missing" opens the "By activity" view. `review` False
+    (services.review_in_use, ASSUMPTIONS 432: uploads are approved copies): only Missing and Approved."""
     waiting = "Waiting for approval" if can_approve else "Waiting for the Director"
     cards = [
         (Document.WAITING_FOR_REVIEW, waiting, "file-check", "blue"),
@@ -269,6 +271,8 @@ def summary_cards(counts: dict[str, int], filters: RepositoryFilters, can_approv
         (MISSING, "Missing", "circle-alert", "violet"),
         (Document.APPROVED, "Approved", "circle-check", "green"),
     ]
+    if not review:
+        cards = [card for card in cards if card[0] in (MISSING, Document.APPROVED)]
     result = []
     for key, label, icon, chip in cards:
         selected = filters.state == key
@@ -386,7 +390,7 @@ def repository_page(member: TBIMember, filters: RepositoryFilters, now=None) -> 
     overview = services.activity_document_overview(activities, now)
     context = {
         "summary_cards": summary_cards(services.document_state_counts(overview), filters,
-                                       has_permission(member, Permission.APPROVE_DOCUMENTS)),
+                                       has_permission(member, Permission.APPROVE_DOCUMENTS), services.review_in_use()),
         "view_links": view_links(filters),
         "activity_choices": activities,
     }
@@ -411,8 +415,11 @@ def review_page(member: TBIMember, page: str) -> dict:
 
 def filter_choices() -> dict:
     """Lists for the filter selects (inactive types too, so old documents can still be found). The activities come
-    with repository_page (`activity_choices`, the activities the page lists)."""
-    return {"document_types": DocumentType.objects.order_by("name"), "states": STATE_CHOICES}
+    with repository_page (`activity_choices`, the activities the page lists). Waiting / Returned only while review is
+    in use (services.review_in_use, ASSUMPTIONS 432)."""
+    states = STATE_CHOICES if services.review_in_use() else [
+        (key, label) for key, label in STATE_CHOICES if key in (Document.APPROVED, MISSING)]
+    return {"document_types": DocumentType.objects.order_by("name"), "states": states}
 
 
 # --- After an action --------------------------------------------------------------------------------------------

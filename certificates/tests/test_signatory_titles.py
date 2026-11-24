@@ -46,7 +46,6 @@ def form_post(valid_data, **overrides) -> dict:
         "participant_categories": [c.pk for c in values["participant_categories"]],
         **typed_schedule_fields(values), "venue": values["venue"], "max_slots": values["max_slots"],
         "budget_amount": str(values["budget_amount"]),
-        "create_as": "Draft",  # the New form's "Create as" (ASSUMPTIONS 417); the edit form ignores it
     }
     data.update(signatories)
     return data
@@ -298,16 +297,17 @@ def test_view_only_members_only_views_slots_and_titles(generated, view_only, des
     assert services.activity_slots(activity)["left"].position_on_certificate is None
 
 
-def test_a_creator_without_the_approval_flag_changes_slots_but_cannot_add_people(generated, make_member, roles, design) -> None:
+def test_a_creator_without_the_approval_flag_cannot_change_slots_or_add_people(generated, make_member, roles, design) -> None:
     activity, _ = generated
     _, vp, head = design
     roles[VIEW_ONLY_ROLE].can_create_activity = True  # a role that creates activities but does not approve certificates
     roles[VIEW_ONLY_ROLE].save(update_fields=["can_create_activity"])
     creator = make_member(VIEW_ONLY_ROLE, email="creator@example.com")
-    services.set_activity_signatory(creator, activity, "left", head, title="Director, CSU-TBI")
-    assert services.printed_title(services.activity_slots(activity)["left"]) == "Director, CSU-TBI"
+    with pytest.raises(PermissionDenied, match="Only the Director chooses who signs."):  # ASSUMPTIONS 431
+        services.set_activity_signatory(creator, activity, "left", head, title="Director, CSU-TBI")
+    assert services.printed_title(services.activity_slots(activity)["left"]) == "Director"
     html = client_for(creator).get(reverse("activities:create")).content.decode()
-    assert "Who signs the certificates" in html and "Add a person…" not in html
+    assert "Who signs the certificates" in html and "Add a person…" not in html and 'name="signatory_left"' not in html
     assert client_for(creator).post(reverse("certificates:signatory_add_inline"), {"name": "A", "position": "B"}).status_code == 403
 
 

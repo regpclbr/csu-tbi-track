@@ -44,6 +44,11 @@ class DocumentType(models.Model):
     due_reference = models.CharField(max_length=20, choices=DueReference.choices, null=True, blank=True)
     due_offset_days = models.IntegerField(null=True, blank=True, help_text="For example -3 or +3.")
     is_active = models.BooleanField(default=True)
+    # ASSUMPTIONS 432 (NAVIGATU: only approved paper copies are uploaded): False = an upload is saved as Approved at once
+    # (an approved copy, by System). True = the Director reviews uploads of this type (approve / return, item 344).
+    needs_review = models.BooleanField(
+        default=False,
+        help_text="Off: uploads of this type are approved copies (saved as Approved). On: the Director reviews them.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

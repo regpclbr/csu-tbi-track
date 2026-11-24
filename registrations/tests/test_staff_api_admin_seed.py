@@ -203,7 +203,8 @@ def test_default_fields_editable_with_json_options(client, admin_member, default
 @pytest.mark.django_db
 def test_seed_creates_defaults_for_every_type_once(roles) -> None:
     first = load_default_form_fields()
-    assert first.created == ActivityType.objects.count() * 6  # 1 registration + 5 evaluation fields
+    assert first.created == ActivityType.objects.count() * 5  # 5 evaluation fields; no registration field (ASSUMPTIONS 426)
+    assert not DefaultFormField.objects.filter(form_type="registration").exists()
     assert load_default_form_fields().created == 0  # safe to run twice
     # The privacy consent is the system's fixed checkbox now, not a default question (ASSUMPTIONS 394).
     assert not DefaultFormField.objects.filter(field_label="Data Privacy consent").exists()

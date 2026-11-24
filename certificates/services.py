@@ -54,7 +54,7 @@ from datetime import datetime, timedelta
 from pathlib import PurePosixPath
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import UploadedFile
 from django.db import connection, transaction
@@ -66,6 +66,7 @@ from PIL import Image
 from accounts.models import TBIMember
 from accounts.permissions import (
     Permission,
+    has_any_permission,
     has_permission,
     require_any_permission,
     require_permission,
@@ -676,10 +677,36 @@ def can_retry_pdfs(member: TBIMember) -> bool:
     return any(has_permission(member, flag) for flag in RETRY_PERMISSIONS)
 
 
+# Who chooses an activity's signatories and their "Title on this certificate" (ASSUMPTIONS 431, NAVIGATU: only the
+# Director): the certificate approval flag of item 421, never the role name.
+CHOOSE_SIGNATORIES_PERMISSION = Permission.APPROVE_CERTIFICATES
+ONLY_DIRECTOR_CHOOSES = "Only the Director chooses who signs."
+# Preparing the certificates and an activity's own wording stay with both flags (ASSUMPTIONS 420, 431).
+PREPARE_PERMISSIONS = (Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+
+
 def can_choose_signatories(member: TBIMember) -> bool:
-    """Who may change an activity's signatories and titles: can_create_activity or can_approve_certificates
-    (ASSUMPTIONS 363, 365). Without either flag: view only."""
-    return has_permission(member, Permission.CREATE_ACTIVITY) or has_permission(member, Permission.APPROVE_CERTIFICATES)
+    """Who may change an activity's signatories and titles: can_approve_certificates only (ASSUMPTIONS 431, amends
+    363 / 365 / 421). Everyone else sees them read only ("Only the Director chooses who signs.")."""
+    return has_permission(member, CHOOSE_SIGNATORIES_PERMISSION)
+
+
+def require_signatory_choice(member: TBIMember) -> None:
+    """Refuse (PermissionDenied, 403) a signatory or title change by a member without can_approve_certificates: the
+    one check of every path (Certificates tab, edit form, New form, any API) (ASSUMPTIONS 431)."""
+    if not can_choose_signatories(member):
+        raise PermissionDenied(ONLY_DIRECTOR_CHOOSES)
+
+
+def has_signatory_choice(chosen: dict | None) -> bool:
+    """True when a {slot: (person or None, title)} choice asks for anything (a person or a title), i.e. more than "use
+    the defaults"."""
+    return any(person is not None or (title or "").strip() for person, title in (chosen or {}).values())
+
+
+def can_prepare_certificates(member: TBIMember) -> bool:
+    """Who may "Prepare the certificates now" (ASSUMPTIONS 420): can_create_activity or can_approve_certificates."""
+    return has_any_permission(member, *PREPARE_PERMISSIONS)
 
 
 def assign_default_signatories(activity: Activity, chosen: dict | None = None) -> None:
@@ -807,11 +834,11 @@ _KEEP = object()  # set_activity_signatory: keep the title when the person stays
 def set_activity_signatory(member: TBIMember, activity: Activity, slot: str, signatory: CertificateSignatory,
                            now: datetime | None = None, *, title=_KEEP) -> dict:
     """Choose who signs on `slot` for this activity and the title printed for them (the Certificates tab; any status:
-    certificates exist only from Conducted on). can_create_activity or can_approve_certificates.
+    certificates exist only from Conducted on). can_approve_certificates only (ASSUMPTIONS 431).
     `title`: the "Title on this certificate" text ("" = the person's position); left out = kept for the same person,
     cleared for another person. Refusals (SlotError, a CertificateError): an inactive person, the person already on
     the other side. Returns {"changed", "updated", "outdated"} (_apply_slots)."""
-    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    require_signatory_choice(member)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
     if slot not in SLOTS:
         raise ValidationError({"slot": ["Choose left or right."]})
     locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
@@ -829,7 +856,7 @@ def set_activity_signatories(member: TBIMember, activity: Activity, choices: dic
     """The activity edit form's "Who signs the certificates": {slot: (person or None, title text)} for both slots,
     saved inside the caller's transaction (activities.services.update_activity). Same rules as
     set_activity_signatory; refusals as ValidationError({"signatory_left": [...]}) for the form's fields."""
-    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    require_signatory_choice(member)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
     locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
     try:
         wanted = {slot: (person, _clean_title(title, f"title_{slot}")) for slot, (person, title) in choices.items()
@@ -843,7 +870,7 @@ def use_current_version(member: TBIMember, activity: Activity, slot: str, now: d
     """The Signatures section's "Use the current version" (ASSUMPTIONS 367): the slot's inactive person is switched
     to the newest active version of the same person (current_version_of), keeping the title. Same permission and
     refresh rules as set_activity_signatory. Refused when there is no newer active version."""
-    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    require_signatory_choice(member)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
     if slot not in SLOTS:
         raise ValidationError({"slot": ["Choose left or right."]})
     row = activity_slots(activity)[slot]
@@ -921,8 +948,9 @@ def uses_custom_text(activity: Activity) -> bool:
 
 
 def can_edit_activity_text(member: TBIMember) -> bool:
-    """Who may choose an activity's wording: can_create_activity or can_approve_certificates (without either: view only)."""
-    return can_choose_signatories(member)
+    """Who may choose an activity's wording: can_create_activity or can_approve_certificates (without either: view only).
+    Unchanged by item 431 (only the signatories became the Director's)."""
+    return has_any_permission(member, *PREPARE_PERMISSIONS)
 
 
 def _check_type(certificate_type: str) -> None:
@@ -1731,10 +1759,13 @@ def draft_sample_preview_pdf(member: TBIMember, certificate_type: str, *, detail
     if template is None:
         raise CertificateError(NO_TEMPLATE)
     fields: dict = {"certificate_template": template}
+    if not can_choose_signatories(member):  # ASSUMPTIONS 431: they get the defaults, so the sample shows the defaults
+        slots = {slot: (person, None) for slot, person in default_signatories().items()}
     for slot in SLOTS:
         person, title = slots.get(slot) or (None, None)
         if person is None:
-            raise CertificateError("Choose the two signatories first.")
+            raise CertificateError("Choose the two signatories first." if can_choose_signatories(member)
+                                   else "There are no default signatories yet. " + ONLY_DIRECTOR_CHOOSES)
         if not person.is_active:
             raise CertificateError(f"{person.name} is inactive. Choose an active person.")
         title = _clean_title(title, f"title_{slot}")

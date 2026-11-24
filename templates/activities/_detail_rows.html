@@ -1,5 +1,14 @@
-{% comment %}An activity's fields as a description list (activities.pages.detail_rows), with the description first.{% endcomment %}
+{% comment %}An activity's fields as a description list (activities.pages.detail_rows), with the description first, then the
+objectives (one per line, services.objective_lines, ASSUMPTIONS 428).{% endcomment %}
 {% if activity.description %}<p class="mb-6 text-sm leading-relaxed whitespace-pre-line text-slate-700">{{ activity.description }}</p>{% endif %}
+{% if objectives %}
+  <div class="mb-6" id="activity-objectives">
+    <h3 class="text-xs font-semibold tracking-wide text-muted uppercase">Objectives</h3>
+    <ul class="mt-2 list-disc space-y-1 pl-6 text-sm [overflow-wrap:anywhere] text-ink">
+      {% for line in objectives %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
 <dl class="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
   {% for label, value in detail_rows %}
     <div class="min-w-0">

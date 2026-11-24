@@ -78,6 +78,20 @@ def notify_directors_of_new_activity(activity, creator: TBIMember) -> int:
     return len(created)
 
 
+def notify_creator_scheduled(activity, uploader: TBIMember) -> int:
+    """In-app "<Activity> is now Scheduled: <Name> uploaded the last of its Activity Design and Request Letter. …" for
+    the activity's creator (ASSUMPTIONS 431), linked to the activity. Nobody is told when the creator uploaded it
+    themselves (they see the message on the page) or when the creator's account is inactive. Call it inside the
+    upload's transaction. No email. Returns how many were created (0 or 1)."""
+    creator = activity.created_by
+    if creator is None or creator.pk == uploader.pk or not creator.is_active:
+        return 0
+    message = (f"{activity.title[:200]} is now Scheduled: {uploader.name[:80]} uploaded the last of its Activity Design "
+               "and Request Letter. Registration opens once its registration form is marked ready.")[:500]
+    Notification.objects.create(member=creator, activity=activity, type=Notification.ACTIVITY_SCHEDULED, message=message)
+    return 1
+
+
 def certificate_reviewers() -> QuerySet:
     """Who is told about certificates to approve (ASSUMPTIONS 420, 421): every active member whose role has
     can_approve_certificates (the Director only by default). Flags only, never a role name. Nobody qualifies = nobody is

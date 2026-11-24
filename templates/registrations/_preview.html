@@ -1,6 +1,7 @@
 {% comment %}
 Inside the Preview modal: the form as participants will see it, read-only. The fixed fields are the ones the public
-pages always ask (registration: name, email, contact number, participant category; evaluation: the certificate's name
+pages always ask (registration: name, email, contact number, designation / position, office / agency (ASSUMPTIONS 426),
+participant category; evaluation: the certificate's name
 and email, then comments), around the form's own fields.
 {% endcomment %}
 <p class="mb-4 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700">This is how participants see the form. Nothing can be typed here.</p>
@@ -9,6 +10,8 @@ and email, then comments), around the form's own fields.
     <div><label class="text-sm font-semibold text-ink" for="pv-{{ card.form_type }}-name">Full name <span class="text-danger" aria-hidden="true">*</span></label><input id="pv-{{ card.form_type }}-name" type="text" class="field-input mt-2" disabled></div>
     <div><label class="text-sm font-semibold text-ink" for="pv-{{ card.form_type }}-email">Email address <span class="text-danger" aria-hidden="true">*</span></label><input id="pv-{{ card.form_type }}-email" type="email" class="field-input mt-2" disabled></div>
     <div><label class="text-sm font-semibold text-ink" for="pv-{{ card.form_type }}-contact">Contact number</label><input id="pv-{{ card.form_type }}-contact" type="text" class="field-input mt-2" disabled></div>
+    <div><label class="text-sm font-semibold text-ink" for="pv-{{ card.form_type }}-designation">Designation / Position <span class="text-danger" aria-hidden="true">*</span></label><input id="pv-{{ card.form_type }}-designation" type="text" class="field-input mt-2" disabled></div>
+    <div><label class="text-sm font-semibold text-ink" for="pv-{{ card.form_type }}-office">Office / Agency <span class="text-danger" aria-hidden="true">*</span></label><input id="pv-{{ card.form_type }}-office" type="text" class="field-input mt-2" disabled></div>
     <fieldset>
       <legend class="text-sm font-semibold text-ink">Participant category <span class="text-danger" aria-hidden="true">*</span></legend>
       {% if card.categories|length == 1 %}

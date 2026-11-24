@@ -35,8 +35,9 @@ class DocumentTypeAdminForm(forms.ModelForm):
 @admin.register(DocumentType)
 class DocumentTypeAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     form = DocumentTypeAdminForm
-    list_display = ("name", "is_required", "due_reference", "due_offset_days", "naming_pattern", "is_active")
-    list_filter = ("is_required", "is_active")
+    list_display = ("name", "is_required", "due_reference", "due_offset_days", "naming_pattern", "needs_review",
+                    "is_active")
+    list_filter = ("is_required", "needs_review", "is_active")
 
 
 @admin.register(Document)

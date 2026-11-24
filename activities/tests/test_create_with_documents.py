@@ -1,8 +1,8 @@
 """Documents on the New activity form (ASSUMPTIONS 327–328, 405): one service call
 (documents.services.create_activity_with_documents) saves the activity and its documents in one transaction, with the
 upload rules of the Documents tab; only types that make sense before the activity are offered. The Activity Design and
-the Request Letter are optional (ASSUMPTIONS 417; rows 0 and 1 here when given, like the form sends them) and needed for
-"Create as: Scheduled"; the rules that follow from them are in documents/tests/test_creation_documents.py."""
+the Request Letter are optional (ASSUMPTIONS 417; rows 0 and 1 here when given, like the form sends them); with both the
+activity is created as Scheduled, otherwise as Draft (ASSUMPTIONS 431, no "Create as" choice); the rules that follow from them are in documents/tests/test_creation_documents.py."""
 
 from pathlib import Path
 
@@ -63,10 +63,10 @@ def required_post() -> dict:
 
 @pytest.fixture
 def create(director, valid_data):
-    """Created as Scheduled with both documents; rows after the two (row indexes in errors therefore start at 2)."""
+    """Created with both documents (so Scheduled, ASSUMPTIONS 431); rows after the two (row indexes in errors therefore
+    start at 2)."""
     def make(documents: list[NewDocument], **overrides) -> Activity:
-        return document_services.create_activity_with_documents(director, valid_data(**overrides), required_rows() + documents,
-                                                                status="Scheduled")
+        return document_services.create_activity_with_documents(director, valid_data(**overrides), required_rows() + documents)
 
     return make
 
@@ -91,58 +91,83 @@ def test_settings_and_deactivation_change_the_offer(roles, settings) -> None:
 
 def test_only_the_two_required_documents(create) -> None:
     activity = create([])
-    assert activity.status.name == "Scheduled" and activity.audit_logs.count() == 2  # Draft, then Scheduled (ASSUMPTIONS 409)
+    assert activity.status.name == "Scheduled" and activity.audit_logs.filter(field_changed="Status").count() == 2  # Draft, then Scheduled (409)
     assert activity.creation_documents_required is True
     assert sorted(activity.documents.values_list("document_type__name", flat=True)) == ["Activity Design", "Request Letter"]
     assert len(stored_files()) == 2
 
 
 def test_without_documents_it_is_created_as_a_draft(director, valid_data) -> None:
-    """ASSUMPTIONS 417: the documents are optional; Draft is the default; the creation rule still applies later."""
+    """ASSUMPTIONS 417 / 431: the documents are optional; without them it is a Draft; the creation rule applies later."""
     activity = document_services.create_activity_with_documents(director, valid_data(), [])
     assert activity.status.name == "Draft" and activity.creation_documents_required is True
-    assert list(activity.audit_logs.values_list("field_changed", "old_value", "new_value")) == [("Status", "", "Draft")]
+    assert list(activity.audit_logs.filter(field_changed="Status").values_list("field_changed", "old_value", "new_value")) == [("Status", "", "Draft")]
     assert not Document.objects.exists() and not stored_files()
 
 
-def test_a_draft_with_both_documents_stays_a_draft(director, valid_data) -> None:
-    activity = document_services.create_activity_with_documents(director, valid_data(), required_rows(), status="Draft")
-    assert activity.status.name == "Draft" and activity.documents.count() == 2
+def test_both_documents_make_it_scheduled_automatically(director, valid_data) -> None:
+    """ASSUMPTIONS 431: no choice; both documents -> Scheduled through change_status by the creator (two History rows)."""
+    activity = document_services.create_activity_with_documents(director, valid_data(), required_rows())
+    assert activity.status.name == "Scheduled" and activity.not_scheduled_reason == ""
+    rows = list(activity.audit_logs.filter(field_changed="Status").order_by("log_id").values_list("field_changed", "old_value", "new_value", "changed_by"))
+    assert rows == [("Status", "", "Draft", director.pk), ("Status", "Draft", "Scheduled", director.pk)]
 
 
-@pytest.mark.parametrize("given, missing", [
-    ([], "the Activity Design and the Request Letter"),
-    (["Activity Design"], "the Request Letter"),
-    (["Request Letter"], "the Activity Design"),
-])
-def test_scheduled_without_both_is_refused_and_nothing_is_saved(director, valid_data, given, missing) -> None:
-    """change_status (scheduling_refused_reason) refuses the move inside the transaction: no activity, no document, no
-    stored file, no notification (also not the Director's "activity created")."""
+@pytest.mark.parametrize("given", [[], ["Activity Design"], ["Request Letter"]])
+def test_one_or_no_document_creates_a_draft_and_keeps_the_upload(director, valid_data, given) -> None:
+    """ASSUMPTIONS 431: never refused for missing documents any more; the given one is saved and waits for review."""
     rows = [row for row in required_rows() if row.document_type.name in given]
-    with pytest.raises(document_services.NewActivityError) as caught:
-        document_services.create_activity_with_documents(director, valid_data(title="Refused"), rows, status="Scheduled")
-    assert caught.value.status_error == f"To create it as Scheduled, choose {missing} above, or create it as Draft."
-    assert caught.value.row_errors == {} and caught.value.activity_error is None
-    assert not Activity.objects.exists() and not Document.objects.exists() and not stored_files()
-    assert not Notification.objects.exists() and not OrmQ.objects.exists()
+    activity = document_services.create_activity_with_documents(director, valid_data(title="One"), rows)
+    assert activity.status.name == "Draft" and activity.not_scheduled_reason == ""
+    assert sorted(activity.documents.values_list("document_type__name", flat=True)) == given
+    assert len(stored_files()) == len(given)
+    assert list(activity.audit_logs.filter(field_changed="Status").values_list("new_value", flat=True)) == ["Draft"]
 
 
-def test_only_draft_or_scheduled(director, valid_data) -> None:
-    for status in ("Ongoing", "Conducted", ""):
-        with pytest.raises(ValidationError):
-            document_services.create_activity_with_documents(director, valid_data(), required_rows(), status=status)
-    assert not Activity.objects.exists() and not stored_files()
+def test_a_refused_scheduled_keeps_the_activity_and_its_uploads_as_draft(director, valid_data, monkeypatch) -> None:
+    """ASSUMPTIONS 431: when change_status refuses Scheduled for another reason (simulated: the transition table allows
+    nothing from Draft), the activity, its documents, files and notifications stay; it is a Draft with the reason."""
+    from activities import services as activity_services
+
+    monkeypatch.setitem(activity_services.ALLOWED_STATUS_MOVES, "Draft", set())
+    rows = required_rows() + [NewDocument(doc_type("Invitation Letter"), pdf())]
+    activity = document_services.create_activity_with_documents(director, valid_data(title="Kept"), rows)
+    activity.refresh_from_db()
+    assert activity.status.name == "Draft"
+    assert activity.documents.count() == 3 and len(stored_files()) == 3
+    assert activity.not_scheduled_reason.startswith("Cannot change status from Draft to Scheduled.")
+    assert list(activity.audit_logs.filter(field_changed="Status").values_list("new_value", flat=True)) == ["Draft"]
 
 
-def test_a_draft_needs_both_uploaded_before_scheduled_later(director, valid_data) -> None:
+def test_a_refused_scheduled_is_said_in_the_success_message(browser, post_data, monkeypatch) -> None:
+    from activities import services as activity_services
+
+    monkeypatch.setitem(activity_services.ALLOWED_STATUS_MOVES, "Draft", set())
+    data = post_data(title="Refused move")
+    data.update(required_post())
+    response = browser.post(CREATE, data, follow=True)
+    activity = Activity.objects.get(title="Refused move")
+    assert activity.status.name == "Draft" and activity.documents.count() == 2
+    assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk])
+    [text] = messages_of(response)
+    assert text.startswith('"Refused move" was created as Draft with 2 documents. It could not be '
+                           "Scheduled: Cannot change status from Draft to Scheduled.")
+
+
+def test_a_draft_becomes_scheduled_when_the_last_document_is_uploaded(director, valid_data) -> None:
+    """ASSUMPTIONS 431: the later upload moves it by itself (System), with the reason in History; the creator uploaded
+    it, so nobody is notified about it."""
     from activities import services as activity_services
 
     activity = document_services.create_activity_with_documents(director, valid_data(), required_rows()[:1])
     with pytest.raises(activity_services.ActivityError, match="Upload the Request Letter before scheduling"):
-        activity_services.change_status(director, activity, "Scheduled")
-    document_services.upload_document(director, activity, doc_type("Request Letter"), pdf("r.pdf"), "")
-    activity_services.change_status(director, activity, "Scheduled")
-    assert activity.status.name == "Scheduled"
+        activity_services.change_status(director, activity, "Scheduled")  # the hand move keeps its rule
+    document = document_services.upload_document(director, activity, doc_type("Request Letter"), pdf("r.pdf"), "")
+    activity.refresh_from_db()
+    assert document.scheduled_activity is True and activity.status.name == "Scheduled"
+    row = activity.audit_logs.filter(field_changed="Status").order_by("-log_id").values_list("field_changed", "old_value", "new_value", "changed_by").first()
+    assert row == ("Status", "Draft", "Scheduled (both documents uploaded)", None)
+    assert not Notification.objects.filter(type=Notification.ACTIVITY_SCHEDULED).exists()
 
 
 def test_a_file_without_a_title_is_still_refused(director, valid_data) -> None:
@@ -159,11 +184,11 @@ def test_one_document_is_uploaded_with_the_upload_rules(create, director) -> Non
     activity = create([NewDocument(doc_type("Invitation Letter"), pdf(), "  Invitation to the workshop ")])
     document = Document.objects.get(document_type__name="Invitation Letter")
     assert document.activity == activity and document.uploaded_by == director
-    assert document.status.status_name == DocumentStatus.FOR_REVIEW and document.reviewed_at is None  # waiting for review
+    assert document.status.status_name == DocumentStatus.APPROVED and document.reviewed_by is None  # approved copy (432)
     assert document.title == "Invitation to the workshop" and document.file_extension == "pdf"
     assert document.file_path.name.startswith("documents/") and document.file_path.storage.exists(document.file_path.name)
-    assert activity.audit_logs.count() == 2
-    assert not OrmQ.objects.exists()  # nothing is indexed before approval
+    assert activity.audit_logs.filter(field_changed="Status").count() == 2
+    assert activity.audit_logs.filter(field_changed="Documents").count() == 3  # each approved copy (432)
     checklist = document_services.document_checklist(activity)  # optional since ASSUMPTIONS 386: an "other" document
     entry = next(entry for entry in checklist["optional"] if entry["document_type"].name == "Invitation Letter")
     assert entry["documents"] == [document]
@@ -215,7 +240,7 @@ def test_a_failure_while_saving_removes_the_files_already_stored(create, monkeyp
     assert not Notification.objects.exists()
 
 
-@pytest.mark.parametrize("name", ["Attendance Sheet", "Accomplishment Report", "Certificate", "Evaluation Form"])
+@pytest.mark.parametrize("name", ["Attendance Sheet", "Certificate", "Evaluation Form"])  # no Accomplishment Report (430)
 def test_a_type_not_allowed_at_creation_is_refused_by_the_service(create, name) -> None:
     with pytest.raises(document_services.NewActivityError) as caught:
         create([NewDocument(doc_type(name), pdf())])
@@ -256,7 +281,6 @@ def post_data(valid_data):
             "participant_categories": [category.pk for category in values["participant_categories"]],
             **typed_schedule_fields(values), "venue": values["venue"], "max_slots": values["max_slots"],
             "budget_amount": str(values["budget_amount"]),
-            "create_as": "Draft",  # the default (ASSUMPTIONS 417)
         }
 
     return make
@@ -276,7 +300,7 @@ def test_new_page_offers_only_the_allowed_types_and_edit_has_no_section(browser,
         assert f'name="required-{doc_type(name).pk}-file"' in html and f">{name}</option>" not in html
     for name in ("Invitation Letter", "Pre-registration Form", "Other"):
         assert f">{name}</option>" in html
-    for name in ("Attendance Sheet", "Accomplishment Report", "Certificate", "Evaluation Form"):
+    for name in ("Attendance Sheet", "Certificate", "Evaluation Form"):
         assert f">{name}</option>" not in html
     assert 'x-for="key in added"' in html and "Add a document" in html
     assert "max: 8" in html and "up to 10 documents" in html  # the limit of 10 counts the two required files
@@ -287,16 +311,16 @@ def test_new_page_offers_only_the_allowed_types_and_edit_has_no_section(browser,
 
 def test_posting_documents_saves_them_and_opens_the_forms_tab(browser, post_data) -> None:
     data = post_data(title="With files")
-    data.update(required_post(), create_as="Scheduled")
+    data.update(required_post())
     data.update({"documents-0-type": doc_type("Invitation Letter").pk, "documents-0-file": pdf(), "documents-0-title": "",
                  "documents-3-type": "", "documents-3-title": ""})  # a row left empty is ignored
     response = browser.post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="With files")
     assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk]) + "?tab=forms"
     html = response.content.decode()
-    assert "was created as Scheduled with 3 documents waiting for review." in html
+    assert "was created as Scheduled with 3 documents." in html
     assert activity.documents.count() == 3 and "Create from defaults" in html  # the next step (ASSUMPTIONS 409)
-    assert all(d.review_state == Document.WAITING_FOR_REVIEW for d in activity.documents.select_related("status"))
+    assert all(d.review_state == Document.APPROVED for d in activity.documents.select_related("status"))  # 432
     assert activity.creation_documents_required is True
 
 
@@ -336,18 +360,14 @@ def test_other_type_needs_a_title_at_creation_too(create, roles) -> None:
     assert Document.objects.get(document_type__name="Other").title == "MOA with ABC Corp."
 
 
-# --- The two fixed rows and "Create as" on the page (ASSUMPTIONS 405, 417) ------------------------------------------
+# --- The two fixed rows on the page; the documents decide the status (ASSUMPTIONS 405, 417, 431) ----------------------
 
 
-def radio(html: str, value: str) -> str:
-    """The <input> tag of one "Create as" option."""
-    return "<input" + html.split(f'value="{value}" id="create-as-{value.lower()}"')[1].split(">")[0]
-
-
-def test_the_page_offers_create_as_with_draft_chosen(browser) -> None:
+def test_the_page_has_no_create_as_and_one_primary_button(browser) -> None:
     html = browser.get(CREATE).content.decode()
-    assert '<legend class="field-label">Create as' in html
-    assert " checked" in radio(html, "Draft") and " checked" not in radio(html, "Scheduled")
+    assert "Create as" not in html and 'name="create_as"' not in html
+    assert ("Upload the approved copies. With the Activity Design and the Request Letter, the activity is Scheduled when "
+            "you create it. Without them it stays Draft until both are uploaded.") in html
     form = html.split('<form method="post" novalidate')[1].split("</form>")[0]  # the "Add a person" dialog has its own
     assert form.count("btn btn-primary") == 1  # one primary button on the form: Create activity (ASSUMPTIONS 413)
 
@@ -358,48 +378,28 @@ def test_posting_without_files_creates_a_draft_and_opens_the_overview(browser, p
     assert activity.status.name == "Draft" and not stored_files()
     assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk])
     assert messages_of(response) == [
-        '"No files" was created as Draft. Upload the Activity Design and the Request Letter on the Documents tab, '
-        "then change the status to Scheduled."]
+        '"No files" was created as Draft. Upload the Activity Design and the Request Letter on the Documents tab: '
+        "it becomes Scheduled as soon as both documents are uploaded."]
 
 
-def test_a_draft_with_both_files_says_it_can_be_scheduled(browser, post_data) -> None:
-    data = post_data(title="Both, still a draft")
-    data.update(required_post())
-    response = browser.post(CREATE, data, follow=True)
-    assert messages_of(response) == ['"Both, still a draft" was created as Draft with 2 documents waiting for review. '
-                                     "Change the status to Scheduled when it is ready."]
-
-
-def test_create_as_is_required(browser, post_data) -> None:
-    data = post_data(title="No choice")
-    del data["create_as"]
-    html = browser.post(CREATE, data).content.decode()
-    assert '<p id="create-as-error" class="field-error">Choose Draft or Scheduled.</p>' in html
-    assert not Activity.objects.exists()
-
-
-def test_scheduled_without_both_shows_the_refusal_under_the_field_and_keeps_everything(browser, post_data) -> None:
-    data = post_data(title="Too early", venue="CSU Hall B")
+def test_one_file_on_the_page_creates_a_draft_with_it(browser, post_data) -> None:
+    data = post_data(title="Only the design", venue="CSU Hall B")
     design = doc_type("Activity Design").pk
     data.update({f"required-{design}-file": pdf("design.pdf"), f"required-{design}-title": "Design v1",
                  "documents-0-type": doc_type("Invitation Letter").pk, "documents-0-file": pdf("invite.pdf"),
-                 "documents-0-title": "Invite", "create_as": "Scheduled"})
-    response = browser.post(CREATE, data)
-    html = response.content.decode()
-    assert response.status_code == 200
-    assert not Activity.objects.exists() and not Document.objects.exists() and not stored_files()
-    assert not Notification.objects.exists()
-    assert ('<p id="create-as-error" class="field-error">To create it as Scheduled, choose the Request Letter above, or '
-            "create it as Draft.</p>") in html
-    assert 'value="Too early"' in html and 'value="CSU Hall B"' in html and 'value="Design v1"' in html  # kept
-    assert 'value="Invite"' in html and " checked" in radio(html, "Scheduled") and " checked" not in radio(html, "Draft")
-    assert "<li>Activity Design (design.pdf)</li>" in html and "<li>Invitation Letter (invite.pdf)</li>" in html
-    assert f'id="required-{design}-file-again" class="field-help text-warning">Choose “design.pdf” again.' in html
+                 "documents-0-title": "Invite"})
+    response = browser.post(CREATE, data, follow=True)
+    activity = Activity.objects.get(title="Only the design")
+    assert activity.status.name == "Draft" and activity.documents.count() == 2 and len(stored_files()) == 2
+    assert response.redirect_chain[-1][0] == reverse("activities:detail", args=[activity.pk])
+    assert messages_of(response) == [
+        '"Only the design" was created as Draft with 2 documents. Upload the Request Letter on the '
+        "Documents tab: it becomes Scheduled as soon as both documents are uploaded."]
 
 
 def test_scheduled_with_both_on_the_page_opens_the_forms_tab(browser, post_data) -> None:
     data = post_data(title="Ready")
-    data.update(required_post(), create_as="Scheduled")
+    data.update(required_post())
     response = browser.post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="Ready")
     assert activity.status.name == "Scheduled"
@@ -432,7 +432,7 @@ def test_a_bad_required_file_is_refused_like_any_upload(browser, post_data, sett
     assert not Activity.objects.exists()
 
 
-def test_the_required_files_are_saved_waiting_for_approval(browser, post_data, director) -> None:
+def test_the_required_files_are_saved_as_approved_copies(browser, post_data, director) -> None:
     data = post_data(title="Both files")
     data.update(required_post())
     data[f"required-{doc_type('Request Letter').pk}-title"] = "Request to the Dean"
@@ -442,7 +442,7 @@ def test_the_required_files_are_saved_waiting_for_approval(browser, post_data, d
     assert set(documents) == {"Activity Design", "Request Letter"}
     assert documents["Request Letter"].title == "Request to the Dean"
     assert documents["Activity Design"].title == DESIGN_TITLE
-    assert all(d.review_state == Document.WAITING_FOR_REVIEW and d.uploaded_by == director for d in documents.values())
+    assert all(d.review_state == Document.APPROVED and d.uploaded_by == director for d in documents.values())  # 432
 
 
 # --- The required titles (ASSUMPTIONS 410, NAVIGATU) ---------------------------------------------------------------

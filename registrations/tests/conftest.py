@@ -32,12 +32,17 @@ def field_id(form: FormTemplate, label: str) -> str:
     return str(form.fields.get(field_label=label).pk)
 
 
+# The fixed fields every new registration needs (ASSUMPTIONS 426).
+FIXED = {"designation": "Project officer", "office_agency": "CSU"}
+OLD_FIELD = "Affiliation / Organization"  # no longer a default field (ASSUMPTIONS 426); some tests add it by hand
+
+
 def registration_answers(activity: Activity, affiliation: str = "CSU") -> dict:
-    """Valid answers for the default registration form."""
+    """Valid answers for the activity's registration form: the default form has no fields of its own any more
+    (ASSUMPTIONS 426); a test that added the old "Affiliation / Organization" field gets it answered."""
     form = form_of(activity)
-    return {
-        field_id(form, "Affiliation / Organization"): affiliation,
-    }
+    field = form.fields.filter(field_label=OLD_FIELD).first()
+    return {str(field.pk): affiliation} if field else {}
 
 
 # The certificate name and email every evaluation now needs (Step 9).
@@ -61,7 +66,18 @@ def opens_at(activity: Activity) -> datetime:
 
 @pytest.fixture
 def defaults(roles) -> None:
+    """The seeded default fields (since ASSUMPTIONS 426 none for registration forms), plus ONE test-only required
+    short-text registration field per activity type, with the old default's label, so the field editor, the answer
+    rules and the locking tests have a field to work on. The real seed never creates it (test_fixed_registration_fields)."""
     load_default_form_fields()
+    from activities.models import ActivityType
+    from registrations.models import DefaultFormField
+
+    for activity_type in ActivityType.objects.all():
+        DefaultFormField.objects.get_or_create(
+            activity_type=activity_type, form_type=FormType.REGISTRATION, field_label=OLD_FIELD,
+            defaults={"field_type": "short_text", "is_required": True, "sort_order": 1},
+        )
 
 
 @pytest.fixture
@@ -90,6 +106,8 @@ def signup():
 
     def make(activity: Activity, email: str, **extra) -> Registration:
         extra.setdefault("answers", registration_answers(activity))
+        for key, value in FIXED.items():
+            extra.setdefault(key, value)
         return services.register(activity, name=extra.pop("name", "Ana Cruz"), email=email, **extra)
 
     return make

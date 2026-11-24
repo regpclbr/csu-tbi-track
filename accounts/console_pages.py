@@ -14,7 +14,7 @@ from certificates import services as certificate_services
 from certificates.models import CertificateTemplate
 from config.parsing import parse_bool
 
-from .models import Role
+from .models import Position, Role
 from .permissions import Permission, has_permission
 
 # The tab row of every console page: (label, URL name, icon). Startups live on their own page (sync, set-password links).
@@ -72,6 +72,17 @@ def parse_member_filters(query: QueryDict) -> MemberFilters:
 
 def roles() -> list[Role]:
     return list(Role.objects.order_by("role_name"))
+
+
+def attach_position_choices(members) -> None:
+    """The Members table's Position dropdown (ASSUMPTIONS 429): the same choices as services.offered_positions (active
+    positions, plus the member's own even when deactivated), with one query for the whole page."""
+    active = list(Position.objects.filter(is_active=True).order_by("name"))
+    for member in members:
+        choices = list(active)
+        if member.position is not None and all(p.pk != member.position_id for p in active):
+            choices = sorted([*choices, member.position], key=lambda p: p.name)
+        member.position_choices = choices
 
 
 def role_from(value: str | None) -> Role | None:

@@ -147,14 +147,14 @@ def test_the_certificates_tab_offers_signature_upload_only_to_the_director(direc
     head = client_for(make_member("Incubation Project Head")).get(url).content.decode()
     assert "Add signature" not in head and "Replace signature" not in head and "Add a person" not in head
     assert link not in head and NOTE in head
-    assert 'name="signatory"' in head  # still chooses who signs (unchanged)
+    assert 'name="signatory"' not in head and "Only the Director chooses who signs." in head  # ASSUMPTIONS 431
 
 
 def test_the_activity_form_offers_add_a_person_only_to_the_director(director, make_member, design) -> None:
     url = reverse("activities:create")
     assert "Add a person…" in client_for(director).get(url).content.decode()
     head_page = client_for(make_member("Incubation Project Head")).get(url).content.decode()
-    assert "Add a person…" not in head_page and 'name="signatory_left"' in head_page
+    assert "Add a person…" not in head_page and 'name="signatory_left"' not in head_page  # read only (431)
 
 
 def test_the_certificates_page_links_the_signatories_page_only_for_the_director(director, make_member) -> None:
@@ -177,11 +177,12 @@ def test_approvers_still_see_the_signature_images(make_member, design) -> None:
 def test_choosing_from_the_list_keeps_its_rule(director, make_member, design, activity) -> None:
     _, _, head = design
     dean = services.add_signatory(director, "Dr. Dean", "Dean", png())  # the list: the Director's
-    services.set_activity_signatory(make_member("Incubation Project Head"), activity, "left", dean)
-    services.set_activity_signatory(make_member("Admin Staff"), activity, "left", head)
+    services.set_activity_signatory(director, activity, "left", dean)  # ASSUMPTIONS 431: the Director chooses
+    services.set_activity_signatory(director, activity, "left", head)
     assert services.activity_signatories(activity)["left"] == head
-    with pytest.raises(PermissionDenied):
-        services.set_activity_signatory(make_member(VIEW_ONLY_ROLE), activity, "left", dean)
+    for role_name in ("Incubation Project Head", "Admin Staff", VIEW_ONLY_ROLE):
+        with pytest.raises(PermissionDenied):
+            services.set_activity_signatory(make_member(role_name), activity, "left", dean)
 
 
 def test_certificate_approval_still_needs_only_can_approve_certificates(make_member) -> None:

@@ -20,6 +20,9 @@ class Notification(models.Model):
     # to every certificate approver, once per activity, when the System first creates certificates for an activity that
     # is not approved (ASSUMPTIONS 421)
     CERTIFICATES_WAITING = "certificates_waiting"
+    # to the activity's creator when a Draft became Scheduled because someone else uploaded the last of its Activity
+    # Design and Request Letter (ASSUMPTIONS 431)
+    ACTIVITY_SCHEDULED = "activity_scheduled"
     CERTIFICATE_TYPES = (CERTIFICATES_PREPARED, CERTIFICATES_WAITING)  # both open the Certificates tab
     REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
 

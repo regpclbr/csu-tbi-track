@@ -3,7 +3,7 @@ One of the two fixed documents of the New activity form (ASSUMPTIONS 405; option
 the Request Letter, from documents.pages.required_document_rows (`row.key` = the type's id, `row.label` = its name).
 Posted as `required-<type id>-file|title`; an untouched row is not sent. The service (create_activity_with_documents)
 checks the file like any upload and refuses a file without a title (services.creation_title_error, ASSUMPTIONS 410);
-"Create as: Scheduled" needs both (change_status). The typed title is re-shown after an error (browsers clear the file
+with both the activity is created as Scheduled (change_status, ASSUMPTIONS 431). The typed title is re-shown after an error (browsers clear the file
 input, not text inputs): the file's note names the file to choose again. The placeholder is only an example.
 {% endcomment %}
 <div class="rounded-2xl border border-line bg-slate-50/60 p-4" data-required-document>

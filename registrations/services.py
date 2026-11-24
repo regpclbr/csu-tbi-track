@@ -51,7 +51,13 @@ LONG_TEXT_MAX = 5000
 RATING_RANGE = range(1, 6)  # 1 to 5
 
 # Name, email, contact number and category are REGISTRATION columns, never form fields.
-RESERVED_LABELS = {"name", "full name", "email", "email address", "contact number", "participant category", "category"}
+RESERVED_LABELS = {"name", "full name", "email", "email address", "contact number", "participant category", "category",
+                   # the fixed REGISTRATION columns of ASSUMPTIONS 426
+                   "designation", "position", "designation / position", "office", "agency", "office / agency"}
+# The two fixed fields every new registration needs (ASSUMPTIONS 426): REGISTRATION.designation / office_agency.
+FIXED_TEXT_MAX = 255
+DESIGNATION_LABEL = "Designation / Position"
+OFFICE_AGENCY_LABEL = "Office / Agency"
 
 ATTENDANCE_STATUSES = (ActivityStatus.ONGOING, ActivityStatus.CONDUCTED)
 EVALUATION_SALT = "registrations.evaluation-link"
@@ -457,6 +463,7 @@ def registration_page_activity(activity_id: int) -> Activity | None:
 
 
 REGISTRATION_FORM_NOT_READY = "Registration is not open yet: the registration form is not ready."
+REGISTRATION_CLOSED_BY_TBI = "Registration was closed by the TBI."  # closed by hand (ASSUMPTIONS 427)
 REGISTRATION_FORM_HISTORY_LABEL = "Registration form"
 REGISTRATION_FORM_READY_VALUE = "Marked ready (registration can open)"
 FORM_ALREADY_READY = "This registration form is already marked as ready."
@@ -509,6 +516,8 @@ def registration_closed_reason(activity: Activity, now: datetime | None = None) 
         return None
     if activity.status.name != ActivityStatus.SCHEDULED:
         return "Registration is not open for this activity."
+    if activity.registration_closed_by_hand:  # ASSUMPTIONS 427 (activities.services.set_registration_closed_by_hand)
+        return REGISTRATION_CLOSED_BY_TBI
     if now > activity.registration_deadline:
         return f"Registration is closed: the deadline ({format_datetime(activity.registration_deadline)}) has passed."
     if slots_remaining(activity) <= 0:
@@ -594,12 +603,17 @@ def register(
     name: str,
     email: str,
     contact_number: str = "",
+    designation: str = "",
+    office_agency: str = "",
     participant_category=None,
     answers: dict | None = None,
     now: datetime | None = None,
     startup=None,
 ) -> Registration:
     """Public registration. Everyone who registers is in (no approval step).
+
+    `designation` (Designation / Position) and `office_agency` (Office / Agency) are required fixed fields of every
+    registration (ASSUMPTIONS 426): the public page and API, the startup portal and any later entry point.
 
     `startup` is set only by the startup portal (a logged-in startup registering); every
     other rule is exactly the same as for a public registration.
@@ -616,6 +630,12 @@ def register(
     name, email, contact_number = (name or "").strip(), (email or "").strip().lower(), (contact_number or "").strip()
     if not name:
         errors["name"] = "This field is required."
+    designation, office_agency = _fixed_text(designation), _fixed_text(office_agency)
+    for key, value in (("designation", designation), ("office_agency", office_agency)):
+        if not value:
+            errors[key] = "This field is required."
+        elif len(value) > FIXED_TEXT_MAX:
+            errors[key] = f"At most {FIXED_TEXT_MAX} characters."
     try:
         validate_email(email)
     except ValidationError:
@@ -638,6 +658,7 @@ def register(
     registration = Registration.objects.create(
         activity=locked, template=form, participant_category=category,
         name=name, email=email, contact_number=contact_number, startup=startup,
+        designation=designation, office_agency=office_agency,
     )
     for field, value in stored_answers.items():
         FormAnswer.objects.create(
@@ -648,6 +669,11 @@ def register(
     registration_id = registration.pk
     transaction.on_commit(lambda: queue_confirmation(registration_id), robust=True)
     return registration
+
+
+def _fixed_text(value) -> str:
+    """A fixed text field (designation, office / agency): inner spaces collapsed, ends trimmed."""
+    return " ".join(str(value or "").split())
 
 
 # --- Attendance (staff, needs can_create_activity) -----------------------------------------
@@ -758,7 +784,7 @@ def list_registrations(
     activity: Activity, attended: bool | None = None, participant_category_id: int | None = None, search: str = ""
 ) -> QuerySet:
     """Staff list of an activity's registrations by name, with category, startup, evaluation and answers.
-    `search` matches the name or the email (ignoring case)."""
+    `search` matches the name, the email or the office / agency (ignoring case)."""
     registrations = (
         activity.registrations.select_related(
             "participant_category", "startup", "evaluation_submission", "attendance_marked_by"
@@ -767,7 +793,7 @@ def list_registrations(
         .order_by("name", "registration_id")
     )
     if search := (search or "").strip():
-        registrations = registrations.filter(Q(name__icontains=search) | Q(email__icontains=search))
+        registrations = registrations.filter(Q(name__icontains=search) | Q(email__icontains=search) | Q(office_agency__icontains=search))
     if attended is not None:
         registrations = registrations.filter(attendance_confirmed=attended)
     if participant_category_id:

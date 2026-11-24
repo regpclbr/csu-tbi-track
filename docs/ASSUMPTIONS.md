@@ -790,7 +790,7 @@
 
 ## Different signatories per activity, reissue with the current signatures (2026-11-13)
 
-363. **Each activity chooses its own two signatories from a list of people** (owner change request; changes items 41, 178, 180, 183, 190, 321, 357, 361 and 362: the fixed VP / Director slots are gone). *(Pending validation by the TBI, see TBI_QUESTIONS.)* *(2026-11-21, item 418: "Who manages it" below is now `can_manage_signatories` (the Director only) instead of `can_approve_certificates`; choosing an activity's two signatories from the list is unchanged.)*
+363. **Each activity chooses its own two signatories from a list of people** (owner change request; changes items 41, 178, 180, 183, 190, 321, 357, 361 and 362: the fixed VP / Director slots are gone). *(Pending validation by the TBI, see TBI_QUESTIONS.)* *(2026-11-21, item 418: "Who manages it" below is now `can_manage_signatories` (the Director only) instead of `can_approve_certificates`; choosing an activity's two signatories from the list is unchanged.)* *(2026-11-24, item 431: choosing an activity's two signatories and their titles is now the Director's only (`can_approve_certificates`).)*
      - **The list (CERTIFICATE_SIGNATORY):** name, position as printed (**free text**, e.g. "University President", "Vice President for Research", "Director, NAVIGATU"), signature image (PNG or JPG, nullable until added, item 361), `is_active`. The "one active per position" rule is removed. Images are stored as `signatures/signature-<random>.<png|jpg>` (never the position or the uploaded name).
      - **Who manages it:** members with `can_approve_certificates` (Director, both Project Heads, System Administrator), on the new **Signatories page** `/certificates/signatories/` (`certificates.page_views.signatories`; linked from the Certificates page, the tab and the Admin Console): add a person (image optional), edit name / position, add or replace the image, deactivate, set the defaults. Also **"Add a person"** in each slot of the activity's Signatures section (the new person then signs on that side). JSON API `/certificates/api/admin/signatories/` now needs `can_approve_certificates`. The Django admin shows signatories and ACTIVITY_SIGNATORY **view only**. Nobody is ever deleted (no delete URL).
      - **A row that a certificate uses never changes.** Replacing the image, or editing the name or position of a person already printed on a certificate, creates a **new version** (a new row: `services._new_version`): it gets the old row's `is_active` and `default_slot`, the old row is deactivated, every ACTIVITY_SIGNATORY that pointed to the old row moves to the new one (one History row per activity: "Certificate signatory (left)": "<name> (<position>)" → "<name> (<position>), new version"), and every certificate that is not Issued and used the old row, **in every activity**, is refreshed (`_refresh_certificates`: PDF removed after the commit, Approved → waiting for approval again). Issued certificates keep the old row. A person not used by any certificate is edited in place; adding the first image is stored on the row itself (owner decisions 2, A).
@@ -813,7 +813,7 @@
 
 ## Who signs and what they sign as, white backgrounds, inactive signatories, PDFs that never came (2026-11-14)
 
-365. **Staff choose who signs and the title printed for them, starting from the defaults** (owner change request; extends item 363). *(Pending validation by the TBI, see TBI_QUESTIONS.)* *(2026-11-21, item 420: on the NEW activity form the fields are inside the optional "Prepare the certificates now"; not ticked = the defaults. The Edit form and the tab are unchanged.)*
+365. **Staff choose who signs and the title printed for them, starting from the defaults** (owner change request; extends item 363). *(Pending validation by the TBI, see TBI_QUESTIONS.)* *(2026-11-21, item 420: on the NEW activity form the fields are inside the optional "Prepare the certificates now"; not ticked = the defaults. The Edit form and the tab are unchanged.)* *(2026-11-24, item 431: only `can_approve_certificates` (the Director) chooses the people and the "Title on this certificate"; everyone else sees them read only.)*
      - **Where:** a "Who signs the certificates" section on the activity create / edit form (two dropdowns, "Name · Position" for active people, pre-filled with the defaults on a new activity and with the activity's people on edit; plus "Add a person…" for `can_approve_certificates`, which adds the person over HTMX (`certificates:signatory_add_inline`) and selects them without leaving the form), and the Signatures section on the Certificates tab (as before, now with the title field and "Add a person…" in the dropdown). Who: `can_create_activity` or `can_approve_certificates`; Admin Staff view only. The form needs `can_create_activity` (the System Administrator, who approves but never creates, uses the tab). Conducted activities are read-only, so for them only the tab works.
      - **Title on this certificate:** new column **`ACTIVITY_SIGNATORY.position_on_certificate`** (text, nullable, max 255; spaces only = empty). When filled it prints instead of the person's position, for this activity only (`services.printed_title`). Choosing another person clears it unless the same form sends one. A change follows the refresh rules of a slot change: one History row ("Certificate signatory (left)": "Name (old title)" → "Name (new title)"), not-issued certificates re-rendered, Approved ones back to waiting, Issued ones "Issued with an old signature" (reissue possible).
      - **Issued certificates keep their printed title (owner-approved option):** new columns **`CERTIFICATE.left_signatory_title` / `right_signatory_title`** (text, required, max 255): the titles printed. Filled from the slots whenever a certificate is created, refreshed, regenerated or reissued (`services.design_fields`); the PDF prints them. `services.outdated_q()` now compares the signatory row **and** the stored title with the activity's current ones. Migrations `certificates/0009` (columns), `0010` (data: every certificate gets the position of the signatory it uses = what was printed; no PDF changes, nothing becomes outdated), `0011` (required). `Certificate.save()` fills an empty title from the signatory's position (a safety net for rows made outside the services, e.g. test fixtures).
@@ -961,6 +961,7 @@
      - **Tests**: the checks that used Admin Staff as "a member without permissions" now use a test-only role **"View Only (test)"** with every flag off (`conftest.VIEW_ONLY_ROLE`, fixture `view_only`; created by the `roles` fixture, never in a real database), so every "cannot …" check stays. New: `accounts/tests/test_activity_creation_flag.py` (switch, toasts, audit, separation, warning, seed create-only, 403/405), `activities/tests/test_admin_staff_rights.py` (the seeded Admin Staff create, edit, see the page actions, open the Signatories page, Directors notified; still no document approval or Admin Console).
      - **Roles after this change** (seed defaults): Director: create ✓, manage users ✗, approve documents ✓, approve certificates ✓; Incubation Project Head and Community Development Head: ✓ ✗ ✗ ✓; Admin Staff: ✓ ✗ ✗ ✓; System Administrator: ✗ ✓ ✗ ✓.
 389. **Deleting an activity (System Administrator)** (owner request, 2026-11-16; an exception to "activities are never deleted", items 49, 59, 345). *(Pending validation by the TBI, see TBI_QUESTIONS.)*
+     *(2026-11-24, item 432, owner: Approved activity documents (approved copies) no longer block a delete; they are deleted with the activity and their files removed after the commit. Still refused: an Issued certificate, Approved certificate evidence, a document an AI answer cites. The confirm dialog says "N documents (approved) and their N files"; ACTIVITY_DELETION.counts also stores `documents_approved` and `document_files`.)*
      - **Flag** `ROLE.can_delete_activities` (`Permission.DELETE_ACTIVITIES`), never a role-name check. On for System Administrator only (migration `accounts/0008` sets it on the row named "System Administrator"; `seed_data` sets it only when it creates a role). Switched on the Admin Console roles screen like the other flags (`set_role_activity_deletion`: toast, `accounts.audit` line, amber note when no active member has it) and in the Django admin. **Allowed together with `can_manage_users`** (cleaning up mistakes and test activities is the System Administrator's job) and with every other flag; the separation rules of items 339 / 344 are unchanged.
      - **Refused** (`activities.deletion.deletion_refused_reason`, the one rule; page, dialog and service) while the activity holds real records: any **Issued** certificate, any **Approved** document (activity documents and certificate evidence), or a document an AI answer cites (AI_MESSAGE_SOURCE is PROTECT; only Approved documents are cited today). Message: "This activity can't be deleted: it has 1 issued certificate and 2 approved documents. Real records are kept."
      - **Otherwise** (`activities.deletion.delete_activity`, one transaction, the activity row locked; the member types the activity's title exactly, outer spaces ignored): deleted are the certificates waiting for approval **and approved ones not yet issued** (listed separately in the dialog: "… approved certificates not yet issued (resource persons' copies may already be printed)"), their evidence, the activity's documents (For Review / returned; their AI index rows cascade), evaluations, registrations and answers, forms, the activity's own certificate text, signatory slots, category and resource person links, notifications, the History rows (`ActivityAuditLogQuerySet.delete_for_deleted_activity`: the ONE exception to the append-only log) and the activity. **Kept**: resource persons, signatories, startups, members. The stored files (documents, evidence, certificate PDFs) are removed from `media/` **after the commit** (`transaction.on_commit`; a failed delete loses no file; a file already missing is logged and skipped). Queued certificate tasks for a deleted certificate end quietly (`certificates.services.CERTIFICATE_GONE`, no retry).
@@ -1624,6 +1625,10 @@ Still 34 tables.
 
 417. **"Create as: Draft / Scheduled"; the Activity Design and Request Letter are optional at creation** (NAVIGATU, UAT;
      owner decisions 2026-11-21). **Amends items 405 and 409.** No database, ERD, URL or permission change, no migration.
+     *(2026-11-24, item 431: the "Create as" choice is REMOVED; the documents decide the status (both = Scheduled, else
+     Draft, never refused) and a Draft becomes Scheduled by itself when the last of the two is uploaded. The optional
+     documents, the title rule, the kept values, the Draft reminders, Needs attention and the dashboard below are
+     unchanged.)*
      - **The choice:** the New activity form has a required "Create as" field (radio: Draft / Scheduled), **default Draft**,
        in its own "Status" card after Documents (`activities.forms.ActivityPageForm`, New form only; help texts
        `CREATE_AS_HELP`; display `activities.pages.create_as_section`, `activities/_create_as.html`). One primary button
@@ -1676,6 +1681,7 @@ Still 34 tables.
 418. **New role flag `can_manage_signatories`: only the TBI Director adds and manages certificate signatories** (NAVIGATU,
      UAT; owner decisions 2026-11-21). Changes the "who manages the list and the signature images" part of items 357, 361,
      363 and 388; certificate approval (`can_approve_certificates`) and choosing an activity's signatories are unchanged.
+     *(2026-11-24, item 431: choosing an activity's signatories and titles is now `can_approve_certificates` only; a member who manages signatories but cannot approve certificates may add a person from the tab, but not put them on the activity.)*
      *(Pending confirmation by NAVIGATU, see TBI_QUESTIONS items 361 and 363.)*
      *(2026-11-21, item 421: certificate approval (`can_approve_certificates`) is now the Director's only by default.)*
      - **Database:** one new column `ROLE.can_manage_signatories` (boolean, NOT NULL, default False / `db_default` False),
@@ -1764,6 +1770,7 @@ Still 34 tables.
      generates them automatically."; owner decisions 2026-11-21). **Amends items 365, 369 and 373.** Certificates are
      still CREATED only by the System at Conducted (item 362): "prepare" means choosing what they will print and asking
      for the approval early; nothing is generated before Conducted. *(Pending confirmation by NAVIGATU, see TBI_QUESTIONS.)*
+     *(2026-11-24, item 431: anyone who creates activities still prepares the certificates, writes the text and sees the sample; only `can_approve_certificates` chooses the signatories and titles inside "Prepare the certificates now" (others get the defaults, shown read only; the sample shows the defaults).)*
      *(2026-11-21, item 421: early approval is the Director's only by default; "ready for your review" now goes to can_approve_certificates alone.)*
      - **Database:** two nullable columns on ACTIVITY, `certificates_prepared_by` (FK to TBI_MEMBER, PROTECT) and
        `certificates_prepared_at` (datetime), migration `activities/0010_activity_certificates_prepared` (no data step:
@@ -1841,6 +1848,7 @@ Still 34 tables.
      approval", "the Director reviews and approves the certificates"; owner decisions 2026-11-21). **Amends items 357,
      361, 388, 418 and 420.** No database, ERD column or URL change, no migration. *(Pending confirmation by NAVIGATU, see
      TBI_QUESTIONS.)*
+     *(2026-11-24, item 431: "Unchanged for staff who create activities: choosing an activity's signatories and titles, Use the current version" no longer holds: both are now the Director's (`can_approve_certificates`). Custom text, preparing, Resend, Mark handed over, Apply the current design and the previews stay.)*
      - **Seed defaults** (`accounts/seed.py`, still create-only: a rerun never overwrites an Admin Console choice):
        can_approve_certificates True for the Director only; False for Incubation Project Head, Community Development
        Head, Admin Staff and System Administrator (all four were True, items 361, 388).
@@ -1976,3 +1984,201 @@ Still 34 tables.
      - **ERD:** no column change (new DOCUMENT_TYPE rows only); the DOCUMENT_TYPE.name note gets "activity report / event
        photos". Still 34 tables.
      - Tests: `documents/tests/test_payment_documents.py`.
+
+## NAVIGATU UAT round 2, part 2: registration fields, closing registration, objectives, position, Accomplishment Report (2026-11-24)
+
+Owner decisions of 2026-11-23/24. Database: activities 0012 (schema), registrations 0009 (schema) + 0010 (data),
+documents 0007 (data). ERD: ACTIVITY.objectives, ACTIVITY.registration_closed_by_hand, REGISTRATION.designation,
+REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and DOCUMENT_TYPE.name). Still 34 tables.
+
+426. **Designation / Position and Office / Agency are fixed fields of every registration** (NAVIGATU UAT).
+     - **Database:** `REGISTRATION.designation` and `REGISTRATION.office_agency` (text, max 255, empty allowed in the
+       database for older rows; migration `registrations/0009`).
+     - **One rule:** `registrations.services.register()` requires both (trimmed, inner spaces collapsed, at most 255;
+       "This field is required."), for every entry point: the public page and `/api/register/`, the startup portal page
+       and API, and any later one (walk-in registration). The labels are reserved: a form field cannot be named
+       "Designation / Position", "Office / Agency", "Designation", "Position", "Office" or "Agency".
+     - **Startup portal:** Office / Agency is pre-filled with the startup's name (editable); the startup types the
+       designation. The portal API uses the startup's name when `office_agency` is not sent; an empty value sent on
+       purpose is refused like on the public page (`startups.services.register_as_startup`).
+     - **Existing data (migration `registrations/0010`, owner's choice):** every registration's "Affiliation /
+       Organization" answer is copied into `office_agency` (only where it is still empty); `designation` stays empty; the
+       old FORM_ANSWER rows are kept. The DEFAULT_FORM_FIELD rows named exactly "Affiliation / Organization" are removed
+       (a renamed one is left alone), and that field is removed from registration forms nobody has submitted yet (the
+       `form_is_locked` test); forms with registrations keep it. `seed_data` no longer creates it. Reverse: the default
+       field is put back for every activity type; fields removed from unused forms are not.
+     - **Shown on:** the Registrations tab (two columns), the registration detail, the printable attendance sheet (still
+       never an email or contact number), the form preview, the staff registrations API and the portal registration
+       JSON. The staff search also matches Office / Agency.
+     - Tests: `registrations/tests/test_fixed_registration_fields.py`. The test `defaults` fixture adds one test-only
+       custom registration field (the old label) so the form-editing tests have a field to work on.
+427. **Close and reopen registration by hand** (NAVIGATU UAT).
+     - **Database:** `ACTIVITY.registration_closed_by_hand` (boolean, default false; migration `activities/0012`).
+     - **Service:** `activities.services.set_registration_closed_by_hand(member, activity, closed)`: can_create_activity,
+       only while the activity is Scheduled, refused when nothing changes; one History row "Registration"
+       ("" -> "Closed by the TBI", "Closed by the TBI" -> "Reopened by the TBI"). Never through `update_activity`, the
+       form or the Django admin.
+     - **One rule:** `registrations.services.registration_closed_reason` gives "Registration was closed by the TBI."
+       (`REGISTRATION_CLOSED_BY_TBI`) right after the status check; `activities.services.is_registration_open` and the
+       `open_for_registration()` query check the same flag (so the Activities card, the dashboard KPI, `/register/` and
+       the portal agree). The automatic rules stay on top: a reopened registration still closes at the deadline, when the
+       slots run out, outside Scheduled and (item 409) until the registration form is ready.
+     - The flag is kept when the activity goes back to Draft and forward again (the Share card then offers "Reopen
+       registration").
+     - **Share card** (Overview): "Close registration" / "Reopen registration" (secondary, only for can_create_activity,
+       `services.registration_switch`, `activities:registration_switch`). Needs attention: nothing new.
+     - Tests: `registrations/tests/test_registration_closed_by_hand.py`.
+428. **Activity objectives** (NAVIGATU UAT; for the reports, Prompts 6–7).
+     - **Database:** `ACTIVITY.objectives` (text, nullable; migration `activities/0012`).
+     - Optional field on the activity form (New and Edit), the Django admin and the JSON API, "one objective per line";
+       `activities.services.clean_objectives` trims each line, drops empty lines, nothing left = empty; at most 5000
+       characters. Changed through `create_activity` / `update_activity` like every field, so History logs "Objectives".
+     - Shown on the Overview (and the read-only page of a Conducted activity) as a list under the description
+       (`services.objective_lines`); the API detail gives the list.
+     - Tests: `activities/tests/test_objectives.py`.
+429. **The member's position title printed under "Prepared by"** (NAVIGATU UAT; owner decision 2026-11-24: NO new
+     column). The existing POSITION list (item 390) is used. Checked before deciding: it is an Admin-managed list (name up
+     to 100 characters, unique ignoring case, deactivated, never deleted) and a member has ONE position
+     (`TBI_MEMBER.position_id`), so it holds an individual official title. The System Administrator adds the official
+     titles (for example "Admin Aide VI (Clerk III)", "University Research Associate I").
+     - The member still chooses it on My profile; NEW: the System Administrator sets it on the Admin Console Members
+       screen (`accounts.services.set_member_position`, same choices as My profile: active positions plus the member's
+       own; "No position"; logged on `accounts.audit` with IDs only).
+     - Still only a displayed title, never a permission. The reports and forms (later prompts) print
+       `member.position.name` under "Prepared by".
+     - Tests: `accounts/tests/test_member_position_admin.py`.
+430. **The per-activity "Accomplishment Report" leaves the checklist** (NAVIGATU UAT; amends 386 and 425's "kept
+     separate"). The Accomplishment Report is now the quarterly / semi-annual / annual report made in Reports (Prompt 7),
+     NOT a DOCUMENT_TYPE; the per-activity report is the "Activity Report" (a payment document, item 425).
+     - **Data migration `documents/0007`:** the DOCUMENT_TYPE "Accomplishment Report" becomes `is_active = False`, ONLY
+       while it is still as 0004 left it (active, optional, no due rule); a row the Admin changed is never touched.
+       Reverse: the same guard, back to active.
+     - **Old uploads stay:** `document_checklist()` also lists an inactive type under "Other documents" when the activity
+       has documents of it (never required, never counted); they stay downloadable. It is no longer offered for a new
+       upload (inactive types never are).
+     - **Nothing reactivates it:** `seed_data` no longer has the type (`accounts.seed.RETIRED_DOCUMENT_TYPES`; a new
+       database never gets it, a rerun never touches the old row); `seed_demo` uploads Activity Reports instead. Only a
+       person in the Django admin could switch it back on (DOCUMENT_TYPE stays editable there); the Reports' accomplishment
+       reports never use it.
+     - **Compliance report:** it already counted only required types (the type was optional since 386), so its numbers do
+       not change; a test keeps it out.
+     - The Activity Design / Request Letter rules (needed before Scheduled, due 5 days before the start) are unchanged.
+     - Tests: `documents/tests/test_accomplishment_report_retired.py`.
+
+## NAVIGATU owner decisions: who signs, and the documents decide the status (2026-11-24)
+
+431. **Only the Director chooses who signs; the documents decide the status at creation** (NAVIGATU, owner decisions
+     2026-11-24). **Amends items 363, 365, 409, 417, 418, 420 and 421.** No database, ERD column, URL or migration change.
+     *(Pending confirmation by NAVIGATU, see TBI_QUESTIONS.)*
+     - **Who signs (rule in `certificates.services`):** choosing an activity's left / right signatories and their "Title on
+       this certificate" needs `can_approve_certificates` (`CHOOSE_SIGNATORIES_PERMISSION`, the flag of item 421: the
+       Director by default; flags, never the role name). `require_signatory_choice()` refuses everyone else with
+       PermissionDenied "Only the Director chooses who signs." (`ONLY_DIRECTOR_CHOOSES`) in `set_activity_signatory`,
+       `set_activity_signatories` (the Edit form through `update_activity`), `use_current_version` (it changes a slot) and
+       `activities.services.save_new_activity` when a choice (a person or a title, `has_signatory_choice`) comes with
+       "Prepare the certificates now". The tab's views (`signatory_choose`, `signatory_current_version`) answer 403 the
+       same way; any future API calls the same services. `signatory_add` from the tab still adds the person (item 418) and
+       says "Not chosen for the activity: Only the Director chooses who signs." when the member cannot choose.
+     - **Unchanged for staff who create activities:** "Prepare the certificates now" at creation and on the tab
+       (`can_prepare_certificates` = can_create_activity or can_approve_certificates), the activity's certificate text
+       (`can_edit_activity_text`, the same two flags), the sample and certificate previews, Retry, Resend, Mark handed over,
+       Apply the current design. The Director still reviews and approves (item 421).
+     - **Pages (display only):** without the flag the Certificates tab's Signatures card, the Edit form's "Who signs the
+       certificates" and the New form's prepare card show each slot's person and printed title read only with "Only the
+       Director chooses who signs." (`activities.pages.signatory_form_section` `editable`, `certificates.pages.signatures_panel`
+       `only_director`); the form ignores anything posted for them (`signatory_choices()` = None). On the New form they get
+       the default signatories, and the sample preview (`draft_sample_preview_pdf`) shows the defaults, never a posted
+       choice.
+     - **Fix found on the way:** the Edit form's "Title on this certificate" now starts with the saved title
+       (`signatory_form_options` `current_titles`); before, saving the form untouched cleared a custom title and cancelled
+       the approval.
+     - **Text after approval (owner asked; already so, kept and tested):** `save_activity_text` and `use_default_text`
+       call `cancel_certificate_approval`: an approved activity (also an early approval, item 420) goes back to "Needs
+       approval" / "Prepared — needs approval", Approved certificates back to waiting, Issued ones untouched (item 369).
+     - **Status at creation (replaces item 417's "Create as"):** `create_activity_with_documents` has no `status` any more
+       (`CREATION_STATUSES`, `NewActivityError.status_error`, `scheduling_refused_reason(on_new_form=)`, the form field and
+       `activities/_create_as.html` are gone). With BOTH the Activity Design and the Request Letter among the rows
+       (`missing_creation_types` empty) it calls `change_status(..., "Scheduled")` in the same transaction (the one
+       transition rule, its own savepoint; History: "Draft", then "Draft -> Scheduled" by the creator; the Forms tab and
+       item 409's next step). If that move is refused for any other reason, the activity, its documents, files and
+       notifications stay, it is a Draft, and the success message says "It could not be Scheduled: <reason>"
+       (`activity.not_scheduled_reason`, not a column). With one or none: a Draft ("Upload the … on the Documents tab: it
+       becomes Scheduled as soon as both documents are uploaded."). One primary button ("Create activity").
+     - **Later upload:** `upload_document` (the Documents tab, the JSON API) calls `schedule_when_documents_complete` in its
+       transaction for an Activity Design / Request Letter of a Draft with `creation_documents_required`: once both are
+       uploaded (any review state) `activities.services.schedule_automatically` moves it through `_move_status` by System
+       (member None) with History "Status: Draft -> Scheduled (both documents uploaded)". A refusal is logged and never
+       refuses the upload. The creator gets the in-app NOTIFICATION `activity_scheduled`
+       (`notifications.services.notify_creator_scheduled`) unless they uploaded it themselves (owner decision) or their
+       account is inactive; no email. The tab's message and the API's `activity_scheduled` say so. Older Drafts (flag
+       False: admin, demo, before 2026-11-19) are never moved. A Scheduled activity moved back to Draft by hand is
+       scheduled again only by a NEW upload of one of the two types.
+     - **Unchanged:** registration opens only once the registration form is marked ready (item 409); the Draft reminders,
+       Needs attention, the dashboard and the JSON API create (Draft) of item 417; staff may still schedule by hand.
+     - **Documents card help text:** "Upload the Activity Design and the Request Letter now: with both, the activity is
+       Scheduled when you create it. Without them it stays Draft until both are uploaded."
+     - **ERD:** no table or column change. Notes only (the owner edits the picture): ROLE.can_approve_certificates "…;
+       chooses an activity's signatories and their titles", ACTIVITY.creation_documents_required "…; Scheduled
+       automatically once both are uploaded", NOTIFICATION.type "includes activity_created, certificates_prepared,
+       activity_scheduled". NOTIFICATION.type is a plain string (no choices), so the new value needs no migration.
+     - Tests: `certificates/tests/test_director_chooses_signatories.py` (every service and both tab URLs refused for the
+       three creator roles, the Director allowed, New / Edit forms read only and ignoring posted values, defaults when
+       preparing, the sample preview, text editing kept and cancelling the approval, the Edit title fix),
+       `activities/tests/test_auto_scheduled.py` (later upload by someone else / by the creator, other types, old Drafts,
+       a refused move keeps the upload, the tab message, the API), `activities/tests/test_create_with_documents.py`
+       (both = Scheduled, one or none = Draft with the uploads, a refused move keeps everything as Draft with the reason,
+       no "Create as", the help text, one primary button).
+
+## Testing fixes: typed times, and uploads are approved copies (2026-11-24)
+
+432. **Time boxes typed freely; uploaded documents are approved copies** (owner, testing before the commit; NAVIGATU:
+     "only approved paper documents are uploaded; the system only monitors what is missing"). **Amends items 344, 405,
+     406, 422 and 431.** *(Pending confirmation by NAVIGATU, see TBI_QUESTIONS.)*
+     - **Time boxes (422):** the cause was `static/js/typed_dates.js`: it rewrote the box on every key (from the 3rd
+       digit it fixed the hour, so 1100 became 01:10 and 0140 became 00:14) and switched the AM/PM select by itself (to AM
+       for an "00" hour, PM for 13-23), so a chosen PM could be replaced or a wrong time sent. The server parser
+       (`parse_typed_time`) always read the select correctly (`<name>_period`; checked). Now: nothing is rewritten while
+       typing except the colon after 4 digits in a row (1100 -> 11:00); Backspace / Delete never reformat; a colon, a/p/m
+       and a space can be typed (maxlength 8); on leaving the box `tidyTime` writes hh:mm (9 -> 09:00, 130 -> 01:30,
+       1:30 -> 01:30, 0015 -> 12:15 AM, 1430 -> 02:30 PM, "7:30 pm" -> 07:30 PM); the select changes ONLY for a typed a/p or
+       a 24-hour time. `parse_typed_time` stays the one check (it reads 11:00, 1100, 1:30, 130, 9, 12:15 without any
+       script). Tests: `activities/tests/test_typed_dates.py` (every way of typing with AM and PM, every one of the four
+       boxes, New and Edit) and the opt-in `activities/tests/test_typed_time_browser.py` (typing, leaving, Backspace, a
+       chosen PM kept, all four boxes saved as PM on the New and Edit forms).
+     - **Approved copies (the rule, `documents.services.needs_review`):** a new column `DOCUMENT_TYPE.needs_review`
+       (boolean, default False for every type; migration `documents/0008`; switched in the Django admin). False: an
+       activity document is saved **Approved at upload** (`reviewed_by` empty = System, `reviewed_at` = the upload time),
+       one activity History row "Documents": `Activity Design "…" uploaded as an approved copy` and one documents.audit
+       line (IDs only), indexed for the AI at once (on commit), NO "waiting for your review" notification, no Approve /
+       Return. True: today's review flow (items 344, 406) for that type. Certificate evidence keeps its own flow
+       (`needs_review(..., related_certificate)` is always True); certificates and the later "Submit to the Director" are
+       untouched.
+     - **Replace / delete an approved copy (owner decisions):** its uploader OR a member with can_approve_documents
+       (`_may_change`); refused: the only Activity Design / Request Letter of a non-Draft activity (`_delete_refused_reason`,
+       delete only), a document an AI answer cites (`CITED_REFUSED`, delete only: the Delete button may show and the
+       click gets the message, to keep the lists at a fixed number of queries), certificate evidence (its own flow). An
+       Approved document of a type that needs review stays final. Every replace and delete: a History row ("… replaced
+       (uploaded as an approved copy)", "… deleted") and a documents.audit line. Replacing removes the old AI chunks and
+       queues the indexing again.
+     - **Unchanged (owner):** a document counts as complete when uploaded (Approved); overdue = after the due date and
+       not uploaded / Approved; the 5-day due rule (416); auto-Scheduled (431: uploaded is enough).
+     - **Existing documents:** data migration `documents/0009` sets activity documents still "Waiting for review"
+       (For Review, reviewed_at empty) of a type without review to Approved by System (reviewed_at = migration time);
+       "Returned" ones are left as they are (the uploader replaces them, and the replacement is an approved copy);
+       evidence and reviewed types are never touched. Reverse: Approved with reviewed_by empty of a type without review
+       goes back to waiting (also later approved copies). After `migrate` run `python manage.py index_documents`.
+     - **Texts:** the New form's Documents card ("Upload the approved copies. …"), the Documents tab's upload card, the
+       upload / replace / create messages, the document page ("Uploaded as an approved copy on …"), the Documents page
+       subtitle, the Roles screen note, the assistant's example question, the compliance report note. The Documents page
+       shows the "Waiting" and "Returned" cards and filter choices only while review is in use
+       (`services.review_in_use`: a type needs review, or older documents still wait / were returned). The dashboard's
+       review card, Needs attention and the review queue keep their rules and simply count nothing.
+     - **Demo data:** `seed_demo` creates approved copies (Approved by System) for types without review.
+     - **Deleting an activity (item 389; owner decision 2026-11-24):** Approved activity documents no longer block it
+       (`activities.deletion.deletion_refused_reason`); only an Issued certificate, Approved certificate evidence
+       (evidence keeps its own approval) and a document an AI answer cites still do. The documents and their files go
+       with the activity; the confirm dialog says how many ("2 documents (approved) and their 2 files", plus the total of
+       stored files) and ACTIVITY_DELETION.counts stores `documents`, `documents_approved` and `document_files` (JSON
+       keys, no schema change). Tests: `certificates/tests/test_activity_deletion.py`.
+     - **ERD:** DOCUMENT_TYPE gets `needs_review` (boolean, default false). 34 tables.
+     - Tests: `documents/tests/test_approved_copies.py`; review-flow tests switch needs_review on for their types.

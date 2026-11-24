@@ -2,7 +2,14 @@
 
 Views (and the Django admin) stay thin and call the functions in this module.
 
-Review flow (DOCUMENT_STATUS has only For Review and Approved; there is no Rejected):
+Approved copies (ASSUMPTIONS 432, NAVIGATU: only approved paper documents are uploaded; the system monitors what is
+missing): an activity document of a type WITHOUT DOCUMENT_TYPE.needs_review (every type by default) is saved as Approved at
+upload (reviewed_by empty = System, reviewed_at = the upload time), indexed for the assistant at once, nobody is notified,
+and its uploader or a member with can_approve_documents may replace or delete it (guards: the creation-document rule, a
+document cited by the AI). One History row ("Documents") and one documents.audit line per upload, replace and delete.
+
+Review flow, ONLY for types with needs_review switched on and for certificate evidence (DOCUMENT_STATUS has only For
+Review and Approved; there is no Rejected):
 - Upload: any active staff member. The document starts For Review (reviewed_at empty). Every active member who
   can approve documents gets a "waiting for your review" notification, except the uploader.
 - Approve: a member with can_approve_documents (ASSUMPTIONS 344), also for their own upload. Approved is final.
@@ -46,7 +53,42 @@ from notifications.models import Notification
 from .models import Document, DocumentStatus, DocumentType
 
 logger = logging.getLogger("documents.reminders")
-audit_log = logging.getLogger("documents.audit")  # who approved or returned which document (never file contents)
+audit_log = logging.getLogger("documents.audit")  # who uploaded, replaced, deleted, approved or returned (never contents)
+
+APPROVED_COPY_NOTE = "uploaded as an approved copy"  # History and documents.audit (ASSUMPTIONS 432)
+
+
+def needs_review(document_type: DocumentType, related_certificate=None) -> bool:
+    """The one rule (ASSUMPTIONS 432): True when an upload of this type waits for the Director's review (the type's
+    needs_review switch in the Django admin) or is certificate evidence (its own flow, Step 9). False = an approved
+    copy: saved as Approved at upload."""
+    return related_certificate is not None or document_type.needs_review
+
+
+def review_in_use() -> bool:
+    """Whether the review states matter at all right now: some type needs review, or older documents are still waiting
+    or returned. The Documents page shows the "Waiting" / "Returned" cards and filters only then (display only)."""
+    return (DocumentType.objects.filter(needs_review=True).exists()
+            or Document.objects.activity_documents().filter(status__status_name=DocumentStatus.FOR_REVIEW).exists())
+
+
+def _document_label(document: Document) -> str:
+    return f'{document.document_type.name} "{document.title[:120]}"'
+
+
+def _approve_copy(document: Document, now: datetime | None) -> None:
+    """Mark an (unsaved or locked) document as an approved copy: Approved by System at the upload time."""
+    document.status = DocumentStatus.objects.get(status_name=DocumentStatus.APPROVED)
+    document.reviewed_by = None
+    document.reviewed_at = now or timezone.now()
+
+
+def _queue_index_on_commit(document: Document) -> None:
+    """Index an approved activity document for the assistant once the change is saved (Step 8; robust: a problem
+    queueing never undoes the upload). Certificate evidence is never indexed."""
+    if document.related_certificate_id is None:
+        document_id = document.pk
+        transaction.on_commit(lambda: queue_indexing(document_id), robust=True)
 
 DEFAULT_PAGE_SIZE = 20
 RETURN_REASON_MAX_LENGTH = 300
@@ -223,11 +265,17 @@ def upload_document(
     title: str = "",
     now: datetime | None = None,
     related_certificate=None,
+    auto_schedule: bool = True,
 ) -> Document:
     """Any active staff member uploads a document for an activity, in any activity status
-    (including Conducted: the accomplishment report is due after the end date). It starts For Review.
+    (including Conducted: the accomplishment report is due after the end date). An approved copy (ASSUMPTIONS 432: the
+    type does not need review) is saved as Approved by System, written to History and documents.audit and queued for
+    the assistant; otherwise (needs_review, certificate evidence) it starts For Review and the approvers are told.
 
-    `related_certificate` is set only by certificates.services.upload_evidence (Step 9)."""
+    `related_certificate` is set only by certificates.services.upload_evidence (Step 9).
+    In the same transaction a Draft created with its creation documents moves to Scheduled once both the Activity Design
+    and the Request Letter are uploaded (schedule_when_documents_complete, ASSUMPTIONS 431); `document.scheduled_activity`
+    says whether it did. `auto_schedule` False: create_activity_with_documents, which schedules the new activity itself."""
     require_staff_member(member)
     if not document_type.is_active:
         raise ValidationError({"document_type": ["This document type is not active."]})
@@ -244,6 +292,7 @@ def upload_document(
         raise ValidationError(problems)
     title = (title or "").strip() or document_type.name
 
+    reviewed = needs_review(document_type, related_certificate)
     document = Document(
         activity=activity,
         document_type=document_type,
@@ -252,11 +301,24 @@ def upload_document(
         title=title,
         related_certificate=related_certificate,
     )
+    if not reviewed:  # ASSUMPTIONS 432: an approved copy
+        _approve_copy(document, now)
     _save_file(document, file, extension, now)
     try:
-        with transaction.atomic():  # the document and its review notifications are saved together
+        with transaction.atomic():  # the document and its notifications / History are saved together
             document.save()
-            notify_approvers(document, member)
+            if reviewed:
+                notify_approvers(document, member)
+            else:
+                from activities.services import write_document_history  # activities.services imports this module
+
+                write_document_history(activity, member, "", f"{_document_label(document)} {APPROVED_COPY_NOTE}")
+                audit_log.info("Document uploaded as an approved copy: document_id=%s activity_id=%s by member_id=%s",
+                               document.pk, activity.pk, member.pk)
+                _queue_index_on_commit(document)
+            document.scheduled_activity = (
+                auto_schedule and related_certificate is None and is_creation_type(activity, document_type)
+                and schedule_when_documents_complete(activity, member))
     except Exception:
         _delete_stored_file(document.file_path.name)  # don't leave an orphan file behind
         raise
@@ -316,15 +378,13 @@ class NewDocument:
 class NewActivityError(Exception):
     """Creating the activity with its documents was refused; nothing was saved.
 
-    `activity_error`: the activity's own ValidationError (or None); `row_errors`: {row index: {field: message}};
-    `status_error`: why it cannot be created as Scheduled (ASSUMPTIONS 417: change_status refused the move), or ""."""
+    `activity_error`: the activity's own ValidationError (or None); `row_errors`: {row index: {field: message}}. (A refused Scheduled is no error since ASSUMPTIONS 431: the activity
+    is then saved as Draft.)"""
 
-    def __init__(self, activity_error: ValidationError | None, row_errors: dict[int, dict[str, str]],
-                 status_error: str = ""):
+    def __init__(self, activity_error: ValidationError | None, row_errors: dict[int, dict[str, str]]):
         super().__init__("The activity was not created.")
         self.activity_error = activity_error
         self.row_errors = row_errors
-        self.status_error = status_error
 
 
 class _RollBack(Exception):
@@ -375,23 +435,49 @@ def missing_creation_types(activity: Activity) -> list[str]:
     return [document_type.name for document_type in types if document_type.pk not in uploaded]
 
 
-def scheduling_refused_reason(activity: Activity, on_new_form: bool = False) -> str | None:
+def scheduling_refused_reason(activity: Activity) -> str | None:
     """Why this Draft cannot be Scheduled yet (activities.services._move_status calls it for activities with
-    creation_documents_required), or None. Uploaded is enough: waiting, returned or approved.
-    `on_new_form`: the same check, worded for the New activity form's "Create as" field (ASSUMPTIONS 417)."""
+    creation_documents_required), or None. Uploaded is enough: waiting, returned or approved."""
     if not activity.creation_documents_required:
         return None
     missing = missing_creation_types(activity)
     if not missing:
         return None
-    if on_new_form:
-        return f"To create it as Scheduled, choose {_the_names(missing)} above, or create it as Draft."
     return f"Upload {_the_names(missing)} before scheduling this activity (Documents tab)."
+
+
+SCHEDULED_AUTOMATICALLY_NOTE = "both documents uploaded"  # History: "Draft -> Scheduled (both documents uploaded)"
+
+
+def schedule_when_documents_complete(activity: Activity, uploader: TBIMember) -> bool:
+    """ASSUMPTIONS 431 (NAVIGATU: the documents decide the status, not a choice): a Draft created with its creation
+    documents (creation_documents_required) moves to Scheduled by the System as soon as both the Activity Design and the
+    Request Letter are uploaded (any review state, the rule of scheduling_refused_reason). The one transition rule
+    (activities.services.schedule_automatically -> _move_status) in a savepoint; a refusal is logged and the activity
+    stays Draft (the upload is never refused because of it). The creator is told in-app unless they uploaded it
+    themselves (notifications.services.notify_creator_scheduled). Registration still opens only once the registration
+    form is marked ready (item 409). Returns True when it moved. Call it inside the upload's transaction."""
+    from activities.services import ActivityError, schedule_automatically  # activities.services imports this module
+    from notifications.services import notify_creator_scheduled
+
+    if not activity.creation_documents_required or activity.status.name != ActivityStatus.DRAFT:
+        return False
+    if missing_creation_types(activity):
+        return False
+    try:
+        moved = schedule_automatically(activity, SCHEDULED_AUTOMATICALLY_NOTE)
+    except ActivityError as error:
+        logger.info("Draft not scheduled automatically: activity_id=%s reason=%s", activity.pk, error)
+        return False
+    if moved:
+        notify_creator_scheduled(activity, uploader)
+    return moved
 
 
 def _delete_refused_reason(document: Document) -> str | None:
     """The only Activity Design / Request Letter of a non-Draft activity created with them cannot be deleted: the
-    activity would show it as missing again. Replacing the file stays allowed."""
+    activity would show it as missing again. Replacing the file stays allowed. (A document an AI answer cites is refused
+    by delete_document itself, CITED_REFUSED: one query per document would be too many for the lists' buttons.)"""
     activity = document.activity
     if document.related_certificate_id or not is_creation_type(activity, document.document_type):
         return None
@@ -440,12 +526,9 @@ def check_new_documents(documents: list[NewDocument]) -> dict[int, dict[str, str
     return errors
 
 
-CREATION_STATUSES = (ActivityStatus.DRAFT, ActivityStatus.SCHEDULED)  # "Create as" on the New activity form (417)
-
-
 def create_activity_with_documents(
     member: TBIMember, data: dict, documents: list[NewDocument], now: datetime | None = None,
-    signatories: dict | None = None, status: str = ActivityStatus.DRAFT,
+    signatories: dict | None = None,
     prepare_certificates: bool = False, certificate_texts: dict | None = None,
 ) -> Activity:
     """Create the activity (activities.services.create_activity), upload its documents (upload_document, the
@@ -453,9 +536,11 @@ def create_activity_with_documents(
     creation_documents_required=True (ASSUMPTIONS 405), so Draft -> Scheduled always needs the Activity Design and
     the Request Letter uploaded. Every row is optional (ASSUMPTIONS 417).
 
-    `status` (ASSUMPTIONS 417, amends 409): Draft (default) or Scheduled. Scheduled goes through change_status in the
-    same transaction (the one transition rule, incl. scheduling_refused_reason): when the rows did not include both
-    documents it is refused, nothing is saved, and the reason (worded for the form) is NewActivityError.status_error.
+    The status (ASSUMPTIONS 431, replaces 417's "Create as" choice): with both the Activity Design and the Request
+    Letter among the rows the activity is Scheduled at once, through change_status in the same transaction (the one
+    transition rule; its own savepoint). If that move is refused for any reason, the activity, its documents and
+    everything else stay saved as Draft and the reason is `activity.not_scheduled_reason` (for the success message;
+    "" otherwise). Without both it is created as Draft.
 
     Errors of the activity and of every row are raised together as NewActivityError (the Scheduled check runs only
     once they are valid: it needs the saved documents). Files already stored when something fails are deleted again.
@@ -466,13 +551,11 @@ def create_activity_with_documents(
     from activities.services import ActivityError, change_status, create_activity  # documents imports activities
 
     require_permission(member, Permission.CREATE_ACTIVITY)
-    if status not in CREATION_STATUSES:
-        raise ValidationError({"status": ["A new activity is created as Draft or Scheduled."]})
     if len(documents) > MAX_DOCUMENTS_AT_CREATION:
         raise ValidationError({"documents": [f"Add at most {MAX_DOCUMENTS_AT_CREATION} documents here."]})
     row_errors = check_new_documents(documents)
     activity_error = None
-    status_error = ""
+    not_scheduled_reason = ""
     stored: list[str] = []
     committed = False
     try:
@@ -489,22 +572,22 @@ def create_activity_with_documents(
                 raise _RollBack
             for index, row in enumerate(documents):
                 try:
-                    document = upload_document(member, activity, row.document_type, row.file, row.title, now=now)
+                    document = upload_document(member, activity, row.document_type, row.file, row.title, now=now,
+                                               auto_schedule=False)
                 except ValidationError as error:  # e.g. the type was deactivated a moment ago
                     found = error.message_dict if hasattr(error, "error_dict") else {"file": error.messages}
                     row_errors[index] = {key: messages[0] for key, messages in found.items()}
                     raise _RollBack from error
                 stored.append(document.file_path.name)
-            if status == ActivityStatus.SCHEDULED:
-                # ASSUMPTIONS 409 / 417: the one transition rule (change_status -> _move_status, incl. the "both
-                # uploaded" check), so History shows "Draft" then "Draft -> Scheduled" by the creator. Registration
-                # still stays closed until the registration form exists AND is marked ready (registration_form_ready).
+            if not missing_creation_types(activity):
+                # ASSUMPTIONS 431 (409): both documents -> Scheduled by the one transition rule (change_status ->
+                # _move_status), so History shows "Draft" then "Draft -> Scheduled" by the creator. change_status is its
+                # own savepoint: a refusal keeps the activity and its uploads as Draft. Registration still stays closed
+                # until the registration form exists AND is marked ready (registration_form_ready).
                 try:
                     change_status(member, activity, ActivityStatus.SCHEDULED)
                 except ActivityError as error:
-                    # The same check, worded for the form (the documents saved above are still visible here).
-                    status_error = scheduling_refused_reason(activity, on_new_form=True) or str(error)
-                    raise _RollBack from error
+                    not_scheduled_reason = str(error)
         committed = True
     except _RollBack:
         pass
@@ -513,7 +596,8 @@ def create_activity_with_documents(
             for name in stored:
                 _delete_stored_file(name)
     if not committed:
-        raise NewActivityError(activity_error, row_errors, status_error)
+        raise NewActivityError(activity_error, row_errors)
+    activity.not_scheduled_reason = not_scheduled_reason  # not a column: for the success message only
     return activity
 
 
@@ -544,34 +628,76 @@ def open_for_preview(document: Document):
     return handle
 
 
-def _ensure_uploader_and_for_review(member: TBIMember, document: Document, action: str) -> None:
-    if document.uploaded_by_id != member.pk:
-        raise PermissionDenied(f"Only the member who uploaded this document can {action} it.")
-    if document.status.status_name != DocumentStatus.FOR_REVIEW:
+def is_approved_copy(document: Document) -> bool:
+    """An Approved document of a type without review (ASSUMPTIONS 432): its uploader or the Director may still replace
+    or delete it. Approved documents of a reviewed type and certificate evidence stay final."""
+    return (document.status.status_name == DocumentStatus.APPROVED
+            and not needs_review(document.document_type, document.related_certificate))
+
+
+def _may_change(member: TBIMember, document: Document) -> bool:
+    """Who may replace / delete: the uploader of a For Review document; for an approved copy also can_approve_documents."""
+    if document.uploaded_by_id == member.pk:
+        return True
+    return is_approved_copy(document) and has_permission(member, Permission.APPROVE_DOCUMENTS)
+
+
+def _ensure_can_change(member: TBIMember, document: Document, action: str) -> None:
+    if document.status.status_name != DocumentStatus.FOR_REVIEW and not is_approved_copy(document):
         raise DocumentError(f"An approved document cannot be {action}d. Upload a new document instead.")
+    if not _may_change(member, document):
+        if is_approved_copy(document):
+            raise PermissionDenied(f"Only the member who uploaded this document or the Director can {action} it.")
+        raise PermissionDenied(f"Only the member who uploaded this document can {action} it.")
+
+
+CITED_REFUSED = ("This document is cited in an AI Assistant answer, so it cannot be deleted. Replace the file "
+                 "instead.")
+
+
+def _cited(document: Document) -> bool:
+    """An AI answer cites it (AI_MESSAGE_SOURCE, PROTECT): deleting it would break that answer's sources."""
+    return document.ai_citations.exists()
 
 
 def replace_document_file(member: TBIMember, document: Document, file: UploadedFile | None, now: datetime | None = None) -> Document:
-    """The uploader replaces the file of a For Review document (usually after it was returned).
+    """Replace the file of a document: the uploader of a For Review document (usually after it was returned), or the
+    uploader or a member with can_approve_documents for an approved copy (ASSUMPTIONS 432).
 
-    Same row, title and type. reviewed_by/reviewed_at are cleared, so it waits for a reviewer again.
+    Same row, title and type. An approved copy (or a waiting / returned document whose type no longer needs review)
+    stays / becomes Approved by System, its assistant chunks are removed and it is indexed again; a reviewed type
+    clears reviewed_by/reviewed_at, so it waits for a reviewer again. History + documents.audit for every replace.
     The old file is deleted only after the change is saved.
     """
+    from activities.services import write_document_history  # activities.services imports this module
+
     require_staff_member(member)
     extension = validate_upload(file)
     if message := file_type_error(document.document_type, extension):
         raise ValidationError({"file": [message]})
     with transaction.atomic():
         document = _locked(document)
-        _ensure_uploader_and_for_review(member, document, "replace")
+        _ensure_can_change(member, document, "replace")
+        reviewed = needs_review(document.document_type, document.related_certificate)
         old_name = document.file_path.name
         _save_file(document, file, extension, now)
-        document.reviewed_by = None
-        document.reviewed_at = None
+        if reviewed:
+            document.reviewed_by = None
+            document.reviewed_at = None
+        else:
+            _approve_copy(document, now)
         try:
             with transaction.atomic():
                 document.save()
-                notify_approvers(document, member)
+                if reviewed:
+                    notify_approvers(document, member)
+                else:
+                    document.embeddings.all().delete()  # never answer from the old file; indexed again below
+                    _queue_index_on_commit(document)
+                if document.related_certificate_id is None:
+                    write_document_history(document.activity, member, "", f"{_document_label(document)} replaced"
+                                           + ("" if reviewed else f" ({APPROVED_COPY_NOTE})"))
+                audit_log.info("Document replaced: document_id=%s by member_id=%s", document.pk, member.pk)
         except Exception:
             _delete_stored_file(document.file_path.name)
             raise
@@ -580,14 +706,23 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
 
 
 def delete_document(member: TBIMember, document: Document) -> None:
-    """The uploader deletes a For Review document and its file. Approved documents are never deleted."""
+    """Delete a document and its file: the uploader of a For Review document, or the uploader or a member with
+    can_approve_documents for an approved copy (ASSUMPTIONS 432). Refused for an Approved document of a reviewed type,
+    the only Activity Design / Request Letter of a non-Draft activity (_delete_refused_reason) and a document an AI
+    answer cites. History + documents.audit."""
+    from activities.services import write_document_history  # activities.services imports this module
+
     require_staff_member(member)
     with transaction.atomic():
         document = _locked(document)
-        _ensure_uploader_and_for_review(member, document, "delete")
-        if reason := _delete_refused_reason(document):
+        _ensure_can_change(member, document, "delete")
+        if reason := _delete_refused_reason(document) or (CITED_REFUSED if _cited(document) else None):
             raise DocumentError(reason)
         name = document.file_path.name
+        if document.related_certificate_id is None:
+            write_document_history(document.activity, member, f"{_document_label(document)}",
+                                   f"{_document_label(document)} deleted")
+        audit_log.info("Document deleted: document_id=%s by member_id=%s", document.pk, member.pk)
         document.delete()
         transaction.on_commit(lambda: _delete_stored_file(name))
 
@@ -676,12 +811,17 @@ def allowed_actions(member: TBIMember, document: Document) -> dict[str, bool]:
     """What `member` may do with `document` right now (for the frontend; the services check again)."""
     for_review = document.status.status_name == DocumentStatus.FOR_REVIEW
     is_uploader = document.uploaded_by_id == member.pk
-    can_review = for_review and document.reviewed_at is None and has_permission(member, Permission.APPROVE_DOCUMENTS)
+    reviewed = needs_review(document.document_type, document.related_certificate)
+    # Approve / Return only for a type that needs review (ASSUMPTIONS 432); older waiting documents of other types are
+    # approved by migration documents/0009, a returned one is replaced by its uploader.
+    can_review = (for_review and reviewed and document.reviewed_at is None
+                  and has_permission(member, Permission.APPROVE_DOCUMENTS))
+    changeable = (for_review or is_approved_copy(document)) and _may_change(member, document)
     return {
         "approve": can_review,  # also the member's own upload (ASSUMPTIONS 344)
         "return": can_review and not is_uploader,
-        "replace": for_review and is_uploader,
-        "delete": for_review and is_uploader and _delete_refused_reason(document) is None,
+        "replace": changeable,
+        "delete": changeable and _delete_refused_reason(document) is None,
     }
 
 
@@ -816,13 +956,18 @@ def _required_item(document_type: DocumentType, activity: Activity, documents: l
 def document_checklist(activity: Activity, now: datetime | None = None) -> dict:
     """Every active required document type with its due date, state and overdue flag, plus the
     optional (non-required) active types with their uploaded documents. A required type that does not apply to this
-    activity (type_applies: a payment type new in item 425 on an older activity) is listed with the optional ones."""
+    activity (type_applies: a payment type new in item 425 on an older activity) is listed with the optional ones.
+    An INACTIVE type is listed with the optional ones only when this activity has documents of it (ASSUMPTIONS 430:
+    old "Accomplishment Report" uploads stay visible and downloadable); it is never required."""
     today = today_in_manila(now)
     by_type = _documents_by_type(activity)
     required, optional = [], []
-    for document_type in DocumentType.objects.filter(is_active=True).order_by("name"):
+    types = DocumentType.objects.filter(Q(is_active=True) | Q(pk__in=list(by_type))).order_by("name")
+    for document_type in types:
         documents = by_type.get(document_type.pk, [])
-        if document_type.is_required and type_applies(document_type, activity):
+        if not document_type.is_active:
+            optional.append({"document_type": document_type, "documents": documents})
+        elif document_type.is_required and type_applies(document_type, activity):
             required.append(_required_item(document_type, activity, documents, today))
         else:
             optional.append({"document_type": document_type, "documents": documents})

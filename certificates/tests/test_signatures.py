@@ -152,23 +152,24 @@ def test_view_only_members_only_views(generated, view_only, design) -> None:
     assert 'name="file"' not in signatures and 'name="signatory"' not in signatures and "Add a person" not in signatures
 
 
-def test_activity_creators_choose_signatories_but_never_upload(generated, design, make_member) -> None:
+def test_activity_creators_neither_choose_signatories_nor_upload(generated, design, make_member) -> None:
     activity, _ = generated
     _, vp, head = design
     president = person(make_member("Director", email="d2@example.com"), "Dr. Pres", "University President")
     head_of_projects = make_member("Incubation Project Head", email="iph@example.com")
     from accounts import services as account_services
 
-    # A creator without can_approve_certificates (the role flag switched off) may still choose.
+    # A creator without can_approve_certificates (the role flag switched off) no longer chooses (ASSUMPTIONS 431).
     admin = make_member(Role.SYSTEM_ADMINISTRATOR, email="sysadmin2@example.com")
     account_services.set_role_certificate_approval(admin, head_of_projects.role, False)
     head_of_projects.refresh_from_db()
-    assert services.set_activity_signatory(head_of_projects, activity, "right", president)["changed"]
+    with pytest.raises(PermissionDenied):
+        services.set_activity_signatory(head_of_projects, activity, "right", president)
     with pytest.raises(PermissionDenied):
         services.upload_signature(head_of_projects, activity, "right", png())
     html = client_for(head_of_projects).get(tab_url(activity.pk)).content.decode()
     signatures = html.split('id="signatures-title"')[1].split("certificate-preview")[0]
-    assert 'name="signatory"' in signatures and 'name="file"' not in signatures and "Add a person" not in signatures
+    assert 'name="signatory"' not in signatures and 'name="file"' not in signatures and "Add a person" not in signatures
 
 
 def test_system_administrator_neither_adds_signatures_nor_applies_the_design(generated, admin_member, director) -> None:

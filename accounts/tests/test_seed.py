@@ -40,7 +40,7 @@ def test_seed_loads_every_lookup(admin_env) -> None:
         "Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum",
     }
     assert set(DocumentStatus.objects.values_list("status_name", flat=True)) == {"For Review", "Approved"}
-    assert DocumentType.objects.count() == 11  # incl. "Other" (ASSUMPTIONS 386), Activity Report, Event Photos (425)
+    assert DocumentType.objects.count() == 10  # incl. "Other" (386), Activity Report, Event Photos (425); no Accomplishment Report (430)
 
 
 @pytest.mark.django_db
@@ -72,7 +72,7 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
     required = {
         t.name: (t.due_reference, t.due_offset_days) for t in DocumentType.objects.filter(is_required=True)
     }
-    assert required == {  # the Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386)
+    assert required == {  # the Invitation Letter is optional (ASSUMPTIONS 386; no Accomplishment Report type, 430)
         "Activity Design": ("start_date", -5),  # NAVIGATU's 5-day rule (ASSUMPTIONS 416)
         "Request Letter": ("start_date", -5),
         "Attendance Sheet": ("end_date", 5),  # payment documents for the Supply Office (ASSUMPTIONS 425)
@@ -81,7 +81,7 @@ def test_required_document_types_and_due_rules(admin_env) -> None:
     }
     optional = DocumentType.objects.filter(is_required=False)
     assert set(optional.values_list("name", flat=True)) == {
-        "Invitation Letter", "Accomplishment Report", "Pre-registration Form", "Evaluation Form", "Certificate", "Other"}
+        "Invitation Letter", "Pre-registration Form", "Evaluation Form", "Certificate", "Other"}
     assert all(t.due_reference is None and t.due_offset_days is None for t in optional)
 
 

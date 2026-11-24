@@ -193,7 +193,9 @@ def upload_api(request: HttpRequest, activity_id: int) -> JsonResponse:
     document = services.upload_document(
         request.user, activity, document_type, request.FILES.get("file"), request.POST.get("title", "")
     )
-    return JsonResponse({"document": document_json(_document(document.pk), request.user)}, status=201)
+    return JsonResponse({"document": document_json(_document(document.pk), request.user),
+                         "activity_scheduled": bool(getattr(document, "scheduled_activity", False))},  # ASSUMPTIONS 431
+                        status=201)
 
 
 @staff_login_required

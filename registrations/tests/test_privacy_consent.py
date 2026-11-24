@@ -10,7 +10,7 @@ from django.urls import reverse
 from registrations import services
 from registrations.models import EvaluationSubmission, Registration
 
-from .conftest import CERT, evaluation_answers, registration_answers
+from .conftest import CERT, FIXED, evaluation_answers, registration_answers
 from .test_public_pages import eval_url, evaluation_post, open_window, registration_post
 
 pytestmark = pytest.mark.django_db
@@ -90,7 +90,7 @@ def test_registration_page_with_the_tick_registers(client, scheduled) -> None:
 
 
 def api_body(activity, **extra) -> str:
-    body = {"name": "Ana Cruz", "email": "ana@example.com", "answers": registration_answers(activity), **extra}
+    body = {"name": "Ana Cruz", "email": "ana@example.com", **FIXED, "answers": registration_answers(activity), **extra}
     return json.dumps(body)
 
 
@@ -132,7 +132,7 @@ def startup_client(client, scheduled):
 
 
 def portal_data(activity, **extra) -> dict:
-    data = {}
+    data = {"designation": "Founder", "office_agency": "Kape Caraga"}  # ASSUMPTIONS 426
     for key, value in registration_answers(activity).items():
         data[f"field_{key}"] = value[0] if isinstance(value, list) else value
     data.update(extra)
@@ -158,7 +158,7 @@ def test_portal_page_with_the_tick_registers(startup_client, scheduled) -> None:
 
 def test_portal_api_needs_consent(startup_client, scheduled) -> None:
     url = reverse("startups:portal_register", args=[scheduled.pk])
-    body = {"answers": registration_answers(scheduled)}
+    body = {"designation": "Founder", "answers": registration_answers(scheduled)}
     refused = startup_client.post(url, json.dumps(body), content_type="application/json")
     assert refused.status_code == 400 and FIELD in refused.json()["errors"]
     assert not Registration.objects.exists()

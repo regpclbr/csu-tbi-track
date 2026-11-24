@@ -1,6 +1,6 @@
 {% comment %}
 The members table (accounts.services.list_members, 20 a page, by name), swapped by the filters and the pager.
-Change role: a small form per row. Reset password and Deactivate ask first (components/modal.html); Reactivate is direct.
+Change role and position (ASSUMPTIONS 429: the official job title printed under "Prepared by"): a small form per row. Reset password and Deactivate ask first (components/modal.html); Reactivate is direct.
 The buttons are shown for every member: the services refuse what is not allowed (yourself, the last Admin) with a message.
 {% endcomment %}
 <div id="member-results" class="htmx-dim">
@@ -17,6 +17,7 @@ The buttons are shown for every member: the services refuse what is not allowed 
           <tr>
             <th scope="col" class="px-3 py-3">Member</th>
             <th scope="col" class="px-3 py-3">Role</th>
+            <th scope="col" class="px-3 py-3">Position</th>
             <th scope="col" class="px-3 py-3">Status</th>
             <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
           </tr>
@@ -38,6 +39,18 @@ The buttons are shown for every member: the services refuse what is not allowed 
                     {% for role in roles %}<option value="{{ role.pk }}"{% if role.pk == member.role_id %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
                   </select>
                   <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the role of {{ member.name }}</span></button>
+                </form>
+              </td>
+              <td class="px-3 py-3">
+                <form method="post" action="{% url 'accounts:console_member_position' member.pk %}" class="flex items-center gap-2" data-position-form>
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <label for="position-{{ member.pk }}" class="sr-only">Position of {{ member.name }}</label>
+                  <select id="position-{{ member.pk }}" name="position" class="field-input field-select field-select-sm pill-select w-auto min-w-52 max-w-72 shrink-0 pl-3 text-sm">
+                    <option value=""{% if not member.position_id %} selected{% endif %}>No position</option>
+                    {% for position in member.position_choices %}<option value="{{ position.pk }}"{% if position.pk == member.position_id %} selected{% endif %}>{{ position.name }}{% if not position.is_active %} (inactive){% endif %}</option>{% endfor %}
+                  </select>
+                  <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the position of {{ member.name }}</span></button>
                 </form>
               </td>
               <td class="px-3 py-3 whitespace-nowrap">

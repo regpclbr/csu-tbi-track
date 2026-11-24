@@ -20,7 +20,7 @@ import json
 
 from django.conf import settings
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -292,9 +292,9 @@ def changed_text(result: dict, *, what: str) -> str:
 @post_only_or_tab("certificates")
 def signatory_choose(request: HttpRequest, activity_id: int, slot: str) -> HttpResponse:
     """POST signatory, title: choose who signs on `slot` and the "Title on this certificate"
-    (services.set_activity_signatory). can_create_activity or can_approve_certificates (403 otherwise; the service
-    checks again)."""
-    require_any_permission(request.user, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    (services.set_activity_signatory). can_approve_certificates only (ASSUMPTIONS 431: only the Director chooses who
+    signs; 403 otherwise, the service checks again)."""
+    services.require_signatory_choice(request.user)
     activity = _activity(activity_id)
     raw = request.POST.get("signatory", "")
     person = CertificateSignatory.objects.filter(pk=raw).first() if raw.isdigit() else None
@@ -323,8 +323,8 @@ def signatory_choose(request: HttpRequest, activity_id: int, slot: str) -> HttpR
 @post_only_or_tab("certificates")
 def signatory_current_version(request: HttpRequest, activity_id: int, slot: str) -> HttpResponse:
     """"Use the current version" on a slot whose person is inactive (services.use_current_version, ASSUMPTIONS 367).
-    can_create_activity or can_approve_certificates."""
-    require_any_permission(request.user, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    can_approve_certificates only (ASSUMPTIONS 431: it changes who signs)."""
+    services.require_signatory_choice(request.user)
     activity = _activity(activity_id)
     try:
         result = services.use_current_version(request.user, activity, slot)
@@ -525,7 +525,7 @@ def signatory_add(request: HttpRequest) -> HttpResponse:
         activity = _activity(int(activity_id))
         try:
             result = services.set_activity_signatory(request.user, activity, slot, person)
-        except services.CertificateError as error:
+        except (services.CertificateError, PermissionDenied) as error:  # ASSUMPTIONS 431: only the Director chooses
             text += f" Not chosen for the activity: {error}"
         else:
             text = changed_text({**result, "outdated_activities": 1},

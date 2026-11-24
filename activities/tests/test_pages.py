@@ -56,7 +56,6 @@ def post_data(valid_data):
             "venue": values["venue"],
             "max_slots": values["max_slots"],
             "budget_amount": str(values["budget_amount"]),
-            "create_as": "Draft",  # the New form's "Create as" default (ASSUMPTIONS 417); the edit form ignores it
         }
 
     return make
@@ -180,12 +179,12 @@ def test_create_page_needs_can_create_activity(director, view_only, login) -> No
 
 
 def test_create_saves_it_as_scheduled_and_opens_the_forms_tab_with_a_toast(director, login, post_data) -> None:
-    data = {**post_data(title="New Pitch Clinic"), **creation_document_files(), "create_as": "Scheduled"}  # 405, 417
+    data = {**post_data(title="New Pitch Clinic"), **creation_document_files()}  # 405, 431: both -> Scheduled
     response = login(director).post(CREATE, data, follow=True)
     activity = Activity.objects.get(title="New Pitch Clinic")
     assert response.redirect_chain[-1][0] == detail_url(activity) + "?tab=forms"  # ASSUMPTIONS 409
-    assert activity.status.name == "Scheduled" and activity.audit_logs.count() == 2
-    assert any(text.startswith('"New Pitch Clinic" was created as Scheduled with 2 documents waiting for review.')
+    assert activity.status.name == "Scheduled" and activity.audit_logs.filter(field_changed="Status").count() == 2
+    assert any(text.startswith('"New Pitch Clinic" was created as Scheduled with 2 documents.')
                for text in messages_of(response))
 
 

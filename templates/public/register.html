@@ -20,6 +20,8 @@ the server's, so all messages appear together under their fields; the first fiel
     {% include "public/_input.html" with name="name" label="Full name" value=values.name error=errors.name autocomplete="name" required=True focus=focus %}
     {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="email" required=True focus=focus help="Your confirmation email is sent here." %}
     {% include "public/_input.html" with name="contact_number" label="Contact number" type="tel" inputmode="tel" value=values.contact_number error=errors.contact_number autocomplete="tel" optional=True focus=focus %}
+    {% include "public/_input.html" with name="designation" label="Designation / Position" value=values.designation error=errors.designation autocomplete="organization-title" maxlength="255" required=True focus=focus help="For example Owner, Faculty member, Student." %}
+    {% include "public/_input.html" with name="office_agency" label="Office / Agency" value=values.office_agency error=errors.office_agency autocomplete="organization" maxlength="255" required=True focus=focus help="Your office, company, school or agency." %}
 
     {% include "components/category_choice.html" %}
 

@@ -13,7 +13,7 @@ from activities import services as activity_services
 from registrations import services
 from registrations.models import FormAnswer, FormType, Registration
 
-from .conftest import cat, form_of, registration_answers
+from .conftest import FIXED, cat, form_of, registration_answers
 
 # --- Who is visible, and when registration is open ----------------------------------------
 
@@ -63,7 +63,7 @@ def test_closed_without_a_registration_form(director, new_activity, move_to) -> 
 def test_closed_after_the_deadline(scheduled) -> None:
     with pytest.raises(services.RegistrationError, match="deadline"):
         services.register(
-            scheduled, name="Late", email="late@example.com", answers=registration_answers(scheduled),
+            scheduled, name="Late", email="late@example.com", **FIXED, answers=registration_answers(scheduled),
             now=scheduled.registration_deadline + timedelta(seconds=1),
         )
 
@@ -82,7 +82,7 @@ def test_last_slot_race(director, scheduled) -> None:
     def attempt(number: int) -> None:
         try:
             start.wait()
-            services.register(scheduled, name=f"Racer {number}", email=f"racer{number}@example.com", answers=answers)
+            services.register(scheduled, name=f"Racer {number}", email=f"racer{number}@example.com", **FIXED, answers=answers)
             results.append("registered")
         except services.RegistrationError as error:
             results.append(str(error))
@@ -118,7 +118,7 @@ def test_email_is_stored_trimmed_and_lowercase(scheduled, signup) -> None:
 @pytest.mark.django_db
 def test_name_and_email_are_checked(scheduled) -> None:
     with pytest.raises(ValidationError) as excinfo:
-        services.register(scheduled, name=" ", email="not-an-email", answers=registration_answers(scheduled))
+        services.register(scheduled, name=" ", email="not-an-email", **FIXED, answers=registration_answers(scheduled))
     assert set(excinfo.value.message_dict) == {"name", "email"}
 
 
@@ -209,8 +209,8 @@ def test_answers_are_saved_and_startup_stays_empty(scheduled, signup) -> None:
 @pytest.mark.django_db
 def test_invalid_answers_are_refused(scheduled) -> None:
     with pytest.raises(ValidationError) as excinfo:
-        services.register(scheduled, name="Ana", email="ana@example.com", answers={})
-    assert len(excinfo.value.message_dict) == 1  # the default field (Affiliation / Organization) is required
+        services.register(scheduled, name="Ana", email="ana@example.com", **FIXED, answers={})
+    assert len(excinfo.value.message_dict) == 1  # the test form's field (Affiliation / Organization) is required
 
 
 @pytest.mark.django_db
@@ -236,7 +236,8 @@ def test_no_email_when_registration_fails(scheduled, django_capture_on_commit_ca
 
 @pytest.mark.django_db
 def test_public_register_endpoint(client, scheduled) -> None:
-    payload = {"name": "Ana Cruz", "email": "ana@example.com", "contact_number": "0917", "answers": registration_answers(scheduled),
+    payload = {"name": "Ana Cruz", "email": "ana@example.com", "contact_number": "0917", **FIXED,
+               "answers": registration_answers(scheduled),
                "privacy_consent": True}
     response = client.post(f"/api/register/{scheduled.pk}/", json.dumps(payload), content_type="application/json")
     assert response.status_code == 201

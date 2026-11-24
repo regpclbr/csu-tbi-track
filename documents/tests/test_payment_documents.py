@@ -55,9 +55,10 @@ def test_seed_creates_the_payment_types_due_five_days_after_the_end(roles) -> No
         assert document_type.is_required and document_type.due_reference == "end_date" and document_type.due_offset_days == 5, name
 
 
-def test_the_activity_report_stays_separate_from_the_optional_accomplishment_report(roles) -> None:
-    accomplishment = DocumentType.objects.get(name="Accomplishment Report")
-    assert not accomplishment.is_required and accomplishment.name not in PAYMENT
+def test_the_activity_report_is_the_per_activity_report(roles) -> None:
+    """ASSUMPTIONS 430 (replaces 425's "kept separate"): the per-activity report is the Activity Report; the Accomplishment
+    Report is the quarterly / semi-annual / annual report in Reports, never a document type of a new database."""
+    assert "Activity Report" in PAYMENT and not DocumentType.objects.filter(name="Accomplishment Report").exists()
 
 
 def test_data_migration_adds_the_types_and_moves_only_the_old_attendance_sheet_rule(roles) -> None:

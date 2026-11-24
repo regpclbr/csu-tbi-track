@@ -1,8 +1,10 @@
-{% comment %}One registration in the details dialog (ASSUMPTIONS 404): who, category, when, attendance and evaluation status; the
+{% comment %}One registration in the details dialog (ASSUMPTIONS 404): who, designation and office / agency (426), category, when, attendance and evaluation status; the
 evaluation (ratings, average, text answers); then the contact details and registration answers in a native <details>,
 closed when the evaluation is shown, open otherwise (it is then the only content).{% endcomment %}
 <p class="text-lg font-semibold [overflow-wrap:anywhere] text-ink">{{ registration.name }}</p>
 <dl class="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2" id="registration-facts">
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Designation / Position</dt><dd class="[overflow-wrap:anywhere] text-ink">{{ registration.designation|default:"–" }}</dd></div>
+  <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Office / Agency</dt><dd class="[overflow-wrap:anywhere] text-ink">{{ registration.office_agency|default:"–" }}</dd></div>
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Participant category</dt><dd class="text-ink">{{ registration.participant_category.name }}</dd></div>
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Registered</dt><dd class="text-ink">{{ registration.registration_date|date:"M j, Y g:i A" }}</dd></div>
   <div><dt class="text-xs font-semibold tracking-wide text-muted uppercase">Attendance</dt><dd class="text-ink">{% if registration.attendance_confirmed %}Attended ({{ registration.get_confirmation_method_display|lower }}){% else %}Not yet{% endif %}</dd></div>

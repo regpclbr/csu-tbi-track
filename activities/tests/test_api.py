@@ -215,8 +215,8 @@ def test_an_api_draft_needs_both_creation_documents_before_scheduled(client, dir
                                        "(Documents tab).")
     for document_type in creation_required_types():
         upload_document(director, activity, document_type, SimpleUploadedFile("a.pdf", CREATION_PDF))
-    response = post_json(client, f"{API}{activity.pk}/status/", {"status": "Scheduled"})
-    assert response.status_code == 200 and body(response)["activity"]["status"] == "Scheduled"
+    activity.refresh_from_db()  # ASSUMPTIONS 431: the second upload scheduled it by itself
+    assert activity.status.name == "Scheduled"
 
 
 @pytest.mark.django_db

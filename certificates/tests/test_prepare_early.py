@@ -130,8 +130,9 @@ def test_chosen_saves_signatories_text_and_tells_the_director_once(design, direc
         "prepare_certificates": "on", "certificate_text_mode": "custom", **text_post()})
     assert response.status_code == 302
     activity = fresh(Activity.objects.get(title="Prepared now"))
-    assert services.activity_signatories(activity) == {"left": president, "right": vp}
-    assert services.printed_title(services.activity_slots(activity)["left"]) == "President, CSU"
+    # ASSUMPTIONS 431: staff cannot choose who signs; the posted choice is ignored and the defaults are used.
+    assert services.activity_signatories(activity) == {"left": head, "right": vp}
+    assert services.printed_title(services.activity_slots(activity)["left"]) == "Director"
     assert services.current_texts(activity)[P].title == "Certificate of Attendance"
     assert services.is_prepared(activity) and activity.certificates_prepared_by == staff
     rows = list(prepared_notifications(activity).values_list("member", "message"))
@@ -141,7 +142,7 @@ def test_chosen_saves_signatories_text_and_tells_the_director_once(design, direc
     # Once only: preparing again is refused and tells nobody.
     with pytest.raises(services.CertificateError, match="already prepared"):
         services.prepare_activity_certificates(staff, activity)
-    services.set_activity_signatory(staff, activity, "left", head)  # a later change tells nobody either
+    services.set_activity_signatory(director, activity, "left", president)  # a later change tells nobody either
     assert prepared_notifications(activity).count() == 1
 
 
@@ -214,7 +215,8 @@ def test_the_new_form_preview_uses_what_was_typed(design, staff, president, fake
     assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
     text = fake_pdf_renderer.last_text()
     assert "Juan Dela Cruz" in text and "Typed Title" in text and "Certificate of Attendance" in text
-    assert "President, CSU" in text and not Activity.objects.filter(title="Typed Title").exists()
+    # ASSUMPTIONS 431: staff get the defaults, so the sample shows them, never the typed choice.
+    assert "President, CSU" not in text and not Activity.objects.filter(title="Typed Title").exists()
 
 
 def test_the_preview_says_why_when_it_cannot_be_shown(new_activity, director) -> None:
@@ -428,7 +430,9 @@ def test_add_a_person_stays_with_the_signatory_managers(design, director, staff)
     # F / item 418: choosing from the list is unchanged; only can_manage_signatories adds people.
     assert "Add a person…" in client_for(director).get(reverse("activities:create")).content.decode()
     html = client_for(staff).get(reverse("activities:create")).content.decode()
-    assert "Add a person…" not in html and 'name="signatory_left"' in html
+    # ASSUMPTIONS 431: staff see the signatories read only.
+    assert "Add a person…" not in html and 'name="signatory_left"' not in html
+    assert "Only the Director chooses who signs." in html
 
 
 # --- The Certificates card follows the approval card before Conducted -----------------------------------------------

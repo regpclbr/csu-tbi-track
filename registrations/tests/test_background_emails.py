@@ -12,7 +12,7 @@ from django_q.models import OrmQ
 from registrations import emails, services, tasks
 from registrations.models import Registration
 
-from .conftest import CERT, evaluation_answers, opens_at, registration_answers
+from .conftest import CERT, FIXED, evaluation_answers, opens_at, registration_answers
 
 pytestmark = pytest.mark.django_db
 
@@ -35,7 +35,8 @@ def real_queue(monkeypatch, registration_emails_run_now):
 
 
 def payload(activity, email: str = "ana@example.com") -> str:
-    return json.dumps({"name": "Ana Cruz", "email": email, "answers": registration_answers(activity), "privacy_consent": True})
+    return json.dumps({"name": "Ana Cruz", "email": email, **FIXED, "answers": registration_answers(activity),
+                       "privacy_consent": True})
 
 
 # --- Registration confirmation ----------------------------------------------------------------------------

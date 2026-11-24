@@ -181,7 +181,7 @@ def test_n12_groups_rating_questions_by_label_ignoring_case_and_spaces(make_acti
 
 def test_n15_fully_compliant_needs_every_required_type_approved(make_activity, add_document) -> None:
     complete, partial = make_activity("Complete"), make_activity("Partial")
-    for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Accomplishment Report"):
+    for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Pre-registration Form"):
         add_document(complete, name)
         add_document(partial, name, DocumentStatus.APPROVED if name != "Attendance Sheet" else DocumentStatus.FOR_REVIEW)
     assert summary()["fully_compliant_activities"] == 1
@@ -193,7 +193,7 @@ def test_n15_fully_compliant_needs_every_required_type_approved(make_activity, a
 
 
 def test_s3_overdue_now_ignores_the_range_and_skips_draft(make_activity, add_document) -> None:
-    # Ended Oct 10, 2025: only the Attendance Sheet is missing (overdue); the optional Accomplishment Report never counts.
+    # Ended Oct 10, 2025: only the Attendance Sheet is missing (overdue); an optional type never counts.
     old = make_activity("Ended in 2025", start=date(2025, 10, 10))
     for name in ("Activity Design", "Request Letter"):
         add_document(old, name)

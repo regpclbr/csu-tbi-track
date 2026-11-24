@@ -55,6 +55,9 @@ END = DocumentType.DueReference.END_DATE
 # The Invitation Letter and the Accomplishment Report are optional (ASSUMPTIONS 386; migrations documents/0003 and
 # 0004 for databases seeded before). The Activity Design is due 5 days before the start, like the Request Letter
 # (NAVIGATU's 5-day rule, ASSUMPTIONS 416; migration documents/0005 for databases still on the old -10).
+# No "Accomplishment Report" any more (ASSUMPTIONS 430): it is the quarterly / semi-annual / annual report made in
+# Reports, not a document type. Migration documents/0007 deactivated the old row; a new database never gets it and
+# seed_data never creates or reactivates it (RETIRED_DOCUMENT_TYPES).
 DOCUMENT_TYPES: dict[str, tuple[bool, str | None, int | None]] = {
     "Invitation Letter": (False, None, None),
     "Activity Design": (True, START, -5),
@@ -62,12 +65,13 @@ DOCUMENT_TYPES: dict[str, tuple[bool, str | None, int | None]] = {
     "Attendance Sheet": (True, END, 5),  # also a payment document (ASSUMPTIONS 425; documents/0006 moves end + 0)
     "Activity Report": (True, END, 5),  # payment documents for the Supply Office (ASSUMPTIONS 425)
     "Event Photos": (True, END, 5),
-    "Accomplishment Report": (False, None, None),
     "Pre-registration Form": (False, None, None),
     "Evaluation Form": (False, None, None),
     "Certificate": (False, None, None),
     DocumentType.OTHER: (False, None, None),  # the catch-all optional type (its documents need a title)
 }
+
+RETIRED_DOCUMENT_TYPES = ("Accomplishment Report",)
 
 
 @dataclass
@@ -138,9 +142,9 @@ def load_lookups() -> SeedResult:
 # No "Data Privacy consent" question any more (ASSUMPTIONS 394): every public form has the system's fixed privacy notice
 # checkbox. Only NEW installs are affected: seed_data never deletes default fields that already exist.
 DEFAULT_FORM_FIELDS: dict[str, list[tuple[str, str, list[str], bool]]] = {
-    "registration": [
-        ("Affiliation / Organization", "short_text", [], True),
-    ],
+    # No "Affiliation / Organization" any more (ASSUMPTIONS 426): Designation / Position and Office / Agency are fixed
+    # REGISTRATION columns; migration registrations/0010 removed the old default rows.
+    "registration": [],
     "evaluation": [
         ("Overall rating", "rating", [], True),
         ("Resource person rating", "rating", [], True),

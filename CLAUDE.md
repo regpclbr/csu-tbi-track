@@ -62,7 +62,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Primary keys and table names follow the ERD (`activity_id`, `db_table = "activity"`).
 - Activities are never deleted by normal users (status changes instead). The ONE exception (ASSUMPTIONS 389):
   `activities.deletion.delete_activity` with `can_delete_activities` (System Administrator), refused by
-  `deletion_refused_reason` (Issued certificate, Approved document/evidence, cited document), title typed to confirm;
+  `deletion_refused_reason` (Issued certificate, Approved certificate evidence, cited document; approved activity documents
+  are deleted with it and counted in the dialog and ACTIVITY_DELETION.counts, ASSUMPTIONS 432), title typed to confirm;
   one transaction, files removed on commit, an ACTIVITY_DELETION record (no FK to the activity) + `activities.audit`.
   The audit log stays append-only except `ActivityAuditLog.objects.delete_for_deleted_activity` (only there).
   Certificate numbers come from CERTIFICATE_NUMBER_SEQUENCE (never reused, also after undo attendance).
@@ -93,8 +94,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (participation / appreciation); `activity` empty = the default; versioned (`is_current`; a row a certificate uses never
   changes). Changed only through `save_default_text`, `save_activity_text`, `use_default_text`. 34 tables (ASSUMPTIONS 389,
   390: POSITION, ACTIVITY_DELETION, CERTIFICATE_NUMBER_SEQUENCE).
-- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361, 388, 421): approve certificates (also before Conducted, 420), reissue
-  and the default certificate text. **Seed: the Director only** (421; NAVIGATU: "the Director reviews and approves the
+- ROLE.can_approve_certificates (ASSUMPTIONS 357, 361, 388, 421, 431): approve certificates (also before Conducted, 420), reissue,
+  the default certificate text and CHOOSING an activity's signatories and their titles (431: "Only the Director chooses who
+  signs.", `certificates.services.require_signatory_choice`). **Seed: the Director only** (421; NAVIGATU: "the Director reviews and approves the
   certificates"); no data migration (existing databases: switched off per role in Admin Console → Roles; migration
   accounts/0006 had given it to Director, both Project Heads and System Administrator). Seed only on create, roles screen
   switch `set_role_certificate_approval`, no last-approver guard, still ALLOWED together with can_manage_users. It does
@@ -135,8 +137,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   The list itself (add, edit, images, deactivate, defaults) is changed only with can_manage_signatories (ASSUMPTIONS 418).
   ACTIVITY_SIGNATORY (activity, signatory, slot left/right, `position_on_certificate` = optional "Title on this
   certificate"; one per slot, never the same person twice, never emptied) is changed only through
-  `set_activity_signatory` / `set_activity_signatories` / `use_current_version` (can_create_activity or
-  can_approve_certificates, unchanged by 418) and `assign_default_signatories` / `fill_empty_slots_from_defaults` (System).
+  `set_activity_signatory` / `set_activity_signatories` / `use_current_version` (can_approve_certificates ONLY, ASSUMPTIONS
+  431: `require_signatory_choice`, also `save_new_activity` when a choice comes with "Prepare the certificates now"; everyone
+  else sees the slots read only and gets the defaults) and `assign_default_signatories` / `fill_empty_slots_from_defaults` (System).
   Approval is refused until both images are there.
 - File path columns use `max_length=255`.
 
@@ -151,6 +154,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - My profile (`/accounts/profile/`, the sidebar name card, ASSUMPTIONS 390): own account only, `update_own_profile`
   (name, position) and `change_own_password` (validators, 10 wrong tries/hour, stays signed in, confirmation email).
   POSITION is a displayed job title only, NEVER a permission; managed in Admin Console → Positions (never deleted).
+  It is also the official title printed under "Prepared by" on generated reports and forms (ASSUMPTIONS 429; NO
+  position_title column): the member sets it on My profile, the System Administrator on the Members screen
+  (`accounts.services.set_member_position`, same choices, `accounts.audit` with IDs only).
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email. The invitation links to
   `SITE_URL` + `/accounts/login/`; if it cannot be emailed the member is not created (`INVITATION_NOT_SENT`, ASSUMPTIONS 371).
@@ -170,7 +176,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Activities
 - Every activity change goes through `activities/services.py` (create, update, change_status,
   add/remove resource person), also from the Django admin and the demo seed. The edit form's "Who signs the
-  certificates" goes in the same call (`signatories=` on `update_activity`; ASSUMPTIONS 365). The NEW form has the
+  certificates" goes in the same call (`signatories=` on `update_activity`; ASSUMPTIONS 365; only with
+  can_approve_certificates, else the form passes None and shows them read only, 431). The NEW form has the
   optional, unticked "Prepare the certificates now" instead (ASSUMPTIONS 420, `activities/_prepare_certificates.html`,
   `pages.prepare_section`): ticked = `signatories=`, `certificate_texts=` and `prepare_certificates=True` on
   `create_activity` / `create_activity_with_documents` (same transaction); not ticked = the defaults (the service drops
@@ -188,7 +195,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `activities.formatting.format_audit_value()`.
 - The activity PAGE form types dates and times (ASSUMPTIONS 422): `activities/typed_fields.py` (TypedDateField "June 5, 2026"
   / ISO / 06/05/2026; TypedTimeField hh:mm + `<name>_period` AM/PM; TypedDateTimeField `<name>` + `<name>_time` +
-  `<name>_period`), `components/typed_datetime.html`, `static/js/typed_dates.js` (helps typing only). The JSON API keeps ISO.
+  `<name>_period`), `components/typed_datetime.html`, `static/js/typed_dates.js` (helps typing only; ASSUMPTIONS 432:
+  nothing rewritten while typing except the colon after 4 digits, tidied on leaving (`tidyTime`), AM/PM changed only by a
+  typed a/p or a 24-hour time; opt-in `activities/tests/test_typed_time_browser.py`). The JSON API keeps ISO.
   Tests posting the page form use `conftest.typed_schedule_fields(values)`.
 - Creating: start_date not before today and registration_deadline not in the past (Manila time).
   Editing: those checks apply only to fields being changed. Only tests/demo pass `now=`.
@@ -207,6 +216,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `is_registration_open()` in activities/services.py (Step 5 must reuse them).
 - "Open for registration" = `open_for_registration()` (Scheduled, deadline, slots AND a registration form): the one query
   behind the Activities card/preset, the dashboard KPI, `/register/` and the portal (`open_activities()`) (ASSUMPTIONS 77).
+- Close / reopen registration by hand (ASSUMPTIONS 427): `ACTIVITY.registration_closed_by_hand`, changed ONLY by
+  `activities.services.set_registration_closed_by_hand` (can_create_activity, Scheduled only, History row "Registration");
+  read by `is_registration_open`, `open_for_registration` and `registration_closed_reason` ("Registration was closed by the
+  TBI.", `REGISTRATION_CLOSED_BY_TBI`, right after the status check). The deadline / slots / status / form rules stay on top.
+  Share card switch (`registration_switch`, `activities:registration_switch`); nothing in Needs attention.
+- ACTIVITY.objectives (ASSUMPTIONS 428): optional, one per line, tidied by `services.clean_objectives` (max 5000), through
+  create/update_activity (History "Objectives"); displayed only via `services.objective_lines` (Overview list, API detail).
 - Activities list cards: "Activities in total" is plain; the other three open a dialog (`components/modal.html` remote,
   `activities:card_dialog`, `pages.card_dialog` → `services.preset_list`, max 50) and never filter the list. Card number,
   dialog and the list's `?preset=` ("Show all in the list" only) all come from `preset_activities()` (ASSUMPTIONS 341).
@@ -231,6 +247,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
   that sent links writes one History row by System ("Evaluation Links": "Sent automatically to N attendees",
   `write_evaluation_link_history`); the Evaluation tab's green note reads only those (`automatic_link_sends`,
   `pages.automatic_send_notice`): staff resends are never counted as automatic.
+- REGISTRATION.designation (Designation / Position) and office_agency (Office / Agency) (ASSUMPTIONS 426): fixed columns,
+  required for every NEW registration by `register()` (max 255; public page + API, portal, later walk-ins); their labels are
+  RESERVED for form fields. Portal: office_agency pre-filled with the startup's name (API: the name when not sent). Older
+  rows: office_agency copied from "Affiliation / Organization" (migration registrations/0010), designation empty. Shown on
+  the Registrations tab, the detail, the attendance sheet and the form preview. No "Affiliation / Organization" default
+  field any more (seed); tests' `defaults` fixture adds a test-only one (`registrations/tests/conftest.OLD_FIELD`) and
+  registering in tests needs `FIXED` (`designation`, `office_agency`).
 - REGISTRATION.participant_category must be one of the activity's categories (auto when only one); the forms use
   `components/category_choice.html` (one category: a preselected radio; several: required, no default).
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
@@ -265,8 +288,16 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (incl. Conducted), active types only. Files: pdf/docx/xlsx/jpg/png, checked by real content,
   max `DOCUMENT_MAX_UPLOAD_MB`. The stored path comes from `build_file_path()` (DOCUMENT_TYPE.naming_pattern
   or `FALLBACK_NAMING_PATTERN`); never use the uploaded name in a path.
+- Uploads are APPROVED COPIES (ASSUMPTIONS 432, NAVIGATU): `services.needs_review(type, related_certificate)` is the one
+  rule; DOCUMENT_TYPE.needs_review (default False, Django admin switch) False = saved Approved at upload (`reviewed_by`
+  empty = System, `reviewed_at` = upload time), History "Documents" row + documents.audit, indexed on commit, nobody
+  notified, no Approve / Return; uploader OR can_approve_documents may replace / delete it (`is_approved_copy`,
+  `_may_change`; guards: the creation-document rule, `CITED_REFUSED` on delete, evidence keeps its own flow); every
+  replace / delete writes History + documents.audit, replace re-indexes. Complete = Approved, overdue = not Approved after
+  the due date, auto-Scheduled (431) unchanged. Migration documents/0009 approved the old waiting rows (returned ones
+  stay). The review flow below applies ONLY to types with needs_review and to certificate evidence.
 - Review state is calculated from status + `reviewed_at` (no column): For Review + empty = waiting for a
-  reviewer; For Review + set = returned (waiting for the uploader); Approved = final.
+  reviewer; For Review + set = returned (waiting for the uploader); Approved = final (except approved copies, 432).
   `approve_document` / `return_document` need can_approve_documents (403 on the page, API and review-tab URLs without
   it); approving your own upload is allowed, returning it is not (ASSUMPTIONS 344); every approval/return is logged on
   `documents.audit`. Upload and replace call `notify_approvers()` in the same transaction: a "document_waiting_for_review"
@@ -285,23 +316,25 @@ owner is a student, so explain important decisions briefly and keep the code sim
   rule in `reports.metrics._overdue`, parity test), the only one of a type is never deleted outside Draft
   (`_delete_refused_reason`). A title is required with a file on the New activity form only
   (`creation_title_error` in `check_new_documents`, ASSUMPTIONS 410). Tests posting the New activity form add
-  `conftest.creation_document_files()` (files + titles) when they need the files, and always `create_as`.
-- "Create as" (ASSUMPTIONS 417, amends 405/409): the New form's required radio Draft (default) / Scheduled
-  (`ActivityPageForm.creation_status`, `pages.create_as_section`, `activities/_create_as.html`) →
-  `create_activity_with_documents(..., status=)` (only `CREATION_STATUSES`). Scheduled = `change_status` in the same
-  transaction; a refusal rolls back everything and is `NewActivityError.status_error` (`scheduling_refused_reason(...,
-  on_new_form=True)`) under the field. After an error everything typed is kept and the files to choose again are named
-  (`new_documents_context.choose_again`). Draft → the Overview with what is still missing (`missing_creation_types`).
+  `conftest.creation_document_files()` (files + titles) when they need the files (both = created as Scheduled).
+- The documents decide the status (ASSUMPTIONS 431, replaces 417's "Create as"; no choice on the form): in
+  `create_activity_with_documents`, both creation documents among the rows (`missing_creation_types` empty) →
+  `change_status(..., "Scheduled")` in the same transaction (its own savepoint); refused for any reason = it stays a Draft
+  with its uploads, reason in `activity.not_scheduled_reason` (the success message). One or none = Draft → the Overview with
+  what is still missing. After an error everything typed is kept and the files to choose again are named
+  (`new_documents_context.choose_again`). Later: `upload_document` → `schedule_when_documents_complete` (flagged Drafts only,
+  once both are uploaded) → `activities.services.schedule_automatically` (`_move_status` by System, History "Draft →
+  Scheduled (both documents uploaded)"); a refusal never refuses the upload; the creator gets NOTIFICATION
+  `activity_scheduled` (`notify_creator_scheduled`) unless they uploaded it themselves.
 - Draft reminders (417): `send_document_reminders` also covers flagged Drafts, ONLY their Activity Design and Request Letter
   (`is_creation_type`), same rule and timing, to the creator AND every active Director
   (`notifications.services.active_directors`); Scheduled and later stay creator-only; other types / unflagged Drafts get none.
   Needs attention (`activities.attention`) already shows them on Drafts. The dashboard (S3, `document_attention`) and the
   compliance report keep leaving Drafts out.
-- Every upload waits for the Director (`notify_approvers`, in-app only, never the uploader); the Director may approve their
-  own upload (ASSUMPTIONS 344, 406).
-- New activities (the form) chosen as Scheduled: `create_activity_with_documents` → `change_status` in the same
-  transaction (History: Draft, then Draft → Scheduled); the page opens the Forms tab (ASSUMPTIONS 409, 417; Draft is the
-  form's default). API / admin / demo: Draft. On flagged activities the registration form counts only once marked ready (`FORM_TEMPLATE.ready_at`,
+- An upload of a type WITH needs_review waits for the Director (`notify_approvers`, in-app only, never the uploader); the
+  Director may approve their own upload (ASSUMPTIONS 344, 406, 432). Other uploads are approved copies (no notification).
+- New activities (the form) with both documents: `create_activity_with_documents` → `change_status` in the same
+  transaction (History: Draft, then Draft → Scheduled); the page opens the Forms tab (ASSUMPTIONS 409, 431). API / admin / demo: Draft. On flagged activities the registration form counts only once marked ready (`FORM_TEMPLATE.ready_at`,
   `mark_registration_form_ready`, Forms tab "Open registration"): the one rule `registrations.services.registration_form_ready`
   in `registration_closed_reason` and (as a query) `open_for_registration` (parity test). Until then the Share card shows
   `share.BUILD_FORM_FIRST` and no link / QR (404).
@@ -312,8 +345,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
   moves only a row still on start_date / -10); Attendance Sheet, Activity Report, Event Photos: end_date + 5 (payment
   documents, ASSUMPTIONS 425; documents/0006 moves only an Attendance Sheet still on end_date / 0).
 - "Required" is only `DOCUMENT_TYPE.is_required` (per type, never per activity); every count reads it (ASSUMPTIONS 386).
-  The Invitation Letter and the Accomplishment Report are OPTIONAL (data migrations documents/0003 and 0004, one row
-  each; uploaded ones stay, listed under Other documents). Still required: Activity Design, Request Letter, Attendance Sheet (+ Activity Report and Event Photos, 425).
+  The Invitation Letter is OPTIONAL (data migration documents/0003; uploaded ones stay, listed under Other documents).
+  The per-activity "Accomplishment Report" type is INACTIVE (ASSUMPTIONS 430, guarded data migration documents/0007; it
+  is the quarterly / semi-annual / annual report in Reports, never a DOCUMENT_TYPE): `seed_data` never creates or
+  reactivates it (`accounts.seed.RETIRED_DOCUMENT_TYPES`); `document_checklist()` lists an inactive type under Other
+  documents only where the activity has files of it (downloadable, never counted). Still required: Activity Design, Request Letter, Attendance Sheet (+ Activity Report and Event Photos, 425).
   `seed_data` sets `is_required` / the due rule only when it creates a type (reruns never undo admin changes) and adds the
   optional catch-all type `DocumentType.OTHER` ("Other"), whose documents need a title (`services.title_error`, the one
   title rule, also on the New activity form). The assistant's routing never matches "Other" from a question.
@@ -362,7 +398,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Indexing rules live only in `assistant.indexing.why_not_indexable()`: Approved activity documents,
   not `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` (Attendance Sheet: personal data), pdf/docx/xlsx with text.
   `index_document()` replaces a document's chunks in one transaction; failures keep old chunks.
-  Approval queues it on commit; `index_documents` (and the 7:30 schedule) backfills.
+  Approval queues it on commit, and so does an approved-copy upload or replace (ASSUMPTIONS 432); `index_documents` (and
+  the 7:30 schedule) backfills.
 - "Searchable" = has embeddings (`with_searchable()`), never stored.
 - Routing is OUR code (`assistant/routing.py`, ASSUMPTIONS 381, 383), in this order: missing/overdue/waiting/returned →
   Gemini with the existing record tools only (`tools.STATUS_TOOL_SPECS`); says/summary/according to (+ a file word or
@@ -737,8 +774,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   list for every chart, an empty state for every list, a loading indicator (`htmx-indicator`) for HTMX swaps.
 
 ## Business rules (enforce in services.py, not in views)
-- Registration closes at `max_slots` or `registration_deadline`. No walk-ins, no approval
-  step: everyone who registers is in.
+- Registration closes at `max_slots` or `registration_deadline`, or when the TBI closes it by hand (ASSUMPTIONS 427).
+  No walk-ins, no approval step: everyone who registers is in.
 - Evaluation opens after the activity's `end_date`, only for registrations with
   `attendance_confirmed = True`, and closes at `evaluation_deadline`. Never anonymous.
 - A certificate is emailed only when its status is Approved, its delivery method is email,
@@ -921,6 +958,19 @@ owner is a student, so explain important decisions briefly and keep the code sim
   activities ending from 2026-11-22) + "Download payment packet" (425). Database: activities 0011
   (evaluation_deadline nullable), documents 0006 (data). ERD: ACTIVITY.evaluation_deadline nullable, DOCUMENT_TYPE.name
   note; still 34 tables.
+- NAVIGATU UAT round 2, part 2 (2026-11-24): Designation / Position and Office / Agency on every registration (426); close /
+  reopen registration by hand (427); activity objectives (428); the member's POSITION printed under "Prepared by", set by
+  the Admin too (429, no new column); the per-activity Accomplishment Report type inactive (430). Database: activities 0012,
+  registrations 0009 + 0010 (data), documents 0007 (data). ERD: ACTIVITY.objectives, ACTIVITY.registration_closed_by_hand,
+  REGISTRATION.designation, REGISTRATION.office_agency; still 34 tables.
+- NAVIGATU owner decisions (2026-11-24): only the Director (can_approve_certificates) chooses an activity's signatories and
+  titles (service rule, read only for everyone else; text editing and preparing unchanged; a text change after approval
+  cancels it); no "Create as": both creation documents = Scheduled at creation, a Draft is Scheduled by the System when the
+  last one is uploaded (creator notified, `activity_scheduled`) (431). No database, migration or ERD column change; ERD
+  notes only.
+- Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
+  overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
+  the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
 
 ## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the

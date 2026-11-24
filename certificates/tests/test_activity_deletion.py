@@ -1,5 +1,5 @@
-"""Deleting an activity (ASSUMPTIONS 389): the can_delete_activities flag, the refusals (Issued certificate, Approved
-document or evidence, cited document, wrong title), what is deleted and kept, the stored files removed after the commit,
+"""Deleting an activity (ASSUMPTIONS 389, 432): the can_delete_activities flag, the refusals (Issued certificate, approved
+certificate evidence, cited document, wrong title; approved documents are deleted with it), what is deleted and kept, the stored files removed after the commit,
 the ACTIVITY_DELETION record, certificate numbers never given again, queued tasks for deleted certificates, the page
 (menu, dialog, POST) and AI answers that point to a deleted activity or file."""
 
@@ -47,7 +47,8 @@ def stored(field_file) -> bool:
 @pytest.fixture
 def full(generated, director, evaluate):
     """A Conducted activity with 3 registrations (2 attended), 1 evaluation, 3 certificates (2 waiting, 1 approved not
-    issued, with a PDF), 1 document waiting for review, 1 evidence file, a notification and History rows."""
+    issued, with a PDF), 1 document (an approved copy, ASSUMPTIONS 432), 1 evidence file waiting for review, a
+    notification and History rows."""
     activity, people = generated
     evaluate(people[0])
     certificates = list(Certificate.objects.filter(activity=activity).order_by("pk"))
@@ -93,17 +94,38 @@ def test_refused_with_an_issued_certificate(full, sysadmin) -> None:
     assert Activity.objects.filter(pk=activity.pk).exists() and not ActivityDeletion.objects.exists()
 
 
-def test_refused_with_an_approved_document_or_evidence(full, sysadmin, director) -> None:
+def test_approved_documents_never_block_but_approved_evidence_does(full, sysadmin, director) -> None:
+    """ASSUMPTIONS 432 (owner): approved copies are deleted with the activity; certificate evidence keeps its approval."""
     activity = full["activity"]
-    document_services.approve_document(director, full["document"])
+    assert Document.objects.get(pk=full["document"].pk).status.status_name == "Approved"  # an approved copy
+    assert deletion.deletion_refused_reason(activity) is None
     document_services.approve_document(director, full["evidence"])
     assert deletion.deletion_refused_reason(activity) == (
-        "This activity can't be deleted: it has 2 approved documents. Real records are kept.")
+        "This activity can't be deleted: it has 1 approved certificate evidence file. Real records are kept.")
     Certificate.objects.filter(pk=full["certificates"][0].pk).update(status=S.ISSUED)
-    assert "1 issued certificate and 2 approved documents" in deletion.deletion_refused_reason(activity)
+    assert "1 issued certificate and 1 approved certificate evidence file" in deletion.deletion_refused_reason(activity)
     with pytest.raises(ValidationError):
         deletion.delete_activity(sysadmin, activity, activity.title)
     assert stored(Document.objects.get(pk=full["document"].pk).file_path)
+
+
+def test_approved_copies_are_deleted_with_their_files_and_counted(make_member, sysadmin, valid_data,
+                                                                  django_capture_on_commit_callbacks) -> None:
+    from activities import services as activity_services
+
+    director = make_member("Director", email="d3@example.com")
+    activity = activity_services.create_activity(director, valid_data(title="Made by mistake"))
+    documents = [document_services.upload_document(director, activity, DocumentType.objects.get(name=name), make_file(),
+                                                   name) for name in ("Activity Design", "Request Letter")]
+    files = [d.file_path for d in documents]
+    summary = deletion.deletion_summary(activity)
+    assert (summary.documents, summary.documents_approved, summary.document_files) == (2, 2, 2)
+    assert "2 documents (approved) and their 2 files" in deletion.what_will_be_deleted(summary)
+    with django_capture_on_commit_callbacks(execute=True):
+        record = deletion.delete_activity(sysadmin, activity, "Made by mistake")
+    assert not Document.objects.filter(pk__in=[d.pk for d in documents]).exists()
+    assert not any(f.storage.exists(f.name) for f in files)
+    assert (record.counts["documents"], record.counts["documents_approved"], record.counts["document_files"]) == (2, 2, 2)
 
 
 def test_refused_with_a_document_an_ai_answer_cites(full, sysadmin) -> None:
@@ -156,7 +178,8 @@ def test_delete_removes_every_record_and_file_and_keeps_a_record(full, sysadmin,
     record.refresh_from_db()
     assert (record.deleted_activity_id, record.activity_title, record.deleted_by) == (activity_id, title, sysadmin)
     expected = {"registrations": 3, "attended": 2, "evaluations": 1, "certificates_waiting": 2,
-                "certificates_approved": 1, "documents": 1, "evidence": 1, "files": 3, "history": history}
+                "certificates_approved": 1, "documents": 1, "documents_approved": 1, "document_files": 1,
+                "evidence": 1, "files": 3, "history": history}
     assert {key: record.counts[key] for key in expected} == expected
     assert record.counts["forms"] >= 1 and record.counts["notifications"] >= 1
     assert record.certificate_numbers == ", ".join(numbers)
@@ -244,7 +267,7 @@ def test_the_dialog_lists_what_goes_with_it(full, sysadmin) -> None:
     assert "3 registrations (2 attended)" in lines and "1 evaluation" in lines
     assert "2 certificates waiting for approval" in lines
     assert "1 approved certificate not yet issued (resource persons' copies may already be printed)" in lines
-    assert "1 document waiting for review or returned" in lines and "1 certificate evidence file" in lines
+    assert "1 document (approved) and its 1 file" in lines and "1 certificate evidence file" in lines
     assert "3 stored files removed from the server" in lines
     assert 'name="title"' in html and "Type the activity's title to confirm" in html
 

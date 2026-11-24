@@ -398,11 +398,13 @@ def maturity_stages() -> list[str]:
 
 
 def register_as_startup(
-    startup: Startup, activity: Activity, *, participant_category=None, answers: dict | None = None,
-    now: datetime | None = None,
+    startup: Startup, activity: Activity, *, designation: str = "", office_agency: str | None = None,
+    participant_category=None, answers: dict | None = None, now: datetime | None = None,
 ) -> Registration:
     """A logged-in startup registers: the same service and rules as public registration (Step 5),
-    with name, email and contact number from the startup's profile, and registration.startup set."""
+    with name, email and contact number from the startup's profile, and registration.startup set.
+    Designation and Office / Agency are required like everywhere (ASSUMPTIONS 426); `office_agency` None (not sent)
+    = the startup's name (the portal page pre-fills it, editable); an empty string is refused like on the public page."""
     from registrations.services import register  # registrations already depends on startups.models
 
     if not startup.is_active:
@@ -412,6 +414,8 @@ def register_as_startup(
         name=startup.name,
         email=startup.email,
         contact_number=startup.contact_number,
+        designation=designation,
+        office_agency=startup.name if office_agency is None else office_agency,
         participant_category=participant_category,
         answers=answers,
         now=now,

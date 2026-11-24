@@ -76,6 +76,7 @@ def test_admin_staff_still_cannot_approve_documents(staff, director, valid_data)
     from documents.tests.conftest import make_file
 
     activity = services.create_activity(director, valid_data())
+    DocumentType.objects.filter(name="Request Letter").update(needs_review=True)  # a reviewed type (ASSUMPTIONS 432)
     document = document_services.upload_document(director, activity, DocumentType.objects.get(name="Request Letter"),
                                                  make_file())
     with pytest.raises(PermissionDenied):

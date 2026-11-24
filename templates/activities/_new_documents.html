@@ -1,7 +1,7 @@
 {% comment %}
-"Documents" on the New activity form (ASSUMPTIONS 327–328, 405, 417). Context `docs` = documents.pages.new_documents_context:
+"Documents" on the New activity form (ASSUMPTIONS 327–328, 405, 417, 431). Context `docs` = documents.pages.new_documents_context:
 first the fixed Activity Design and Request Letter (`docs.required`, activities/_required_document_row.html; optional,
-needed for "Create as: Scheduled"), then the other rows: only the types documents.services.types_allowed_at_creation()
+with both the activity is created as Scheduled, ASSUMPTIONS 431), then the other rows: only the types documents.services.types_allowed_at_creation()
 offers (never Attendance Sheet, never the two fixed ones), the posted rows with their errors, the file limits. Other
 rows are added and removed with Alpine; without JavaScript one empty row is shown. Browsers clear chosen files after an
 error: the amber note names each file to choose again (`docs.choose_again`).
@@ -13,9 +13,9 @@ error: the amber note names each file to choose again (`docs.choose_again`).
                    remove(key) { this.added.splice(this.added.indexOf(key), 1); this.count--; this.$refs.add.focus() },
                    removeRow(button) { button.closest('[data-document-row]').remove(); this.count--; this.$refs.add.focus() } }">
   {% if docs.required %}
-    {% include "components/section_header.html" with id="section-documents" title="Documents" subtitle="Upload the Activity Design and the Request Letter now if you have them: both are needed before the activity can be Scheduled. Every document waits for the Director's approval like any upload." %}
+    {% include "components/section_header.html" with id="section-documents" title="Documents" subtitle="Upload the approved copies. With the Activity Design and the Request Letter, the activity is Scheduled when you create it. Without them it stays Draft until both are uploaded." %}
   {% else %}
-    {% include "components/section_header.html" with id="section-documents" title="Documents (optional)" subtitle="Upload documents you already have. Each one waits for review like any upload; you can also add documents later on the activity's Documents tab." %}
+    {% include "components/section_header.html" with id="section-documents" title="Documents (optional)" subtitle="Upload the approved copies you already have; you can also add documents later on the activity's Documents tab." %}
   {% endif %}
   {% if docs.choose_again %}
     <div class="mb-4 flex gap-3 rounded-2xl border border-warning-line bg-warning-soft px-4 py-3 text-sm text-amber-900" role="alert">

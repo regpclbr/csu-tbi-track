@@ -9,13 +9,13 @@ deactivated position stays on the members who have it and is no longer offered).
 <section class="card p-6" aria-labelledby="positions-title">
   <div class="mb-6">
     <h2 id="positions-title" class="card-title">Positions</h2>
-    <p class="card-subtitle">Job titles members choose on My profile and see under their name. A position is only a title: what a member may do comes from their role.</p>
+    <p class="card-subtitle">Official job titles (for example Admin Aide VI (Clerk III)). A member chooses theirs on My profile, or you set it on the Members screen; it is shown under their name and printed under “Prepared by” on reports and forms. A position is only a title: what a member may do comes from their role.</p>
   </div>
   <form method="post" action="{% url 'accounts:console_position_add' %}" class="mb-6 flex flex-wrap items-end gap-3" novalidate>
     {% csrf_token %}
     <div class="min-w-0 grow basis-64">
       <label for="position-new" class="text-sm font-semibold text-ink">New position</label>
-      <input id="position-new" name="name" maxlength="100" autocomplete="off" placeholder="e.g. Incubation Manager" class="field-input mt-2">
+      <input id="position-new" name="name" maxlength="100" autocomplete="off" placeholder="e.g. University Research Associate I" class="field-input mt-2">
     </div>
     <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}Add position</button>
   </form>

@@ -94,6 +94,8 @@ def registration_json(registration: Registration) -> dict:
         "start_date": activity.start_date,
         "end_date": activity.end_date,
         "participant_category": registration.participant_category.name,
+        "designation": registration.designation,
+        "office_agency": registration.office_agency,
         "registered_at": registration.registration_date,
         "attendance_confirmed": registration.attendance_confirmed,
         "confirmation_method": registration.confirmation_method,
@@ -230,15 +232,19 @@ def portal_open_activities(request: HttpRequest) -> JsonResponse:
 @require_POST
 @api_errors
 def portal_register(request: HttpRequest, activity_id: int) -> JsonResponse:
-    """POST {"participant_category": id (optional if only one), "answers": {"<field_id>": value},
+    """POST {"designation": "...", "office_agency": "..." (optional: the startup's name when not sent; ASSUMPTIONS 426),
+    "participant_category": id (optional if only one), "answers": {"<field_id>": value},
     "privacy_consent": true (required, the privacy notice /privacy/)}"""
     activity = registration_services.get_public_activity(activity_id)  # Scheduled only, like the public page
     if activity is None:
         raise Http404("Activity not found.")
     data = _json_body(request)
     registration_services.check_privacy_consent(data.get(registration_services.PRIVACY_CONSENT_FIELD))
+    office_agency = data.get("office_agency")
     registration = services.register_as_startup(
-        request.startup, activity, participant_category=data.get("participant_category"), answers=data.get("answers") or {}
+        request.startup, activity, designation=str(data.get("designation", "")),
+        office_agency=None if office_agency is None else str(office_agency),
+        participant_category=data.get("participant_category"), answers=data.get("answers") or {},
     )
     return JsonResponse({"registration": registration_json(registration)}, status=201)
 

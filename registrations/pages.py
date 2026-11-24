@@ -213,9 +213,11 @@ def evaluation_detail(member, registration: Registration) -> dict | None:
 
 
 def attendance_sheet_rows(activity: Activity) -> list[dict]:
-    """The printed attendance sheet: name and category only (no email or contact number), by name."""
+    """The printed attendance sheet: name, designation, office / agency (ASSUMPTIONS 426) and category (no email or
+    contact number), by name."""
     return [
-        {"name": registration.name, "category": registration.participant_category.name}
+        {"name": registration.name, "designation": registration.designation, "office_agency": registration.office_agency,
+         "category": registration.participant_category.name}
         for registration in services.list_registrations(activity)
     ]
 

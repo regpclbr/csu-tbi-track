@@ -50,6 +50,8 @@ The table scrolls sideways inside the card on narrow screens.
                 </th>
               {% endif %}
               <th scope="col" class="px-3 py-3">Name</th>
+              <th scope="col" class="px-3 py-3">Designation / Position</th>
+              <th scope="col" class="px-3 py-3">Office / Agency</th>
               <th scope="col" class="px-3 py-3">Email</th>
               <th scope="col" class="px-3 py-3">Contact number</th>
               <th scope="col" class="px-3 py-3">Category</th>
@@ -68,6 +70,8 @@ The table scrolls sideways inside the card on narrow screens.
                   <td class="px-3 py-3"><input type="checkbox" name="registration_ids" value="{{ registration.pk }}" x-model="selected" class="size-4 accent-primary" aria-label="Select {{ registration.name }}"></td>
                 {% endif %}
                 <th scope="row" class="min-w-44 px-3 py-3 font-semibold text-ink">{{ registration.name }}</th>
+                <td class="min-w-36 px-3 py-3 text-slate-700">{{ registration.designation|default:"–" }}</td>
+                <td class="min-w-44 px-3 py-3 text-slate-700">{{ registration.office_agency|default:"–" }}</td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.email }}</td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.contact_number|default:"–" }}</td>
                 <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ registration.participant_category.name }}</td>

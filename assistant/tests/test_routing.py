@@ -82,7 +82,7 @@ STATUS_QUESTIONS = [
 ]
 CONTENT_QUESTIONS = [
     "What does the activity design of the Bootcamp say about the budget?",
-    "Summarize the accomplishment report of the Market Research Training",
+    "Summarize the activity report of the Market Research Training",  # no Accomplishment Report type (430)
     "What is the budget?",
     "What are the objectives of the Ideation Bootcamp according to the documents?",
     "What did the report mention about the participants' feedback?",

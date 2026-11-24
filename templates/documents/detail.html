@@ -38,7 +38,9 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
       <div class="sm:col-span-2">
         <dt class="font-semibold text-ink">Review</dt>
         <dd class="mt-1 text-slate-700">
-          {% if document.review_state == "approved" %}
+          {% if document.review_state == "approved" and not document.reviewed_by_id %}
+            Uploaded as an approved copy on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time> (approved by System). The uploader or the Director can replace or delete it.
+          {% elif document.review_state == "approved" %}
             Approved by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. Approved documents are final.
           {% elif document.review_state == "returned" %}
             Returned by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. The reason was sent to {{ document.uploaded_by.name }} as a notification. It can be reviewed again after the file is replaced.

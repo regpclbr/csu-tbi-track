@@ -149,7 +149,9 @@ class Command(BaseCommand):
         activity_services.change_status(self.member, activity, "Scheduled")
         form = registration_services.get_form(activity, FormType.REGISTRATION)
         answers = {str(f.pk): sample_answer(f) for f in form.fields.all()}
-        people = [registration_services.register(activity, name=n, email=e, answers=answers, now=now) for n, e in WALKTHROUGH_PEOPLE]
+        people = [registration_services.register(activity, name=n, email=e, designation="Participant",
+                                                 office_agency="Demo Office", answers=answers, now=now)
+                  for n, e in WALKTHROUGH_PEOPLE]
         speaker = activity_services.create_resource_person(self.member, f"Dr. Walkthrough Speaker {stamp}")
         activity_services.add_resource_person(self.member, activity, speaker, topic="Pitch Decks That Work")
         activity_services.change_status(self.member, activity, "Ongoing")

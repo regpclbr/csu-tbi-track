@@ -120,3 +120,61 @@ def test_the_form_has_labels_the_calendar_button_and_the_suggestion_list(directo
     assert 'inputmode="numeric"' in html and 'aria-label="Start time: AM or PM"' in html
     assert 'aria-label="Registration deadline: date"' in html and 'name="registration_deadline_period"' in html
     assert "js/typed_dates.js" in html
+
+
+# --- Typed freely (ASSUMPTIONS 432): every way of typing a time, in every time box, New and Edit --------------------
+
+FREE_TIMES = [("11:00", time(11, 0)), ("1100", time(11, 0)), ("1:30", time(1, 30)), ("130", time(1, 30)),
+              ("9", time(9, 0)), ("12:15", time(0, 15)), ("01:40", time(1, 40))]
+
+
+@pytest.mark.parametrize(("text", "morning"), FREE_TIMES)
+@pytest.mark.parametrize("period", ["AM", "PM"])
+def test_every_way_of_typing_a_time_is_read_with_its_am_pm(text, morning, period) -> None:
+    """The server rule (parse_typed_time) reads what the box sends without any script, with the select's AM/PM."""
+    expected = morning if period == "AM" else time(morning.hour + 12 if morning.hour < 12 else 12, morning.minute)
+    assert parse_typed_time(text, period) == expected
+
+
+TIME_BOXES = {"start_time": "start_time", "end_time": "end_time",
+              "registration_deadline": "registration_deadline_time", "evaluation_deadline": "evaluation_deadline_time"}
+
+
+@pytest.mark.parametrize(("text", "morning"), FREE_TIMES)
+def test_every_time_box_reads_pm(roles, text, morning) -> None:
+    """Each of the four boxes (start, end, registration and evaluation deadline) sends <box> + <field>_period."""
+    data = {"start_date": "June 5, 2030", "end_date": "June 6, 2030", "registration_deadline": "June 1, 2030",
+            "evaluation_deadline": "June 20, 2030"}
+    for field, box in TIME_BOXES.items():
+        data[box], data[f"{field}_period"] = text, "PM"
+    form = ActivityPageForm(data=data)
+    form.is_valid()
+    pm = time(morning.hour % 12 + 12, morning.minute)
+    for field in TIME_BOXES:
+        assert field not in form.errors, (field, form.errors.get(field))
+    assert (form.cleaned_data["start_time"], form.cleaned_data["end_time"]) == (pm, pm)
+    for field in ("registration_deadline", "evaluation_deadline"):
+        assert timezone.localtime(form.cleaned_data[field]).time() == pm
+
+
+def test_new_and_edit_forms_save_every_time_box_with_pm(director, login, post_data) -> None:
+    start = timezone.localdate() + timedelta(days=40)
+    data = {**post_data(title="All PM"), "start_date": f"{start:%B} {start.day}, {start.year}",
+            "end_date": f"{start:%B} {start.day}, {start.year}", "start_time": "1:30", "start_time_period": "PM",
+            "end_time": "0340", "end_time_period": "PM", "registration_deadline_time": "1100",
+            "registration_deadline_period": "PM", "evaluation_deadline": f"{start + timedelta(days=5):%B %d, %Y}",
+            "evaluation_deadline_time": "9", "evaluation_deadline_period": "PM"}
+    client = login(director)
+    assert client.post(CREATE, data).status_code == 302
+    activity = Activity.objects.get(title="All PM")
+    assert (activity.start_time, activity.end_time) == (time(13, 30), time(15, 40))
+    assert timezone.localtime(activity.registration_deadline).time() == time(23, 0)
+    assert timezone.localtime(activity.evaluation_deadline).time() == time(21, 0)
+    edit = reverse("activities:edit", args=[activity.pk])
+    data.update(title="All PM edited", start_time="130", end_time="04:15", registration_deadline_time="10:00",
+                evaluation_deadline_time="0800")
+    assert client.post(edit, data).status_code == 302
+    activity.refresh_from_db()
+    assert (activity.start_time, activity.end_time) == (time(13, 30), time(16, 15))
+    assert timezone.localtime(activity.registration_deadline).time() == time(22, 0)
+    assert timezone.localtime(activity.evaluation_deadline).time() == time(20, 0)

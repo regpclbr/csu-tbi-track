@@ -21,7 +21,7 @@ def varied(make_activity, register, add_document, make_certificate_row):
     """Activities in every status, with approved, waiting, returned, missing and evidence documents,
     an inactive required type and an optional type."""
     past = make_activity("Past, complete", start=date(2026, 5, 4))
-    for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Accomplishment Report"):
+    for name in ("Invitation Letter", "Activity Design", "Request Letter", "Attendance Sheet", "Pre-registration Form"):
         add_document(past, name)
 
     mixed = make_activity("Past, mixed", start=date(2026, 9, 1), end=date(2026, 9, 2))
