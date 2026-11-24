@@ -9,7 +9,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from activities.models import Activity, ActivityStatus, ActivityType
+from activities.models import FundSource, Activity, ActivityStatus, ActivityType
 from certificates.models import Certificate
 from documents.models import DocumentStatus
 from documents.services import review_queue
@@ -332,7 +332,7 @@ def test_recent_changes_come_from_the_audit_log(director, login, roles) -> None:
         "participant_categories": [ParticipantCategory.objects.get(name="Faculty")], "start_date": start, "end_date": start,
         "start_time": time(8, 0), "end_time": time(17, 0), "venue": "Hall A", "max_slots": 10,
         "registration_deadline": timezone.now() + timedelta(days=10), "evaluation_deadline": timezone.now() + timedelta(days=30),
-        "budget_amount": Decimal("100.00"),
+        "fund_source": FundSource.objects.get(code="RAF"),  # ASSUMPTIONS 433
     })
     activity_services.update_activity(director, activity, {"venue": "TBI Lounge"})
     html = login(director).get(URL).content.decode()

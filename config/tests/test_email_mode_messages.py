@@ -13,7 +13,7 @@ from django.utils import timezone
 from accounts import system_status
 from accounts.models import TBIMember
 from activities import services as activity_services
-from activities.models import ActivityType, ParticipantCategory
+from activities.models import FundSource, ActivityType, ParticipantCategory
 from config.mail import CONSOLE_MODE_NOTICE, email_sent_message, prints_emails
 from registrations import services as registration_services
 from startups.models import Startup
@@ -93,7 +93,7 @@ def test_evaluation_links(mode, make_member, monkeypatch) -> None:
         "start_time": time(8, 0), "end_time": time(17, 0), "venue": "CSU Hall", "max_slots": 30,
         "registration_deadline": timezone.make_aware(datetime.combine(start - timedelta(days=2), time(17))),
         "evaluation_deadline": timezone.make_aware(datetime.combine(start + timedelta(days=7), time(17))),
-        "budget_amount": Decimal("0"),
+        "fund_source": FundSource.objects.get(code="RAF"),  # ASSUMPTIONS 433
     })
     monkeypatch.setattr(registration_services, "send_evaluation_links", lambda member, activity, **kwargs: 2)
     response = logged_in(director).post(reverse("registrations:send_links", args=[activity.pk]), follow=True)

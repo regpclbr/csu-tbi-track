@@ -14,7 +14,7 @@ from . import metrics
 from .metrics import ReportFilters
 
 # Column kinds: how a value is formatted (PDF) and which number format it gets (Excel).
-# MONEY has an Excel format ("₱"#,##0.00) but no report column uses it yet.
+# MONEY: "₱"#,##0.00 in Excel, ₱1,234.50 in the PDF (the budget, ASSUMPTIONS 433).
 TEXT, INT, PERCENT, DECIMAL, DATE, MONEY = "text", "int", "percent", "decimal", "date", "money"
 
 
@@ -110,6 +110,7 @@ SECTIONS: dict[str, str] = {
     "by_category": "By participant category",
     "category_by_activity": "Participants by category per activity",
     "monthly": "Per month",
+    "budget": "Budget by fund source",  # ASSUMPTIONS 433
     "evaluation": "Evaluation results",
     "documents": "Document compliance",
     "certificates": "Certificates",
@@ -127,7 +128,8 @@ class ReportType:
 REPORT_TYPES: dict[str, ReportType] = {
     "accomplishment": ReportType(
         "Accomplishment Report",
-        ("summary", "activities", "by_type", "by_category", "category_by_activity", "monthly", "evaluation"), main=True,
+        ("summary", "activities", "by_type", "by_category", "category_by_activity", "monthly", "budget", "evaluation"),
+        main=True,
     ),
     "participation": ReportType(
         "Participation Report", ("summary", "by_category", "category_by_activity", "monthly", "startups"), main=True
@@ -319,6 +321,20 @@ def _monthly(filters: ReportFilters, summary: dict) -> Section:
     )
 
 
+BUDGET_NOTE = ("The budget is copied from each activity's Activity Design (approved on paper): the sum of its budget "
+               "lines. \"Not set\": an older activity whose fund source was never chosen.")
+
+
+def _budget(filters: ReportFilters, summary: dict) -> Section:
+    """Budget by fund source (ASSUMPTIONS 433): metrics.budget_by_fund_source (N20); the total row is N1 and N19, never
+    the rows added up here."""
+    rows = [[r["fund_source"], r["activities"], r["total"]] for r in metrics.budget_by_fund_source(filters)]
+    columns = [Column("Fund source"), Column("Activities", INT), Column("Total budget", MONEY)]
+    total = ["Total", summary["activities_conducted"], metrics.period_budget_total(filters)]
+    return Section("budget", SECTIONS["budget"],
+                   tables=[Table("Budget by fund source", columns, rows, total=total)], note=BUDGET_NOTE)
+
+
 def _evaluation(filters: ReportFilters) -> Section:
     data = metrics.evaluation_results(filters)
     rows = [[q["question"], q["average"], q["answers"]] for q in data["questions"]]
@@ -420,6 +436,7 @@ def build_content(
         "by_category": lambda: _by_category(filters, summary),
         "category_by_activity": lambda: _category_by_activity(filters),
         "monthly": lambda: _monthly(filters, summary),
+        "budget": lambda: _budget(filters, summary),
         "evaluation": lambda: _evaluation(filters),
         "documents": lambda: _documents(filters, now),
         "certificates": lambda: _certificates(filters, summary, today),

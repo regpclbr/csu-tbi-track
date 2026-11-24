@@ -142,6 +142,14 @@ owner is a student, so explain important decisions briefly and keep the code sim
   else sees the slots read only and gets the defaults) and `assign_default_signatories` / `fill_empty_slots_from_defaults` (System).
   Approval is refused until both images are there.
 - File path columns use `max_length=255`.
+- Activity budget (ASSUMPTIONS 433; already approved on paper in the Activity Design, NO approval in the system):
+  FUND_SOURCE (RAF/IGF/TRF/BRF) and BUDGET_CATEGORY are Django-admin lists (never deleted); BUDGET_LINE rows and
+  ACTIVITY.fund_source (required when creating, never cleared; old rows "Not set") / fund_account. All rules in
+  `activities/budget.py` (`clean_lines`, `line_total` = quantity × days × unit price half-up, Decimal only, at most 2
+  decimal places for quantity and price, `save_lines`). ACTIVITY.budget_amount = the grand total, written ONLY by
+  `save_lines` (a typed budget_amount is refused: `BUDGET_TYPED`). Lines go through create/update_activity as
+  `budget_lines` (History "Budget", "Budget Amount", "Fund Source", "Fund Account"). Display: `budget_summary` /
+  `budget_table` (the Activity Report's Running Budget, Prompt 6). 37 tables.
 
 ## Login and permissions
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
@@ -404,7 +412,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Routing is OUR code (`assistant/routing.py`, ASSUMPTIONS 381, 383), in this order: missing/overdue/waiting/returned →
   Gemini with the existing record tools only (`tools.STATUS_TOOL_SPECS`); says/summary/according to (+ a file word or
   type) → `search_approved_documents` (`CONTENT_TOOL_SPECS`); file word or DOCUMENT_TYPE + activity/period/type →
-  find files; activity word + period/status/count/list → activities; else Gemini with every tool. Types are matched
+  find files; activity word + period/status/count/list → activities; budget words + a named activity (no other content/file word) → our
+  `listings.budget_answer` (ASSUMPTIONS 433, checked before content; record tool `get_activity_budget`); else Gemini
+  with every tool. Types are matched
   against their tables (never a fixed list). Add a phrasing test in `assistant/tests/test_routing.py` for every change.
 - Activities and find-files answers are written by `assistant/listings.py` without Gemini (work without the key; the page
   shows "The AI is turned off…" via `gemini.is_configured()`). Periods only through `assistant/periods.py` (`parse_period`; the
@@ -538,6 +548,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   (subqueries/EXISTS so joins never multiply); the dashboard query count is fixed (test allows 20).
 - Reports need both dates, exactly YYYY-MM-DD, end ≥ start (`metrics.parse_filters(dates_required=True)`); no conducted
   activities → "No conducted activities in this period." instead of empty tables (ASSUMPTIONS 213).
+- Budget (ASSUMPTIONS 433): N19 `period_budget_total`, N20 `budget_by_fund_source`; section `budget` ("Budget by fund
+  source", default in the Accomplishment report; MONEY columns).
 - "Period" numbers: Conducted activities with `end_date` in the range (+ optional activity type). S1 (by status)
   uses `start_date` and includes Draft. "Now" cards (S2–S6) ignore the range, respect the type; each card has `scope`.
 - Document compliance is SQL with the rules of `document_checklist()`; `test_compliance_parity.py` must keep passing.
@@ -968,6 +980,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   cancels it); no "Create as": both creation documents = Scheduled at creation, a Draft is Scheduled by the System when the
   last one is uploaded (creator notified, `activity_scheduled`) (431). No database, migration or ERD column change; ERD
   notes only.
+- Activity budget (2026-11-24, NAVIGATU UAT): fund source + account, budget lines with server totals, Overview Budget
+  card, budget by fund source in the Accomplishment report, assistant budget answer (433). Database: activities 0013
+  (FUND_SOURCE, BUDGET_CATEGORY, BUDGET_LINE, ACTIVITY.fund_source / fund_account) + 0014 (data); 37 tables.
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.

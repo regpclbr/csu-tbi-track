@@ -19,6 +19,9 @@ from .models import (
     ActivityResourcePerson,
     ActivityStatus,
     ActivityType,
+    BudgetCategory,
+    BudgetLine,
+    FundSource,
     ParticipantCategory,
     ResourcePerson,
 )
@@ -35,6 +38,38 @@ class ActivityStatusAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 class ActivityTypeAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
     list_display = ("name", "is_active", "created_at")
     list_filter = ("is_active",)
+
+
+@admin.register(FundSource)
+class FundSourceAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+    """ASSUMPTIONS 433: editable, never deleted (deactivate it); activities keep theirs (PROTECT)."""
+
+    list_display = ("code", "name", "sort_order", "is_active")
+    list_filter = ("is_active",)
+
+
+@admin.register(BudgetCategory)
+class BudgetCategoryAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
+    """ASSUMPTIONS 433: editable, never deleted (deactivate it); budget lines keep theirs (PROTECT)."""
+
+    list_display = ("name", "sort_order", "is_active")
+    list_filter = ("is_active",)
+
+
+class BudgetLineInline(admin.TabularInline):
+    """View only (ASSUMPTIONS 433): the lines are changed on the activity form (activities.budget.save_lines, History)."""
+
+    model = BudgetLine
+    extra = 0
+    can_delete = False
+    fields = ("category", "particulars", "quantity", "unit", "days", "unit_price", "line_total")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
 
 
 class ParticipantCategoryForm(forms.ModelForm):
@@ -169,20 +204,20 @@ class ActivityAdmin(ActivityDataAdminMixin, NoDeleteAdminMixin, admin.ModelAdmin
     ]
 
     def get_inlines(self, request, obj=None):
-        # Resource persons can only be linked once the activity exists.
-        return [ActivityResourcePersonInline] if obj is not None else []
+        # Resource persons can only be linked once the activity exists; the budget lines are shown (ASSUMPTIONS 433).
+        return [ActivityResourcePersonInline, BudgetLineInline] if obj is not None else []
 
     def get_fields(self, request, obj=None):
         if obj is None:
             return services.EDITABLE_FIELDS
-        return ("current_status", *services.EDITABLE_FIELDS, "created_by")
+        return ("current_status", *services.EDITABLE_FIELDS, "budget_amount", "created_by")
 
     def get_readonly_fields(self, request, obj=None):
         if obj is None:
             return ()
         if _is_conducted(obj):  # Conducted is read-only
-            return ("current_status", *services.EDITABLE_FIELDS, "created_by")
-        return ("current_status", "created_by")
+            return ("current_status", *services.EDITABLE_FIELDS, "budget_amount", "created_by")
+        return ("current_status", "budget_amount", "created_by")  # budget_amount = the lines' total (433)
 
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related("participant_categories")

@@ -2182,3 +2182,61 @@ REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and
        keys, no schema change). Tests: `certificates/tests/test_activity_deletion.py`.
      - **ERD:** DOCUMENT_TYPE gets `needs_review` (boolean, default false). 34 tables.
      - Tests: `documents/tests/test_approved_copies.py`; review-flow tests switch needs_review on for their types.
+
+## NAVIGATU UAT: the activity budget (2026-11-24)
+
+433. **Budget lines, fund source and account; no budget approval in the system** (NAVIGATU UAT; owner decisions
+     2026-11-24). The budget is already approved on paper inside the Activity Design: staff only copy it in. No approval
+     status, notification or Needs attention item for the budget. *(Pending confirmation by NAVIGATU, see TBI_QUESTIONS.)*
+     - **Database (34 -> 37 tables):** FUND_SOURCE (`fund_source_id`, `code` unique, `name`, `is_active`, `sort_order`,
+       `created_at`; RAF – Regular Agency Fund, IGF – Internally Generated Fund, TRF – Thrust Fund, BRF – Business Related
+       Fund), BUDGET_CATEGORY (`budget_category_id`, `name` unique, `is_active`, `sort_order`, `created_at`; Meals/Snacks,
+       Honorarium, Supplies, Venue, Transportation, Printing, Other), BUDGET_LINE (`budget_line_id`, `activity` FK CASCADE,
+       `category` FK PROTECT, `particulars` max 255, `quantity` DECIMAL(10,2) > 0, `unit` max 30, `days` integer >= 1
+       (default 1), `unit_price` DECIMAL(12,2) >= 0, `line_total` DECIMAL(12,2), `sort_order`, `created_at`; check
+       constraints), and ACTIVITY.`fund_source` (FK PROTECT, nullable only for older rows) + ACTIVITY.`fund_account` (max
+       255, blank). Migrations `activities/0013` (schema) and `0014` (data: the two lists, created only when missing, and
+       one line "Unitemized (previous total)" (Other, 1 lot × 1 day × the old total) for every activity with a
+       budget_amount above 0 and no lines; none for 0; no fund source is set: "Not set" until someone edits the activity,
+       also in the reports (owner decision); reverse deletes only those lines). The two lists are managed in the Django
+       admin (editable, never deleted: deactivate); `seed_data` creates missing rows only.
+     - **The rules (`activities/budget.py`):** `clean_lines` is the one check (category active or already on the
+       activity, particulars, quantity > 0 with at most 2 decimal places, unit, days a whole number 1–366 (empty = 1),
+       unit price >= 0 with at most 2 decimal places "(centavos)", at most 50 lines, totals that fit DECIMAL(12,2)); rows
+       left empty are skipped; errors as "budget-<row>-<field>" / "budget_lines". `line_total` = quantity × days × unit
+       price, ROUND_HALF_UP to the centavo, Decimal only (1.5 × 1 × ₱33.33 = ₱50.00; 0.25 × 3 × ₱10.10 = ₱7.58).
+       ACTIVITY.budget_amount = the grand total, written only by `save_lines` (never typed: the form has no field; the
+       JSON API and `_clean_values` refuse "budget_amount" with "The budget amount is calculated from the budget lines;
+       it cannot be typed."). No lines = ₱0.00 (owner decision); the fund source is still required.
+     - **Saving:** the lines are the pseudo-field `budget_lines` of `create_activity` / `update_activity` (also the New
+       form through `create_activity_with_documents`), checked together with the fields; replaced as a set in the same
+       transaction. History (edits only; creation is its own row): "Budget" (the lines, old -> new, e.g. "Lunch
+       (Meals/Snacks): 30 pax × 1 day × ₱150.00 = ₱4,500.00; …"), "Budget Amount" (the total), "Fund Source", "Fund
+       Account". Conducted is read-only (`_ensure_not_conducted`). Fund source: required when creating; never cleared; an
+       inactive one only when it stays; an older activity without one may stay "Not set" while other fields change, but
+       the activity FORM requires it on every save. The Django admin shows the lines and budget_amount read only.
+     - **Pages:** the activity form's "Budget" card (`activities/_budget_fields.html`, `pages.budget_section`): fund
+       source (required select), "Account / charging", the lines table (rows added / removed with Alpine; Category,
+       Particulars, Quantity, Unit with suggestions, Days, Unit price (₱), Total), totals per category and the grand total
+       refreshed by `activities:budget_preview` (HTMX, the service's `budget.preview`; no arithmetic in JS); errors under
+       each cell, typed values kept. The Overview's "Budget" card (`activities/_budget_card.html`, `budget.budget_summary`)
+       and the read-only (Conducted) page: fund source, account, Particulars / Quantity ("30 pax × 1 day") / Unit Cost /
+       Total Amount, totals per category, Total: the "Running Budget" table of NAVIGATU's Activity Report
+       (`budget.budget_table`, for Prompt 6). The API detail has `budget` (fund source, account, lines, totals).
+     - **Reports:** N19 `metrics.period_budget_total` (sum of budget_amount of the period's Conducted activities) and N20
+       `metrics.budget_by_fund_source` (every active fund source, an inactive one only when used, "Not set" last when
+       any). New section "Budget by fund source" (`budget`, default in the Accomplishment report; PDF ₱1,234.50, Excel
+       `"₱"#,##0.00`, sheet "Budget"; total row = N1 and N19).
+     - **AI assistant:** routing path `budget` (budget / fund source / how much / cost / expenses / charging words AND an
+       activity named by its title, without another content word, a file word or a document type; checked before the
+       content rule, so "What does the Activity Design say about the budget?" and a bare "What is the budget?" still
+       search the documents, as before): our code answers
+       (`listings.budget_answer`, no Gemini, works without the key) with the fund source, account, lines, category totals
+       and total, plus "(Source: the system's records.)". Record tool
+       `get_activity_budget` (amounts as text, never float) for Gemini's mixed questions.
+     - **Demo:** `seed_demo` gives every demo activity a fund source and lines that add up to its old total;
+       `certificate_walkthrough` a fund source.
+     - **Backup:** before `migrate`, the development database (and `csu_tbi_uat` if it is ever started again).
+     - Tests: `activities/tests/test_budget.py` (calculations and rounding, every refusal message, blank rows, inactive
+       category, limits, fund source rules, History, Conducted, no approval, the migration both ways, the New / Edit forms,
+       the preview, the API, the reports, the assistant routing / answer / tool).

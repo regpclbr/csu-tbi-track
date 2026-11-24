@@ -15,5 +15,6 @@
     {% include "components/section_header.html" with id="details-title" title="Details" %}
     {% include "activities/_detail_rows.html" %}
   </section>
+  {% if budget_card %}{% include "activities/_budget_card.html" %}{% endif %}
 </div>
 {% endblock %}

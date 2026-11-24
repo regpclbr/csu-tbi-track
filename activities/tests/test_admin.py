@@ -39,7 +39,7 @@ def form_data(activity: Activity | None = None, values: dict | None = None, link
         "registration_deadline_1": "17:00:00",
         "evaluation_deadline_0": values["evaluation_deadline"].strftime("%Y-%m-%d"),
         "evaluation_deadline_1": "17:00:00",
-        "budget_amount": str(values["budget_amount"]),
+        "fund_source": values["fund_source"].pk,
     }
     if activity is not None:  # the change page has the resource-person inline
         links = links or []
@@ -49,6 +49,9 @@ def form_data(activity: Activity | None = None, values: dict | None = None, link
                 "resource_person_links-INITIAL_FORMS": sum(1 for link in links if link.get("pk")),
                 "resource_person_links-MIN_NUM_FORMS": 0,
                 "resource_person_links-MAX_NUM_FORMS": 1000,
+                # the view-only budget lines inline (ASSUMPTIONS 433): its management form only
+                "budget_lines-TOTAL_FORMS": 0, "budget_lines-INITIAL_FORMS": 0,
+                "budget_lines-MIN_NUM_FORMS": 0, "budget_lines-MAX_NUM_FORMS": 1000,
             }
         )
         for number, link in enumerate(links):

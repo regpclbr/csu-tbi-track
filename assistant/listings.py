@@ -19,7 +19,8 @@ from datetime import datetime, time, timedelta
 
 from django.utils import timezone
 
-from activities.formatting import format_time_range
+from activities import budget
+from activities.formatting import format_money, format_time_range
 from activities.models import Activity, ActivityStatus, ActivityType
 from activities.services import (
     UPCOMING as UPCOMING_GROUP,
@@ -163,6 +164,52 @@ def activities_answer(query: ActivityQuery, now: datetime | None = None) -> List
         lines += ["", f"Showing the first {len(shown)} of {len(rows)}. {len(rows) - len(shown)} more are in the "
                       f"Activities list {_list_marker(query)}"]
     return Listing("\n".join(lines), len(rows), len(shown), [a.pk for a in shown])
+
+
+# --- Budget (ASSUMPTIONS 433) -------------------------------------------------------------------------------------
+
+MAX_BUDGETS = 3  # several activities matched: at most this many budgets, then a list of the others
+
+
+def _budget_block(activity: Activity) -> list[str]:
+    summary = budget.budget_summary(activity)
+    lines = [f"**Budget of {safe_text(activity.title)}** [activity:{activity.pk}] — {date_span(activity)}",
+             f"Fund source: {safe_text(summary['fund_source'])}"
+             + (f" · Account / charging: {safe_text(summary['fund_account'])}" if summary["fund_account"] else "")]
+    if not summary["rows"]:
+        lines.append(f"No budget lines: the budget is {format_money(summary['total'])}.")
+        return lines
+    lines += [f"- {safe_text(row['particulars'])} ({safe_text(row['category'])}): {row['quantity']} × "
+              f"{format_money(row['unit_cost'])} = {format_money(row['total_amount'])}" for row in summary["rows"]]
+    if len(summary["category_totals"]) > 1:
+        lines.append("Per category: " + "; ".join(f"{safe_text(name)} {format_money(total)}"
+                                                  for name, total in summary["category_totals"]))
+    lines.append(f"**Total: {format_money(summary['total'])}**")
+    return lines
+
+
+def budget_answer(activity_ids: list[int] | None, scope_activity_id: int | None = None) -> Listing:
+    """An activity's budget from the database (budget.budget_summary): fund source, account, the lines, the totals per
+    category and the grand total. Which activity: the page's activity filter first, else the activities named in the
+    question. Nobody named: asks for the activity; several: the first MAX_BUDGETS, the others listed."""
+    ids = [scope_activity_id] if scope_activity_id else (activity_ids or [])
+    activities = list(Activity.objects.select_related("fund_source").filter(pk__in=ids).order_by("-start_date", "pk"))
+    if not activities:
+        if activity_ids == [] and not scope_activity_id:
+            return Listing("No activity has that title. Type part of the activity's title, for example "
+                           "\"How much is the budget of the Pitching Workshop?\".", 0, 0)
+        return Listing("Which activity? Type part of its title, for example \"How much is the budget of the Pitching "
+                       "Workshop?\".", 0, 0)
+    shown = activities[:MAX_BUDGETS]
+    lines: list[str] = []
+    for activity in shown:
+        if lines:
+            lines.append("")
+        lines += _budget_block(activity)
+    if len(activities) > len(shown):
+        lines += ["", f"{len(activities) - len(shown)} more activities match:"]
+        lines += [f"- **{safe_text(a.title)}** [activity:{a.pk}]" for a in activities[len(shown):MAX_ITEMS]]
+    return Listing("\n".join(lines), len(activities), len(shown), [a.pk for a in shown])
 
 
 # --- Files --------------------------------------------------------------------------------------------------------

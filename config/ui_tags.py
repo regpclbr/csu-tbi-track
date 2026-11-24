@@ -5,7 +5,7 @@ from datetime import date, datetime
 from django import template
 from django.utils import timezone
 
-from activities.formatting import format_date_span, format_datetime, format_time_range
+from activities.formatting import format_date_span, format_datetime, format_money, format_time_range
 
 register = template.Library()
 
@@ -108,3 +108,13 @@ def time_range(activity) -> str:
 def date_time(value: datetime | None) -> str:
     """Oct 5, 2026 5:00 PM in Manila time (activities.formatting.format_datetime, as the services' messages)."""
     return format_datetime(value) if value else ""
+
+
+@register.filter
+def money(value) -> str:
+    """₱30,000.00 (activities.formatting.format_money); "–" for nothing. Display only (ASSUMPTIONS 433)."""
+    if value is None or value == "":
+        return "–"
+    from decimal import Decimal
+
+    return format_money(Decimal(value))

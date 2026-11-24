@@ -18,6 +18,7 @@ from django.utils import timezone
 from pgvector.django import CosineDistance
 
 from activities.models import Activity, ActivityStatus, ActivityType
+from activities import budget as activity_budget
 from activities.services import list_activities
 from documents import services as document_services
 from documents.models import Document, DocumentStatus, DocumentType
@@ -29,7 +30,9 @@ from .listings import ActivityQuery, FileQuery, Listing, activities_answer, file
 from .models import DocumentEmbedding
 from .periods import Period, parse_period
 
-RECORD_TOOLS = {"find_activities", "get_document_checklist", "list_activity_documents", "documents_needing_attention"}
+RECORD_TOOLS = {"find_activities", "get_document_checklist", "list_activity_documents", "documents_needing_attention",
+                "get_activity_budget"}
+BUDGET_TOOL = "get_activity_budget"  # ASSUMPTIONS 433
 SEARCH_TOOL = "search_approved_documents"
 # Tools whose answer our code writes (assistant.listings, ASSUMPTIONS 381, 383). Gemini passes the user's own words;
 # our code works out the dates. When one of them is the only tool used, the reply is our text, not Gemini's.
@@ -68,6 +71,14 @@ TOOL_SPECS = [
         "Across all non-draft activities, from the system's records: overdue required documents and documents "
         "waiting for review or returned to the uploader.",
         {"type": "object", "properties": {}},
+    ),
+    ToolSpec(
+        BUDGET_TOOL,
+        "The budget of one activity from the system's records (copied from its approved Activity Design): fund source, "
+        "account / charging, every budget line (category, particulars, quantity, unit, days, unit price, line total), "
+        "the totals per category and the grand total, in pesos. Use it for questions about an activity's budget, "
+        "cost or fund source.",
+        {"type": "object", "properties": {"activity_id": {"type": "integer"}}, "required": ["activity_id"]},
     ),
     ToolSpec(
         ACTIVITIES_TOOL,
@@ -226,6 +237,27 @@ def documents_needing_attention(args: dict) -> dict:
     return {"overdue_required_documents": overdue[:50], "documents_waiting_for_review_or_returned": waiting}
 
 
+def get_activity_budget(args: dict) -> dict:
+    """ASSUMPTIONS 433: activities.budget.budget_json (amounts as text with two decimals, never float)."""
+    activity = _activity(args)
+    data = activity_budget.budget_json(activity)
+
+    def money(value) -> str:
+        return f"{value:.2f}"
+
+    return {
+        "activity": _activity_json(activity),
+        "fund_source": data["fund_source"],
+        "fund_account": data["fund_account"],
+        "currency": "PHP",
+        "lines": [{**{k: v for k, v in line.items() if k not in ("category_id", "quantity", "unit_price", "line_total")},
+                   "quantity": f"{line['quantity']:f}", "unit_price": money(line["unit_price"]),
+                   "line_total": money(line["line_total"])} for line in data["lines"]],
+        "category_totals": [{"category": item["category"], "total": money(item["total"])} for item in data["category_totals"]],
+        "grand_total": money(data["total"]),
+    }
+
+
 def _period_from(args: dict, now) -> Period | None:
     text = str(args.get("period_text") or "").strip()
     if not text:
@@ -275,6 +307,7 @@ RECORD_FUNCTIONS = {
     "get_document_checklist": get_document_checklist,
     "list_activity_documents": list_activity_documents,
     "documents_needing_attention": documents_needing_attention,
+    BUDGET_TOOL: get_activity_budget,
 }
 
 

@@ -55,7 +55,7 @@ def post_data(valid_data):
             **typed_schedule_fields(values),  # typed dates, hh:mm + AM/PM (ASSUMPTIONS 422)
             "venue": values["venue"],
             "max_slots": values["max_slots"],
-            "budget_amount": str(values["budget_amount"]),
+            "fund_source": values["fund_source"].pk,
         }
 
     return make
@@ -299,7 +299,7 @@ def test_a_conducted_activity_is_read_only(director, login, new_activity, move_t
 def test_detail_for_a_creator_has_the_actions(director, login, new_activity) -> None:
     html = login(director).get(detail_url(new_activity)).content.decode()
     assert reverse("activities:edit", args=[new_activity.pk]) in html and "Change status" in html
-    assert "Add a resource person" in html and "Pitching Workshop" in html and "₱30,000.00" in html
+    assert "Add a resource person" in html and "Pitching Workshop" in html and "₱0.00" in html and "RAF – Regular Agency Fund" in html  # budget card (433)
 
 
 def test_detail_is_read_only_without_can_create_activity(view_only, login, new_activity) -> None:

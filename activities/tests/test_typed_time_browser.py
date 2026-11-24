@@ -107,7 +107,7 @@ def test_new_form_time_boxes_and_saving_pm(live_server, director, valid_data, mo
             page.select_option(f"select[name={BOXES[box_id]}]", "PM")
         page.fill("#id_venue", "CSU Hall")
         page.fill("#id_max_slots", "30")
-        page.fill("#id_budget_amount", "1000.00")
+        page.select_option("#id_fund_source", str(values["fund_source"].pk))  # ASSUMPTIONS 433
         page.get_by_role("button", name="Create activity").click()
         page.wait_for_url("**/activities/*/**")
         activity = Activity.objects.get(title="Browser PM")

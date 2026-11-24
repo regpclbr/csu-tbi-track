@@ -14,7 +14,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.functions import Lower, Trim
 
-from activities.models import ActivityStatus, ActivityType, ParticipantCategory
+from activities.models import ActivityStatus, ActivityType, BudgetCategory, FundSource, ParticipantCategory
 from documents.models import DocumentStatus, DocumentType
 
 from .models import Role, TBIMember
@@ -22,6 +22,10 @@ from .models import Role, TBIMember
 ACTIVITY_STATUSES = ["Draft", "Scheduled", "Ongoing", "Conducted"]
 PARTICIPANT_CATEGORIES = ["Faculty", "Incubatees", "MSMEs"]
 ACTIVITY_TYPES = ["Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum"]
+# ASSUMPTIONS 433 (NAVIGATU): created only when missing (the Admin edits / deactivates them in the Django admin).
+FUND_SOURCES = [("RAF", "Regular Agency Fund"), ("IGF", "Internally Generated Fund"), ("TRF", "Thrust Fund"),
+                ("BRF", "Business Related Fund")]
+BUDGET_CATEGORIES = ["Meals/Snacks", "Honorarium", "Supplies", "Venue", "Transportation", "Printing", "Other"]
 DOCUMENT_STATUSES = [DocumentStatus.FOR_REVIEW, DocumentStatus.APPROVED]
 
 # role_name: (can_create_activity, can_manage_users, can_approve_documents, can_approve_certificates,
@@ -105,6 +109,10 @@ def load_lookups() -> SeedResult:
         result.add(ActivityType.objects.get_or_create(name=name)[1])
     for name in DOCUMENT_STATUSES:
         result.add(DocumentStatus.objects.get_or_create(status_name=name)[1])
+    for order, (code, name) in enumerate(FUND_SOURCES, start=1):
+        result.add(FundSource.objects.get_or_create(code=code, defaults={"name": name, "sort_order": order})[1])
+    for order, name in enumerate(BUDGET_CATEGORIES, start=1):
+        result.add(BudgetCategory.objects.get_or_create(name=name, defaults={"sort_order": order})[1])
 
     for role_name, (can_create, can_manage, can_approve, can_approve_certificates, can_delete, can_manage_signatories,
                     description) in ROLES.items():

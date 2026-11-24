@@ -2,6 +2,7 @@
 
 import json
 
+from activities.models import BudgetCategory  # ASSUMPTIONS 433
 import pytest
 
 from activities import services
@@ -33,7 +34,10 @@ def create_payload(valid_data) -> dict:
         "evaluation_deadline": data["evaluation_deadline"].isoformat(),
         "start_time": data["start_time"].strftime("%H:%M"),
         "end_time": data["end_time"].strftime("%H:%M"),
-        "budget_amount": str(data["budget_amount"]),
+        "fund_source": data["fund_source"].pk,
+        # ASSUMPTIONS 433: the budget lines (30 x 1 x 1,000.00 = 30,000.00)
+        "budget_lines": [{"category": BudgetCategory.objects.get(name="Meals/Snacks").pk, "particulars": "Lunch",
+                          "quantity": 30, "unit": "pax", "days": 1, "unit_price": "1000.00"}],
     }
 
 

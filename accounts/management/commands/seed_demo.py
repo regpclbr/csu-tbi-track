@@ -32,6 +32,7 @@ from django.utils.text import slugify
 
 from accounts.models import Role, TBIMember
 from accounts.seed import load_default_form_fields, load_lookups
+from activities.models import BudgetCategory, FundSource
 from activities import services as activity_services
 from registrations import services as registration_services
 from certificates import services as certificate_services
@@ -201,6 +202,23 @@ UPCOMING_DOCUMENTS = {
 }
 
 
+def demo_budget_lines(total: Decimal, slots: int, days: int) -> list[dict]:
+    """Demo budget lines (ASSUMPTIONS 433) that add up exactly to `total`: about half for meals (slots x days x a price),
+    the rest as the speaker's honorarium. No lines for a total of 0."""
+    if total <= 0:
+        return []
+    meals = BudgetCategory.objects.get(name="Meals/Snacks")
+    honorarium = BudgetCategory.objects.get(name="Honorarium")
+    price = (total / 2 / (slots * days)).quantize(Decimal("0.01"), rounding="ROUND_DOWN")
+    rest = total - price * slots * days
+    lines = [{"category": meals, "particulars": "Lunch and snacks", "quantity": slots, "unit": "pax", "days": days,
+              "unit_price": price}]
+    if rest > 0:
+        lines.append({"category": honorarium, "particulars": "Resource speaker honorarium", "quantity": 1,
+                      "unit": "person", "days": 1, "unit_price": rest})
+    return lines
+
+
 class Command(BaseCommand):
     help = "DEMO ONLY: create fake activities, registrations, startups and documents. Refuses to run if DEBUG=False."
 
@@ -283,7 +301,7 @@ class Command(BaseCommand):
     def at(self, day: date, hour: int) -> datetime:
         return timezone.make_aware(datetime.combine(day, time(hour, 0)))
 
-    def create_activity(self, spec: DemoActivity) -> None:
+    def create_activity(self, spec: DemoActivity) -> None:  # noqa: C901 (demo data)
         start = self.today + timedelta(days=spec.start_offset_days)
         end = start + timedelta(days=spec.length_days - 1)
         msme_only = spec.categories == ["MSMEs"]
@@ -305,7 +323,11 @@ class Command(BaseCommand):
                 "max_slots": spec.max_slots,
                 "registration_deadline": self.at(start - timedelta(days=2), 17),
                 "evaluation_deadline": self.at(end + timedelta(days=7), 17),
-                "budget_amount": Decimal(spec.budget),
+                # ASSUMPTIONS 433: a fund source and budget lines adding up to the spec's total.
+                "fund_source": FundSource.objects.order_by("sort_order", "code")[
+                    DEMO_ACTIVITIES.index(spec) % FundSource.objects.count()],
+                "fund_account": "Research Services – Representation Expenses" if spec.max_slots >= 25 else "",
+                "budget_lines": demo_budget_lines(Decimal(spec.budget), spec.max_slots, (end - start).days + 1),
             },
             # Demo only: validate "as of" two weeks before the start, so past (Conducted)
             # activities pass the "start date and deadline not in the past" rule.

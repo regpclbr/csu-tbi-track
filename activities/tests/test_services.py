@@ -8,7 +8,7 @@ import pytest
 from django.core.exceptions import PermissionDenied, ValidationError
 
 from activities import services
-from activities.models import Activity, ActivityAuditLog, ActivityType, ParticipantCategory, ResourcePerson
+from activities.models import FundSource, Activity, ActivityAuditLog, ActivityType, ParticipantCategory, ResourcePerson
 
 from .conftest import TEST_NOW, at
 
@@ -42,7 +42,7 @@ def test_description_is_optional(director, valid_data) -> None:
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("missing", ["title", "activity_type", "start_date", "budget_amount"])
+@pytest.mark.parametrize("missing", ["title", "activity_type", "start_date"])  # budget: ASSUMPTIONS 433 tests
 def test_required_fields(director, valid_data, missing) -> None:
     data = valid_data()
     del data[missing]
@@ -106,11 +106,12 @@ def test_max_slots_not_below_registrations(director, new_activity, register) -> 
 
 
 @pytest.mark.django_db
-def test_budget_zero_or_more(director, valid_data) -> None:
+def test_the_budget_is_never_typed(director, valid_data) -> None:
+    """ASSUMPTIONS 433: budget_amount is the lines' grand total; typing it is refused; no lines = 0.00."""
     with pytest.raises(ValidationError) as excinfo:
-        services.create_activity(director, valid_data(budget_amount=Decimal("-0.01")))
-    assert error_for(excinfo, "budget_amount") == "Budget amount must be zero or more."
-    assert services.create_activity(director, valid_data(budget_amount=Decimal("0"))).budget_amount == 0
+        services.create_activity(director, valid_data(budget_amount=Decimal("100.00")))
+    assert error_for(excinfo, "budget_amount") == services.BUDGET_TYPED
+    assert services.create_activity(director, valid_data()).budget_amount == Decimal("0.00")
 
 
 @pytest.mark.django_db
@@ -131,8 +132,8 @@ def test_activity_with_a_type_deactivated_later_can_still_be_edited(director, ne
 @pytest.mark.django_db
 def test_several_errors_at_once(director, valid_data) -> None:
     with pytest.raises(ValidationError) as excinfo:
-        services.create_activity(director, valid_data(max_slots=0, budget_amount=Decimal("-1")))
-    assert set(excinfo.value.message_dict) == {"max_slots", "budget_amount"}
+        services.create_activity(director, valid_data(max_slots=0, fund_source=None))
+    assert set(excinfo.value.message_dict) == {"max_slots", "fund_source"}
 
 
 # --- Update and the audit log ------------------------------------------------------------
@@ -159,7 +160,7 @@ def test_update_writes_one_readable_row_per_changed_field(director, valid_data) 
             "participant_categories": [ParticipantCategory.objects.get(name="MSMEs")],
             "end_date": date(2026, 11, 18),
             "evaluation_deadline": at(date(2026, 11, 25), 9),
-            "budget_amount": Decimal("45000.50"),
+            "fund_source": FundSource.objects.get(code="IGF"),  # ASSUMPTIONS 433
             "max_slots": 40,
             "title": activity.title,  # unchanged: no row
         },
@@ -172,7 +173,7 @@ def test_update_writes_one_readable_row_per_changed_field(director, valid_data) 
             ("Participant Categories", "Incubatees", "MSMEs"),
             ("End Date", "Nov 16, 2026", "Nov 18, 2026"),
             ("Evaluation Deadline", "Nov 23, 2026 5:00 PM", "Nov 25, 2026 9:00 AM"),
-            ("Budget Amount", "₱30,000.00", "₱45,000.50"),
+            ("Fund Source", "RAF – Regular Agency Fund", "IGF – Internally Generated Fund"),
             ("Max Slots", "30", "40"),
         ]
     )
@@ -181,7 +182,8 @@ def test_update_writes_one_readable_row_per_changed_field(director, valid_data) 
 
 @pytest.mark.django_db
 def test_update_with_no_real_change_writes_nothing(director, new_activity) -> None:
-    services.update_activity(director, new_activity, {"venue": "CSU Hall", "budget_amount": Decimal("30000")})
+    services.update_activity(director, new_activity, {"venue": "CSU Hall", "fund_source": new_activity.fund_source,
+                                                      "budget_lines": []})
     assert len(audit_rows(new_activity)) == 1
 
 

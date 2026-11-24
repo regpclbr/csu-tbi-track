@@ -21,7 +21,7 @@ from .test_reports import queued, request  # noqa: F401  (fixture and helper)
 pytestmark = pytest.mark.django_db
 
 ACCOMPLISHMENT_SHEETS = ["Report info", "Summary", "Activities", "By type", "By category", "Category per activity",
-                         "Per month", "Evaluation"]
+                         "Per month", "Budget", "Evaluation"]  # Budget: ASSUMPTIONS 433
 PERIOD = ReportFilters(date(2026, 1, 1), date(2026, 12, 31))
 
 
@@ -69,7 +69,7 @@ def test_every_sheet_has_the_compact_title_block(director, queued, data) -> None
     subtitles = {"Report info": "Report information", "Summary": "Summary", "Activities": "Activities conducted",
                  "By type": "By activity type", "By category": "By participant category", "Per month": "Per month",
                  "Category per activity": "Participants by category per activity",
-                 "Evaluation": "Evaluation results"}
+                 "Budget": "Budget by fund source", "Evaluation": "Evaluation results"}
     for sheet in workbook.worksheets:
         lines = [sheet.cell(row=row, column=1).value for row in range(1, 7)]
         assert lines == [

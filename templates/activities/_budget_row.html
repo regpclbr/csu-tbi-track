@@ -1,0 +1,47 @@
+{% load ui %}
+{% comment %}One budget line of the activity form (activities/_budget_fields.html). Server rows: `key`, `values`, `errors`, `total` (from
+activities.budget.preview). Inside the Alpine template (`alpine`): names and ids are bound to the template's `key`. The total cell is
+refreshed out of band by activities/_budget_totals.html (id budget-row-total-<key>).{% endcomment %}
+<tr data-budget-row class="align-top">
+  <td class="py-2 pr-2">
+    <label class="sr-only" {% if alpine %}:for="`budget-${key}-category`"{% else %}for="budget-{{ key }}-category"{% endif %}>Category</label>
+    <select class="field-input field-select min-w-40" {% if alpine %}:id="`budget-${key}-category`" :name="`budget-${key}-category`"{% else %}id="budget-{{ key }}-category" name="budget-{{ key }}-category"{% if errors.category %} aria-invalid="true" aria-describedby="budget-{{ key }}-category-error"{% endif %}{% endif %}>
+      <option value="">Choose…</option>
+      {% for category in budget.categories %}<option value="{{ category.pk }}"{% if not alpine and values.category == category.pk|stringformat:"s" %} selected{% endif %}>{{ category.name }}</option>{% endfor %}
+    </select>
+    {% if errors.category %}<p id="budget-{{ key }}-category-error" class="field-error">{{ errors.category }}</p>{% endif %}
+  </td>
+  <td class="py-2 pr-2">
+    <label class="sr-only" {% if alpine %}:for="`budget-${key}-particulars`"{% else %}for="budget-{{ key }}-particulars"{% endif %}>Particulars</label>
+    <input type="text" maxlength="255" class="field-input min-w-48" placeholder="For example Lunch" {% if alpine %}:id="`budget-${key}-particulars`" :name="`budget-${key}-particulars`"{% else %}id="budget-{{ key }}-particulars" name="budget-{{ key }}-particulars" value="{{ values.particulars }}"{% if errors.particulars %} aria-invalid="true" aria-describedby="budget-{{ key }}-particulars-error"{% endif %}{% endif %}>
+    {% if errors.particulars %}<p id="budget-{{ key }}-particulars-error" class="field-error">{{ errors.particulars }}</p>{% endif %}
+  </td>
+  <td class="py-2 pr-2">
+    <label class="sr-only" {% if alpine %}:for="`budget-${key}-quantity`"{% else %}for="budget-{{ key }}-quantity"{% endif %}>Quantity</label>
+    <input type="text" inputmode="decimal" class="field-input w-24" {% if alpine %}:id="`budget-${key}-quantity`" :name="`budget-${key}-quantity`"{% else %}id="budget-{{ key }}-quantity" name="budget-{{ key }}-quantity" value="{{ values.quantity }}"{% if errors.quantity %} aria-invalid="true" aria-describedby="budget-{{ key }}-quantity-error"{% endif %}{% endif %}>
+    {% if errors.quantity %}<p id="budget-{{ key }}-quantity-error" class="field-error">{{ errors.quantity }}</p>{% endif %}
+  </td>
+  <td class="py-2 pr-2">
+    <label class="sr-only" {% if alpine %}:for="`budget-${key}-unit`"{% else %}for="budget-{{ key }}-unit"{% endif %}>Unit</label>
+    <input type="text" maxlength="30" list="budget-units" class="field-input w-24" placeholder="pax" {% if alpine %}:id="`budget-${key}-unit`" :name="`budget-${key}-unit`"{% else %}id="budget-{{ key }}-unit" name="budget-{{ key }}-unit" value="{{ values.unit }}"{% if errors.unit %} aria-invalid="true" aria-describedby="budget-{{ key }}-unit-error"{% endif %}{% endif %}>
+    {% if errors.unit %}<p id="budget-{{ key }}-unit-error" class="field-error">{{ errors.unit }}</p>{% endif %}
+  </td>
+  <td class="py-2 pr-2">
+    <label class="sr-only" {% if alpine %}:for="`budget-${key}-days`"{% else %}for="budget-{{ key }}-days"{% endif %}>Number of days</label>
+    <input type="text" inputmode="numeric" class="field-input w-20" {% if alpine %}:id="`budget-${key}-days`" :name="`budget-${key}-days`" value="1"{% else %}id="budget-{{ key }}-days" name="budget-{{ key }}-days" value="{{ values.days|default:'1' }}"{% if errors.days %} aria-invalid="true" aria-describedby="budget-{{ key }}-days-error"{% endif %}{% endif %}>
+    {% if errors.days %}<p id="budget-{{ key }}-days-error" class="field-error">{{ errors.days }}</p>{% endif %}
+  </td>
+  <td class="py-2 pr-2">
+    <label class="sr-only" {% if alpine %}:for="`budget-${key}-unit_price`"{% else %}for="budget-{{ key }}-unit_price"{% endif %}>Unit price in pesos</label>
+    <input type="text" inputmode="decimal" class="field-input w-32" placeholder="0.00" {% if alpine %}:id="`budget-${key}-unit_price`" :name="`budget-${key}-unit_price`"{% else %}id="budget-{{ key }}-unit_price" name="budget-{{ key }}-unit_price" value="{{ values.unit_price }}"{% if errors.unit_price %} aria-invalid="true" aria-describedby="budget-{{ key }}-unit_price-error"{% endif %}{% endif %}>
+    {% if errors.unit_price %}<p id="budget-{{ key }}-unit_price-error" class="field-error">{{ errors.unit_price }}</p>{% endif %}
+  </td>
+  <td class="py-2 pr-2 pt-4 text-right font-semibold tabular-nums text-ink whitespace-nowrap">
+    <span {% if alpine %}:id="`budget-row-total-${key}`"{% else %}id="budget-row-total-{{ key }}"{% endif %}>{% if total is not None %}{{ total|money }}{% else %}–{% endif %}</span>
+  </td>
+  <td class="py-2">
+    <button type="button" x-cloak class="btn btn-danger btn-sm" {% if alpine %}@click="remove(key)"{% else %}@click="removeRow($el)"{% endif %}>
+      {% include "components/icon.html" with name="trash-2" class="size-4" %}<span class="sr-only">Remove this budget line</span>
+    </button>
+  </td>
+</tr>

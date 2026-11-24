@@ -20,7 +20,7 @@ from registrations import services as registration_services
 from reports import services as report_services
 from reports.dashboard_page import mix_chart
 
-from . import attention, deletion, pages, services, share
+from . import attention, budget, deletion, pages, services, share
 from .forms import ActivityPageFormWithSignatories as ActivityPageForm
 from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory, ResourcePerson
 
@@ -119,6 +119,17 @@ def _draft_next_step(activity: Activity) -> str:
     return "Change the status to Scheduled when it is ready."
 
 
+BUDGET_ERRORS = "Please correct the budget lines marked below."
+
+
+@permission_required(Permission.CREATE_ACTIVITY)
+@require_http_methods(["POST"])
+def budget_preview(request: HttpRequest) -> HttpResponse:
+    """The activity form's budget totals while typing (HTMX; ASSUMPTIONS 433): the service's own calculation
+    (activities.budget.preview) for each row and the totals. Nothing is saved."""
+    return render(request, "activities/_budget_totals.html", {"preview": pages.budget_preview(request.POST)})
+
+
 @permission_required(Permission.CREATE_ACTIVITY)
 @require_http_methods(["GET", "POST"])
 def activity_create(request: HttpRequest) -> HttpResponse:
@@ -131,6 +142,8 @@ def activity_create(request: HttpRequest) -> HttpResponse:
     required = document_pages.required_document_rows(request)
     rows = document_pages.new_document_rows(request) if request.method == "POST" else []
     text_errors: dict = {}
+    budget_rows = [row for _, row in pages.posted_budget_rows(request.POST)] if request.method == "POST" else None
+    budget_errors: dict = {}
     if request.method == "POST":
         given = [row for row in required if row.is_filled_in]  # an untouched fixed row is simply not sent (417)
         all_rows = [*given, *rows]
@@ -140,20 +153,27 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             prepare = form.certificate_preparation()
             signatories = form.signatory_choices()
             texts = pages.posted_certificate_texts(request.POST) if prepare else None
+            data = {**form.cleaned_data, budget.LINES_KEY: budget_rows}  # the budget table (ASSUMPTIONS 433)
             try:
                 activity = document_services.create_activity_with_documents(
-                    request.user, form.cleaned_data, uploads, signatories=signatories,
+                    request.user, data, uploads, signatories=signatories,
                     prepare_certificates=prepare, certificate_texts=texts)
             except document_services.NewActivityError as error:
                 if error.activity_error:
+                    budget_errors = pages.split_budget_errors(error.activity_error)
                     text_errors = pages.split_text_errors(error.activity_error)
                     if error.activity_error.message_dict:
                         _put_errors_on_fields(form, error.activity_error)
                     if text_errors:
                         form.add_error(None, "Please correct the certificate text marked below.")
+                    if budget_errors:
+                        form.add_error(None, BUDGET_ERRORS)
                 document_pages.put_row_errors(all_rows, error.row_errors)
             except ValidationError as error:
-                _put_errors_on_fields(form, error)
+                if budget_errors := pages.split_budget_errors(error):
+                    form.add_error(None, BUDGET_ERRORS)
+                if not hasattr(error, "error_dict") or error.error_dict:
+                    _put_errors_on_fields(form, error)
             except services.ActivityError as error:
                 form.add_error(None, str(error))
             else:
@@ -174,6 +194,7 @@ def activity_create(request: HttpRequest) -> HttpResponse:
             form.add_error(None, "Please correct the documents marked below.")
     context = {"page_title": "New activity", "form": form, "activity": None, "docs": document_pages.new_documents_context(rows, required),
                "signatories": pages.signatory_form_section(form, request.user),
+               "budget": pages.budget_section(form, None, budget_rows, budget_errors),
                "prepare": pages.prepare_section(form, request.POST if request.method == "POST" else None, text_errors)}
     return render(request, "activities/form.html", context)
 
@@ -185,23 +206,30 @@ def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
     activity = get_object_or_404(Activity.objects.select_related("status", "activity_type"), pk=activity_id)
     form = ActivityPageForm(request.POST or None, initial=_initial(activity), activity=activity,
                             **pages.signatory_form_options(request.user, activity))
+    budget_rows = [row for _, row in pages.posted_budget_rows(request.POST)] if request.method == "POST" else None
+    budget_errors: dict = {}
     if request.method == "POST" and form.is_valid():
         signatories = form.signatory_choices()
+        data = {**pages.keep_stored_minutes(form.cleaned_data, activity), budget.LINES_KEY: budget_rows}  # 433
         try:
-            services.update_activity(request.user, activity, pages.keep_stored_minutes(form.cleaned_data, activity),
-                                     signatories=signatories)
+            services.update_activity(request.user, activity, data, signatories=signatories)
         except ValidationError as error:
-            _put_errors_on_fields(form, error)
+            if budget_errors := pages.split_budget_errors(error):
+                form.add_error(None, BUDGET_ERRORS)
+            if not hasattr(error, "error_dict") or error.error_dict:
+                _put_errors_on_fields(form, error)
         except services.ActivityError as error:
             form.add_error(None, str(error))
         else:
             messages.success(request, "Changes saved.")
             return redirect(_detail_url(activity))
     context = {"page_title": f"Edit {activity.title}", "form": form, "activity": activity,
-               "signatories": pages.signatory_form_section(form, request.user)}
+               "signatories": pages.signatory_form_section(form, request.user),
+               "budget": pages.budget_section(form, activity, budget_rows, budget_errors)}
     if activity.status.name == ActivityStatus.CONDUCTED:
         context["detail_rows"] = pages.detail_rows(services.get_activity_detail(activity))
         context["objectives"] = services.objective_lines(activity)
+        context["budget_card"] = pages.budget_card(activity)
         return render(request, "activities/read_only.html", context)
     return render(request, "activities/form.html", context)
 
@@ -243,6 +271,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     if tab == "overview":
         context["detail_rows"] = pages.detail_rows(detail)
         context["objectives"] = detail["objectives"]  # ASSUMPTIONS 428
+        context["budget_card"] = pages.budget_card(activity)  # ASSUMPTIONS 433
         context["share"] = share.share_card(activity, context["registration"])
         context["by_category"] = pages.category_donut(
             report_services.activity_participants_by_category(request.user, activity))

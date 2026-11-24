@@ -30,6 +30,8 @@ from .models import (
     ResourcePerson,
 )
 
+from . import budget  # ASSUMPTIONS 433 (budget lines; imports this module lazily)
+
 DRAFT, SCHEDULED, ONGOING, CONDUCTED = (
     ActivityStatus.DRAFT,
     ActivityStatus.SCHEDULED,
@@ -61,14 +63,21 @@ FIELD_LABELS: dict[str, str] = {
     "max_slots": "Max Slots",
     "registration_deadline": "Registration Deadline",
     "evaluation_deadline": "Evaluation Deadline",
-    "budget_amount": "Budget Amount",
+    # ASSUMPTIONS 433: budget_amount is no longer typed (the sum of the budget lines, activities.budget); the lines come
+    # as the pseudo-field "budget_lines" (budget.LINES_KEY) next to these fields.
+    "fund_source": "Fund Source",
+    "fund_account": "Fund Account",
 }
 EDITABLE_FIELDS = tuple(FIELD_LABELS)
 CATEGORIES = "participant_categories"  # many-to-many (ACTIVITY_PARTICIPANT_CATEGORY), not a column
 SCALAR_FIELDS = tuple(field for field in EDITABLE_FIELDS if field != CATEGORIES)  # columns on ACTIVITY
-OPTIONAL_FIELDS = ("description", "objectives", "evaluation_deadline")  # evaluation_deadline empty = stays open (ASSUMPTIONS 423)
+# evaluation_deadline empty = stays open (ASSUMPTIONS 423); fund_source has its own rule (required when creating and never
+# cleared; older activities may still be "Not set", ASSUMPTIONS 433); fund_account is optional.
+OPTIONAL_FIELDS = ("description", "objectives", "evaluation_deadline", "fund_source", "fund_account")
 REQUIRED_FIELDS = tuple(field for field in SCALAR_FIELDS if field not in OPTIONAL_FIELDS)
-TEXT_FIELDS = ("title", "description", "venue")
+TEXT_FIELDS = ("title", "description", "venue", "fund_account")
+BUDGET_TYPED = "The budget amount is calculated from the budget lines; it cannot be typed."
+FUND_SOURCE_REQUIRED = "Choose the fund source."
 OBJECTIVES_MAX = 5000  # characters, all lines together (ASSUMPTIONS 428)
 
 STATUS_LABEL = "Status"
@@ -187,8 +196,11 @@ def objective_lines(activity: Activity) -> list[str]:
 
 
 def _clean_values(data: dict) -> dict:
-    """Strip text fields and treat an empty description as no description."""
-    unknown = set(data) - set(EDITABLE_FIELDS)
+    """Strip text fields and treat an empty description as no description. The budget lines (budget.LINES_KEY) pass
+    through for create / update to check; a typed budget_amount is refused (ASSUMPTIONS 433)."""
+    if "budget_amount" in data:
+        raise ValidationError({"budget_amount": [BUDGET_TYPED]})
+    unknown = set(data) - set(EDITABLE_FIELDS) - {budget.LINES_KEY}
     if unknown:
         raise ActivityError(f"These fields cannot be set: {', '.join(sorted(unknown))}.")
     cleaned = dict(data)
@@ -197,6 +209,8 @@ def _clean_values(data: dict) -> dict:
             cleaned[field] = cleaned[field].strip()
     if cleaned.get("description") == "":
         cleaned["description"] = None
+    if cleaned.get("fund_account") is None and "fund_account" in cleaned:
+        cleaned["fund_account"] = ""
     if "objectives" in cleaned:
         cleaned["objectives"] = clean_objectives(cleaned["objectives"])
     if CATEGORIES in cleaned:
@@ -280,8 +294,15 @@ def validate_activity_values(
     if values.get("objectives") and len(values["objectives"]) > OBJECTIVES_MAX:
         errors["objectives"] = f"The objectives can be at most {OBJECTIVES_MAX} characters."
 
-    if Decimal(values["budget_amount"]) < 0:
-        errors["budget_amount"] = "Budget amount must be zero or more."
+    # ASSUMPTIONS 433: one fund source, required when creating and never cleared; an inactive one only if it stays.
+    fund_source = values.get("fund_source")
+    fund_changed = activity is None or (fund_source.pk if fund_source else None) != activity.fund_source_id
+    if fund_source is None and (activity is None or activity.fund_source_id is not None):
+        errors["fund_source"] = FUND_SOURCE_REQUIRED
+    elif fund_source is not None and fund_changed and not fund_source.is_active:
+        errors["fund_source"] = f'Fund source "{fund_source}" is inactive. Choose an active one.'
+    if len(values.get("fund_account") or "") > 255:
+        errors["fund_account"] = "The account / charging can be at most 255 characters."
 
     activity_type = values["activity_type"]
     type_changed = activity is None or activity_type.pk != activity.activity_type_id
@@ -425,7 +446,7 @@ def _cancel_early_approval(activity: Activity, member: TBIMember, now: datetime 
 def save_new_activity(
     member: TBIMember, activity: Activity, participant_categories, now: datetime | None = None,
     signatories: dict | None = None, creation_documents_required: bool = False,
-    prepare_certificates: bool = False, certificate_texts: dict | None = None,
+    prepare_certificates: bool = False, certificate_texts: dict | None = None, budget_lines: list | None = None,
 ) -> Activity:
     """Validate and save an unsaved Activity as Draft with its categories, write its first audit row and notify the
     Director (notifications.services.notify_directors_of_new_activity).
@@ -441,6 +462,8 @@ def save_new_activity(
     custom text (certificates.services.save_activity_text) and the certificates are prepared
     (prepare_activity_certificates: the reviewers are told). False = the default signatories and the default text,
     whatever `signatories` / `certificate_texts` hold (the flow before item 420).
+    `budget_lines` (ASSUMPTIONS 433): the budget table (budget.clean_lines); budget_amount = their grand total (0.00
+    without lines). Line problems are raised together with the fields' ones ("budget-<row>-<field>").
     A signatory or title choice needs can_approve_certificates (ASSUMPTIONS 431: only the Director chooses who signs;
     PermissionDenied otherwise); without a choice the defaults are used, so anyone who creates activities can still
     prepare the certificates and write their text.
@@ -448,18 +471,33 @@ def save_new_activity(
     require_permission(member, Permission.CREATE_ACTIVITY)
     if not prepare_certificates:
         signatories, certificate_texts = None, None
+    if activity.budget_amount is None:  # the Django admin's add form: no lines yet
+        activity.budget_amount = Decimal("0.00")
     from certificates.services import has_signatory_choice, require_signatory_choice  # imports this module
 
     if has_signatory_choice(signatories):
         require_signatory_choice(member)
     categories = _category_set(participant_categories)
-    validate_activity_values({**activity_values(activity), CATEGORIES: categories}, now=now)
+    errors: dict = {}
+    try:
+        lines = budget.clean_lines(budget_lines)
+    except ValidationError as error:
+        errors.update(error.message_dict)
+        lines = []
+    try:
+        validate_activity_values({**activity_values(activity), CATEGORIES: categories}, now=now)
+    except ValidationError as error:
+        errors = {**error.message_dict, **errors}
+    if errors:
+        raise ValidationError(errors)  # the fields and the budget rows together
+    activity.budget_amount = budget.grand_total(lines)
     activity.created_by = member
     activity.status = ActivityStatus.objects.get(name=DRAFT)
     activity.creation_documents_required = creation_documents_required
     activity.save()
     activity.participant_categories.set(categories)
     _write_audit(activity, member, [(STATUS_LABEL, "", activity.status)])
+    budget.save_lines(activity, lines, member, write_history=False)  # ASSUMPTIONS 433
     # Tell the Director (in-app, same transaction; not when a Director creates it; ASSUMPTIONS 361).
     from notifications.services import notify_directors_of_new_activity  # notifications.services imports this module
 
@@ -490,7 +528,8 @@ def create_activity(member: TBIMember, data: dict, now: datetime | None = None,
     require_permission(member, Permission.CREATE_ACTIVITY)
     values = _clean_values(data)
     categories = values.pop(CATEGORIES, frozenset())
-    return save_new_activity(member, Activity(**values), categories, now=now, signatories=signatories,
+    lines = values.pop(budget.LINES_KEY, None)
+    return save_new_activity(member, Activity(**values), categories, now=now, signatories=signatories, budget_lines=lines,
                              creation_documents_required=creation_documents_required,
                              prepare_certificates=prepare_certificates, certificate_texts=certificate_texts)
 
@@ -507,13 +546,26 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
     """
     require_permission(member, Permission.CREATE_ACTIVITY)
     changes = _clean_values(data)
+    new_lines = changes.pop(budget.LINES_KEY, None)  # None = the budget lines stay as they are (ASSUMPTIONS 433)
     # Lock the row so two people editing at once cannot overwrite each other's old values.
     current = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
     _ensure_not_conducted(current, "editing")
 
     old_values = activity_values(current)
     changed = [field for field, new in changes.items() if new != old_values[field]]
-    validate_activity_values({**old_values, **changes}, current, changed_fields=set(changed), now=now)
+    errors: dict = {}
+    lines = None
+    if new_lines is not None:
+        try:
+            lines = budget.clean_lines(new_lines, allowed_inactive=budget.used_category_ids(current))
+        except ValidationError as error:
+            errors.update(error.message_dict)
+    try:
+        validate_activity_values({**old_values, **changes}, current, changed_fields=set(changed), now=now)
+    except ValidationError as error:
+        errors = {**error.message_dict, **errors}
+    if errors:
+        raise ValidationError(errors)
 
     if changed:
         columns = [field for field in changed if field != CATEGORIES]
@@ -529,6 +581,8 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
             # Printed on the certificates ({activity}, {date}, {given_date}, {venue}): an approval given before
             # Conducted no longer matches what will print (ASSUMPTIONS 420).
             _cancel_early_approval(current, member, now, "activity details changed")
+    if lines is not None:
+        budget.save_lines(current, lines, member)  # History "Budget" / "Budget Amount" (ASSUMPTIONS 433)
     if signatories is not None:
         from certificates.services import set_activity_signatories  # certificates.services imports this module
 
@@ -1026,6 +1080,7 @@ def get_activity_detail(activity: Activity) -> dict:
         "registration_deadline": activity.registration_deadline,
         "evaluation_deadline": activity.evaluation_deadline,
         "budget_amount": activity.budget_amount,
+        "budget": budget.budget_json(activity),  # ASSUMPTIONS 433: fund source, account, lines, totals
         "created_by": activity.created_by.name,
         "created_at": activity.created_at,
         "updated_at": activity.updated_at,

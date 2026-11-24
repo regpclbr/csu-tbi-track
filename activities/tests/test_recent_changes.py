@@ -42,6 +42,10 @@ def test_sentences_for_each_kind_of_change(director, new_activity) -> None:
 def test_budget_uses_the_stored_readable_value_and_long_values_are_cut(director, new_activity) -> None:
     from decimal import Decimal
 
-    services.update_activity(director, new_activity, {"budget_amount": Decimal("45000"), "venue": "V" * 100})
+    from activities.models import BudgetCategory
+
+    line = {"category": BudgetCategory.objects.get(name="Venue"), "particulars": "Hall rental", "quantity": "1",
+            "unit": "lot", "days": 1, "unit_price": "45000"}  # ASSUMPTIONS 433: the total comes from the lines
+    services.update_activity(director, new_activity, {"budget_lines": [line], "venue": "V" * 100})
     assert sentence(new_activity, "Budget Amount").endswith("to ₱45,000.00")
     assert sentence(new_activity, "Venue").endswith("V…")

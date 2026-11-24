@@ -140,7 +140,7 @@ def test_excel_report_has_real_numbers_formats_and_frozen_headers(director, queu
     assert report.file_path.name.endswith(".xlsx")
     workbook = load_workbook(report.file_path.path)
     assert workbook.sheetnames == ["Report info", "Summary", "Activities", "By type", "By category", "Category per activity", "Per month",
-                                   "Evaluation"]
+                                   "Budget", "Evaluation"]  # Budget: ASSUMPTIONS 433
     activities = workbook["Activities"]
     assert activities.freeze_panes == "A8"  # the title block (5 rows + 1 blank), then the header on row 7
     header = [cell.value for cell in activities[7]]

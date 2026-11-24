@@ -55,6 +55,7 @@ SHEET_NAMES = {
     "by_category": "By category",
     "category_by_activity": "Category per activity",
     "monthly": "Per month",
+    "budget": "Budget",  # ASSUMPTIONS 433
     "evaluation": "Evaluation",
     "documents": "Documents",
     "certificates": "Certificates",

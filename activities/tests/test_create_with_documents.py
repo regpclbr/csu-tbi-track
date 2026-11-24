@@ -280,7 +280,7 @@ def post_data(valid_data):
             "activity_type": values["activity_type"].pk,
             "participant_categories": [category.pk for category in values["participant_categories"]],
             **typed_schedule_fields(values), "venue": values["venue"], "max_slots": values["max_slots"],
-            "budget_amount": str(values["budget_amount"]),
+            "fund_source": values["fund_source"].pk,
         }
 
     return make

@@ -74,6 +74,46 @@ class ParticipantCategory(models.Model):
         return self.name
 
 
+class FundSource(models.Model):
+    """Where an activity's money comes from (ASSUMPTIONS 433): RAF, IGF, TRF, BRF. Managed in the Django admin; never
+    deleted (deactivate it). One per activity (ACTIVITY.fund_source)."""
+
+    fund_source_id = models.BigAutoField(primary_key=True)
+    code = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "fund_source"
+        ordering = ["sort_order", "code"]
+
+    def __str__(self) -> str:
+        return f"{self.code} – {self.name}"
+
+
+class BudgetCategory(models.Model):
+    """What a budget line is for (ASSUMPTIONS 433): Meals/Snacks, Honorarium, Supplies, ... Managed in the Django admin;
+    never deleted (deactivate it)."""
+
+    OTHER = "Other"  # the category of a migrated "Unitemized (previous total)" line (migration 0014)
+
+    budget_category_id = models.BigAutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "budget_category"
+        ordering = ["sort_order", "name"]
+        verbose_name_plural = "budget categories"
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Activity(models.Model):
     """A TBI activity. Deadlines live here, not on registrations or evaluations."""
 
@@ -103,7 +143,12 @@ class Activity(models.Model):
     registration_deadline = models.DateTimeField()
     # Optional (ASSUMPTIONS 423): empty = the evaluation stays open (registrations.services.evaluation_window).
     evaluation_deadline = models.DateTimeField(null=True, blank=True)
+    # ASSUMPTIONS 433: the grand total of the activity's BUDGET_LINE rows, written ONLY by activities.budget (never typed).
     budget_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    # ASSUMPTIONS 433: one fund source, required for new activities and on every save of the activity form; empty only on
+    # activities from before the budget lines ("Not set"). "Account / charging" is free text.
+    fund_source = models.ForeignKey(FundSource, on_delete=models.PROTECT, null=True, blank=True, related_name="activities")
+    fund_account = models.CharField(max_length=255, blank=True, default="")
     # The approval of the activity's certificates (ASSUMPTIONS 369): who (can_approve_certificates) and when. Empty =
     # "Needs approval". Set and cleared ONLY by certificates.services (approve_activity_certificates,
     # cancel_certificate_approval); never by the activity form or update_activity.
@@ -296,3 +341,34 @@ class ActivityResourcePerson(models.Model):
 
     def __str__(self) -> str:
         return f"{self.resource_person} @ {self.activity}"
+
+
+class BudgetLine(models.Model):
+    """One line of an activity's budget (ASSUMPTIONS 433), copied from the Activity Design approved on paper. Saved ONLY by
+    activities.budget (with the activity's create / update): line_total = quantity x days x unit_price, rounded half-up
+    to the centavo; ACTIVITY.budget_amount = the sum of the line totals."""
+
+    budget_line_id = models.BigAutoField(primary_key=True)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="budget_lines")
+    category = models.ForeignKey(BudgetCategory, on_delete=models.PROTECT, related_name="budget_lines")
+    particulars = models.CharField(max_length=255)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit = models.CharField(max_length=30)
+    days = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    sort_order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "budget_line"
+        ordering = ["activity", "sort_order", "budget_line_id"]
+        constraints = [
+            models.CheckConstraint(condition=Q(quantity__gt=0), name="budget_line_quantity_positive"),
+            models.CheckConstraint(condition=Q(days__gte=1), name="budget_line_days_at_least_one"),
+            models.CheckConstraint(condition=Q(unit_price__gte=0), name="budget_line_unit_price_not_negative"),
+            models.CheckConstraint(condition=Q(line_total__gte=0), name="budget_line_total_not_negative"),
+        ]
+
+    def __str__(self) -> str:
+        return self.particulars

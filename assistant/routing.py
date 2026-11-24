@@ -8,6 +8,10 @@
    an activity title, a period or a document type -> our code lists the files (no Gemini);
 4. activities: an activity word (activities, events, schedule, happening, an ACTIVITY_TYPE name, ...) together with a
    period, a status, "how many" or a list word -> our code lists the activities (no Gemini);
+   (budget, ASSUMPTIONS 433: budget / fund source / how much / cost words AND an activity named by its title, without
+   another content word, a file word or a document type -> our code shows that activity's budget from the records, no
+   Gemini; checked before 2, so "What does the Activity Design say about the budget?" and a bare "What is the budget?"
+   still search the documents);
 5. anything else -> Gemini with every tool (also list_activities_by_period and find_files, whose dates our code works
    out from the user's own words).
 
@@ -23,9 +27,9 @@ from documents.models import DocumentType
 
 from .periods import FUTURE_CUES, Period, parse_period, period_words
 
-ACTIVITIES, FIND_FILES = "activities", "find_files"
+ACTIVITIES, FIND_FILES, BUDGET = "activities", "find_files", "budget"
 DOCUMENT_STATUS, DOCUMENT_CONTENT, GEMINI_ALL_TOOLS = "document_status", "document_content", "gemini_all_tools"
-PATHS = (ACTIVITIES, FIND_FILES, DOCUMENT_STATUS, DOCUMENT_CONTENT, GEMINI_ALL_TOOLS)
+PATHS = (ACTIVITIES, FIND_FILES, BUDGET, DOCUMENT_STATUS, DOCUMENT_CONTENT, GEMINI_ALL_TOOLS)
 
 DOCUMENT_STATUS_WORDS = re.compile(
     r"\b(missing|overdue|late|waiting|pending|returned|due|lacking|unapproved|outstanding|checklist|incomplete|"
@@ -36,6 +40,11 @@ CONTENT_WORDS = re.compile(
     r"\b(say|says|said|saying|mention|mentions|mentioned|contents?|summary|summari[sz]e|describe|describes|"
     r"explain|explains|according to|written|objectives?|budget|key points|talk about|talks about|discuss|discusses|"
     r"stated?|states|purpose|recommendations?|findings|outcomes?|results?|highlights|lessons|what is in|what's in|inside)\b"
+)
+# ASSUMPTIONS 433: questions about an activity's budget, answered from the records (BUDGET path).
+BUDGET_WORDS = re.compile(
+    r"\b(budgets?|fund ?sources?|source of (?:the )?funds?|funding|funded|how much|costs?|costing|expenses?|"
+    r"charging|charged to|allocation|allotted|allocated|line items?|honorarium)\b"
 )
 FILE_WORDS = re.compile(
     r"\b(files?|documents?|docs?|cop(?:y|ies)|soft ?cop(?:y|ies)|download|downloads|attachments?|attached|"
@@ -161,6 +170,13 @@ def route(question: str, now: datetime) -> Route:
     activity_type = match_type(without_doc_type, activity_types)
     has_file_word = bool(FILE_WORDS.search(text))
     has_activity_word = bool(ACTIVITY_WORDS.search(without_doc_type)) or activity_type is not None
+
+    if BUDGET_WORDS.search(text) and not (CONTENT_WORDS.search(BUDGET_WORDS.sub(" ", text)) or has_file_word
+                                          or document_type):
+        words = name_words(text, activity_types, document_types)
+        activity_ids = activities_named(words) if words else []
+        if activity_ids:  # an activity is named: its budget from the records; otherwise the paths below decide
+            return Route(BUDGET, activity_ids=activity_ids, name_words=words)
 
     if CONTENT_WORDS.search(text) and (has_file_word or document_type or not has_activity_word):
         return Route(DOCUMENT_CONTENT)

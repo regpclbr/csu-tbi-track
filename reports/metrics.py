@@ -16,6 +16,7 @@ registrations, answers or documents in Python. Python only reshapes the (small) 
 import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -38,7 +39,9 @@ from django.db.models import (
 )
 from django.db.models.functions import Cast, Coalesce, Lower, Trim, TruncMonth
 
-from activities.models import Activity, ActivityParticipantCategory, ActivityStatus, ActivityType, ParticipantCategory
+from activities.models import (
+    Activity, ActivityParticipantCategory, ActivityStatus, ActivityType, FundSource, ParticipantCategory,
+)
 from certificates.models import Certificate
 from documents.models import Document, DocumentStatus, DocumentType
 from documents.services import due_date, today_in_manila, type_applies
@@ -245,6 +248,39 @@ def period_summary(filters: ReportFilters, now: datetime | None = None, types: l
         "certificates_emailed": certificates["emailed"],
         "startups_engaged": engaged_startups(filters).count(),
     }
+
+
+# --- Budget (ASSUMPTIONS 433) -----------------------------------------------------------------------------------------
+
+BUDGET_NOT_SET = "Not set"  # activities from before the budget lines without a fund source (activities.budget.NOT_SET)
+
+
+def period_budget_total(filters: ReportFilters) -> Decimal:
+    """N19: the total budget (ACTIVITY.budget_amount = the sum of its budget lines) of the period's Conducted
+    activities. Decimal, 0.00 when there are none."""
+    total = period_activities(filters).aggregate(total=Sum("budget_amount"))["total"]
+    return (total or Decimal("0.00")).quantize(Decimal("0.01"))
+
+
+def budget_by_fund_source(filters: ReportFilters) -> list[dict]:
+    """N20: the period's Conducted activities per fund source: {"fund_source" (code - name or "Not set"), "code",
+    "activities", "total"}. Every ACTIVE fund source is listed (0 when unused), in its own order; an inactive one only
+    when used; "Not set" last and only when some activity has none. One query; the rows add up to N1 and N19."""
+    grouped = {
+        row["fund_source_id"]: row for row in
+        period_activities(filters).values("fund_source_id").annotate(activities=Count("pk"), total=Sum("budget_amount"))
+    }
+    rows = []
+    for source in FundSource.objects.order_by("sort_order", "code"):
+        found = grouped.get(source.pk)
+        if found is None and not source.is_active:
+            continue
+        rows.append({"fund_source": str(source), "code": source.code, "activities": found["activities"] if found else 0,
+                     "total": (found["total"] if found else Decimal("0")).quantize(Decimal("0.01"))})
+    if None in grouped:
+        rows.append({"fund_source": BUDGET_NOT_SET, "code": "", "activities": grouped[None]["activities"],
+                     "total": grouped[None]["total"].quantize(Decimal("0.01"))})
+    return rows
 
 
 def activity_rows(filters: ReportFilters) -> list[dict]:

@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from activities import attention, pages
 from activities import services as activity_services
-from activities.models import Activity, ActivityStatus
+from activities.models import FundSource, Activity, ActivityStatus
 from certificates import services as certificate_services
 from registrations import services
 from registrations.models import FormTemplate, FormType, Registration
@@ -43,7 +43,7 @@ def test_the_service_accepts_an_empty_deadline_and_still_checks_a_given_one(make
         "participant_categories": [ParticipantCategory.objects.get(name="Faculty")], "start_date": start,
         "end_date": start, "start_time": time(8), "end_time": time(17), "venue": "Hall", "max_slots": 10,
         "registration_deadline": at(start - timedelta(days=1)), "evaluation_deadline": None,
-        "budget_amount": Decimal("0"),
+        "fund_source": FundSource.objects.get(code="RAF"),  # ASSUMPTIONS 433
     }
     activity = activity_services.create_activity(director, values)
     assert activity.evaluation_deadline is None

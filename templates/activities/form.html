@@ -71,12 +71,7 @@ default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 42
     </div>
   </section>
 
-  <section class="card p-6" aria-labelledby="section-budget">
-    {% include "components/section_header.html" with id="section-budget" title="Budget" %}
-    <div class="grid gap-4 md:grid-cols-3">
-      {% include "components/form_field.html" with field=form.budget_amount prefix="₱" step="0.01" %}
-    </div>
-  </section>
+  {% include "activities/_budget_fields.html" %}
 
   {% if activity %}{% include "activities/_signatories_fields.html" %}{% else %}{% include "activities/_prepare_certificates.html" %}{% endif %}
 

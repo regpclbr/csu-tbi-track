@@ -21,7 +21,6 @@ terminal, exactly as in real use; the emails are printed in THAT terminal.
 
 import inspect
 from datetime import datetime, time, timedelta
-from decimal import Decimal
 from pathlib import Path
 
 from django.conf import settings
@@ -31,7 +30,7 @@ from django.utils import timezone
 
 from accounts.models import Role, TBIMember
 from activities import services as activity_services
-from activities.models import Activity, ActivityType, ParticipantCategory
+from activities.models import Activity, ActivityType, FundSource, ParticipantCategory
 from certificates import services
 from certificates.models import Certificate
 from registrations import services as registration_services
@@ -142,7 +141,7 @@ class Command(BaseCommand):
             "start_time": time(9, 0), "end_time": time(16, 0), "venue": "CSU TBI Hall", "max_slots": 10,
             "registration_deadline": timezone.make_aware(datetime.combine(today, time.max)),  # 23:59:59.999999 today
             "evaluation_deadline": timezone.make_aware(datetime.combine(today + timedelta(days=7), time(17, 0))),
-            "budget_amount": Decimal("0.00"),
+            "fund_source": FundSource.objects.filter(is_active=True).order_by("sort_order").first(),  # 433
         }, now=now)
         registration_services.create_form(self.member, activity, FormType.REGISTRATION)
         registration_services.create_form(self.member, activity, FormType.EVALUATION)

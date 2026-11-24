@@ -71,7 +71,7 @@ def test_the_page_opens_the_forms_tab_with_the_next_step(director, valid_data) -
         "title": data["title"], "description": data["description"], "activity_type": data["activity_type"].pk,
         "participant_categories": [c.pk for c in data["participant_categories"]],
         **typed_schedule_fields(data), "venue": data["venue"], "max_slots": data["max_slots"],
-        "budget_amount": str(data["budget_amount"]), **creation_document_files(),
+        "fund_source": data["fund_source"].pk, **creation_document_files(),
     }
     response = client_for(director).post(reverse("activities:create"), post, follow=True)
     activity = Activity.objects.get(title="Via the page")
@@ -90,7 +90,7 @@ def test_old_and_api_activities_still_start_as_draft(director, valid_data) -> No
                    start_date=data["start_date"].isoformat(), end_date=data["end_date"].isoformat(),
                    registration_deadline=data["registration_deadline"].isoformat(),
                    evaluation_deadline=data["evaluation_deadline"].isoformat(), start_time="08:00", end_time="17:00",
-                   budget_amount=str(data["budget_amount"]))
+                   fund_source=data["fund_source"].pk)
     response = client.post("/activities/api/", json.dumps(payload), content_type="application/json")
     assert response.status_code == 201 and json.loads(response.content)["activity"]["status"] == "Draft"
 

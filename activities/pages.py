@@ -3,11 +3,13 @@ string, the month grid, the tabs and the readable detail rows. Every rule and nu
 activities.services and registrations.services (never repeated here)."""
 
 import calendar
+import re
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -362,7 +364,8 @@ def detail_rows(detail: dict) -> list[tuple[str, str]]:
         ("Max slots", f"{detail['max_slots']:,}"),
         ("Registration deadline", format_datetime(detail["registration_deadline"])),
         ("Evaluation deadline", format_datetime(detail["evaluation_deadline"]) if detail["evaluation_deadline"] else NO_EVALUATION_DEADLINE),
-        ("Budget", format_money(detail["budget_amount"])),
+        ("Budget", format_money(detail["budget_amount"])),  # the budget lines' grand total (ASSUMPTIONS 433)
+        ("Fund source", detail["budget"]["fund_source"]),
         ("Created by", f"{detail['created_by']}, {format_datetime(detail['created_at'])}"),
         ("Last updated", format_datetime(detail["updated_at"])),
     ]
@@ -520,3 +523,96 @@ def category_donut(by_category: dict) -> dict:
         "count_header": label.capitalize(),
         "aria_label": f"Participants by category, {total:,} {label}: {described}",
     }
+
+
+# --- The budget (ASSUMPTIONS 433): the form's table, its preview and the Overview card (display / parsing only) ------
+
+BUDGET_ROW = re.compile(r"^budget-(\d+)-(category|particulars|quantity|unit|days|unit_price)$")
+BUDGET_UNITS = ("pax", "person", "pack", "piece", "set", "hour", "day", "lot", "box", "ream", "trip")
+
+
+def posted_budget_rows(data) -> list[tuple[int, dict]]:
+    """The form's budget rows as (row key, {field: text}) in key order; rows left empty are dropped (the service's
+    `is_blank`). The service gets only the dicts, so its "budget-<index>-<field>" errors refer to this list's order."""
+    from . import budget
+
+    rows: dict[int, dict] = {}
+    for name in data:
+        match = BUDGET_ROW.match(name)
+        if match:
+            rows.setdefault(int(match.group(1)), {})[match.group(2)] = data.get(name, "")
+    return [(key, row) for key, row in sorted(rows.items()) if not budget.is_blank(row)]
+
+
+def split_budget_errors(error) -> dict[str, list[str]]:
+    """Take the budget errors ("budget-<index>-<field>", "budget_lines") out of the service's ValidationError, so they
+    go under the table's cells and the rest under the activity's fields."""
+    from . import budget
+
+    if not hasattr(error, "error_dict"):
+        return {}
+    keys = [key for key in error.error_dict if key.startswith("budget-") or key == budget.LINES_KEY]
+    return {key: [message for item in error.error_dict.pop(key) for message in item.messages] for key in keys}
+
+
+def _saved_rows(activity: Activity) -> list[dict]:
+    from . import budget
+
+    return [{"category": str(line.category_id), "particulars": line.particulars,
+             "quantity": budget.quantity_text(line.quantity), "unit": line.unit, "days": str(line.days),
+             "unit_price": f"{line.unit_price:.2f}"} for line in budget.saved_lines(activity)]
+
+
+def budget_section(form, activity: Activity | None, posted: list[dict] | None = None,
+                   errors: dict | None = None) -> dict:
+    """The activity form's "Budget" card: the fund source / account fields, the rows (what was posted after an error,
+    else the saved lines, else one empty row) with their errors and totals (budget.preview: the service's own rules),
+    the categories (active + the ones already used) and the preview URL. Display only."""
+    from . import budget
+    from .models import BudgetCategory
+
+    rows = posted if posted is not None else (_saved_rows(activity) if activity is not None else [])
+    used = budget.used_category_ids(activity)
+    calculated = budget.preview(rows, used)
+    errors = errors or {}
+    shown = []
+    for index, row in enumerate(rows or [{}]):
+        shown.append({
+            "key": index, "values": {field: row.get(field, "") for field in budget.FIELDS},
+            "errors": {field: " ".join(errors.get(budget.row_key(index, field), [])) for field in budget.FIELDS},
+            "total": calculated["row_totals"].get(index) if rows else None,
+        })
+    for row in shown:
+        if not row["values"]["days"]:
+            row["values"]["days"] = "1"
+    categories = BudgetCategory.objects.filter(Q(is_active=True) | Q(pk__in=used)).order_by("sort_order", "name")
+    return {
+        "fund_source": form["fund_source"], "fund_account": form["fund_account"],
+        "rows": shown, "next_key": len(shown), "max_rows": budget.MAX_LINES,
+        "categories": categories, "units": BUDGET_UNITS,
+        "table_errors": errors.get(budget.LINES_KEY, []),
+        "category_totals": calculated["category_totals"], "total": calculated["total"],
+        "preview_url": reverse("activities:budget_preview"),
+        "activity_id": activity.pk if activity is not None else "",
+    }
+
+
+def budget_preview(data) -> dict:
+    """activities:budget_preview: the totals of what is typed (budget.preview), keyed by the form's own row keys."""
+    from . import budget
+
+    keyed = posted_budget_rows(data)
+    activity_id = str(data.get("activity", ""))
+    used = budget.used_category_ids(Activity(pk=int(activity_id))) if activity_id.isdigit() else set()
+    calculated = budget.preview([row for _, row in keyed], used)
+    row_totals = {key: calculated["row_totals"].get(index) for index, (key, _) in enumerate(keyed)}
+    return {"row_totals": row_totals, "category_totals": calculated["category_totals"], "total": calculated["total"],
+            "problems": sum(1 for _ in calculated["errors"])}
+
+
+def budget_card(activity: Activity) -> dict:
+    """The Overview's "Budget" card (budget.budget_summary): fund source (or "Not set"), account, the Particulars /
+    Quantity / Unit Cost / Total Amount table, the totals per category and the grand total."""
+    from . import budget
+
+    return budget.budget_summary(activity)

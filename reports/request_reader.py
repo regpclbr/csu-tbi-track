@@ -25,6 +25,7 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "by_category": "participants per participant category",
     "category_by_activity": "for each activity, the number and percentage of participants per participant category",
     "monthly": "activities and participants per month",
+    "budget": "the total budget per fund source (RAF, IGF, TRF, BRF) of the conducted activities",
     "evaluation": "evaluation (feedback) rating results",
     "documents": "required documents submitted, missing or overdue per activity",
     "certificates": "certificates issued and emailed in the period",

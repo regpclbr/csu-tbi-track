@@ -13,6 +13,7 @@ urlpatterns = [
     # Pages (phase F2a)
     path("", page_views.activity_list, name="list"),
     path("new/", page_views.activity_create, name="create"),
+    path("budget/preview/", page_views.budget_preview, name="budget_preview"),  # HTMX totals (ASSUMPTIONS 433)
     path("cards/<str:preset>/", page_views.card_dialog, name="card_dialog"),  # a list card's dialog (HTMX)
     path("<int:activity_id>/", page_views.activity_detail, name="detail"),
     path("<int:activity_id>/edit/", page_views.activity_edit, name="edit"),

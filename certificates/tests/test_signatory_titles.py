@@ -45,7 +45,7 @@ def form_post(valid_data, **overrides) -> dict:
         "title": values["title"], "description": values["description"], "activity_type": values["activity_type"].pk,
         "participant_categories": [c.pk for c in values["participant_categories"]],
         **typed_schedule_fields(values), "venue": values["venue"], "max_slots": values["max_slots"],
-        "budget_amount": str(values["budget_amount"]),
+        "fund_source": values["fund_source"].pk,
     }
     data.update(signatories)
     return data

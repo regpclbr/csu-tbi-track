@@ -154,8 +154,8 @@ def test_a_mixed_request_gets_the_missing_section_from_our_code(director, fake_g
 def test_certificates_are_added_the_same_way(director, fake_gemini) -> None:
     fake_gemini.replies.append(tool(report_type="accomplishment"))
     result = fill(director, "accomplishment report this quarter with the certificates")
-    assert result.sections == ["summary", "activities", "by_type", "by_category", "category_by_activity", "monthly", "evaluation",
-                               "certificates"]
+    assert result.sections == ["summary", "activities", "by_type", "by_category", "category_by_activity", "monthly", "budget",
+                               "evaluation", "certificates"]  # budget: ASSUMPTIONS 433
     assert "Added: Certificates." in result.notes
 
 

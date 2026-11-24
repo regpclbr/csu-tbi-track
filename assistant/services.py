@@ -33,7 +33,7 @@ from accounts.permissions import require_staff_member
 from activities.models import Activity
 
 from . import gemini, routing, tools
-from .listings import ActivityQuery, FileQuery, Listing, activities_answer, files_answer
+from .listings import ActivityQuery, FileQuery, Listing, activities_answer, budget_answer, files_answer
 from .gemini import AssistantUnavailable, GeminiGateway, ModelReply, Turn, get_gateway
 from .models import AIChat, AIChatMessage, AIMessageSource
 
@@ -315,7 +315,7 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
     now = now or timezone.now()
     decided = routing.route(question, now)
     state = AskState(activity_id=activity.pk if activity else None, question=question, now=now)
-    if decided.path in (routing.ACTIVITIES, routing.FIND_FILES):
+    if decided.path in (routing.ACTIVITIES, routing.FIND_FILES, routing.BUDGET):
         # Answered by our code from the database: no Gemini, so it also works without the key.
         listing = _listing_for(decided, state, now)
         return _save_answer(chat, question, f"{listing.text}\n\n{RECORDS_NOTE}", [], RECORDS, decided.path, state)
@@ -349,7 +349,9 @@ def ask(member: TBIMember, chat: AIChat, question: str, activity_id: int | None 
 
 
 def _listing_for(decided: routing.Route, state: AskState, now: datetime) -> Listing:
-    """The answer our code writes for the activities and find-files paths."""
+    """The answer our code writes for the activities, find-files and budget (ASSUMPTIONS 433) paths."""
+    if decided.path == routing.BUDGET:
+        return budget_answer(decided.activity_ids, state.activity_id)
     if decided.path == routing.ACTIVITIES:
         query = ActivityQuery(period=decided.period, status=decided.status, activity_type=decided.activity_type,
                               include_drafts=decided.include_drafts, count=decided.count)

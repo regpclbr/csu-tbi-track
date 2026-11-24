@@ -12,16 +12,19 @@ prints Start + End as one "Date" column and the time in its compact form (the Ex
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from html import escape
 
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
-from activities.formatting import compact_time_range, format_date_span
+from activities.formatting import compact_time_range, format_date_span, format_money
 from certificates.pdf import get_renderer
 
-from .content import DATE, DECIMAL, INT, NO_ACTIVITIES, PERCENT, Cell, Chart, Column, ReportContent, Table, long_date
+from .content import (
+    DATE, DECIMAL, INT, MONEY, NO_ACTIVITIES, PERCENT, Cell, Chart, Column, ReportContent, Table, long_date,
+)
 
 EMPTY = "—"
 
@@ -43,7 +46,7 @@ TEXT_WEIGHTS = {"title": 3.0, "venue": 2.0}  # share of the remaining width; oth
 DEFAULT_TEXT_WEIGHT = 1.5
 TEXT_MIN_WIDTH_MM, TEXT_MAX_WIDTH_MM = 18, 110  # short tables (Measure / Value) stay narrow instead of page-wide
 WIDE_TABLE_COLUMNS = 6  # more columns than this: the smaller table font (never below 8 pt)
-NUMBER_KINDS = (INT, PERCENT, DECIMAL)
+NUMBER_KINDS = (INT, PERCENT, DECIMAL, MONEY)
 
 
 def format_value(value, kind: str) -> str:
@@ -62,6 +65,8 @@ def format_value(value, kind: str) -> str:
         return f"{value:.2f}"
     if kind == INT:
         return f"{value:,}"
+    if kind == MONEY:  # ₱1,234.50 (ASSUMPTIONS 433)
+        return format_money(Decimal(value))
     return str(value)
 
 

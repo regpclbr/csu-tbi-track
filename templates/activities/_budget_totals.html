@@ -1,0 +1,13 @@
+{% load ui %}
+{% comment %}The budget totals of the activity form (ASSUMPTIONS 433): from activities.budget.preview, never calculated here. In the HTMX
+response (activities:budget_preview) each row's total cell is swapped out of band.{% endcomment %}
+<dl class="space-y-1">
+  {% for name, total in preview.category_totals %}
+    <div class="flex justify-between gap-4 text-slate-700"><dt>{{ name }}</dt><dd class="tabular-nums">{{ total|money }}</dd></div>
+  {% endfor %}
+  <div class="flex justify-between gap-4 border-t border-line pt-2 font-semibold text-ink"><dt>Grand total</dt><dd class="tabular-nums">{{ preview.total|money }}</dd></div>
+</dl>
+{% if preview.problems %}<p class="mt-2 text-xs text-muted">{{ preview.problems }} line{{ preview.problems|pluralize }} not counted yet: check the marked values.</p>{% endif %}
+{% for key, total in preview.row_totals.items %}
+  <span id="budget-row-total-{{ key }}" hx-swap-oob="true">{% if total is not None %}{{ total|money }}{% else %}–{% endif %}</span>
+{% endfor %}

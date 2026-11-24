@@ -1,0 +1,45 @@
+{% load ui %}
+{% comment %}The Overview's "Budget" card (ASSUMPTIONS 433; activities.pages.budget_card = activities.budget.budget_summary): fund source (or
+"Not set"), account, the Particulars / Quantity / Unit Cost / Total Amount table (the "Running Budget" of NAVIGATU's Activity Report),
+the totals per category and the grand total. Copied from the Activity Design approved on paper; no approval here.{% endcomment %}
+<section class="card p-6" aria-labelledby="budget-title" id="budget">
+  {% include "components/section_header.html" with id="budget-title" title="Budget" subtitle="Copied from the approved Activity Design." %}
+  <dl class="grid gap-4 text-sm sm:grid-cols-2">
+    <div><dt class="font-semibold text-ink">Fund source</dt><dd class="mt-1 {% if budget_card.fund_source_set %}text-slate-700{% else %}text-muted{% endif %}">{{ budget_card.fund_source }}</dd></div>
+    <div><dt class="font-semibold text-ink">Account / charging</dt><dd class="mt-1 text-slate-700 [overflow-wrap:anywhere]">{{ budget_card.fund_account|default:"–" }}</dd></div>
+  </dl>
+  {% if budget_card.rows %}
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full text-sm">
+        <caption class="sr-only">Budget lines</caption>
+        <thead class="text-left text-xs font-semibold uppercase tracking-wide text-muted">
+          <tr><th scope="col" class="pb-2 pr-4">Particulars</th><th scope="col" class="pb-2 pr-4">Quantity</th>
+              <th scope="col" class="pb-2 pr-4 text-right">Unit Cost</th><th scope="col" class="pb-2 text-right">Total Amount</th></tr>
+        </thead>
+        <tbody class="divide-y divide-line">
+          {% for row in budget_card.rows %}
+            <tr>
+              <td class="py-2 pr-4 text-ink [overflow-wrap:anywhere]">{{ row.particulars }}<span class="block text-xs text-muted">{{ row.category }}</span></td>
+              <td class="py-2 pr-4 text-slate-700 whitespace-nowrap">{{ row.quantity }}</td>
+              <td class="py-2 pr-4 text-right tabular-nums text-slate-700">{{ row.unit_cost|money }}</td>
+              <td class="py-2 text-right tabular-nums text-ink">{{ row.total_amount|money }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-line-strong"><th scope="row" colspan="3" class="pt-2 pr-4 text-left font-semibold text-ink">Total</th>
+              <td class="pt-2 text-right font-semibold tabular-nums text-ink">{{ budget_card.total|money }}</td></tr>
+        </tfoot>
+      </table>
+    </div>
+    {% if budget_card.category_totals|length > 1 %}
+      <dl class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+        {% for name, total in budget_card.category_totals %}
+          <div class="flex justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2"><dt class="text-slate-700">{{ name }}</dt><dd class="tabular-nums text-ink">{{ total|money }}</dd></div>
+        {% endfor %}
+      </dl>
+    {% endif %}
+  {% else %}
+    <p class="mt-4 text-sm text-slate-700">No budget lines: the budget is {{ budget_card.total|money }}.</p>
+  {% endif %}
+</section>

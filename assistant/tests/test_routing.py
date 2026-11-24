@@ -239,3 +239,18 @@ def test_the_log_has_ids_path_and_tools_but_never_text(director, chat, calendar_
     services.ask(director, chat, "and in October?", now=NOW)
     line = next(r.getMessage() for r in caplog.records if r.name == "assistant" and "answered" in r.getMessage())
     assert "path gemini_all_tools, tools list_activities_by_period" in line and "October" not in line
+
+
+# --- Budget (ASSUMPTIONS 433) ----------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("question", "path"), [
+    ("How much is the budget of the Pitching Workshop?", routing.BUDGET),
+    ("what's the fund source for pitching workshop", routing.BUDGET),
+    ("How much will the Pitching Workshop cost?", routing.BUDGET),
+    ("What is the budget?", routing.DOCUMENT_CONTENT),  # no activity named: the documents, as before
+    ("What does the Activity Design of the Pitching Workshop say about the budget?", routing.DOCUMENT_CONTENT),
+])
+def test_budget_questions_need_a_named_activity(calendar_2026, make_event, question, path) -> None:
+    make_event("Pitching Workshop", date(2026, 11, 20))
+    assert routing.route(question, NOW).path == path

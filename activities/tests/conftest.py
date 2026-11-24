@@ -7,7 +7,7 @@ import pytest
 from django.utils import timezone
 
 from activities import services
-from activities.models import Activity, ActivityType, ParticipantCategory
+from activities.models import FundSource, Activity, ActivityType, ParticipantCategory
 from registrations.models import FormTemplate, FormType, Registration
 
 
@@ -43,7 +43,7 @@ def valid_data(roles):
             "max_slots": 30,
             "registration_deadline": at(start - timedelta(days=2)),
             "evaluation_deadline": at(end + timedelta(days=7)),
-            "budget_amount": Decimal("30000.00"),
+            "fund_source": FundSource.objects.get(code="RAF"),  # ASSUMPTIONS 433
         }
         data.update(overrides)
         return data

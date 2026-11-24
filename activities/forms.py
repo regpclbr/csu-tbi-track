@@ -3,7 +3,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
 
-from .models import Activity, ActivityType, ParticipantCategory
+from .models import Activity, ActivityType, FundSource, ParticipantCategory
 from .typed_fields import TypedDateField, TypedDateTimeField, TypedTimeField
 
 
@@ -27,7 +27,11 @@ class ActivityDataForm(forms.Form):
     max_slots = forms.IntegerField()
     registration_deadline = forms.DateTimeField()  # e.g. "2026-11-01T17:00" (Manila time)
     evaluation_deadline = forms.DateTimeField(required=False)  # empty / null = stays open (ASSUMPTIONS 423)
-    budget_amount = forms.DecimalField(max_digits=12, decimal_places=2)
+    # ASSUMPTIONS 433: the fund source (an ID; required by the service when creating) and the free-text account. The
+    # budget is the "budget_lines" list (passed through unchanged to activities.budget.clean_lines); budget_amount is
+    # calculated and refused when sent.
+    fund_source = forms.ModelChoiceField(queryset=FundSource.objects.all(), required=False)
+    fund_account = forms.CharField(required=False, max_length=255)
 
 
 def parse_activity_data(raw: dict, partial: bool = False) -> dict:
@@ -69,16 +73,25 @@ class ActivityPageForm(ActivityDataForm):
 
     field_order = [
         "title", "description", "objectives", "activity_type", "participant_categories", "start_date", "end_date", "start_time", "end_time",
-        "venue", "max_slots", "registration_deadline", "evaluation_deadline", "budget_amount",
+        "venue", "max_slots", "registration_deadline", "evaluation_deadline", "fund_source", "fund_account",
     ]
 
     def __init__(self, *args, activity: Activity | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         labels = {"activity_type": "Activity type", "participant_categories": "Participant categories",
-                  "start_time": "Start time", "end_time": "End time", "max_slots": "Max slots", "budget_amount": "Budget"}
+                  "start_time": "Start time", "end_time": "End time", "max_slots": "Max slots",
+                  "fund_source": "Fund source", "fund_account": "Account / charging"}
         for name, label in labels.items():
             self.fields[name].label = label
-        self.fields["budget_amount"].help_text = "In pesos (₱), two decimals."
+        # ASSUMPTIONS 433: required on the page (also when an older activity is edited); active sources + the current one.
+        sources = FundSource.objects.filter(is_active=True)
+        if activity is not None and activity.fund_source_id:
+            sources = sources | FundSource.objects.filter(pk=activity.fund_source_id)
+        self.fields["fund_source"].queryset = sources.order_by("sort_order", "code")
+        self.fields["fund_source"].required = True
+        self.fields["fund_source"].empty_label = "Choose the fund source"
+        self.fields["fund_source"].error_messages["required"] = "Choose the fund source."
+        self.fields["fund_account"].help_text = "Optional, for example Research Services – Representation Expenses."
         types = ActivityType.objects.filter(is_active=True)
         if activity is not None:
             types = types | ActivityType.objects.filter(pk=activity.activity_type_id)
