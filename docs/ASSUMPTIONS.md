@@ -2357,3 +2357,73 @@ REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and
        rate limits, Share card), `test_attendance_forms.py` (the right people per page, Prepared by, documents),
        `test_migration_attendance_days.py`, `certificates/tests/test_automatic_flow.py` (one day is enough); opt-in
        Chromium `registrations/tests/test_checkin_browser.py` (drawing, the check-in page at 390 px).
+
+## NAVIGATU UAT: participant photos with the evaluation (2026-11-25)
+
+435. **Participants may add photos (or their work) to their evaluation, for the TBI's reports** (NAVIGATU UAT; owner
+     decisions 2026-11-25). Stored and shown now; Prompts 6–7 put the ticked ones into the reports (Activity Report,
+     Evaluation Summary, Accomplishment Reports, annual report).
+     - **Database (39 -> 40 tables).** New EVALUATION_ATTACHMENT (`attachment_id`, `submission_id` FK EVALUATION_SUBMISSION
+       CASCADE, `file_path` max 255, `file_name` max 255 (the participant's name for display only, never in a path),
+       `file_size_kb` (the stored file), `content_type` image/jpeg / image/png / application/pdf, `use_in_reports`
+       default False, `marked_by_id` FK TBI_MEMBER nullable PROTECT, `marked_at` nullable, `uploaded_at`; check:
+       use_in_reports false OR marked_at set). Migration `registrations/0014` (schema only, reversible).
+     - **Where:** the personal evaluation page's review step ("Upload your photos from the event (optional)"), inside the
+       "Confirm and submit" form (a browser cannot keep chosen files between two pages). Every attendee reaches that page:
+       the general link (`/evaluation/<id>/`, item 334) only emails the personal link, the startup portal links to it,
+       walk-ins (item 434) evaluate like everyone else. The JSON `/api/evaluate/<token>/` stays text only (owner decision).
+       A refused file shows the review step again with the reason; nothing is saved and the files are chosen again. Works
+       without JavaScript.
+     - **Rules** (`registrations/evaluation_photos.py`, the one place; `submit_evaluation(..., attachments=)` calls it):
+       optional; at most `EVALUATION_PHOTO_MAX_FILES` (5) files, each at most `EVALUATION_PHOTO_MAX_MB` (10); JPG / PNG /
+       PDF by name AND content (first bytes like document uploads; images must also open in Pillow as that type).
+       Photos are re-encoded by Pillow: turned upright (EXIF orientation), then saved fresh without metadata (EXIF, GPS,
+       camera, PNG text; only the colour profile kept), the long side at most `EVALUATION_PHOTO_MAX_SIDE` (2400 px).
+       **PDFs are stored as they are** (owner decision: no new library to clean PDF metadata; the privacy notice promises
+       the location removal for photos only). Stored under `evaluation-photos/activity-<id>/<random>.<ext>` in the same
+       transaction as the evaluation (one submission, never anonymous); a failure removes the files already written.
+     - **Staff** (Evaluation tab, card "Participant photos"; `registrations.pages.participant_photos`): everyone sees the
+       count; only can_create_activity (`evaluation_photos.VIEW_PERMISSION`, owner decision; Director included) sees the
+       thumbnails (24 a page, `photos_page`), who uploaded (the registration's name, "Walk-in"), when, a larger view
+       (dialog), Download, and the "Use in reports" tick box. Files only through `registrations:evaluation_photo`
+       (inline) / `evaluation_photo_download` (attachment), `private, no-store`, nosniff; never `/media/`.
+     - **"Use in reports"** default OFF (photos can show other people); ticked / unticked only by
+       `evaluation_photos.set_use_in_reports` (can_create_activity): `marked_by` / `marked_at` = the latest change,
+       plus a `registrations.audit` line (IDs only) for every change. `photos_for_reports(activities)` is THE query for
+       reports and anything sent to the AI: ticked files only.
+     - **Not documents** (item 425's staff "Event Photos" type stays separate): no DOCUMENT row, so never in the checklist,
+       the payment packet, reminders, the compliance report or the AI index (`index_documents`).
+     - **Deleting:** a `post_delete` receiver (connected in `RegistrationsConfig.ready`) removes the file after the
+       commit whenever a row goes, also by cascade (evaluation, registration, activity deletion item 389; a rollback
+       keeps the file). The activity deletion dialog and ACTIVITY_DELETION.counts show `participant_photos`.
+     - **Retention:** none for now (owner decision: report material), kept with the evaluation and deleted with the
+       activity. Pending NAVIGATU / the CSU Data Protection Officer (TBI_QUESTIONS).
+     - **Privacy notice** (version November 25, 2026): what is collected, that the TBI may use selected photos and files
+       in its reports, "do not add photos of people who did not agree", location data removed from photos (not PDFs),
+       who sees them, kept with the evaluation; the consent summary says the same in one sentence.
+     - **Backup:** before `migrate`, the development database and the `MEDIA_ROOT` folder (photos are stored there from
+       now on, next to the signatures).
+     - Tests: `registrations/tests/test_evaluation_photos.py` (no photos still submits; 5 / 6 files; size; wrong type and
+       fake content; nothing left behind; EXIF / GPS removed and upright; PNG text removed; shrinking; PDF unchanged;
+       permissions 403 / login / no /media/; the tab for both groups; "Use in reports" with who and when; only ticked
+       files for reports; not documents; files removed on activity / registration delete, kept on rollback); opt-in
+       Chromium `registrations/tests/test_evaluation_photos_browser.py` (uploading at 390 px; ticking + the larger view
+       at 1280 px).
+
+## Browser checks fixed: budget lines, the Members table, the Return dialog (2026-11-25)
+
+436. **The budget lines and the Members table never hide a button; the modal check tests Return again** (owner, the two
+     opt-in browser tests that failed since items 432–434; layout and test data only, no rule, database or URL change).
+     - **Budget lines** (item 433, `activities/_budget_fields.html` + `_budget_row.html`): no longer a table with a 56rem
+       minimum (it scrolled sideways and hid "Remove this budget line" at 1280 / 1366 px). A list of lines in a container
+       query: from 52rem of card width (the desktop form) one grid row per line with a header row (labels sr-only); narrower
+       each line is a small card with visible labels (Category and Particulars full width, then Quantity / Unit / Days /
+       Unit price, then Total and the Remove button). Same names, ids, HTMX preview and server totals.
+     - **Members table** (Admin Console): three columns (Member with the status badge, "Role and position" with the two
+       small forms stacked, the actions stacked) so it fits the panel from 1280 px and Reset password / Deactivate are
+       never past its right edge. Both selects 17rem wide.
+     - **`config/tests/test_modals_browser.py`**: since item 432 the demo data has no upload waiting for review, so the test
+       switches `needs_review` on for the Invitation Letter type in its own data and uploads one as another member
+       (`_waiting_document`); the Return dialog is measured again.
+     - Tests: the opt-in `documents/tests/test_page_buttons_browser.py` (1366 / 1280 / 1024 / 390 px) and
+       `config/tests/test_modals_browser.py` pass.

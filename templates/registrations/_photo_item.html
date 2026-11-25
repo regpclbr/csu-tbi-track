@@ -1,0 +1,42 @@
+{% comment %}
+One participant file on the Evaluation tab (ASSUMPTIONS 435; registrations.pages.photo_item; can_create_activity only).
+The thumbnail opens the larger view (#photo-dialog, HTMX; without JavaScript the file itself in a new tab). "Use in
+reports" is a real checkbox: HTMX posts it on change and swaps this card (the hidden "false" comes first, so an unticked
+box sends false; the HTMX response also updates #photos-summary out of band); without JavaScript the Save button posts it. The rule is evaluation_photos.set_use_in_reports.
+{% endcomment %}
+{% with attachment=item.attachment %}
+<li id="photo-{{ attachment.pk }}" class="flex flex-col overflow-hidden rounded-2xl border border-line bg-white">
+  <a href="{% url 'registrations:evaluation_photo' activity.pk attachment.pk %}" target="_blank" rel="noopener"
+     class="block aspect-[4/3] bg-slate-100" aria-haspopup="dialog"
+     hx-get="{% url 'registrations:evaluation_photo_dialog' activity.pk attachment.pk %}" hx-target="#photo-dialog-body" hx-swap="innerHTML" hx-push-url="false"
+     hx-on::before-request="window.modalOpener = this"
+     hx-on::after-request="if (event.detail.successful) document.getElementById('photo-dialog').showModal()">
+    {% if attachment.is_image %}
+      <img src="{% url 'registrations:evaluation_photo' activity.pk attachment.pk %}" alt="Photo uploaded by {{ item.person }}" loading="lazy" class="size-full object-cover">
+    {% else %}
+      <span class="flex size-full flex-col items-center justify-center gap-2 text-muted">{% include "components/icon.html" with name="file-text" class="size-8" %}<span class="text-xs font-semibold">PDF</span></span>
+    {% endif %}
+    <span class="sr-only">Open the larger view of {{ attachment.file_name }}</span>
+  </a>
+  <div class="flex grow flex-col gap-2 p-4">
+    <p class="text-sm font-semibold break-words text-ink">{{ item.person }}{% if item.is_walk_in %} {% include "components/badge.html" with text="Walk-in" tone="neutral" %}{% endif %}</p>
+    <p class="caption [overflow-wrap:anywhere] text-muted">{{ attachment.file_name }} · {{ item.kind }} · {{ item.size }}</p>
+    <p class="caption text-muted">Uploaded {{ item.uploaded }}</p>
+    <form method="post" action="{% url 'registrations:evaluation_photo_mark' activity.pk attachment.pk %}"
+          hx-post="{% url 'registrations:evaluation_photo_mark' activity.pk attachment.pk %}" hx-trigger="change" hx-target="#photo-{{ attachment.pk }}" hx-swap="outerHTML">
+      {% csrf_token %}
+      <input type="hidden" name="use_in_reports" value="false">
+      <label class="flex cursor-pointer items-center gap-2 text-sm font-semibold text-ink">
+        <input type="checkbox" name="use_in_reports" value="true" class="size-4 accent-primary"{% if attachment.use_in_reports %} checked{% endif %}>
+        Use in reports<span class="sr-only"> ({{ attachment.file_name }})</span>
+      </label>
+      <noscript><button type="submit" class="btn btn-secondary btn-sm mt-2">Save</button></noscript>
+    </form>
+    {% if item.marked %}<p class="caption text-muted">{{ item.marked }}</p>{% endif %}
+    <div class="mt-auto flex flex-wrap gap-2 pt-2">
+      <a href="{% url 'registrations:evaluation_photo_download' activity.pk attachment.pk %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download<span class="sr-only"> {{ attachment.file_name }}</span></a>
+    </div>
+  </div>
+</li>
+{% endwith %}
+{% if summary %}{% include "registrations/_photos_summary.html" with photos_aside=summary oob=True %}{% endif %}

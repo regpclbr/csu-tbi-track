@@ -5,10 +5,13 @@ certificate name and email in large text, the answers, then "Edit" (step=edit: b
 "Confirm and submit" (step=confirm: the privacy notice checkbox must be ticked, ASSUMPTIONS 394; services.submit_evaluation
 checks everything again). The values travel in hidden
 inputs; nothing is saved before the confirmation.
+Optional photos / PDFs (ASSUMPTIONS 435) are chosen HERE (a browser cannot keep chosen files between two pages) and sent
+with "Confirm and submit"; the check is registrations.evaluation_photos.clean_attachments. A refused file shows this
+page again with the reason (nothing saved; the files are chosen again). Works without JavaScript.
 {% endcomment %}
 {% block title %}Check your evaluation · CSU-TBI Track{% endblock %}
 {% block content %}
-<form method="post" action="" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
+<form method="post" action="" enctype="multipart/form-data" x-data="{ busy: false }" @submit="setTimeout(() => busy = true)">
   {% csrf_token %}
   <input type="hidden" name="certificate_name" value="{{ values.certificate_name }}">
   <input type="hidden" name="certificate_email" value="{{ values.certificate_email }}">
@@ -41,6 +44,17 @@ inputs; nothing is saved before the confirmation.
       {% endfor %}
       <div class="py-3"><dt class="text-sm font-semibold text-ink">Comments</dt><dd class="mt-1 text-base break-words whitespace-pre-line {% if comments %}text-slate-800{% else %}text-slate-700 italic{% endif %}">{{ comments|default:"No comments" }}</dd></div>
     </dl>
+  </section>
+
+  <section class="public-card mt-6 p-6 sm:p-8" aria-labelledby="photos-heading" id="photos">
+    <h2 id="photos-heading" class="text-xl font-bold tracking-tight text-ink">Upload your photos from the event <span class="text-base font-normal text-slate-700">(optional)</span></h2>
+    <p class="mt-2 text-base text-slate-800">Add photos of yourself at the event or of your work (for example your output from a workshop). The TBI may use them in its reports. Please do not add photos of people who did not agree.</p>
+    <label for="id_{{ photos_field }}" class="mt-4 block text-sm font-semibold text-ink">Photos or PDF files</label>
+    <input id="id_{{ photos_field }}" type="file" name="{{ photos_field }}" multiple accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+           class="mt-2 block w-full min-h-11 rounded-xl border border-line-strong bg-white/80 p-2 text-sm text-ink file:mr-3 file:min-h-10 file:rounded-full file:border file:border-solid file:border-line-strong file:bg-white file:px-4 file:text-sm file:font-semibold file:text-ink"
+           aria-describedby="id_{{ photos_field }}-help{% if photos_error %} id_{{ photos_field }}-error{% endif %}"{% if photos_error %} aria-invalid="true" autofocus{% endif %}>
+    <p id="id_{{ photos_field }}-help" class="mt-2 text-sm text-slate-700">{{ photos_help }} Photos are saved without their hidden details, such as the phone's location.</p>
+    {% if photos_error %}<p id="id_{{ photos_field }}-error" class="field-error">{{ photos_error }} Nothing was submitted yet: choose your files again, or submit without them.</p>{% endif %}
   </section>
 
   <section class="public-card mt-6 p-6 sm:p-8" aria-label="Privacy notice">

@@ -6,6 +6,8 @@ downloads the activity's summary (reports:evaluation_summary, ASSUMPTIONS 401): 
 without names, for any staff member. Each bar is the average out of 5; the table holds the
 same numbers as text. Then the evaluation links card (registrations.pages.evaluation_links): how links work, their
 counts, and the attendees who have not answered yet with "Resend link".
+Last, "Participant photos" (ASSUMPTIONS 435, registrations.pages.participant_photos): the count for everyone; the files,
+the larger view, Download and "Use in reports" only for can_create_activity.
 {% endcomment %}
 <div class="space-y-6">
   <div class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
@@ -46,6 +48,22 @@ counts, and the attendees who have not answered yet with "Resend link".
       </table>
     {% else %}
       {% include "components/empty_state.html" with icon="chart-column" title="No evaluations yet" text="Results appear here once attendees submit the evaluation form. Comments and written answers are never shown here." %}
+    {% endif %}
+  </section>
+
+  <section class="card scroll-mt-6 p-6" aria-labelledby="photos-title" id="photos">
+    {% include "components/section_header.html" with id="photos-title" title="Participant photos" subtitle="Photos and PDF files attendees added to their evaluation. Only the files ticked “Use in reports” will ever be used in reports." %}
+    {% if photos_count %}{% include "registrations/_photos_summary.html" %}{% endif %}
+    {% if not photos_count %}
+      {% include "components/empty_state.html" with icon="image" title="No photos yet" text="Attendees can add up to 5 photos or PDF files on the evaluation's last step." %}
+    {% elif not photos_can_view %}
+      <p class="text-sm text-muted">Only staff who can create activities see the files and choose which ones are used in reports.</p>
+    {% else %}
+      <ul class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="Participant photos">
+        {% for item in photo_items %}{% include "registrations/_photo_item.html" %}{% endfor %}
+      </ul>
+      {% include "components/pagination.html" with result=photo_result query="tab=evaluation" param="photos_page" base_url=activity_url hx_target="#tab-area" %}
+      {% include "components/modal.html" with id="photo-dialog" remote=True dialog_class="max-w-3xl" %}
     {% endif %}
   </section>
 </div>

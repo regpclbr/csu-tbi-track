@@ -15,11 +15,12 @@ from activities.services import registered_count
 from config.mail import prints_emails
 from reports import services as report_services
 
-from . import attendance, services, signatures
-from .models import AttendanceDay, DefaultFormField, EvaluationSubmission, FieldType, FormField, FormTemplate, FormType, Registration
+from . import attendance, evaluation_photos, services, signatures
+from .models import AttendanceDay, DefaultFormField, EvaluationAttachment, EvaluationSubmission, FieldType, FormField, FormTemplate, FormType, Registration
 
 REGISTRATIONS_PER_PAGE = 20
 LINK_ROWS_PER_PAGE = 20
+PHOTOS_PER_PAGE = 24  # participant photos on the Evaluation tab (ASSUMPTIONS 435)
 
 # Type badges on the Forms tab (FieldType values -> label shown to staff).
 FIELD_TYPE_LABELS = {
@@ -398,4 +399,46 @@ def evaluation_tab(member, activity: Activity, params=None) -> dict:
         "average_text": f"{average:.1f} / 5" if average is not None else "–",
         "answers_text": f"{answers} rating answer{'' if answers == 1 else 's'}",
         **evaluation_links(member, activity, params or {}),
+        **participant_photos(member, activity, params or {}),
     }
+
+
+# --- Participant photos (ASSUMPTIONS 435) -----------------------------------------------------------------------------
+
+
+def photo_item(attachment: EvaluationAttachment) -> dict:
+    """One file on the Evaluation tab or in its dialog: who uploaded it (the registration's name, "Walk-in"), when,
+    its kind and size, and who last ticked / unticked "Use in reports"."""
+    registration = attachment.submission.registration
+    return {
+        "attachment": attachment,
+        "person": registration.name,
+        "is_walk_in": registration.registration_source == Registration.Source.WALK_IN,
+        "uploaded": format_datetime(attachment.uploaded_at),
+        "kind": "Photo" if attachment.is_image else "PDF",
+        "size": f"{attachment.file_size_kb / 1024:.1f} MB" if attachment.file_size_kb >= 1024 else f"{attachment.file_size_kb} KB",
+        "marked": (f"{'Marked' if attachment.use_in_reports else 'Unmarked'} by "
+                   f"{attachment.marked_by.name if attachment.marked_by else 'System'} on {format_datetime(attachment.marked_at)}"
+                   if attachment.marked_at else ""),
+    }
+
+
+def participant_photos(member, activity: Activity, params) -> dict:
+    """The "Participant photos" card: everyone sees the count; only can_create_activity sees the files (thumbnails,
+    who, when, a larger view, download, "Use in reports"), PHOTOS_PER_PAGE a page (parameter photos_page)."""
+    count = evaluation_photos.attachment_count(activity)
+    can_view = has_permission(member, evaluation_photos.VIEW_PERMISSION)
+    files = f"{count} file{'' if count == 1 else 's'} uploaded"
+    context = {"photos_count": count, "photos_can_view": can_view, "photo_items": [], "photos_aside": files if count else ""}
+    if not can_view or not count:
+        return context
+    attachments = evaluation_photos.attachments_for(activity)
+    page = Paginator(attachments, PHOTOS_PER_PAGE).get_page((params.get("photos_page") or "1").strip())
+    used = attachments.filter(use_in_reports=True).count()
+    context.update({
+        "photos_aside": f"{files} · {used} used in reports",
+        "photos_used": used,
+        "photo_items": [photo_item(attachment) for attachment in page.object_list],
+        "photo_result": {"page": page.number, "num_pages": page.paginator.num_pages, "total": page.paginator.count},
+    })
+    return context

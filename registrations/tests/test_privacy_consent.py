@@ -50,7 +50,7 @@ def test_privacy_page_is_public_and_has_the_review_text(client) -> None:
     assert "Data entered in this review version is kept on the researchers' computer until you ask for it to be deleted." in text
     assert "To ask, contact the researchers listed below." in text
     assert "November 30, 2026" not in text and "Version November 17, 2026." not in text
-    assert "Regine S. Paclibar and Chrizza Patricia E. Mandap" in text and "Version November 24, 2026." in text
+    assert "Regine S. Paclibar and Chrizza Patricia E. Mandap" in text and "Version November 25, 2026." in text
 
 
 def test_consent_summary_has_the_review_text(client, scheduled) -> None:

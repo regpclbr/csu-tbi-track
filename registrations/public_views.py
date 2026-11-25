@@ -16,7 +16,7 @@ from activities.models import ActivityStatus
 from config.headers import private_token_page
 
 from . import public_pages as pages
-from . import services, signatures
+from . import evaluation_photos, services, signatures
 from .models import EvaluationSubmission, FormType
 from .public import guard_evaluation_request, guard_registration_request
 
@@ -216,19 +216,23 @@ def evaluate_page(request: HttpRequest, token: str) -> HttpResponse:
     step = request.POST.get("step")
     if step == "edit":
         return _evaluation_form(request, registration, form, values, {})
-    consent_error = ""
+    consent_error = photos_error = ""
     if step == "confirm" and not services.has_privacy_consent(request.POST.get(services.PRIVACY_CONSENT_FIELD)):
         consent_error = services.PRIVACY_CONSENT_REQUIRED  # back to the review page with the message, nothing saved
     elif step == "confirm":
         try:
             services.check_privacy_consent(request.POST.get(services.PRIVACY_CONSENT_FIELD))
-            services.submit_evaluation(token, **values)
+            services.submit_evaluation(token, **values, attachments=request.FILES.getlist(evaluation_photos.FIELD))
         except ValidationError as error:
-            return _evaluation_form(request, registration, form, values, pages.flat_errors(error.message_dict), status=400)
+            errors = error.message_dict
+            if set(errors) != {evaluation_photos.FIELD}:
+                return _evaluation_form(request, registration, form, values, pages.flat_errors(errors), status=400)
+            photos_error = errors[evaluation_photos.FIELD][0]  # back to the review step: choose the files again
         except services.RegistrationError as error:  # e.g. submitted meanwhile in another tab
             fresh = services.evaluation_state(registration)
             return _evaluation_notice(request, fresh.kind if fresh.kind != "open" else "closed", str(error))
-        return redirect("evaluate_done", token=token)
+        else:
+            return redirect("evaluate_done", token=token)
 
     try:
         name, email, stored = services.check_evaluation(form, values["certificate_name"], values["certificate_email"], values["answers"])
@@ -245,8 +249,12 @@ def evaluate_page(request: HttpRequest, token: str) -> HttpResponse:
         "private_page": True,
         "consent_field": services.PRIVACY_CONSENT_FIELD,
         "consent_error": consent_error,
+        # Optional photos / PDFs (ASSUMPTIONS 435): chosen on this step, sent with "Confirm and submit".
+        "photos_field": evaluation_photos.FIELD,
+        "photos_help": evaluation_photos.limits_text(),
+        "photos_error": photos_error,
     }
-    return render(request, "public/evaluate_review.html", context, status=400 if consent_error else 200)
+    return render(request, "public/evaluate_review.html", context, status=400 if consent_error or photos_error else 200)
 
 
 @private_token_page

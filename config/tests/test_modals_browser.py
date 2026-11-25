@@ -6,6 +6,8 @@ It fills the TEST database with the demo data (seed_demo), signs in with force_l
 at 1366x768 and 390x844 and checks: centred (equal space left/right and top/bottom, 1 px tolerance), at least 16 px from
 every edge, at most 85 % of the screen high, the backdrop dimmed, Escape closes it and the focus goes back to the
 trigger. Screenshots: modal-<name>-<width>.png in pytest's tmp_path (the path is printed with -s).
+Since ASSUMPTIONS 432 uploads are approved copies, so the demo data has nothing to Return: the test switches needs_review
+on for the Invitation Letter type and uploads one as another member (`_waiting_document`), so the Return dialog is tested.
 """
 
 import os
@@ -22,6 +24,7 @@ pytestmark = [
 ]
 
 VIEWPORTS = [(1366, 768), (390, 844)]
+PDF_BYTES = b"%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n"
 
 
 def _targets(director, admin) -> list[dict]:
@@ -59,6 +62,24 @@ def _targets(director, admin) -> list[dict]:
     ]
 
 
+def _waiting_document(director):
+    """One upload waiting for the Director's review (needs_review on, set in this test's data only, ASSUMPTIONS 432)."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from accounts.models import TBIMember
+    from activities.models import Activity
+    from documents import services as document_services
+    from documents.models import DocumentType
+
+    document_type = DocumentType.objects.get(name="Invitation Letter")
+    document_type.needs_review = True
+    document_type.save(update_fields=["needs_review"])
+    uploader = TBIMember.objects.filter(is_active=True, role__can_create_activity=True).exclude(pk=director.pk).order_by("pk").first()
+    activity = Activity.objects.exclude(status__name="Conducted").order_by("pk").first()
+    pdf = SimpleUploadedFile("Invitation.pdf", PDF_BYTES, content_type="application/pdf")
+    return document_services.upload_document(uploader, activity, document_type, pdf, title="Invitation to the partners")
+
+
 MEASURE = """() => {
   const dialog = [...document.querySelectorAll('dialog')].find(d => d.open);
   const box = dialog.getBoundingClientRect();
@@ -79,6 +100,7 @@ def test_every_modal_is_centred(live_server, settings, tmp_path, monkeypatch) ->
     call_command("seed_demo", verbosity=0)
     director = TBIMember.objects.get(email="director@demo.example.com")
     admin = TBIMember.objects.get(email="system-administrator@demo.example.com")
+    _waiting_document(director)
     targets = _targets(director, admin)
     cookies = {}
     for member in (director, admin):

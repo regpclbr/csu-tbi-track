@@ -150,6 +150,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `save_lines` (a typed budget_amount is refused: `BUDGET_TYPED`). Lines go through create/update_activity as
   `budget_lines` (History "Budget", "Budget Amount", "Fund Source", "Fund Account"). Display: `budget_summary` /
   `budget_table` (the Activity Report's Running Budget, Prompt 6). 39 tables (ASSUMPTIONS 434).
+  The form's lines are a list, not a table (ASSUMPTIONS 436): one grid row from 52rem of card width, labelled cards below;
+  never a min-width table that scrolls (it hid "Remove").
 - Attendance per day (ASSUMPTIONS 434, replaces 111): ATTENDANCE_DAY (registration, day, checked_in_at, method qr / staff,
   email / wet_signature ONLY on rows copied by migration registrations/0012, marked_by nullable; unique (registration,
   day)) is written ONLY by `registrations/attendance.py`. `REGISTRATION.attendance_confirmed` = attended at least one day,
@@ -157,6 +159,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
   registration: draw / upload / typed, `deleted_at`) only through `registrations/signatures.py`. REGISTRATION
   `registration_source` (online / portal / walk_in) and `cancelled_at` ("Will not attend"). No confirmation_method,
   attendance_marked_at / _by columns any more.
+- Participant photos (ASSUMPTIONS 435): EVALUATION_ATTACHMENT (submission FK CASCADE, file_path, file_name = display only,
+  file_size_kb, content_type jpeg / png / pdf, use_in_reports default False, marked_by / marked_at = the latest tick or
+  untick, uploaded_at) is written ONLY by `registrations/evaluation_photos.py` (`submit_evaluation(..., attachments=)`,
+  `set_use_in_reports`, can_create_activity). NOT a DOCUMENT (never checklist, payment packet, AI index). Reports and the AI
+  may use ONLY `evaluation_photos.photos_for_reports()` (ticked files). Files removed on commit by a post_delete receiver
+  (`RegistrationsConfig.ready`). 40 tables.
 
 ## Login and permissions
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
@@ -186,7 +194,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Uploaded files are never served from `/media/` (not even in DEBUG). Documents are downloaded only
   through `documents.views.download_document` (active staff login, always an attachment); certificate PDFs,
   evidence and template/signature images only through the views in `certificates/views.py` (and the
-  startup portal's own-certificate download).
+  startup portal's own-certificate download); participant photos only through `registrations:evaluation_photo` /
+  `evaluation_photo_download` (can_create_activity, ASSUMPTIONS 435).
 
 ## Activities
 - Every activity change goes through `activities/services.py` (create, update, change_status,
@@ -302,6 +311,13 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
   honeypot field `website`) before `register()`; the service itself is never rate limited.
 - An evaluation link that is submitted or past its window shows only the closed reason.
+- Evaluation photos (ASSUMPTIONS 435): optional, on the personal evaluation page's REVIEW step only (inside the "Confirm and
+  submit" form; the JSON API stays text only). Up to `EVALUATION_PHOTO_MAX_FILES` (5), `EVALUATION_PHOTO_MAX_MB` (10) each,
+  JPG / PNG / PDF by name and content; photos re-encoded by Pillow (upright, no EXIF / GPS, long side
+  `EVALUATION_PHOTO_MAX_SIDE`), PDFs stored as they are; `evaluation-photos/activity-<id>/<random>.<ext>`. A refused file =
+  the review step again with the reason (nothing saved). Evaluation tab card "Participant photos"
+  (`pages.participant_photos`): the count for everyone, files / larger view / Download / "Use in reports" (HTMX, OOB
+  `#photos-summary`) for can_create_activity. No retention job yet (TBI_QUESTIONS).
 - Privacy notice (ASSUMPTIONS 394; retention wording 414): `/privacy/` + `public/_privacy_consent.html` (required checkbox `privacy_consent`) on the
   public registration page, the portal registration page and the evaluation review step. The one rule is
   `services.check_privacy_consent`, called by every public entry point (HTML, `/api/register/`, `/api/evaluate/`, portal page
@@ -1019,6 +1035,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
   assistant reads every file (434). Database: registrations 0011 (schema) + 0012 (data) + 0013 (drop
   confirmation_method / attendance_marked_*), documents 0010 (data); 39 tables. ERD: PARTICIPANT_SIGNATURE,
   ATTENDANCE_DAY, REGISTRATION.registration_source / cancelled_at.
+- Participant photos (2026-11-25, NAVIGATU UAT): up to 5 photos / PDFs on the evaluation's review step, EXIF / GPS removed,
+  staff-only view, "Use in reports" (default off, who and when), never documents, removed with the activity; privacy notice
+  version November 25, 2026 (435). Database: registrations 0014 (EVALUATION_ATTACHMENT); 40 tables. ERD: that table.
+- Browser checks fixed (2026-11-25): budget lines as grid rows / cards (container query, nothing scrolls sideways), Members
+  table in three columns (actions always visible), the modal check uploads a needs_review document to test Return (436).
+  Layout and tests only.
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
@@ -1093,6 +1115,7 @@ $env:BROWSER_TESTS = "1"; pytest -n 0 -s config/tests/test_modals_browser.py; Re
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_browser.py; Remove-Item Env:BROWSER_TESTS   # document rows: titles wrap by words, badges and buttons never overlap
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s certificates/tests/test_signatories_browser.py; Remove-Item Env:BROWSER_TESTS   # Signatories page: names never squeezed
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_checkin_browser.py; Remove-Item Env:BROWSER_TESTS   # drawing a signature, the QR check-in page at 390 px
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_evaluation_photos_browser.py; Remove-Item Env:BROWSER_TESTS   # evaluation photos at 390 px, "Use in reports" at 1280 px
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time

@@ -203,6 +203,12 @@ PARTICIPANT_SIGNATURE_MAX_PIXELS = (900, 300)
 PARTICIPANT_SIGNATURE_RETENTION_DAYS = 365
 SIGNATURE_PURGE_HOUR = 7
 SIGNATURE_PURGE_MINUTE = 45
+# Participant photos with the evaluation (ASSUMPTIONS 435): at most this many files per evaluation, each at most this many
+# MB (JPG / PNG / PDF, content checked like document uploads). Photos are re-encoded by Pillow (EXIF and GPS dropped) to
+# fit EVALUATION_PHOTO_MAX_SIDE pixels on the long side; PDFs are stored as they are.
+EVALUATION_PHOTO_MAX_FILES = 5
+EVALUATION_PHOTO_MAX_MB = 10
+EVALUATION_PHOTO_MAX_SIDE = 2400
 
 # The general evaluation link (/evaluation/<id>/): "email me my evaluation link" requests, counted in the
 # same cache. Over a limit the page shows the same neutral message and sends nothing (ASSUMPTIONS 335).

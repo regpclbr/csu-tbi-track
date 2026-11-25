@@ -2,6 +2,8 @@
 The members table (accounts.services.list_members, 20 a page, by name), swapped by the filters and the pager.
 Change role and position (ASSUMPTIONS 429: the official job title printed under "Prepared by"): a small form per row. Reset password and Deactivate ask first (components/modal.html); Reactivate is direct.
 The buttons are shown for every member: the services refuse what is not allowed (yourself, the last Admin) with a message.
+Three columns (Member with the status, Role and position stacked, Actions stacked) so the table fits the panel from 1280 px
+and the actions are never hidden past its right edge (opt-in documents/tests/test_page_buttons_browser.py).
 {% endcomment %}
 <div id="member-results" class="htmx-dim">
   {% if filters.ignored %}
@@ -16,9 +18,7 @@ The buttons are shown for every member: the services refuse what is not allowed 
         <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
           <tr>
             <th scope="col" class="px-3 py-3">Member</th>
-            <th scope="col" class="px-3 py-3">Role</th>
-            <th scope="col" class="px-3 py-3">Position</th>
-            <th scope="col" class="px-3 py-3">Status</th>
+            <th scope="col" class="px-3 py-3">Role and position</th>
             <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
@@ -29,37 +29,35 @@ The buttons are shown for every member: the services refuse what is not allowed 
                 <p class="font-semibold text-ink">{{ member.name }}{% if member.pk == user.pk %} <span class="text-xs font-normal text-muted">(you)</span>{% endif %}</p>
                 {% if member.position %}<p class="text-xs text-slate-700" data-position>{{ member.position.name }}</p>{% endif %}
                 <p class="text-xs break-all text-muted">{{ member.email }}</p>
+                <p class="pt-2">
+                  {% if member.is_active %}{% include "components/badge.html" with text="Active" tone="success" %}{% else %}{% include "components/badge.html" with text="Deactivated" tone="neutral" %}{% endif %}
+                  {% if member.is_active and member.must_change_password %}<span class="block pt-1 text-xs text-muted">Temporary password</span>{% endif %}
+                </p>
               </th>
-              <td class="px-3 py-3">
+              <td class="space-y-2 px-3 py-3">
                 <form method="post" action="{% url 'accounts:console_member_role' member.pk %}" class="flex items-center gap-2">
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
                   <label for="role-{{ member.pk }}" class="sr-only">Role of {{ member.name }}</label>
-                  <select id="role-{{ member.pk }}" name="role" class="field-input field-select field-select-sm pill-select w-auto min-w-68 shrink-0 pl-3 text-sm">
+                  <select id="role-{{ member.pk }}" name="role" class="field-input field-select field-select-sm pill-select w-68 shrink-0 pl-3 text-sm">
                     {% for role in roles %}<option value="{{ role.pk }}"{% if role.pk == member.role_id %} selected{% endif %}>{{ role.role_name }}</option>{% endfor %}
                   </select>
                   <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the role of {{ member.name }}</span></button>
                 </form>
-              </td>
-              <td class="px-3 py-3">
                 <form method="post" action="{% url 'accounts:console_member_position' member.pk %}" class="flex items-center gap-2" data-position-form>
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{{ request.get_full_path }}">
                   <label for="position-{{ member.pk }}" class="sr-only">Position of {{ member.name }}</label>
-                  <select id="position-{{ member.pk }}" name="position" class="field-input field-select field-select-sm pill-select w-auto min-w-52 max-w-72 shrink-0 pl-3 text-sm">
+                  <select id="position-{{ member.pk }}" name="position" class="field-input field-select field-select-sm pill-select w-68 shrink-0 pl-3 text-sm">
                     <option value=""{% if not member.position_id %} selected{% endif %}>No position</option>
                     {% for position in member.position_choices %}<option value="{{ position.pk }}"{% if position.pk == member.position_id %} selected{% endif %}>{{ position.name }}{% if not position.is_active %} (inactive){% endif %}</option>{% endfor %}
                   </select>
                   <button type="submit" class="btn btn-secondary btn-sm">Save<span class="sr-only"> the position of {{ member.name }}</span></button>
                 </form>
               </td>
-              <td class="px-3 py-3 whitespace-nowrap">
-                {% if member.is_active %}{% include "components/badge.html" with text="Active" tone="success" %}{% else %}{% include "components/badge.html" with text="Deactivated" tone="neutral" %}{% endif %}
-                {% if member.is_active and member.must_change_password %}<span class="block pt-1 text-xs text-muted">Temporary password</span>{% endif %}
-              </td>
               <td class="px-3 py-3">
-                {# The actions wrap inside the cell (never wider than the table at 1366 px: Deactivate was cut off, ASSUMPTIONS 411). #}
-                <div class="flex flex-wrap justify-end gap-2">
+                {# The actions stack inside the cell (never wider than the table from 1280 px: Deactivate was cut off, ASSUMPTIONS 411). #}
+                <div class="flex flex-col items-end gap-2">
                   {% if member.is_active %}
                     {% with pk=member.pk|stringformat:"s" %}{% with reset_id="reset-member-"|add:pk deactivate_id="deactivate-member-"|add:pk %}
                       {% include "components/modal.html" with id=reset_id title="Reset password" body="console/_confirm_reset.html" trigger_label="Reset password" trigger_sr=member.name trigger_icon="key-round" trigger_class="btn btn-secondary btn-sm" %}

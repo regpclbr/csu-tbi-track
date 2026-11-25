@@ -37,6 +37,14 @@ urlpatterns = [
          name="generate_attendance_form"),
     path("activities/<int:activity_id>/checkin-poster/", page_views.checkin_poster, name="checkin_poster"),
     path("activities/<int:activity_id>/evaluation-links/", page_views.send_links, name="send_links"),
+    # Participant photos with the evaluation (ASSUMPTIONS 435): can_create_activity only, never /media/
+    path("activities/<int:activity_id>/photos/<int:attachment_id>/", page_views.evaluation_photo, name="evaluation_photo"),
+    path("activities/<int:activity_id>/photos/<int:attachment_id>/download/", page_views.evaluation_photo_download,
+         name="evaluation_photo_download"),
+    path("activities/<int:activity_id>/photos/<int:attachment_id>/view/", page_views.evaluation_photo_dialog,
+         name="evaluation_photo_dialog"),
+    path("activities/<int:activity_id>/photos/<int:attachment_id>/use-in-reports/", page_views.evaluation_photo_mark,
+         name="evaluation_photo_mark"),
     path("activities/<int:activity_id>/attendance-sheet/", page_views.attendance_sheet, name="attendance_sheet"),
     # JSON API
     path("api/activities/<int:activity_id>/forms/", views.create_form_api, name="api_create_form"),

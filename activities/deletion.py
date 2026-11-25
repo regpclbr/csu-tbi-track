@@ -27,7 +27,7 @@ from assistant.models import AIMessageSource
 from certificates.models import Certificate, CertificateText
 from documents.models import Document, DocumentStatus
 from notifications.models import Notification
-from registrations.models import EvaluationSubmission, FormTemplate, ParticipantSignature, Registration
+from registrations.models import EvaluationAttachment, EvaluationSubmission, FormTemplate, ParticipantSignature, Registration
 
 from .models import Activity, ActivityAuditLog, ActivityDeletion
 
@@ -54,7 +54,8 @@ class DeletionSummary:
     evidence: int = 0  # certificate evidence (documents with related_certificate)
     approved_evidence: int = 0  # blocks the delete (certificate evidence keeps its own approval)
     cited_documents: int = 0  # blocks the delete (AI_MESSAGE_SOURCE is PROTECT)
-    files: int = 0  # stored files (documents, evidence, certificate PDFs)
+    participant_photos: int = 0  # photos / PDFs attendees added to their evaluation (ASSUMPTIONS 435)
+    files: int = 0  # stored files (documents, evidence, certificate PDFs, participant photos)
     forms: int = 0
     history: int = 0
     notifications: int = 0
@@ -65,7 +66,8 @@ class DeletionSummary:
             "registrations": self.registrations, "attended": self.attended, "evaluations": self.evaluations,
             "certificates_waiting": self.certificates_waiting, "certificates_approved": self.certificates_approved,
             "documents": self.documents, "documents_approved": self.documents_approved,
-            "document_files": self.document_files, "evidence": self.evidence, "files": self.files, "forms": self.forms,
+            "document_files": self.document_files, "evidence": self.evidence,
+            "participant_photos": self.participant_photos, "files": self.files, "forms": self.forms,
             "history": self.history, "notifications": self.notifications,
         }
 
@@ -82,6 +84,7 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
     statuses = list(certificates.values_list("status", "certificate_number", "file_path"))
     deleted_numbers = sorted(number for status, number, _ in statuses if status != Certificate.Status.ISSUED)
     document_files = [name for name in documents.values_list("file_path", flat=True) if name]
+    photos = EvaluationAttachment.objects.filter(submission__registration__activity=activity).count()
     activity_documents = documents.filter(related_certificate__isnull=True)
     approved = {"status__status_name": DocumentStatus.APPROVED}
     return DeletionSummary(
@@ -98,7 +101,8 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
         evidence=documents.filter(related_certificate__isnull=False).count(),
         approved_evidence=documents.filter(related_certificate__isnull=False, **approved).count(),
         cited_documents=AIMessageSource.objects.filter(document__activity=activity).values("document").distinct().count(),
-        files=len(document_files) + sum(1 for _, _, name in statuses if name),
+        participant_photos=photos,
+        files=len(document_files) + sum(1 for _, _, name in statuses if name) + photos,
         forms=FormTemplate.objects.filter(activity=activity).count(),
         history=ActivityAuditLog.objects.filter(activity=activity).count(),
         notifications=Notification.objects.filter(activity=activity).count(),
@@ -148,6 +152,9 @@ def what_will_be_deleted(summary: DeletionSummary) -> list[str]:
         lines.append(line)
     if summary.evidence:
         lines.append(_plural(summary.evidence, "certificate evidence file"))
+    if summary.participant_photos:
+        lines.append(_plural(summary.participant_photos, "participant photo or file", "participant photos and files")
+                     + " added to evaluations")
     if summary.files:
         lines.append(_plural(summary.files, "stored file") + " removed from the server")
     if summary.forms:
@@ -180,6 +187,8 @@ def delete_activity(member: TBIMember, activity: Activity, typed_title: str) -> 
         files = [(Document, name) for name in documents.values_list("file_path", flat=True) if name]
         files += [(Certificate, name) for name in certificates.values_list("file_path", flat=True) if name]
         # Participant signature images (ASSUMPTIONS 434); their rows and the attendance days cascade with the registrations.
+        # Participant photos (ASSUMPTIONS 435) cascade with the evaluations; their files are removed after the commit by
+        # the post_delete receiver in registrations.evaluation_photos.
         files += [(ParticipantSignature, name) for name in ParticipantSignature.objects.filter(
             registration__activity=activity).values_list("file_path", flat=True) if name]
 

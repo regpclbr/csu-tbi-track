@@ -14,18 +14,20 @@ from django.core.exceptions import ValidationError
 from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
 from config.links import post_only_or_tab
+from config.parsing import parse_bool
 from activities.models import Activity
 from config.mail import email_sent_message
 
-from . import pages, services
+from . import evaluation_photos, pages, services
 from reports import services as report_services
 from reports.page_views import activity_file_response
 
-from .models import EvaluationSubmission, FormField, FormTemplate, FormType, Registration
+from .models import EvaluationAttachment, EvaluationSubmission, FormField, FormTemplate, FormType, Registration
 
 logger = logging.getLogger("registrations")
 
@@ -369,3 +371,73 @@ def checkin_poster(request: HttpRequest, activity_id: int) -> HttpResponse:
                for day in activity_days(activity)]
     return render(request, "registrations/checkin_poster.html",
                   {"activity": activity, "url": checkin_url(activity), "windows": windows})
+
+
+# --- Participant photos on the Evaluation tab (ASSUMPTIONS 435) -------------------------------------------------------
+# can_create_activity only (evaluation_photos.VIEW_PERMISSION); files are never served from /media/.
+
+
+def _attachment(activity_id: int, attachment_id: int) -> EvaluationAttachment:
+    return get_object_or_404(
+        EvaluationAttachment.objects.select_related("submission__registration", "marked_by"),
+        pk=attachment_id, submission__registration__activity_id=activity_id,
+    )
+
+
+def _attachment_response(attachment: EvaluationAttachment, *, as_attachment: bool) -> HttpResponse:
+    content = evaluation_photos.file_bytes(attachment)
+    if content is None:
+        raise Http404("The file is missing.")
+    response = HttpResponse(content, content_type=attachment.content_type)
+    response["Content-Disposition"] = content_disposition_header(as_attachment, attachment.file_name)
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@permission_required(evaluation_photos.VIEW_PERMISSION)
+@require_GET
+def evaluation_photo(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
+    """A participant's photo (thumbnail and larger view) or PDF, shown inline."""
+    return _attachment_response(_attachment(activity_id, attachment_id), as_attachment=False)
+
+
+@permission_required(evaluation_photos.VIEW_PERMISSION)
+@require_GET
+def evaluation_photo_download(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
+    """The same file as a download, under the participant's file name."""
+    return _attachment_response(_attachment(activity_id, attachment_id), as_attachment=True)
+
+
+@permission_required(evaluation_photos.VIEW_PERMISSION)
+@require_GET
+def evaluation_photo_dialog(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
+    """The larger view (loaded into #photo-dialog with HTMX); without JavaScript the link opens the file itself."""
+    attachment = _attachment(activity_id, attachment_id)
+    return render(request, "registrations/_photo_dialog.html",
+                  {"activity": attachment.submission.registration.activity, "item": pages.photo_item(attachment)})
+
+
+@permission_required(evaluation_photos.VIEW_PERMISSION)
+@post_only_or_tab("evaluation")
+def evaluation_photo_mark(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
+    """Tick or untick "Use in reports" (POST use_in_reports=true|false). HTMX: the updated photo card + a toast;
+    otherwise back to the Evaluation tab with a message."""
+    attachment = _attachment(activity_id, attachment_id)
+    try:
+        use = parse_bool(request.POST.get("use_in_reports"), "use_in_reports")
+    except ValidationError:
+        return HttpResponse("use_in_reports must be true or false.", status=400)
+    if use is None:
+        return HttpResponse("use_in_reports must be true or false.", status=400)
+    attachment = evaluation_photos.set_use_in_reports(request.user, attachment, use)
+    text = (f"“{attachment.file_name}” will be used in reports." if use
+            else f"“{attachment.file_name}” will not be used in reports.")
+    if not is_htmx(request):
+        messages.success(request, text)
+        return redirect(_tab_url(attachment.submission.registration.activity, "evaluation") + "#photos")
+    activity = attachment.submission.registration.activity
+    response = render(request, "registrations/_photo_item.html", {"activity": activity, "item": pages.photo_item(attachment),
+                      "summary": pages.participant_photos(request.user, activity, {})["photos_aside"]})
+    response["HX-Trigger"] = json.dumps({"toast": {"level": "success", "text": text}})
+    return response

@@ -334,3 +334,53 @@ class FormAnswer(models.Model):
 
     def __str__(self) -> str:
         return f"{self.field}: {self.answer_value[:30]}"
+
+
+def evaluation_attachment_upload_to(instance: "EvaluationAttachment", filename: str) -> str:
+    """evaluation-photos/activity-<id>/<random>.<ext>: never the uploaded name (registrations.evaluation_photos picks
+    the name)."""
+    return filename
+
+
+class EvaluationAttachment(models.Model):
+    """A photo (JPG / PNG) or work output (PDF) a participant uploaded with their evaluation (ASSUMPTIONS 435). Part of
+    the submission (never anonymous); created ONLY by registrations.evaluation_photos through submit_evaluation, and
+    "Use in reports" changed ONLY by evaluation_photos.set_use_in_reports (can_create_activity). Images are re-encoded
+    by Pillow (EXIF / GPS dropped); PDFs are stored as they are. Not a DOCUMENT: never in the checklist, the payment
+    packet or the AI index. Only ticked files (use_in_reports) may ever go into reports (Prompts 6–7)."""
+
+    class ContentType(models.TextChoices):
+        JPEG = "image/jpeg", "JPG photo"
+        PNG = "image/png", "PNG picture"
+        PDF = "application/pdf", "PDF"
+
+    attachment_id = models.BigAutoField(primary_key=True)
+    submission = models.ForeignKey(EvaluationSubmission, on_delete=models.CASCADE, related_name="attachments")
+    file_path = models.FileField(upload_to=evaluation_attachment_upload_to, max_length=255)
+    file_name = models.CharField(max_length=255)  # the participant's file name, shown only (never in a path)
+    file_size_kb = models.PositiveIntegerField()  # of the stored file
+    content_type = models.CharField(max_length=50, choices=ContentType.choices)
+    use_in_reports = models.BooleanField(default=False)  # default off: photos can show other people
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="marked_evaluation_attachments",
+    )  # who last ticked or unticked "Use in reports"
+    marked_at = models.DateTimeField(null=True, blank=True)
+    uploaded_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "evaluation_attachment"
+        ordering = ["attachment_id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(use_in_reports=False) | Q(marked_at__isnull=False),
+                name="evaluation_attachment_marked_when_used",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.file_name} ({self.submission})"
+
+    @property
+    def is_image(self) -> bool:
+        return self.content_type in (self.ContentType.JPEG, self.ContentType.PNG)

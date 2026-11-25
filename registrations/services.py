@@ -975,7 +975,6 @@ def check_evaluation(
     return name, email, stored_answers
 
 
-@transaction.atomic
 def submit_evaluation(
     token: str,
     *,
@@ -983,19 +982,39 @@ def submit_evaluation(
     certificate_email: str,
     comments: str = "",
     answers: dict | None = None,
+    attachments=None,
     now: datetime | None = None,
 ) -> EvaluationSubmission:
     """Save the evaluation and its answers together. Never anonymous: tied to the registration.
 
     The participant also gives the name printed on their certificate and the address it is
     emailed to (Step 9). After the save, an Approved certificate is issued and emailed.
+
+    attachments (ASSUMPTIONS 435): the optional photos / PDFs chosen on the review step (uploaded files; None or [] =
+    none). Checked by registrations.evaluation_photos.clean_attachments (ValidationError key "photos") before anything
+    is saved, stored in the same transaction; if it fails, the files already written are removed.
     """
+    from . import evaluation_photos
+
+    written: list[str] = []
+    try:
+        return _submit_evaluation(token, certificate_name, certificate_email, comments, answers, attachments, now, written)
+    except BaseException:
+        evaluation_photos.remove_files(written)
+        raise
+
+
+@transaction.atomic
+def _submit_evaluation(token, certificate_name, certificate_email, comments, answers, attachments, now, written):
+    from . import evaluation_photos
+
     registration = registration_from_token(token)
     registration = Registration.objects.select_for_update().get(pk=registration.pk)  # one submission, even on double click
     if reason := evaluation_closed_reason(registration, now):
         raise RegistrationError(reason)
     form = get_form(registration.activity, FormType.EVALUATION)
     name, email, stored_answers = check_evaluation(form, certificate_name, certificate_email, answers)
+    cleaned_files = evaluation_photos.clean_attachments(attachments)
     submission = EvaluationSubmission.objects.create(
         template=form,
         registration=registration,
@@ -1007,6 +1026,7 @@ def submit_evaluation(
         FormAnswer.objects.create(
             field=field, answer_source=FormAnswer.AnswerSource.EVALUATION, evaluation_submission=submission, answer_value=value
         )
+    evaluation_photos.store_attachments(submission, cleaned_files, written, now)
     # Step 9: if the certificate is already Approved, issue and email it now (background task).
     # robust=True: a problem queueing the task never undoes the evaluation (the daily retry catches it).
     from certificates.services import evaluation_submitted

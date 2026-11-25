@@ -1,0 +1,24 @@
+{% comment %}
+The larger view of one participant file (ASSUMPTIONS 435), loaded into #photo-dialog (components/modal.html remote) by
+registrations.page_views.evaluation_photo_dialog. A photo is shown whole; a PDF opens in a new tab.
+{% endcomment %}
+{% with attachment=item.attachment %}
+<div class="p-6">
+  {% include "components/modal_header.html" with id="photo-dialog" title=attachment.file_name %}
+  {% if attachment.is_image %}
+    <img src="{% url 'registrations:evaluation_photo' activity.pk attachment.pk %}" alt="Photo uploaded by {{ item.person }}" class="max-h-[50dvh] w-full rounded-xl bg-slate-100 object-contain">
+  {% else %}
+    <p class="text-sm text-muted">PDF files open in a new tab.</p>
+    <a href="{% url 'registrations:evaluation_photo' activity.pk attachment.pk %}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm mt-2">{% include "components/icon.html" with name="external-link" class="size-4" %}Open the PDF</a>
+  {% endif %}
+  <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+    <dt class="text-muted">Uploaded by</dt><dd class="break-words text-ink">{{ item.person }}{% if item.is_walk_in %} (walk-in){% endif %}</dd>
+    <dt class="text-muted">Uploaded</dt><dd class="text-ink">{{ item.uploaded }}</dd>
+    <dt class="text-muted">File</dt><dd class="text-ink">{{ item.kind }} · {{ item.size }}</dd>
+    <dt class="text-muted">In reports</dt><dd class="text-ink">{% if attachment.use_in_reports %}Yes{% else %}No{% endif %}{% if item.marked %} · {{ item.marked }}{% endif %}</dd>
+  </dl>
+  <div class="mt-6 flex flex-wrap justify-end gap-2">
+    <a href="{% url 'registrations:evaluation_photo_download' activity.pk attachment.pk %}" class="btn btn-secondary">{% include "components/icon.html" with name="download" class="size-4" %}Download</a>
+  </div>
+</div>
+{% endwith %}

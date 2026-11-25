@@ -1,0 +1,2 @@
+{# "3 files uploaded · 1 used in reports" (ASSUMPTIONS 435); the "Use in reports" HTMX response swaps it out of band. #}
+<p id="photos-summary" class="-mt-2 mb-4 text-sm text-muted"{% if oob %} hx-swap-oob="true"{% endif %}>{{ photos_aside }}</p>
