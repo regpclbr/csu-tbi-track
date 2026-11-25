@@ -283,13 +283,243 @@ def other_facts(draft: ReportDraft, member: TBIMember) -> dict:
     }
 
 
+# --- The Accomplishment Report (ASSUMPTIONS 446) -----------------------------------------------------------------------
+
+ORDINALS = {1: "1ST", 2: "2ND", 3: "3RD", 4: "4TH"}
+
+
+def accomplishment_heading(start: date, end: date) -> str:
+    """"3RD QUARTER ACCOMPLISHMENT REPORT" / "SEMI-ANNUAL ACCOMPLISHMENT REPORT" / "ANNUAL ACCOMPLISHMENT REPORT"
+    (NAVIGATU's sample), from the dates (a preset, reports.content.period_name)."""
+    from .content import HALF, QUARTER, period_name
+
+    name = period_name(start, end)
+    if name is not None and name.kind == QUARTER:
+        return f"{ORDINALS[(start.month - 1) // 3 + 1]} QUARTER ACCOMPLISHMENT REPORT"
+    if name is not None and name.kind == HALF:
+        return "SEMI-ANNUAL ACCOMPLISHMENT REPORT"
+    return "ANNUAL ACCOMPLISHMENT REPORT"
+
+
+def months_covered(start: date, end: date) -> str:
+    """"July–September 2026" (a preset always covers whole months of one year)."""
+    if (start.year, start.month) == (end.year, end.month):
+        return f"{start:%B} {start.year}"
+    return f"{start:%B}–{end:%B} {end.year}"
+
+
+def _day_label(number: int, day: dict) -> str:
+    source = "from the paper sheet" if day["source"] == metrics.PAPER else "from the system"
+    return f"Day {number} ({long_date(day['day'])}): {day['count']} – attendance {source}"
+
+
+def accomplishment_facts(draft: ReportDraft, member: TBIMember) -> dict:
+    """Everything the Accomplishment Report prints for its quarter / half / year: the Conducted activities ending in the
+    period (reports.metrics: the Reports page's own rule), their registered (cancelled not counted, item 440) and
+    attended people (confirmed paper Attendance sheets replace the system's attendance for their day: metrics
+    .attendance_with_paper_sheets), the participant mix over those people, the evaluation results, the budget per fund
+    source and the photos (the Activity Report's photo rules)."""
+    filters = metrics.ReportFilters(draft.date_range_start, draft.date_range_end)
+    summary = metrics.period_summary(filters)
+    rows = metrics.activity_rows(filters)
+    activities = {activity.pk: activity for activity in metrics.period_activities(filters)
+                  .select_related("activity_type", "fund_source")}
+    attendance_by_activity = metrics.attendance_with_paper_sheets(list(activities))
+    items, placeholders, all_categories = [], {}, []
+    for number, row in enumerate(rows, start=1):
+        activity = activities[row["activity_id"]]
+        attendance = attendance_by_activity[activity.pk]
+        all_categories += attendance["categories"]
+        prefix = f"act{activity.pk}"
+        people = [{"name": link.resource_person.name, "topic": link.topic}
+                  for link in activity.resource_person_links.select_related("resource_person").order_by("pk")]
+        item = {
+            "number": number, "activity_id": activity.pk, "title": activity.title,
+            "type": row["activity_type__name"], "categories": row["categories"],
+            "dates": attendance_forms.date_span(activity.start_date, activity.end_date),
+            "time": format_time_range(activity.start_time, activity.end_time), "venue": activity.venue,
+            "registered": row["registered"], "cancelled": row["cancelled"], "attended": attendance["attended"],
+            "attended_system": attendance["attended_system"], "paper_days": attendance["paper_days"],
+            "days": [_day_label(n, day) for n, day in enumerate(attendance["days"], start=1)],
+            "evaluations": row["evaluations"], "average_rating": mean_text(row["average_rating"]),
+            "objectives": objective_lines(activity), "description": activity.description or "",
+            "resource_persons": people, "budget_total": format_money(activity.budget_amount),
+            "fund_source": activity_budget.fund_source_text(activity),
+        }
+        values = {"title": item["title"], "dates": item["dates"], "venue": item["venue"],
+                  "categories": item["categories"], "registered": str(item["registered"]),
+                  "attended": str(item["attended"]), "evaluations": str(item["evaluations"]),
+                  "average_rating": item["average_rating"], "budget_total": item["budget_total"]}
+        item["placeholder_names"] = [f"[[{prefix}_{key}]]" for key in values]
+        placeholders.update({f"{prefix}_{key}": value for key, value in values.items()})
+        items.append(item)
+    attended = sum(item["attended"] for item in items)
+    paper_activities = [item for item in items if item["paper_days"]]
+    if paper_activities:
+        mix = _mix(metrics.paper_sheet_mix(all_categories, checked=False))
+    else:
+        mix = _mix(metrics.period_participant_mix(filters))
+    note = ""
+    if paper_activities:
+        note = (f"Attended includes the confirmed paper attendance sheets of {len(paper_activities)} "
+                f"activit{'y' if len(paper_activities) == 1 else 'ies'} (they replace the system's attendance for "
+                f"their day); the system alone recorded {summary['attended']}. The Reports page counts the system's "
+                f"attendance only.")
+    budget_rows = [{"fund_source": row["fund_source"], "activities": row["activities"], "total": format_money(row["total"])}
+                   for row in metrics.budget_by_fund_source(filters)]
+    budget_total = format_money(metrics.period_budget_total(filters))
+    start, end = filters.start, filters.end
+    header = {
+        "heading": accomplishment_heading(start, end),
+        "program_name": draft.options.get("program_name", ""),
+        "office_line": draft.options.get("office_line", ""),
+        "period_covered": months_covered(start, end),
+        "implementing_unit": draft.options.get("implementing_unit") or settings.REPORT_IMPLEMENTING_UNIT,
+    }
+    counts = {"activities_conducted": summary["activities_conducted"], "registered": summary["registered"],
+              "cancelled": summary["cancelled"], "attended": attended, "evaluations": summary["evaluations"],
+              "response_rate": percent(summary["evaluation_response_rate"]),
+              "average_rating": mean_text(summary["average_rating"]), "budget_total": budget_total}
+    facts = {
+        "header": header, "counts": counts, "attended_system": summary["attended"], "attendance_note": note,
+        "activities": items, "mix": mix, "ratings": _ratings(metrics.period_rating_frequency(filters)),
+        "budget_by_fund_source": budget_rows,
+        "photos": _photos(draft, list(activities.values())),
+    }
+    placeholders.update({
+        "program_name": header["program_name"], "period_covered": header["period_covered"],
+        "implementing_unit": header["implementing_unit"],
+        **{key: str(value) for key, value in counts.items()},
+        **{f"budget_{row['code'].lower()}": format_money(row["total"])
+           for row in metrics.budget_by_fund_source(filters) if row["code"]},
+    })
+    facts["placeholders"] = placeholders
+    return facts
+
+
+# --- The draft Request Letter and Activity Design (ASSUMPTIONS 447) ---------------------------------------------------
+
+
+def _typed_time(value: str):
+    from datetime import time
+
+    return time.fromisoformat(value) if value else None
+
+
+def _days_text(start: date, end: date) -> str:
+    days = (end - start).days + 1
+    return f"{days} day{'s' if days != 1 else ''}"
+
+
+def proposal_details(draft: ReportDraft) -> dict:
+    """The activity a draft letter / design is about: the chosen Draft / Scheduled activity's own fields (read again
+    for every version), or what the member typed (REPORT_DRAFT.options["proposal"]). Budget lines: activities.budget's
+    table either way (the typed ones are checked again by clean_lines; an inactive category may stay)."""
+    from activities.models import FundSource
+
+    if draft.activity_id:
+        activity = draft.activity
+        categories = ", ".join(activity.participant_categories.order_by("name").values_list("name", flat=True))
+        summary = activity_budget.budget_summary(activity)
+        return {
+            "source": "activity", "title": activity.title, "start_date": activity.start_date,
+            "end_date": activity.end_date, "start_time": activity.start_time, "end_time": activity.end_time,
+            "venue": activity.venue,
+            "participants": f"{categories} (up to {activity.max_slots} participants)" if categories
+            else f"Up to {activity.max_slots} participants",
+            "objectives": objective_lines(activity), "description": activity.description or "",
+            "fund_source": summary["fund_source"], "fund_account": activity.fund_account or "",
+            "rows": summary["rows"], "total": summary["total"],
+            "resource_persons": [{"name": link.resource_person.name, "topic": link.topic} for link in
+                                 activity.resource_person_links.select_related("resource_person").order_by("pk")],
+        }
+    typed = draft.options.get("proposal") or {}
+    raw_lines = typed.get("budget_lines") or []
+    lines = activity_budget.clean_lines(raw_lines, allowed_inactive={line["category"] for line in raw_lines})
+    table = activity_budget.budget_table(None, lines)
+    fund_source = FundSource.objects.filter(pk=typed.get("fund_source_id")).first() if typed.get("fund_source_id") else None
+    return {
+        "source": "typed", "title": typed.get("title", ""), "start_date": date.fromisoformat(typed["start_date"]),
+        "end_date": date.fromisoformat(typed["end_date"]), "start_time": _typed_time(typed.get("start_time", "")),
+        "end_time": _typed_time(typed.get("end_time", "")), "venue": typed.get("venue", ""),
+        "participants": typed.get("participants", ""),
+        "objectives": [line for line in (typed.get("objectives") or "").splitlines() if line.strip()],
+        "description": typed.get("description", ""),
+        "fund_source": str(fund_source) if fund_source else activity_budget.NOT_SET, "fund_account": "",
+        "rows": table["rows"], "total": table["total"], "resource_persons": [],
+    }
+
+
+def proposal_facts(draft: ReportDraft, member: TBIMember, now: datetime | None = None) -> dict:
+    """The draft Request Letter / Activity Design (ASSUMPTIONS 447): every date, name and amount from the activity or
+    from what the member typed; the memorandum's names and titles typed by the member (blank lines when empty)."""
+    details = proposal_details(draft)
+    options = draft.options
+    dates = attendance_forms.date_span(details["start_date"], details["end_date"])
+    time_text = format_time_range(details["start_time"], details["end_time"])
+    budget = {
+        "fund_source": details["fund_source"], "fund_account": details["fund_account"],
+        "rows": [{"particulars": row["particulars"], "quantity": row["quantity"],
+                  "unit_cost": format_money(row["unit_cost"]), "total": format_money(row["total_amount"])}
+                 for row in details["rows"]],
+        "total": format_money(details["total"]),
+    }
+    funds = f"{budget['total']} – {budget['fund_source']}" if details["rows"] else budget["fund_source"]
+    proposal = {
+        "title": details["title"], "duration": _days_text(details["start_date"], details["end_date"]),
+        "dates": dates, "time": time_text, "venue": details["venue"], "participants": details["participants"],
+        "funds": funds, "objectives": details["objectives"], "description": details["description"],
+        "source": details["source"],
+    }
+    director = noted_by()
+    today = long_date(timezone.localdate(now or timezone.now()))
+    facts = {
+        "header": {"title": details["title"], "office_line": options.get("office_line", "")},
+        "proposal": proposal, "budget": budget, "resource_persons": details["resource_persons"],
+        "date": today,
+    }
+    if draft.kind == ReportDraft.Kind.REQUEST_LETTER:
+        memo = {
+            "for": {"name": options.get("memo_for_name", ""), "title": options.get("memo_for_title", "")},
+            "thru": {"name": options.get("memo_thru_name", ""), "title": options.get("memo_thru_title", "")},
+            "from": {"name": options.get("memo_from_name") or options.get("project_leader") or director["name"],
+                     "title": options.get("memo_from_title") or director["position"]},
+            "subject": f"Request for the conduct of {details['title']}",
+            "date": today,
+        }
+        facts["memo"] = memo
+        facts["signatures"] = [
+            {"label": "Recommending Approval:", "name": memo["thru"]["name"], "position": memo["thru"]["title"]},
+            {"label": "Approved by:", "name": memo["for"]["name"], "position": memo["for"]["title"]},
+        ]
+    else:
+        prepared = prepared_by(member)
+        facts["signatures"] = [
+            {"label": "Prepared by:", "name": prepared["name"], "position": prepared["position"]},
+            {"label": "Recommending Approval:", "name": director["name"], "position": director["position"]},
+            {"label": "Approved by:", "name": options.get("approved_by_name", ""),
+             "position": options.get("approved_by_title", "")},
+        ]
+    facts["placeholders"] = {
+        "title": details["title"], "dates": dates, "time": time_text, "venue": details["venue"],
+        "participants": details["participants"], "duration": proposal["duration"],
+        "budget_total": budget["total"], "fund_source": budget["fund_source"], "date_today": today,
+    }
+    return facts
+
+
 def build_facts(draft: ReportDraft, member: TBIMember, now: datetime | None = None) -> dict:
     """The facts of a new version, by kind, plus who prepared it and who notes it."""
-    builder = {ReportDraft.Kind.ACTIVITY_REPORT: activity_facts, ReportDraft.Kind.EVALUATION_SUMMARY: evaluation_facts,
-               ReportDraft.Kind.OTHER: other_facts}[draft.kind]
-    facts = builder(draft, member)
+    kind = draft.kind
+    if kind in (ReportDraft.Kind.REQUEST_LETTER, ReportDraft.Kind.ACTIVITY_DESIGN):
+        facts = proposal_facts(draft, member, now)
+    else:
+        builder = {ReportDraft.Kind.ACTIVITY_REPORT: activity_facts, ReportDraft.Kind.EVALUATION_SUMMARY: evaluation_facts,
+                   ReportDraft.Kind.ACCOMPLISHMENT_REPORT: accomplishment_facts, ReportDraft.Kind.OTHER: other_facts}[kind]
+        facts = builder(draft, member)
     facts["prepared_by"] = prepared_by(member)
     facts["noted_by"] = noted_by()
-    facts["form_code"] = settings.ACTIVITY_REPORT_FORM_CODE if draft.kind == ReportDraft.Kind.ACTIVITY_REPORT else ""
+    facts["form_code"] = (settings.ACTIVITY_REPORT_FORM_CODE
+                          if kind in (ReportDraft.Kind.ACTIVITY_REPORT, ReportDraft.Kind.ACCOMPLISHMENT_REPORT) else "")
     facts["collected_at"] = timezone.localtime(now or timezone.now()).isoformat()
     return facts

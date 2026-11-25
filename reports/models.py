@@ -54,12 +54,15 @@ def attachment_upload_to(instance, filename: str) -> str:
 
 
 class ReportDraft(models.Model):
-    """A report the member is writing with the generator (Activity Report, Evaluation Summary or a free-form one), for
-    one activity or a period."""
+    """A report the member is writing with the generator (ASSUMPTIONS 442, 446-448): about one activity, a period, or
+    (only the draft Request Letter and Activity Design) neither: then the activity's details are typed in `options`."""
 
     class Kind(models.TextChoices):
         ACTIVITY_REPORT = "activity_report", "Activity Report"
         EVALUATION_SUMMARY = "evaluation_summary", "Evaluation Summary"
+        ACCOMPLISHMENT_REPORT = "accomplishment_report", "Accomplishment Report"
+        REQUEST_LETTER = "request_letter", "Request Letter (draft)"
+        ACTIVITY_DESIGN = "activity_design", "Activity Design (draft)"
         OTHER = "other", "Other (free form)"
 
     draft_id = models.BigAutoField(primary_key=True)
@@ -70,7 +73,8 @@ class ReportDraft(models.Model):
     date_range_start = models.DateField(null=True, blank=True)
     date_range_end = models.DateField(null=True, blank=True)
     options = models.JSONField(default=dict, blank=True,
-                               help_text="Office line, implementing unit, project leader (typed by the member).")
+                               help_text="Typed by the member: office line, implementing unit, project leader, program "
+                                         "name, memorandum names, the typed activity details of a draft letter / design.")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="report_drafts")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -82,8 +86,10 @@ class ReportDraft(models.Model):
             models.CheckConstraint(
                 condition=Q(activity__isnull=False, date_range_start__isnull=True, date_range_end__isnull=True)
                 | Q(activity__isnull=True, date_range_start__isnull=False, date_range_end__isnull=False,
-                    date_range_end__gte=models.F("date_range_start")),
-                name="report_draft_activity_or_period",
+                    date_range_end__gte=models.F("date_range_start"))
+                | Q(activity__isnull=True, date_range_start__isnull=True, date_range_end__isnull=True,
+                    kind__in=["request_letter", "activity_design"]),
+                name="report_draft_activity_period_or_typed",
             ),
         ]
 

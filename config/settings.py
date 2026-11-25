@@ -467,7 +467,7 @@ ACTIVITY_REPORT_FORM_CODE = "F-COR-001 Rev. 3 10/06/2023"
 ACTIVITY_REPORT_TYPE = "Activity Report"  # the DOCUMENT_TYPE a saved Activity Report becomes (an approved copy)
 EVENT_PHOTOS_TYPE = "Event Photos"
 # Paper sheets (ASSUMPTIONS 443): an office is mapped to a PARTICIPANT_CATEGORY by these words (case ignored, first
-# match wins). DTI and partner agencies count as MSMEs until NAVIGATU confirms (open question, CLAUDE.md). Staff check
+# match wins). DTI and partner agencies count as MSMEs (confirmed 2026-11-26, ASSUMPTIONS 443). Staff check
 # and correct every row before the numbers are used.
 PAPER_SHEET_CATEGORY_RULES: list[tuple[str, list[str]]] = [
     ("Faculty", ["caraga state university", "csu", "faculty", "professor", "instructor", "college of"]),

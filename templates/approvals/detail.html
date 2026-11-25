@@ -39,6 +39,8 @@ the service checks everything again and refusals come back as toasts.
         {% endif %}
         {% if actions.save %}
           {% include "components/modal.html" with id="save-dialog" title="Save to the activity's documents" body="approvals/_save_form.html" trigger_label="Save to the activity's documents" trigger_icon="folder" trigger_class="btn btn-secondary" %}
+        {% elif actions.draft_only %}
+          <p class="text-xs text-muted" role="note">A draft from the report generator: it is not saved to the documents. Print it, have it approved on paper, then upload the approved scan to the activity.</p>
         {% endif %}
         {% if actions.resubmit %}
           {% include "components/modal.html" with id="resubmit-dialog" title="Submit again" body="approvals/_resubmit_form.html" trigger_label="Submit again" trigger_icon="upload" trigger_class="btn btn-primary" %}

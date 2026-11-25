@@ -10,7 +10,9 @@ new lines from the release's sha256sums.txt into CHECKSUMS.
 
 import hashlib
 import platform
+import shutil
 import subprocess
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -60,7 +62,11 @@ class Command(BaseCommand):
             return
         if not binary_path().exists():
             raise CommandError("The Tailwind CLI is not installed yet. Run: python manage.py tailwind install")
-        command = [str(binary_path()), "-i", str(SOURCE), "-o", str(OUTPUT), "--minify"]
+        # build: the CLI writes to a temporary file and we copy it into static/css/. Writing into the OneDrive folder
+        # directly fails with "EEXIST: file already exists, mkdir ...static\css" whenever the CSS changed (the CLI's
+        # mkdir on a OneDrive folder; ASSUMPTIONS 446). watch still writes directly (it may fail there; see CLAUDE.md).
+        temporary = Path(tempfile.gettempdir()) / "tbi-tailwind-app.css" if action == "build" else OUTPUT
+        command = [str(binary_path()), "-i", str(SOURCE), "-o", str(temporary), "--minify"]
         if action == "watch":
             command.append("--watch")
             self.stdout.write("Watching templates and frontend/tailwind/app.css (Ctrl+C stops)...")
@@ -71,6 +77,7 @@ class Command(BaseCommand):
         except subprocess.CalledProcessError as error:
             raise CommandError(f"Tailwind failed (exit code {error.returncode}).") from error
         if action == "build":
+            shutil.copyfile(temporary, OUTPUT)
             self.stdout.write(self.style.SUCCESS(f"Built {OUTPUT.relative_to(settings.BASE_DIR)} ({OUTPUT.stat().st_size // 1024} KB)."))
 
     def install(self) -> None:

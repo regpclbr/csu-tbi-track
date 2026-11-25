@@ -23,7 +23,7 @@ from documents.models import Document
 from registrations import attendance_forms
 
 from .content import Chart
-from .generator import SECTIONS, photo_bytes
+from .generator import is_list_section, photo_bytes, section_specs
 from .models import ReportDraft, ReportDraftVersion
 from .pdf import bar_chart_svg
 
@@ -31,8 +31,49 @@ logger = logging.getLogger("reports")
 
 KIND_HEADINGS = {ReportDraft.Kind.ACTIVITY_REPORT: "ACTIVITY REPORT",
                  ReportDraft.Kind.EVALUATION_SUMMARY: "EVALUATION SUMMARY REPORT",
+                 ReportDraft.Kind.REQUEST_LETTER: "MEMORANDUM",
+                 ReportDraft.Kind.ACTIVITY_DESIGN: "ACTIVITY DESIGN",
                  ReportDraft.Kind.OTHER: "REPORT"}
-LIST_SECTIONS = {"accomplishments", "recommendations"}
+BLANK_LINE = "______________________________"
+
+
+def heading(version: ReportDraftVersion) -> str:
+    """The big heading: the Accomplishment Report's comes from its period ("3RD QUARTER ACCOMPLISHMENT REPORT")."""
+    if version.draft.kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT:
+        return (version.facts.get("header") or {}).get("heading", "ACCOMPLISHMENT REPORT")
+    return KIND_HEADINGS[version.draft.kind]
+
+
+ACCOMPLISHMENT_COUNTS = [("activities_conducted", "Activities conducted"), ("registered", "Registered (cancelled not counted)"),
+                         ("cancelled", "Cancelled (“Will not attend”)"), ("attended", "Attended"),
+                         ("evaluations", "Evaluations submitted"), ("response_rate", "Response rate (of attendees in the system)"),
+                         ("average_rating", "Average rating (1-5)"), ("budget_total", "Total budget")]
+DESIGN_ROWS = [("title", "Title"), ("duration", "Duration"), ("dates", "Date"), ("time", "Time"), ("venue", "Venue"),
+               ("participants", "Participants"), ("funds", "Funds")]
+
+
+def signature_blocks(facts: dict) -> list[dict]:
+    """The signature blocks at the end: the draft letter / design's own (facts["signatures"]), else Prepared by (the
+    member + POSITION) and Noted (the TBI Director's linked signatory; a blank line when none)."""
+    if facts.get("signatures"):
+        return facts["signatures"]
+    prepared, noted = facts.get("prepared_by", {}), facts.get("noted_by", {})
+    return [{"label": "Prepared by:", "name": prepared.get("name", ""), "position": prepared.get("position", "")},
+            {"label": "Noted:", "name": noted.get("name", ""), "position": noted.get("position", "")}]
+
+
+def accomplishment_rows(version: ReportDraftVersion, blocks: dict) -> list[dict]:
+    """Table B (Accomplishments vis-à-vis Objectives): per activity its objectives (ACTIVITY.objectives, item 428, else
+    the section the AI read from its Activity Design) and the accomplishments section."""
+    rows = []
+    for item in version.facts.get("activities", []):
+        key = f"activity_{item['activity_id']}"
+        objectives = item["objectives"] or (blocks.get(f"{key}_objectives") or {}).get("items", [])
+        rows.append({"item": item, "objectives": objectives,
+                     "objectives_read": not item["objectives"] and bool(objectives),
+                     "accomplishments": (blocks.get(f"{key}_accomplishments") or {}).get("items", []),
+                     "highlights": blocks.get(f"{key}_highlights") or {"label": item["title"], "paragraphs": []}})
+    return rows
 BULLET = re.compile(r"^\s*(?:[-•*]|\d{1,2}[.)])\s+")
 
 
@@ -51,11 +92,11 @@ def items(text: str) -> list[str]:
 def section_blocks(version: ReportDraftVersion) -> dict:
     """{key: {"label", "paragraphs" | "items"}} from the version's sections (their filled-in text)."""
     blocks = {}
-    for key, label, _ in SECTIONS[version.draft.kind]:
+    for key, label, _ in section_specs(version.draft.kind, version.facts):
         text = (version.sections.get(key) or {}).get("text", "")
-        blocks[key] = {"label": label, "text": text,
-                       "items": items(text) if key in LIST_SECTIONS else [],
-                       "paragraphs": [] if key in LIST_SECTIONS else paragraphs(text)}
+        listed = is_list_section(key)
+        blocks[key] = {"label": label, "text": text, "items": items(text) if listed else [],
+                       "paragraphs": [] if listed else paragraphs(text)}
     return blocks
 
 
@@ -123,10 +164,13 @@ def pdf_html(version: ReportDraftVersion, annex_follows: bool = False) -> str:
     shown = [{"uri": f"data:image/jpeg;base64,{base64.b64encode(p['jpeg']).decode()}", "caption": p["caption"]}
              for p in photos(version)]
     annex = facts.get("annex") or {}
+    blocks = section_blocks(version)
     context = {
-        "kind": draft.kind, "heading": KIND_HEADINGS[draft.kind], "draft": draft, "facts": facts,
+        "kind": draft.kind, "heading": heading(version), "draft": draft, "facts": facts,
         "header": facts.get("header", {}), "letterhead": attendance_forms.PLACEHOLDER_HEADER,
-        "sections": section_blocks(version),
+        "sections": blocks, "activity_rows": accomplishment_rows(version, blocks) if facts.get("activities") and
+        draft.kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT else [],
+        "objectives": facts.get("proposal", {}).get("objectives") or blocks.get("objectives", {}).get("items", []),
         "photo_pages": _pages(shown, settings.REPORT_GENERATOR_PHOTOS_PER_PAGE),
         "mix_chart": _mix_chart(facts.get("mix")),
         "image_annex": [item for item in (_image_annex(draft.activity_id, annex.get("attendance_document_id")),
@@ -135,6 +179,11 @@ def pdf_html(version: ReportDraftVersion, annex_follows: bool = False) -> str:
         "form_code": facts.get("form_code", ""),
         "count_rows": [(count_label(key), value) for key, value in (facts.get("counts") or {}).items()],
         "annex_follows": annex_follows,
+        "signatures": signature_blocks(facts),
+        "memo_parts": [(label, (facts.get("memo") or {}).get(key, {})) for label, key in
+                       (("FOR:", "for"), ("THRU:", "thru"), ("FROM:", "from"))],
+        "accomplishment_counts": [(label, (facts.get("counts") or {}).get(key, "")) for key, label in ACCOMPLISHMENT_COUNTS],
+        "design_rows": [(label, (facts.get("proposal") or {}).get(key, "")) for key, label in DESIGN_ROWS],
     }
     return render_to_string("reports/draft_pdf.html", context)
 
@@ -226,7 +275,7 @@ def render_docx(version: ReportDraftVersion) -> bytes:
         if size:
             run.font.size = Pt(size)
 
-    def heading(text: str, level: int = 2) -> None:
+    def heading_(text: str, level: int = 2) -> None:
         doc.add_heading(text, level=level)
 
     def table(columns: list[str], rows: list[list], widths: list[float] | None = None) -> None:
@@ -258,61 +307,131 @@ def render_docx(version: ReportDraftVersion) -> bytes:
         centered(line, bold=True)
     if header.get("office_line"):
         centered(header["office_line"])
-    centered(KIND_HEADINGS[draft.kind], bold=True, size=14)
-    centered(header.get("title") or draft.title, bold=True, size=12)
-    meta = [("Period Covered", header.get("period_covered", "")), ("Venue", header.get("venue", "")),
-            ("Implementing Unit", header.get("implementing_unit", "")), ("Project Leader", header.get("project_leader", ""))]
-    table(["", ""], [[label, value] for label, value in meta if value], [4.5, 12.5])
+    centered(heading(version), bold=True, size=14)
+    if draft.kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT:
+        centered(header.get("program_name", ""), bold=True, size=12)
+        centered(f"Period Covered: {header.get('period_covered', '')}")
+    elif draft.kind not in (ReportDraft.Kind.REQUEST_LETTER, ReportDraft.Kind.ACTIVITY_DESIGN):
+        centered(header.get("title") or draft.title, bold=True, size=12)
+        meta = [("Period Covered", header.get("period_covered", "")), ("Venue", header.get("venue", "")),
+                ("Implementing Unit", header.get("implementing_unit", "")),
+                ("Project Leader", header.get("project_leader", ""))]
+        table(["", ""], [[label, value] for label, value in meta if value], [4.5, 12.5])
 
-    if draft.kind == ReportDraft.Kind.ACTIVITY_REPORT:
-        heading(blocks["highlights"]["label"])
-        text_block("highlights")
-        heading(blocks["accomplishments"]["label"], 3)
-        text_block("accomplishments")
-        heading(blocks["problems"]["label"])
-        text_block("problems")
-        heading("C. Running Budget")
-        budget = facts.get("budget", {})
+    def budget_table(budget: dict) -> None:
         table(["Particulars", "Quantity", "Unit Cost", "Total Amount"],
               [[r["particulars"], r["quantity"], r["unit_cost"], r["total"]] for r in budget.get("rows", [])]
               + [["Total", "", "", budget.get("total", "")]], [7.5, 3.5, 3, 3])
+
+    if draft.kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT:
+        counts = facts.get("counts", {})
+        heading_(blocks["introduction"]["label"])
+        text_block("introduction")
+        heading_("Figures for the period (from the system)", 3)
+        table(["Measure", "Value"], [[label, counts.get(key, "")] for key, label in ACCOMPLISHMENT_COUNTS])
+        if facts.get("attendance_note"):
+            doc.add_paragraph(facts["attendance_note"])
+        mix = facts.get("mix") or {}
+        table(["Participant mix", (mix.get("basis") or "count").capitalize(), "Share"],
+              [[r["group"], r["count"], r["share"]] for r in mix.get("rows", [])])
+        doc.add_paragraph(mix.get("guideline", ""))
+        if facts.get("ratings"):
+            table(["Evaluation question", "Answers", "Mean"], [[q["question"], q["answers"], q["mean"]] for q in facts["ratings"]])
+        table(["Fund source", "Activities", "Budget"],
+              [[r["fund_source"], r["activities"], r["total"]] for r in facts.get("budget_by_fund_source", [])]
+              + [["Total", counts.get("activities_conducted", ""), counts.get("budget_total", "")]])
+        rows = accomplishment_rows(version, blocks)
+        for row in rows:
+            item = row["item"]
+            heading_(row["highlights"]["label"], 3)
+            doc.add_paragraph(f"Date: {item['dates']} · Venue: {item['venue']} · Participants: {item['categories']} · "
+                              f"Registered: {item['registered']} · Attended: {item['attended']}")
+            for line in item["days"]:
+                doc.add_paragraph(line, style="List Bullet")
+            text_block(f"activity_{item['activity_id']}_highlights")
+        if not rows:
+            doc.add_paragraph("No conducted activities in this period.")
+        heading_("B. Accomplishments vis-à-vis Objectives")
+        table(["Objectives", "Accomplishments"],
+              [[f"{row['item']['title']}\n" + "\n".join(f"• {o}" for o in row["objectives"]),
+                "\n".join(f"• {a}" for a in row["accomplishments"])] for row in rows], [8.5, 8.5])
+        for key in ("outputs", "problems", "recommendations"):
+            heading_(blocks[key]["label"])
+            if key == "problems":
+                text_block(key)
+            else:
+                for item in blocks[key]["items"]:
+                    doc.add_paragraph(item, style="List Number")
+    elif draft.kind == ReportDraft.Kind.REQUEST_LETTER:
+        memo = facts.get("memo", {})
+        table(["", ""], [["FOR:", f"{(memo['for']['name'] or BLANK_LINE).upper()}\n{memo['for']['title']}"],
+                         ["THRU:", f"{(memo['thru']['name'] or BLANK_LINE).upper()}\n{memo['thru']['title']}"],
+                         ["FROM:", f"{(memo['from']['name'] or BLANK_LINE).upper()}\n{memo['from']['title']}"],
+                         ["SUBJECT:", memo["subject"]], ["DATE:", memo["date"]]], [3, 14])
+        text_block("body")
+    elif draft.kind == ReportDraft.Kind.ACTIVITY_DESIGN:
+        proposal = facts.get("proposal", {})
+        centered(proposal.get("title", ""), bold=True, size=12)
+        table(["", ""], [[label, proposal.get(key, "")] for key, label in DESIGN_ROWS], [4, 13])
+        heading_("I. Rationale")
+        text_block("rationale")
+        heading_("II. Objectives")
+        for line in proposal.get("objectives") or blocks.get("objectives", {}).get("items", []):
+            doc.add_paragraph(line, style="List Number")
+        heading_("III. Expected Outputs")
+        for line in blocks["expected_outputs"]["items"]:
+            doc.add_paragraph(line, style="List Number")
+        heading_("IV. Budget")
+        budget = facts.get("budget", {})
+        budget_table(budget)
+        doc.add_paragraph(f"Fund source: {budget.get('fund_source', '')}.")
+    elif draft.kind == ReportDraft.Kind.ACTIVITY_REPORT:
+        heading_(blocks["highlights"]["label"])
+        text_block("highlights")
+        heading_(blocks["accomplishments"]["label"], 3)
+        text_block("accomplishments")
+        heading_(blocks["problems"]["label"])
+        text_block("problems")
+        heading_("C. Running Budget")
+        budget = facts.get("budget", {})
+        budget_table(budget)
         doc.add_paragraph(f"Fund source: {budget.get('fund_source', '')}. {budget.get('note', '')}")
-        heading(blocks["recommendations"]["label"])
+        heading_(blocks["recommendations"]["label"])
         text_block("recommendations")
     elif draft.kind == ReportDraft.Kind.EVALUATION_SUMMARY:
         counts = facts.get("counts", {})
-        heading("Responses")
+        heading_("Responses")
         table(["Measure", "Value"], [[count_label(key), value] for key, value in counts.items()])
-        heading("Ratings (1 lowest – 5 highest)")
+        heading_("Ratings (1 lowest – 5 highest)")
         table(["Question", "Answers", "Mean", "5", "4", "3", "2", "1"],
               [[q["question"], q["answers"], q["mean"], *[f"{f['count']} ({f['share']})" for f in q["frequency"]]]
                for q in facts.get("ratings", [])])
         if facts.get("activities"):
-            heading("Activities")
+            heading_("Activities")
             table(["Activity", "Dates", "Attended", "Evaluations", "Response rate", "Average"],
                   [[a["title"], a["dates"], a["attended"], a["evaluations"], a["response_rate"], a["average_rating"]]
                    for a in facts["activities"]])
         for key in ("overview", "open_answers", "recommendations"):
-            heading(blocks[key]["label"])
+            heading_(blocks[key]["label"])
             text_block(key)
     else:
-        heading(blocks["body"]["label"])
+        heading_(blocks["body"]["label"])
         text_block("body")
         if facts.get("counts"):
             table(["Measure", "Value"], [[count_label(key), value] for key, value in facts["counts"].items()])
 
-    prepared, noted = facts.get("prepared_by", {}), facts.get("noted_by", {})
     doc.add_paragraph()
-    signatures = doc.add_table(rows=4, cols=2)
-    signatures.rows[0].cells[0].text, signatures.rows[0].cells[1].text = "Prepared by:", "Noted:"
-    signatures.rows[2].cells[0].text = (prepared.get("name") or "").upper()
-    signatures.rows[2].cells[1].text = (noted.get("name") or "______________________").upper()
-    signatures.rows[3].cells[0].text, signatures.rows[3].cells[1].text = prepared.get("position", ""), noted.get("position", "")
+    blocks_ = signature_blocks(facts)
+    signatures = doc.add_table(rows=4, cols=len(blocks_))
+    for column, block in enumerate(blocks_):
+        signatures.rows[0].cells[column].text = block["label"]
+        signatures.rows[2].cells[column].text = (block["name"] or BLANK_LINE).upper()
+        signatures.rows[3].cells[column].text = block["position"]
 
     shown = photos(version)
     for page in _pages(shown, settings.REPORT_GENERATOR_PHOTOS_PER_PAGE):
         doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-        heading("Photo Documentation")
+        heading_("Photo Documentation")
         grid = doc.add_table(rows=(len(page) + 1) // 2, cols=2)
         for index, photo in enumerate(page):
             cell = grid.rows[index // 2].cells[index % 2]
@@ -322,24 +441,24 @@ def render_docx(version: ReportDraftVersion) -> bytes:
 
     if draft.kind == ReportDraft.Kind.ACTIVITY_REPORT:
         doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
-        heading("Annex", 1)
+        heading_("Annex", 1)
         mix = facts.get("mix") or {}
-        heading("Participant mix")
+        heading_("Participant mix")
         table(["Group", "Count", "Share"], [[r["group"], r["count"], r["share"]] for r in mix.get("rows", [])])
         doc.add_paragraph(mix.get("guideline", ""))
         for sheet in facts.get("paper_sheets", []):
-            heading(f"From the paper sheet: {sheet['kind']}{' – ' + sheet['day'] if sheet['day'] else ''}", 3)
+            heading_(f"From the paper sheet: {sheet['kind']}{' – ' + sheet['day'] if sheet['day'] else ''}", 3)
             table(["No.", "Name", "Designation", "Office", "Category"],
                   [[r["number"], r["name"], r["designation"], r["office"], r["category"]] for r in sheet["rows"]])
             table(["Group", "Count", "Share"], [[r["group"], r["count"], r["share"]] for r in sheet["mix"]["rows"]])
         annex = facts.get("annex") or {}
         for page in annex.get("attendance_pages", []):
-            heading(f"Attendance – {page['date']}", 3)
+            heading_(f"Attendance – {page['date']}", 3)
             table(["No.", "Name", "Designation", "Office", "Time in"],
                   [[r["number"], r["name"] + (" (walk-in)" if r["walk_in"] else ""), r["designation"], r["office"], r["time"]]
                    for r in page["rows"]])
         if annex.get("confirmation_rows"):
-            heading("Confirmation of Attendance", 3)
+            heading_("Confirmation of Attendance", 3)
             table(["No.", "Name", "Designation", "Answer"],
                   [[r["number"], r["name"], r["designation"], "Will attend" if r["will_attend"] else "Will not attend"]
                    for r in annex["confirmation_rows"]])

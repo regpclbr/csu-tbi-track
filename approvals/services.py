@@ -73,6 +73,8 @@ SIGN_NOT_DELEGATED = "Signing is never delegated: approve it without signing, or
 ASSIGNEE_OWN = "You cannot review your own submission through an assignment (separation of duties)."
 SAVE_NOT_APPROVED = "Only an approved submission can be saved to the activity's documents."
 SAVE_NO_ACTIVITY = "This submission is not linked to an activity."
+SAVE_DRAFT_ONLY = ("This is a draft Request Letter or Activity Design from the report generator: it is not saved to the "
+                   "documents. Print it, have it approved on paper, then upload the approved scan to the activity.")
 SAVE_ALREADY = "This submission is already saved to the activity's documents."
 SAVE_CHOOSE_TYPE = "Choose the document type."
 
@@ -131,14 +133,23 @@ def allowed_actions(member: TBIMember, submission: Submission) -> dict[str, bool
     reviewer = can_review_submission(member, submission)
     own = submission.submitted_by_id == member.pk
     status = submission.status
+    draft_only = _draft_only(submission)
     return {
         "approve": reviewer and not own and status == Submission.Status.SUBMITTED,
         "return": reviewer and not own and status == Submission.Status.SUBMITTED,
         "unapprove": can_review(member) and status == Submission.Status.APPROVED,  # never through an assignment
         "resubmit": own and status == Submission.Status.RETURNED,
         "save": ((own or can_review(member)) and status == Submission.Status.APPROVED and submission.activity_id is not None
-                 and submission.saved_document_id is None),
+                 and submission.saved_document_id is None and not draft_only),
+        "draft_only": draft_only,  # a draft Request Letter / Activity Design: never saved (ASSUMPTIONS 447)
     }
+
+
+def _draft_only(submission: Submission) -> bool:
+    """Made from a draft Request Letter / Activity Design (ASSUMPTIONS 447): never saved to the documents."""
+    from reports.generator import is_draft_only_submission
+
+    return is_draft_only_submission(submission)
 
 
 # --- Small helpers ----------------------------------------------------------------------------------------------------
@@ -485,6 +496,8 @@ def save_to_documents(member: TBIMember, submission: Submission, document_type: 
                 raise SubmissionError(SAVE_NO_ACTIVITY)
             if submission.saved_document_id is not None:
                 raise SubmissionError(SAVE_ALREADY)
+            if _draft_only(submission):
+                raise SubmissionError(SAVE_DRAFT_ONLY)
             raise PermissionDenied("Only the member who submitted it or the Director can save it to the documents.")
         document_type = document_type or submission.document_type
         if document_type is None:

@@ -2702,8 +2702,9 @@ Evaluation Summary (items 441 onwards).
      `/reports/generator/` (sidebar "Report generator"), open ANYTIME (never locked behind documents), like a chat:
      - **Who:** can_create_activity, or an open "Prepare a report" assignment (item 437, `require_permission_for`). A
        draft is its maker's only (404 for anyone else); the Director sees what is submitted to them.
-     - **A draft:** what to make (Activity Report, Evaluation Summary, or "Other" free form; Prompt 7 adds the
-       Accomplishment Reports), one activity (always for the Activity Report) OR a period (both dates), optional notes,
+     - **A draft:** what to make (Activity Report, Evaluation Summary, or "Other" free form; Prompt 7 added the
+       Accomplishment Report and the draft Request Letter / Activity Design, items 446-448), one activity (always for the
+       Activity Report) OR a period (both dates; the draft letter / design: neither, typed details, item 448), optional notes,
        a title and the office line / implementing unit / project leader, and files: "for the AI to read" (program,
        speaker list, notes; the document upload checks, by content) or "photos for the report" (JPG / PNG, NEVER sent to
        the AI). At most `REPORT_GENERATOR_MAX_ATTACHMENTS` (10). Stored as `report-drafts/<year>/draft-<id>-<random>.<ext>`;
@@ -2738,20 +2739,22 @@ Evaluation Summary (items 441 onwards).
      - Tests: `reports/tests/test_generator.py`; opt-in Chromium `reports/tests/test_generator_browser.py` (1366 and 390
        px: the compact bar, the conversation most of its card, the Chat / Draft switch on a phone, nothing sideways).
 
-443. **Paper attendance sheets read by the AI** (owner decisions 2026-11-25). *(Open question, CLAUDE.md: DTI as MSMEs.)*
+443. **Paper attendance sheets read by the AI** (owner decisions 2026-11-25; DTI and partner agencies count as MSMEs:
+     confirmed 2026-11-26).
      - Staff choose a scanned Attendance / Confirmation of Attendance (an activity document of those types, PDF / JPG /
        PNG, from its document page; or a scan attached to a draft about one activity) and click "Read the rows with AI".
        That click is the per-file consent of item 438 (for a document it also sets its "Read this scan with AI" tick). A
        task (`run_read_paper_sheet`) asks Gemini for the rows (name, designation, office) as JSON; our code maps each
        office to a category by `settings.PAPER_SHEET_CATEGORY_RULES` (whole words, case ignored, first rule wins: CSU /
-       faculty words -> Faculty, incubatee / startup -> Incubatees, DTI, partner agencies, enterprises -> MSMEs, pending
-       NAVIGATU).
+       faculty words -> Faculty, incubatee / startup -> Incubatees, DTI, partner agencies, enterprises -> MSMEs;
+       DTI and partner agencies as MSMEs is confirmed, 2026-11-26).
      - Staff check every row on `/reports/paper-sheets/<id>/` (name, designation, office, category, "Not a participant",
        "Add a row"; who and when per corrected row), see the counts and percentages (`metrics.paper_sheet_mix`: the mix
        groups and NAVIGATU's guideline), then **Confirm** (refused while an included row has no name or category). A
        confirmed sheet is locked until "Reopen". Only CONFIRMED sheets are used, and only in the generated reports
        ("From the paper sheet": rows and mix in the Activity Report's annex); never added to REGISTRATION, never in the
-       dashboard or the period reports. Without the key or when nothing is read: the rows can be typed by hand.
+       dashboard or the period reports (except the generated Accomplishment Report's attendance, item 447). Without the
+       key or when nothing is read: the rows can be typed by hand.
      - Database: PAPER_SHEET_READ (exactly one of document / attachment; confirmed with who and when) and PAPER_SHEET_ROW.
      - Tests: `reports/tests/test_paper_sheets.py`.
 
@@ -2783,3 +2786,94 @@ Evaluation Summary (items 441 onwards).
      written answers and comments WITHOUT names, sorted A-Z) and "Recommendations". The photos from
      `photos_for_reports()` as Photo Documentation. Same exports, save (one activity only) and submit.
      - Tests: `reports/tests/test_generator.py`, `reports/tests/test_period_evaluation_metrics.py`.
+
+## NAVIGATU UAT, Prompt 7: the Accomplishment Report and the draft Request Letter / Activity Design (2026-11-26)
+
+446. **The Accomplishment Report in the report generator** (NAVIGATU's "3rd Quarter Accomplishment Report" sample). A new
+     REPORT_DRAFT kind `accomplishment_report` (item 442 reused: versions, the numbers rule, DOCX / PDF, submit).
+     - **Period:** a quarter (Q1-Q4), a half (January-June, July-December) or a whole year, plus the year; the dates come
+       ONLY from `reports.services.preset_range` (the Reports page's presets, item 399; `generator.accomplishment_dates`).
+       A custom range or an activity is refused (`PRESET_REQUIRED`, `PERIOD_ONLY`).
+     - **Header:** the placeholder letterhead (as item 444), "<1ST/2ND/3RD/4TH> QUARTER ACCOMPLISHMENT REPORT" /
+       "SEMI-ANNUAL ACCOMPLISHMENT REPORT" / "ANNUAL ACCOMPLISHMENT REPORT" (`draft_facts.accomplishment_heading`), the
+       program or unit name (REQUIRED, typed: CSU has two TBIs, NAVIGATU and TARA; `options.program_name`; the form starts
+       with the member's last value, `generator.last_options`, no column), "Period Covered: July–September 2026"
+       (`draft_facts.months_covered`).
+     - **Sections:** A. Highlights of Accomplishments = an introduction (AI), "Figures for the period (from the system)"
+       and one numbered subsection A.n per Conducted activity ending in the period (date, venue, categories, registered,
+       attended, then the AI's highlights); B. Accomplishments vis-à-vis Objectives = a two-column table: the activity's
+       Objectives field (item 428) or, when it is empty, an AI section "Objectives (read from the Activity Design)"
+       (marked "Read from the Activity Design." in the export), and the AI's accomplishments per activity; C. Major
+       Outputs / Deliverables (numbered); D. Problems / Constraints Met; E. Recommendations / Next Steps (numbered). The
+       per-activity sections depend on the facts: `generator.section_specs(kind, facts)` replaces the fixed
+       `SECTIONS[kind]` everywhere (edit, export check, prompt, exports, page); keys
+       `activity_<id>_highlights|_objectives|_accomplishments`.
+     - **Figures (reports.metrics only):** activities conducted, registered (cancelled not counted, item 440), cancelled,
+       attended, evaluations, response rate, average rating, ratings per question, the participant mix, the budget per fund
+       source (N20) and its total (N19); per activity from `activity_rows`. Placeholders `[[attended]]`,
+       `[[act<id>_attended]]`, `[[budget_raf]]` ...; any other number the AI writes is "Not from the system" (item 442).
+     - **Photos:** the Activity Report's rules (Event Photos documents, the draft's photos, `photos_for_reports()` only),
+       6 a page. "Prepared by" the member + POSITION; "Noted" the Director's linked signatory; footer F-COR-001 Rev. 3.
+     - **Not saved to the documents** (no single activity); Submit to the Director is offered.
+     - **The older Accomplishment report on the Reports page (GENERATED_REPORT, item 399) stays** (owner: nothing is
+       removed without asking). They are linked, not merged: the Reports page makes the figures-and-tables report
+       (PDF / Excel); the generator makes NAVIGATU's narrative report. The Reports page has a note linking to the generator
+       (`?start_kind=accomplishment_report`); both read the same `reports.metrics`, so the counts agree (parity test),
+       except attended when confirmed paper sheets are used (item 447), which the report says in words.
+     - Tests: `reports/tests/test_accomplishment_report.py`; real WeasyPrint `test_report_pdf_layout.py` (the year and a
+       quarter of the demo data); Chromium `test_generator_browser.py` (`test_the_new_draft_form_for_every_kind_at_1366_and_390`).
+
+447. **Confirmed paper Attendance sheets in the Accomplishment Report's attendance** (owner decision 2026-11-26; amends
+     item 443's "never in the period reports" for this report only). `metrics.attendance_with_paper_sheets(activity_ids)`:
+     - Only CONFIRMED sheets of kind **Attendance** count. A Confirmation of Attendance sheet means "will attend", never
+       attended: it never replaces attendees.
+     - **Per day, not per activity:** a day with a confirmed Attendance sheet uses that sheet's included rows (several
+       sheets for one day add up); the other days use the system's attendance (ATTENDANCE_DAY). A sheet without a day
+       counts only for a one-day activity.
+     - **Each person once per activity:** system attendees by email (case ignored); a paper row by name + office (case and
+       spacing ignored; paper has no email); a paper row matching a system attendee's name + office is that person.
+       Attended people without any day row (older data) count while at least one day comes from the system.
+     - The report's mix is then taken over those people (`metrics.paper_sheet_mix`); without any confirmed sheet it is
+       exactly `period_participant_mix` and attended is exactly the system's count (parity test).
+     - Labelled: each activity lists "Day 1 (date): N – attendance from the paper sheet" / "... from the system"; the
+       report says "Attended includes the confirmed paper attendance sheets of N activities (they replace the system's
+       attendance for their day); the system alone recorded M. The Reports page counts the system's attendance only."
+       Registration counts never change; nothing is written to REGISTRATION or the dashboard.
+
+448. **The draft Request Letter and the draft Activity Design** (kinds `request_letter`, `activity_design`), made possibly
+     BEFORE the activity exists. *(Open question, CLAUDE.md: NAVIGATU's own templates.)*
+     - **About:** a Draft or Scheduled activity (listed Draft first: staff revise an Activity Design after a date or
+       budget change; its fields are read again for every version) or **typed details** (title, dates, optional times
+       hh:mm, venue, participants, objectives one per line, description, fund source, budget lines checked by
+       `activities.budget.clean_lines`; `generator.clean_proposal`, stored in `REPORT_DRAFT.options["proposal"]`). A
+       period is refused (`NO_PERIOD_HERE`), another status too (`PROPOSAL_ACTIVITY`).
+     - **The REPORT_DRAFT rule changed** (migration reports/0003, check constraint `report_draft_activity_period_or_typed`
+       replaces `report_draft_activity_or_period`): one activity and no dates, OR no activity and both dates (end ≥ start),
+       OR (only for these two kinds) neither.
+     - **Request Letter:** a memorandum: placeholder letterhead, "MEMORANDUM", FOR / THRU / FROM names and titles typed by
+       the member and remembered from their last letter (FROM defaults to the project leader typed, else the Director's
+       linked signatory), SUBJECT "Request for the conduct of <title>", DATE = the day the version was written; the body
+       (AI); "Recommending Approval" (the THRU person) and "Approved by" (the FOR person). An empty name prints as a line.
+     - **Activity Design:** the top table (Title, Duration, Date, Time, Venue, Participants, Funds), I. Rationale (AI),
+       II. Objectives (the activity's or the typed ones; the AI writes them ONLY when none were given), III. Expected
+       Outputs (AI), IV. Budget (Particulars, Quantity, Unit Cost, Total: the activity's `budget_summary`, or
+       `budget_table` of the typed lines; totals always computed by `activities.budget`), three signature blocks:
+       Prepared by (the member + POSITION), Recommending Approval (the Director's linked signatory), Approved by (typed).
+     - **Numbers rule:** every date, name and amount comes from the activity or from what the member typed (facts and
+       placeholders `[[title]] [[dates]] [[venue]] [[participants]] [[budget_total]] [[fund_source]]` ...).
+     - **NEVER saved to the activity's documents** (an approved copy would complete the checklist and Schedule the
+       activity, item 431, before anything was approved on paper): `generator.save_refused_reason` = `DRAFT_NOT_SAVED`,
+       no Save button (a note instead). Submit to the Director IS offered, without a document type, and Approvals never
+       saves such a submission either (`approvals.services.allowed_actions()["save"]` False, `["draft_only"]` True,
+       `save_to_documents` refuses with `SAVE_DRAFT_ONLY`; `generator.is_draft_only_submission`). Staff download the
+       DOCX, print and route it, then upload the approved scan as usual.
+     - Neutral templates until NAVIGATU gives theirs (open question).
+     - Tests: `reports/tests/test_draft_letters.py`; real WeasyPrint `test_report_pdf_layout.py` (a typed letter, a typed
+       design, a demo Draft / Scheduled activity's design).
+     - Database: no new table or column (still 49 tables); migration reports/0003 (kind choices, the `options` help text,
+       the constraint).
+
+449. **`python manage.py tailwind build` in the OneDrive folder.** The pinned CLI failed with "EEXIST: file already
+     exists, mkdir '...\static\css'" whenever the CSS CHANGED (identical output is never written, which is why it seemed
+     to work sometimes). The command now writes to a temporary file (`%TEMP%\tbi-tailwind-app.css`) and copies it into
+     `static/css/app.css`; the manual steps are in CLAUDE.md ("Commands"). `tailwind watch` still writes directly.

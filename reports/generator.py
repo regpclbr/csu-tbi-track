@@ -75,7 +75,64 @@ SECTIONS = {
     Kind.OTHER: [
         ("body", "Report", "The report the member asked for, in paragraphs (a line starting with \"- \" is a bullet)."),
     ],
+    # The Accomplishment Report's sections per activity are added by section_specs() (ASSUMPTIONS 446).
+    Kind.ACCOMPLISHMENT_REPORT: [
+        ("introduction", "A. Highlights of Accomplishments",
+         "One or two paragraphs introducing the period: the program, how many activities ([[activities_conducted]]) and "
+         "participants ([[attended]]), the kinds of activities and partners."),
+        ("outputs", "C. Major Outputs / Deliverables",
+         "Three to eight outputs or deliverables of the period, ONE PER LINE, no bullets or numbers."),
+        ("problems", "D. Problems / Constraints Met", "One or two short paragraphs, or \"None reported.\""),
+        ("recommendations", "E. Recommendations / Next Steps",
+         "Three to six recommendations or next steps, ONE PER LINE, no bullets or numbers."),
+    ],
+    Kind.REQUEST_LETTER: [
+        ("body", "Body of the letter",
+         "Two or three short paragraphs of a memorandum: request the conduct of [[title]] on [[dates]] at [[venue]], "
+         "say its purpose and who takes part ([[participants]]), and (when there is a budget) that [[budget_total]] is "
+         "charged to [[fund_source]]. No greeting, no closing and no signature."),
+    ],
+    Kind.ACTIVITY_DESIGN: [
+        ("rationale", "Rationale", "Two or three paragraphs: why the activity is needed and for whom."),
+        ("expected_outputs", "Expected Outputs", "Three to six expected outputs, ONE PER LINE, no bullets or numbers."),
+    ],
 }
+# The draft Request Letter and Activity Design (ASSUMPTIONS 447): may be made before the activity exists (typed details)
+# and are NEVER saved to the activity's documents (printed, approved on paper, the approved scan uploaded as usual).
+PROPOSAL_KINDS = (Kind.REQUEST_LETTER, Kind.ACTIVITY_DESIGN)
+LIST_KEYS = {"accomplishments", "recommendations", "outputs", "expected_outputs", "objectives"}
+
+
+def is_list_section(key: str) -> bool:
+    """Sections written ONE PER LINE (printed as a list)."""
+    return key in LIST_KEYS or key.endswith(("_accomplishments", "_objectives"))
+
+
+def section_specs(kind: str, facts: dict | None = None) -> list[tuple[str, str, str]]:
+    """The sections of a version (key, label, how to write it). Fixed per kind, except: the Accomplishment Report adds,
+    for each activity in its facts, "Highlights" (A.n), its "Accomplishments" (table B) and, when the activity has no
+    Objectives (item 428), "Objectives" read from its Activity Design; the Activity Design asks for objectives only when
+    none were given."""
+    specs = list(SECTIONS[kind])
+    facts = facts or {}
+    if kind == Kind.ACCOMPLISHMENT_REPORT:
+        per_activity = []
+        for item in facts.get("activities", []):
+            key, title = f"activity_{item['activity_id']}", item["title"]
+            per_activity.append((f"{key}_highlights", f"A.{item['number']} {title}",
+                                 f"One or two paragraphs about this activity: what was covered, who took part, the "
+                                 f"results. Use its placeholders ({', '.join(item['placeholder_names'])})."))
+            if not item["objectives"]:
+                per_activity.append((f"{key}_objectives", f"B. Objectives – {title} (read from the Activity Design)",
+                                     "This activity's objectives exactly as its Activity Design file states them, ONE "
+                                     "PER LINE. Leave empty when no Activity Design of it is among FILES."))
+            per_activity.append((f"{key}_accomplishments", f"B. Accomplishments – {title}",
+                                 "What this activity accomplished against its objectives, ONE PER LINE."))
+        specs = specs[:1] + per_activity + specs[1:]
+    elif kind == Kind.ACTIVITY_DESIGN and not (facts.get("proposal") or {}).get("objectives", True):
+        specs.insert(1, ("objectives", "Objectives",
+                         "Three to five objectives from NOTES and FILES only, ONE PER LINE (none were typed)."))
+    return specs
 
 PLACEHOLDER = re.compile(r"\[\[\s*([a-z0-9_]+)\s*\]\]")
 NUMBER = re.compile(r"(?<![\w])(?:₱\s?)?\d[\d,]*(?:\.\d+)?%?")
@@ -98,6 +155,13 @@ SECTION_TOO_LONG = "A section can be at most {limit} characters."
 CHECK_NUMBERS = ("Check the numbers marked \"not from the system\" first ({sections}): edit those sections, or ask for "
                  "a new version.")
 NO_ACTIVITY_TO_SAVE = "Only a report about one activity can be saved to its documents."
+DRAFT_NOT_SAVED = ("A draft Request Letter or Activity Design is not saved to the documents: download the DOCX, print it, "
+                   "have it approved on paper, then upload the approved scan to the activity as usual.")
+PRESET_REQUIRED = "Choose a quarter, a half or the whole year, and the year."
+NO_PERIOD_HERE = "A draft Request Letter or Activity Design is about one activity (or typed details), not a period."
+PROPOSAL_ACTIVITY = "Choose a Draft or Scheduled activity, or type the activity's details."
+PROGRAM_REQUIRED = "Type the program or unit name (for example NAVIGATU or TARA)."
+PERIOD_ONLY = "The Accomplishment Report is about a period: choose the quarter, half or year, not an activity."
 ALREADY_SAVED = "This version is already saved to the activity's documents."
 ALREADY_SUBMITTED = "This version is already submitted to the Director."
 DEFAULT_REQUEST = "Write the first draft."
@@ -170,21 +234,54 @@ def _parse_date(value) -> date | None:
         raise ValidationError({"date_range_start": [BAD_DATES]}) from error
 
 
+PROPOSAL_STATUSES = ("Draft", "Scheduled")  # ActivityStatus names a draft letter / design may be about (Draft first)
+
+
+def accomplishment_dates(preset: str, year) -> tuple[date, date]:
+    """The Accomplishment Report's period: a quarter, a half or the whole year, ONLY through reports.services
+    .preset_range (the Reports page's presets, ASSUMPTIONS 399)."""
+    from .services import preset_range
+
+    try:
+        found = preset_range(str(preset or ""), int(year))
+    except (TypeError, ValueError):
+        found = None
+    if found is None:
+        raise ValidationError({"preset": [PRESET_REQUIRED]})
+    return found
+
+
 def clean_scope(kind: str, activity_id, start, end) -> tuple[Activity | None, date | None, date | None]:
-    """One activity, or a period (both dates). The Activity Report is always about one activity."""
+    """One activity, a period (both dates), or (only the draft Request Letter / Activity Design) neither: then the
+    details are typed (clean_proposal). The Activity Report is always about one activity; the Accomplishment Report
+    always about a quarter, a half or a whole year; a draft letter / design about a Draft or Scheduled activity."""
     if kind not in Kind.values:
         raise ValidationError({"kind": ["Choose what to make."]})
     start, end = _parse_date(start), _parse_date(end)
     activity = None
     if activity_id not in (None, ""):
         try:
-            activity = Activity.objects.select_related("activity_type", "created_by").get(pk=int(activity_id))
+            activity = Activity.objects.select_related("activity_type", "created_by", "status").get(pk=int(activity_id))
         except (TypeError, ValueError, Activity.DoesNotExist) as error:
             raise ValidationError({"activity": [UNKNOWN_ACTIVITY]}) from error
     if kind == Kind.ACTIVITY_REPORT and activity is None:
         raise ValidationError({"activity": [ACTIVITY_REQUIRED]})
     if activity is not None and (start or end):
         raise ValidationError({"activity": [BOTH_GIVEN]})
+    if kind in PROPOSAL_KINDS:
+        if start or end:
+            raise ValidationError({"activity": [NO_PERIOD_HERE]})
+        if activity is not None and activity.status.name not in PROPOSAL_STATUSES:
+            raise ValidationError({"activity": [PROPOSAL_ACTIVITY]})
+        return activity, None, None
+    if kind == Kind.ACCOMPLISHMENT_REPORT:
+        from .services import matching_preset
+
+        if activity is not None:
+            raise ValidationError({"activity": [PERIOD_ONLY]})
+        if not (start and end) or matching_preset(start, end) is None:
+            raise ValidationError({"preset": [PRESET_REQUIRED]})
+        return None, start, end
     if activity is None:
         if not (start and end):
             raise ValidationError({"activity": [ACTIVITY_OR_PERIOD]})
@@ -193,14 +290,106 @@ def clean_scope(kind: str, activity_id, start, end) -> tuple[Activity | None, da
     return activity, start, end
 
 
-def clean_options(options: dict | None) -> dict:
+COMMON_OPTIONS = ("office_line", "implementing_unit", "project_leader")
+KIND_OPTIONS = {
+    Kind.ACCOMPLISHMENT_REPORT: ("program_name",),
+    Kind.REQUEST_LETTER: ("memo_for_name", "memo_for_title", "memo_thru_name", "memo_thru_title", "memo_from_name",
+                          "memo_from_title"),
+    Kind.ACTIVITY_DESIGN: ("approved_by_name", "approved_by_title"),
+}
+# What the form remembers from the member's last draft of the same kind (no column: read from REPORT_DRAFT.options).
+REMEMBERED_OPTIONS = {kind: keys for kind, keys in KIND_OPTIONS.items()}
+
+
+def clean_options(options: dict | None, kind: str = Kind.OTHER) -> dict:
+    """The typed one-line options of a draft (each at most OPTION_MAX, spaces tidied). The Accomplishment Report needs
+    the program or unit name (CSU has two TBIs: NAVIGATU, TARA)."""
     cleaned = {}
-    for key in ("office_line", "implementing_unit", "project_leader"):
+    for key in (*COMMON_OPTIONS, *KIND_OPTIONS.get(kind, ())):
         value = " ".join(str((options or {}).get(key) or "").split())
         if len(value) > OPTION_MAX:
             raise ValidationError({key: [f"At most {OPTION_MAX} characters."]})
         if value:
             cleaned[key] = value
+    if kind == Kind.ACCOMPLISHMENT_REPORT and not cleaned.get("program_name"):
+        raise ValidationError({"program_name": [PROGRAM_REQUIRED]})
+    return cleaned
+
+
+def last_options(member: TBIMember, kind: str) -> dict:
+    """The options the member typed on their newest draft of this kind (the form starts with them)."""
+    keys = REMEMBERED_OPTIONS.get(kind, ())
+    draft = ReportDraft.objects.filter(created_by=member, kind=kind).order_by("-created_at", "-draft_id").first()
+    return {key: draft.options[key] for key in keys if draft and draft.options.get(key)}
+
+
+PROPOSAL_TEXT_LIMITS = {"title": 255, "venue": 255, "participants": 500, "objectives": 5000, "description": 5000}
+TIME_FORMAT = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
+
+
+def clean_proposal(raw: dict | None) -> dict:
+    """The activity details typed for a draft Request Letter / Activity Design without an activity (ASSUMPTIONS 447):
+    title, dates (YYYY-MM-DD), optional times (HH:MM, both or neither), venue, participants, objectives (one per line,
+    activities.services.clean_objectives), description, fund source and budget lines (activities.budget.clean_lines:
+    the activity form's own rules). Stored in REPORT_DRAFT.options["proposal"] as plain JSON. Every problem at once."""
+    from activities import budget as activity_budget
+    from activities.models import FundSource
+    from activities.services import clean_objectives
+
+    raw = raw or {}
+    errors: dict[str, list[str]] = {}
+    cleaned: dict = {}
+    for key, limit in PROPOSAL_TEXT_LIMITS.items():
+        value = str(raw.get(key) or "").replace("\r\n", "\n").strip()
+        if key == "objectives":
+            value = clean_objectives(value) or ""
+        elif key != "description":
+            value = " ".join(value.split())
+        if len(value) > limit:
+            errors[f"proposal_{key}"] = [f"At most {limit} characters."]
+        cleaned[key] = value
+    for key in ("title", "venue"):
+        if not cleaned[key]:
+            errors[f"proposal_{key}"] = [f"Type the activity's {key}."]
+    dates = {}
+    for key in ("start_date", "end_date"):
+        try:
+            dates[key] = date.fromisoformat(str(raw.get(key) or "").strip())
+        except ValueError:
+            errors[f"proposal_{key}"] = ["Choose a date."]
+    if len(dates) == 2 and dates["end_date"] < dates["start_date"]:
+        errors["proposal_end_date"] = ["The end date must be on or after the start date."]
+    cleaned.update({key: value.isoformat() for key, value in dates.items()})
+    times = {key: str(raw.get(key) or "").strip() for key in ("start_time", "end_time")}
+    for key, value in times.items():
+        match = TIME_FORMAT.match(value)
+        if value and not match:
+            errors[f"proposal_{key}"] = ["Type the time as hh:mm (24-hour), for example 13:30."]
+        times[key] = f"{int(match.group(1)):02d}:{match.group(2)}" if value and match else ""
+    if bool(times["start_time"]) != bool(times["end_time"]):
+        errors["proposal_end_time"] = ["Type both times, or neither."]
+    elif (times["start_time"] and len(dates) == 2 and dates["start_date"] == dates["end_date"]
+          and times["end_time"] <= times["start_time"]):
+        errors["proposal_end_time"] = ["On a one-day activity the end time must be after the start time."]
+    cleaned.update(times)
+    fund_source = str(raw.get("fund_source") or "").strip()
+    cleaned["fund_source_id"] = None
+    if fund_source:
+        found = FundSource.objects.filter(pk=int(fund_source), is_active=True).first() if fund_source.isdigit() else None
+        if found is None:
+            errors["proposal_fund_source"] = ["Choose an active fund source."]
+        else:
+            cleaned["fund_source_id"] = found.pk
+    try:
+        lines = activity_budget.clean_lines(raw.get("budget_lines") or [])
+    except ValidationError as error:
+        errors.update(error.message_dict)
+        lines = []
+    cleaned["budget_lines"] = [{"category": line.category.pk, "particulars": line.particulars,
+                                "quantity": str(line.quantity), "unit": line.unit, "days": line.days,
+                                "unit_price": str(line.unit_price)} for line in lines]
+    if errors:
+        raise ValidationError(errors)
     return cleaned
 
 
@@ -213,8 +402,17 @@ def clean_message(message: str, required: bool) -> str:
     return message
 
 
-def default_title(kind: str, activity: Activity | None, start: date | None, end: date | None) -> str:
-    label = Kind(kind).label if kind != Kind.OTHER else "Report"
+def default_title(kind: str, activity: Activity | None, start: date | None, end: date | None,
+                  options: dict | None = None) -> str:
+    options = options or {}
+    if kind == Kind.ACCOMPLISHMENT_REPORT:
+        from .content import report_title
+
+        return f"{report_title('Accomplishment Report', start, end)} – {options.get('program_name', '')}"[:TITLE_MAX]
+    label = {Kind.OTHER: "Report", Kind.REQUEST_LETTER: "Request Letter",
+             Kind.ACTIVITY_DESIGN: "Activity Design"}.get(kind, Kind(kind).label if kind in Kind.values else "Report")
+    if kind in PROPOSAL_KINDS and activity is None:
+        return f"{label} – {(options.get('proposal') or {}).get('title', '')}"[:TITLE_MAX]
     return f"{label} – {activity.title if activity else range_in_words(start, end)}"[:TITLE_MAX]
 
 
@@ -294,14 +492,17 @@ def _new_version(draft: ReportDraft, member: TBIMember, source: str) -> ReportDr
 
 def create_draft(member: TBIMember, *, kind: str, activity_id=None, start=None, end=None, title: str = "",
                  options: dict | None = None, message: str = "", files: list[NewFile] | None = None,
-                 now: datetime | None = None) -> ReportDraft:
-    """A new draft with its first request and files; version 1 is queued (written in the background)."""
+                 proposal: dict | None = None, now: datetime | None = None) -> ReportDraft:
+    """A new draft with its first request and files; version 1 is queued (written in the background). `proposal`: the
+    typed activity details of a draft Request Letter / Activity Design without an activity (clean_proposal)."""
     require_use(member)
     now = now or timezone.now()
     activity, start, end = clean_scope(kind, activity_id, start, end)
-    options = clean_options(options)
+    options = clean_options(options, kind)
+    if kind in PROPOSAL_KINDS and activity is None:
+        options["proposal"] = clean_proposal(proposal)
     message = clean_message(message, required=False)
-    title = " ".join((title or "").split())[:TITLE_MAX] or default_title(kind, activity, start, end)
+    title = " ".join((title or "").split())[:TITLE_MAX] or default_title(kind, activity, start, end, options)
     files = files or []
     extensions = check_files(None, files)
     stored: list[str] = []
@@ -382,10 +583,6 @@ def try_again(member: TBIMember, draft: ReportDraft) -> ReportDraftVersion:
     return version
 
 
-def section_specs(kind: str) -> list[tuple[str, str, str]]:
-    return SECTIONS[kind]
-
-
 def edit_section(member: TBIMember, version: ReportDraftVersion, key: str, text: str) -> ReportDraftVersion:
     """The member's own text for one section: a NEW version (source "edited"), the same facts; the section is no longer
     marked AI-generated and its numbers are the member's."""
@@ -394,7 +591,8 @@ def edit_section(member: TBIMember, version: ReportDraftVersion, key: str, text:
     draft = version.draft
     if version.state != State.READY:
         raise GeneratorError(NOT_READY)
-    if key not in {spec[0] for spec in SECTIONS[draft.kind]}:
+    specs = section_specs(draft.kind, version.facts)
+    if key not in {spec[0] for spec in specs}:
         raise ValidationError({"section": [UNKNOWN_SECTION]})
     text = (text or "").replace("\r\n", "\n").strip()
     if len(text) > SECTION_MAX:
@@ -409,7 +607,7 @@ def edit_section(member: TBIMember, version: ReportDraftVersion, key: str, text:
         edited.sections, edited.facts, edited.state = sections, version.facts, State.READY
         edited.progress, edited.finished_at = "", timezone.now()
         edited.save()
-        label = dict((spec[0], spec[1]) for spec in SECTIONS[draft.kind])[key]
+        label = dict((spec[0], spec[1]) for spec in specs)[key]
         ReportChatMessage.objects.create(draft=draft, role=ReportChatMessage.Role.ASSISTANT, version=edited,
                                          content=f"Version {edited.number}: you edited “{label}”.")
         draft.save(update_fields=["updated_at"])
@@ -431,17 +629,18 @@ SECTIONS:
 {sections}"""
 
 
-def _sections_spec(kind: str) -> str:
-    return "\n".join(f'- "{key}" ({label}): {how}' for key, label, how in SECTIONS[kind])
+def _sections_spec(kind: str, facts: dict) -> str:
+    return "\n".join(f'- "{key}" ({label}): {how}' for key, label, how in section_specs(kind, facts))
 
 
 def _context(draft: ReportDraft, facts: dict) -> dict:
     """What the AI may know besides the placeholders (no participant names)."""
     context = {"report": Kind(draft.kind).label, "title": draft.title, "header": facts.get("header", {})}
-    for key in ("objectives", "description", "resource_persons", "days", "mix", "counts", "activities"):
+    for key in ("objectives", "description", "resource_persons", "days", "mix", "counts", "activities", "proposal",
+                "memo", "budget_by_fund_source", "attendance_note"):
         if key in facts:
             context[key] = facts[key]
-    if "budget" in facts:
+    if facts.get("budget"):
         budget = facts["budget"]
         context["budget"] = {"fund_source": budget["fund_source"], "lines": [row["particulars"] for row in budget["rows"]]}
     if "ratings" in facts:
@@ -463,6 +662,8 @@ def _file_texts(draft: ReportDraft) -> list[dict]:
 
     if draft.activity_id:
         activity_ids = [draft.activity_id]
+    elif draft.date_range_start is None:  # a draft letter / design with typed details: only its own files
+        activity_ids = []
     else:
         activity_ids = list(metrics.period_activities(
             metrics.ReportFilters(draft.date_range_start, draft.date_range_end)).values_list("pk", flat=True))
@@ -590,8 +791,8 @@ def unknown_placeholders(text: str, facts: dict) -> list[str]:
     return [f"[[{key}]]" for key in PLACEHOLDER.findall(text or "") if key not in values]
 
 
-def _empty_sections(kind: str) -> dict:
-    return {key: {"text": "", "ai": False, "unverified": []} for key, _, _ in SECTIONS[kind]}
+def _empty_sections(kind: str, facts: dict) -> dict:
+    return {key: {"text": "", "ai": False, "unverified": []} for key, _, _ in section_specs(kind, facts)}
 
 
 def _note(draft: ReportDraft, version: ReportDraftVersion, text: str) -> None:
@@ -650,11 +851,11 @@ def _write_sections(draft: ReportDraft, facts: dict, previous: ReportDraftVersio
     try:
         gateway = get_gateway()
     except AssistantUnavailable:
-        sections = _empty_sections(draft.kind)
+        sections = _empty_sections(draft.kind, facts)
         if previous is not None:  # keep what was written before (also the member's own text)
             sections.update({key: value for key, value in previous.sections.items() if key in sections})
         return sections, None, AI_OFF_NOTE
-    system = SYSTEM_INSTRUCTION.format(sections=_sections_spec(draft.kind))
+    system = SYSTEM_INSTRUCTION.format(sections=_sections_spec(draft.kind, facts))
     prompt = build_prompt(draft, facts, previous, request)
     try:
         with gemini.time_limit(settings.REPORT_GENERATOR_TIMEOUT_SECONDS):
@@ -668,7 +869,7 @@ def _write_sections(draft: ReportDraft, facts: dict, previous: ReportDraftVersio
         logger.warning("Report draft %s version %s: the AI's answer could not be read.", draft.pk, version.number)
         raise _Failed("The AI's answer could not be read.") from error
     sections = {}
-    for key, _, _ in SECTIONS[draft.kind]:
+    for key, _, _ in section_specs(draft.kind, facts):
         text = str(raw.get(key) or "").strip()[:SECTION_MAX]
         unverified = check_numbers(text, facts) + unknown_placeholders(text, facts)
         sections[key] = {"text": fill_placeholders(text, facts), "raw": text, "ai": bool(text),
@@ -695,7 +896,7 @@ def export_refused_reason(version: ReportDraftVersion) -> str | None:
     """Why this version cannot be exported, saved or submitted yet, or None."""
     if version.state != State.READY:
         return NOT_READY
-    labels = dict((key, label) for key, label, _ in SECTIONS[version.draft.kind])
+    labels = dict((key, label) for key, label, _ in section_specs(version.draft.kind, version.facts))
     flagged = [labels.get(key, key) for key, value in version.sections.items() if value.get("ai") and value.get("unverified")]
     if flagged:
         return CHECK_NUMBERS.format(sections=", ".join(flagged))
@@ -737,13 +938,35 @@ def document_type_for(draft: ReportDraft) -> DocumentType:
     return document_type
 
 
+def save_offered(draft: ReportDraft) -> bool:
+    """A draft Request Letter / Activity Design is NEVER saved to the documents (ASSUMPTIONS 447: an approved copy would
+    complete the checklist and Schedule the activity, item 431, before anything was approved on paper)."""
+    return draft.kind not in PROPOSAL_KINDS
+
+
+def save_refused_reason(version: ReportDraftVersion) -> str | None:
+    """Why this (ready) version cannot be saved to the activity's documents, or None."""
+    if not save_offered(version.draft):
+        return DRAFT_NOT_SAVED
+    if version.draft.activity_id is None:
+        return NO_ACTIVITY_TO_SAVE
+    if version.saved_document_id:
+        return ALREADY_SAVED
+    return None
+
+
+def is_draft_only_submission(submission) -> bool:
+    """A submission made from a draft Request Letter / Activity Design: approvals never saves it to the documents."""
+    return ReportDraftVersion.objects.filter(submission=submission, draft__kind__in=PROPOSAL_KINDS).exists()
+
+
 def save_to_documents(member: TBIMember, version: ReportDraftVersion, now: datetime | None = None) -> Document:
     """Save the PDF as one of the activity's documents: an Activity Report (or "Other" for other kinds), an approved copy
     (item 432) through documents.services.upload_document (checks, History, indexing). Once per version."""
     version = _ready_for_export(member, version)
     draft = version.draft
-    if draft.activity_id is None:
-        raise GeneratorError(NO_ACTIVITY_TO_SAVE)
+    if reason := save_refused_reason(version):
+        raise GeneratorError(reason)
     if version.saved_document_id:
         raise GeneratorError(ALREADY_SAVED)
     from . import draft_export
@@ -780,7 +1003,8 @@ def submit_to_director(member: TBIMember, version: ReportDraftVersion, note: str
     from . import draft_export
 
     data = draft_export.render_pdf(version)
-    document_type = document_type_for(draft) if draft.activity_id else None
+    # A draft letter / design is submitted without a document type: approvals never saves it (is_draft_only_submission).
+    document_type = document_type_for(draft) if draft.activity_id and save_offered(draft) else None
     with transaction.atomic():
         locked = ReportDraftVersion.objects.select_for_update().get(pk=version.pk)
         if locked.submission_id:

@@ -5,7 +5,7 @@ attached to a report draft about an activity) and click "Read the rows" (that cl
 scan, with its handwriting and signatures, to Gemini: owner decision 2026-11-25; for a document it also sets its
 "Read this scan with AI" tick, item 438). A background task asks Gemini for the rows (name, designation, office); our
 code maps each office to a participant category by settings.PAPER_SHEET_CATEGORY_RULES (DTI and partner agencies count
-as MSMEs, pending NAVIGATU). Staff check and correct every row, then CONFIRM. Only confirmed sheets are used, and only in
+as MSMEs, confirmed 2026-11-26). Staff check and correct every row, then CONFIRM. Only confirmed sheets are used, and only in
 the generated reports ("From the paper sheet": rows and mix); they are never added to REGISTRATION and never change the
 dashboard. Counts and percentages: reports.metrics.paper_sheet_mix. Logged on reports.audit with IDs only.
 """

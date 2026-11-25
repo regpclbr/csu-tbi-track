@@ -572,7 +572,24 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   activity only. Submit: `approvals.services.submit_generated`, once per version.
 - Paper sheets: "Read the rows with AI" (the per-file consent; a document also gets its scan tick), rows mapped by
   `settings.PAPER_SHEET_CATEGORY_RULES`, staff correct and CONFIRM; only confirmed sheets, only in generated reports
-  ("From the paper sheet"), never REGISTRATION or the dashboard. Counts: `metrics.paper_sheet_mix`.
+  ("From the paper sheet"), never REGISTRATION or the dashboard. Counts: `metrics.paper_sheet_mix`. DTI and partner
+  agencies count as MSMEs (confirmed by the owner 2026-11-26).
+- Accomplishment Report (ASSUMPTIONS 446-447), kind `accomplishment_report`: a quarter / half / whole year ONLY through
+  `services.preset_range` (`generator.accomplishment_dates`; anything else `PRESET_REQUIRED`), the program name required
+  (`options.program_name`, remembered by `generator.last_options`), heading `draft_facts.accomplishment_heading`, every
+  figure from `reports.metrics` (`accomplishment_facts`). Sections per activity come from
+  `generator.section_specs(kind, facts)` (NEVER `SECTIONS[kind]` directly): A.n highlights, B objectives (the
+  Objectives field, else read by the AI from the Activity Design) / accomplishments, then C-E. Confirmed paper ATTENDANCE
+  sheets replace the system's attendance PER DAY, each person once per activity (email, else name + office):
+  `metrics.attendance_with_paper_sheets`, only here; labelled per day, the difference with the Reports page explained.
+  The Reports page's GENERATED_REPORT Accomplishment report stays (figures and tables) and links to the generator.
+- Draft Request Letter / Activity Design (ASSUMPTIONS 448), `generator.PROPOSAL_KINDS`: a Draft or Scheduled activity
+  (`PROPOSAL_STATUSES`, Draft first) or typed details (`generator.clean_proposal` -> `options["proposal"]`, budget lines
+  through `activities.budget.clean_lines`); the ONLY kinds with neither activity nor period (constraint
+  `report_draft_activity_period_or_typed`, migration reports/0003). NEVER saved to the documents
+  (`generator.save_refused_reason` = `DRAFT_NOT_SAVED`; Approvals: `allowed_actions()["save"]` False and
+  `SAVE_DRAFT_ONLY`, `generator.is_draft_only_submission`); Submit allowed (no document type). Signature blocks from
+  `facts["signatures"]` (`draft_export.signature_blocks`). Neutral templates until NAVIGATU gives theirs.
 - Tables (49): REPORT_DRAFT, REPORT_DRAFT_VERSION, REPORT_CHAT_MESSAGE, REPORT_ATTACHMENT, PAPER_SHEET_READ,
   PAPER_SHEET_ROW (migration reports/0002). Drafts / sheets CASCADE with the activity (counted in item 389's dialog);
   attachment files removed after the commit (`generator.remove_file_after_delete`).
@@ -820,7 +837,9 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Everything is self-hosted (`static/vendor/VERSIONS.md`); never link a CDN (a test checks it).
 - Tailwind v4: tokens in the `@theme` block of `frontend/tailwind/app.css` (no tailwind.config.js). A new app's
   `templates/` folder must be added there as an `@source`. Run `python manage.py tailwind build` after template
-  changes and commit `static/css/app.css` (ASSUMPTIONS 235). Text contrast at least 4.5:1, input borders 3:1.
+  changes and commit `static/css/app.css` (ASSUMPTIONS 235). In this OneDrive folder the CLI cannot write
+  `static\css\app.css` itself ("EEXIST ... mkdir", only when the CSS changed): the build writes to a temporary file and
+  copies it in (ASSUMPTIONS 449; manual steps under Commands). Text contrast at least 4.5:1, input borders 3:1.
 - CSRF for HTMX: `hx-headers` on the staff layout only (never in `base.html`: public pages must not print a
   per-request token, ASSUMPTIONS 247). HTMX without login: 401 + `HX-Redirect` (`staff_login_required`).
 - HTML error pages: `templates/errors/403|404|500.html` (500 is rendered without the request). `/api/` stays JSON.
@@ -1153,6 +1172,11 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   the header (441); the report generator with versions, the numbers rule, DOCX / PDF, save / submit (442); paper sheets
   read by the AI and confirmed by staff (443); the Activity Report after NAVIGATU's sample (444); the Evaluation Summary
   per activity and per period (445). Database: reports 0002 (six tables); 49 tables.
+- Accomplishment Report + draft letters (2026-11-26, Prompt 7, branch prompt-7): DTI / partner agencies as MSMEs
+  confirmed; `tailwind build` via a temporary file (449); the Accomplishment Report per quarter / half / year in the
+  generator (446) with confirmed paper Attendance sheets per day (447); the draft Request Letter and Activity Design from
+  a Draft / Scheduled activity or typed details, never saved to the documents (448). Database: reports 0003 (kind
+  choices, the REPORT_DRAFT check constraint); still 49 tables. ERD: REPORT_DRAFT.kind / activity_id / options notes.
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
@@ -1196,7 +1220,12 @@ pip install -r requirements.txt           # what the app needs to run (the serve
 pip install -r requirements-dev.txt       # development: also pytest, pytest-django, pytest-xdist and Playwright
 python -m playwright install chromium     # once, development only: the browser for page screenshots
 python manage.py tailwind install         # once: the pinned Tailwind CLI into tools/ (checked by SHA-256)
-python manage.py tailwind build           # static/css/app.css (after template changes; commit the result)
+python manage.py tailwind build           # static/css/app.css (after template changes; commit the result; writes %TEMP% then copies, ASSUMPTIONS 449)
+# The same by hand, when the command cannot run (OneDrive: the CLI fails with "EEXIST ... mkdir ...static\css" when it
+# writes there itself, so it writes to %TEMP% and the file is copied in):
+#   $out = Join-Path $env:TEMP "tbi-app.css"
+#   & .\tools\tailwindcss-v4.3.3.exe -i frontend\tailwind\app.css -o $out --minify
+#   Copy-Item $out static\css\app.css -Force
 python manage.py tailwind watch           # rebuild on every template change while working (Ctrl+C stops)
 docker compose up -d
 python manage.py migrate
@@ -1241,7 +1270,8 @@ Still unanswered (the system keeps the current rule until then; details in the A
 - Letterhead (434, 444): the official CSU / TBI letterhead files (logos, header, footer; PNG or SVG) for the generated forms and the Activity Report.
 - Digital signatures (434): does the Supply Office accept the generated Attendance / Confirmation of Attendance with signatures given in the system?
 - Participant photos (435): how long may they be kept, and is a photo release needed before photos of people go into reports?
-- Participant mix (424, 443): do DTI staff and partner agencies count as MSMEs (also on paper sheets), and do MSMEs count with the Incubatees for the 70%?
+- Participant mix (424): do MSMEs count with the Incubatees for the 70%?
+- Draft letters (448): NAVIGATU's own Request Letter (memorandum) and Activity Design templates, and who signs "Recommending Approval" / "Approved by".
 - Stamped signature (437): is the Director's stamped image (at "Noted:", PDF only) accepted, and is "Noted:" the right line?
 - Privacy (394, 414, 434, 438): the final notice text, the contact person / Data Protection Officer, retention of UAT data and signatures; may scanned attendance sheets (handwriting, signatures) be sent to Gemini to be read ("Read this scan with AI", per file)?
 - Certificates (177, 183, 363): the official design image, the wording, the office name and the two default signatories.

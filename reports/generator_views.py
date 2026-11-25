@@ -15,7 +15,8 @@ from documents.models import Document
 from . import generator, generator_pages, paper_sheets
 from .models import PaperSheetRead, ReportAttachment, ReportDraft
 
-PAGE_SUBTITLE = "Write Activity Reports and Evaluation Summaries with the AI: numbers from the system, every version kept"
+PAGE_SUBTITLE = ("Write activity and accomplishment reports, evaluation summaries and draft letters with the AI: numbers "
+                 "from the system, every version kept")
 
 
 def _need_generator(request: HttpRequest) -> None:
@@ -38,20 +39,33 @@ def _files(request: HttpRequest) -> list[generator.NewFile]:
 def generator_list(request: HttpRequest) -> HttpResponse:
     """GET: the "New draft" form and my drafts. POST: create a draft (generator.create_draft checks everything)."""
     _need_generator(request)
-    form = generator_pages.new_form(request.POST if request.method == "POST" else request.GET)
+    form = generator_pages.new_form(request.POST if request.method == "POST" else request.GET, member=request.user)
     status = 200
     if request.method == "POST":
         data = request.POST
-        # The Activity Report is always about one activity (the period choice is hidden for it).
-        scope_activity = data.get("scope", "activity") != "period" or data.get("kind") == "activity_report"
+        kind = data.get("kind", "")
+        activity_id, start, end, proposal = None, None, None, None
         try:
+            if kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT:  # a quarter, a half or a year (the presets)
+                start, end = generator.accomplishment_dates(data.get("preset"), data.get("year"))
+            elif kind in generator.PROPOSAL_KINDS:  # a Draft / Scheduled activity, or typed details
+                if data.get("proposal_scope") == "typed":
+                    proposal = generator_pages.proposal_from_post(data)
+                else:
+                    activity_id = data.get("proposal_activity") or None
+                    if activity_id is None:
+                        raise ValidationError({"proposal_activity": [generator.PROPOSAL_ACTIVITY]})
+            elif data.get("scope", "activity") != "period" or kind == ReportDraft.Kind.ACTIVITY_REPORT:
+                activity_id = data.get("activity")  # the Activity Report is always about one activity
+            else:
+                start, end = data.get("start"), data.get("end")
+            options_keys = (*generator.COMMON_OPTIONS, *generator.KIND_OPTIONS.get(kind, ()))
             draft = generator.create_draft(
-                request.user, kind=data.get("kind", ""), activity_id=data.get("activity") if scope_activity else None,
-                start=None if scope_activity else data.get("start"), end=None if scope_activity else data.get("end"),
+                request.user, kind=kind, activity_id=activity_id, start=start, end=end, proposal=proposal,
                 title=data.get("title", ""), message=data.get("message", ""), files=_files(request),
-                options={key: data.get(key, "") for key in ("office_line", "implementing_unit", "project_leader")})
+                options={key: data.get(key, "") for key in options_keys})
         except ValidationError as error:
-            form = generator_pages.new_form(data, _flat(error))
+            form = generator_pages.new_form(data, _flat(error), member=request.user)
             status = 400
         else:
             messages.success(request, "The draft is being written. It appears here in a moment.")

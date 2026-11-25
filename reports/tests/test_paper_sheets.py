@@ -1,6 +1,6 @@
 """Paper attendance sheets read by the AI (ASSUMPTIONS 443): the rows need staff confirmation before they are used, only
 in the generated reports ("From the paper sheet"), never in REGISTRATION; offices mapped to categories (DTI and partner
-agencies count as MSMEs, pending NAVIGATU). Fake Gemini only."""
+agencies count as MSMEs, confirmed 2026-11-26). Fake Gemini only."""
 
 import json
 import logging

@@ -122,9 +122,11 @@ on phones a Chat / Draft switch shows one at a time.
         {% include "reports/_generator_facts.html" with facts=shown.facts kind=draft.kind count_rows=shown.count_rows %}
 
         <div class="rounded-2xl border border-line p-4">
-          <h3 class="text-sm font-semibold text-ink">Save or submit</h3>
+          <h3 class="text-sm font-semibold text-ink">{% if shown.save_offered %}Save or submit{% else %}Submit{% endif %}</h3>
           <div class="mt-3 flex flex-wrap items-start gap-2">
-            {% if shown.version.saved_document %}
+            {% if not shown.save_offered %}
+              <p class="w-full text-xs text-muted" role="note">{{ shown.draft_note }}</p>
+            {% elif shown.version.saved_document %}
               <a href="{% url 'documents:detail' shown.version.saved_document.pk %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="file-check" class="size-4" %}Saved: open the document</a>
             {% else %}
               <form method="post" action="{% url 'reports:generator_save' shown.version.pk %}">{% csrf_token %}
@@ -138,7 +140,7 @@ on phones a Chat / Draft switch shows one at a time.
               <button type="button" class="btn btn-secondary btn-sm" disabled aria-describedby="submit-why">{% include "components/icon.html" with name="send" class="size-4" %}Submit to the Director</button>
             {% endif %}
           </div>
-          {% if shown.save_refused and not shown.version.saved_document %}<p id="save-why" class="mt-2 text-xs text-muted">Save: {{ shown.save_refused }}</p>{% endif %}
+          {% if shown.save_offered and shown.save_refused and not shown.version.saved_document %}<p id="save-why" class="mt-2 text-xs text-muted">Save: {{ shown.save_refused }}</p>{% endif %}
           {% if shown.submit_refused and not shown.version.submission %}<p id="submit-why" class="mt-2 text-xs text-muted">Submit: {{ shown.submit_refused }}</p>{% endif %}
         </div>
       {% endif %}

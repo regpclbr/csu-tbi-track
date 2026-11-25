@@ -209,19 +209,49 @@ def test_no_report_generator_pdf_is_cut_off(weasyprint, settings, tmp_path) -> N
         ReportDraft.objects.create(kind=ReportDraft.Kind.EVALUATION_SUMMARY, title="Evaluation Summary - the year",
                                    date_range_start=today - timedelta(days=365), date_range_end=today, created_by=member),
     ]
+    # Prompt 7 (ASSUMPTIONS 446-447): the Accomplishment Report for the whole year and the quarter of the long-text
+    # activity, a typed draft Request Letter and Activity Design, and an Activity Design of a Draft / Scheduled demo one.
+    from activities.models import ActivityStatus, BudgetCategory
+    from reports.generator import accomplishment_dates, clean_proposal
+
+    for preset in ("year", f"q{(activity.end_date.month - 1) // 3 + 1}"):
+        start, end = accomplishment_dates(preset, activity.end_date.year)
+        drafts.append(ReportDraft.objects.create(
+            kind=ReportDraft.Kind.ACCOMPLISHMENT_REPORT, title=f"Accomplishment {preset}", date_range_start=start,
+            date_range_end=end, options={"program_name": f"NAVIGATU {LONG_WORD}"}, created_by=member))
+    category = BudgetCategory.objects.filter(is_active=True).first()
+    proposal = clean_proposal({
+        "title": f"Bootcamp {LONG_WORD}", "start_date": today.isoformat(), "end_date": (today + timedelta(days=2)).isoformat(),
+        "start_time": "08:00", "end_time": "17:00", "venue": AI_TEXT[:200], "participants": AI_TEXT[:400],
+        "objectives": "\n".join(f"Objective {n}: {AI_TEXT[:150]}" for n in range(4)), "description": AI_TEXT,
+        "budget_lines": [{"category": category.pk, "particulars": f"{AI_TEXT[:100]} {n}", "quantity": "1234.5",
+                          "unit": "pax", "days": "3", "unit_price": "99999.99"} for n in range(6)]})
+    memo = {"memo_for_name": "Dr. " + LONG_WORD, "memo_for_title": "University President " + AI_TEXT[:80],
+            "memo_thru_name": "Dr. Thru Name", "memo_thru_title": "Vice President for Research and Development, "
+            "Innovation, and Extension", "memo_from_name": "Director Name", "memo_from_title": "TBI Director"}
+    drafts.append(ReportDraft.objects.create(kind=ReportDraft.Kind.REQUEST_LETTER, title="Request Letter",
+                                             options={**memo, "proposal": proposal}, created_by=member))
+    drafts.append(ReportDraft.objects.create(kind=ReportDraft.Kind.ACTIVITY_DESIGN, title="Activity Design",
+                                             options={"proposal": proposal, "approved_by_name": "Dr. " + LONG_WORD},
+                                             created_by=member))
+    planned = Activity.objects.filter(status__name__in=(ActivityStatus.DRAFT, ActivityStatus.SCHEDULED)).first()
+    if planned is not None:
+        drafts.append(ReportDraft.objects.create(kind=ReportDraft.Kind.ACTIVITY_DESIGN, title="Activity Design (demo)",
+                                                 activity=planned, created_by=member))
     out = Path(os.environ["PDF_LAYOUT_OUT"]) if os.environ.get("PDF_LAYOUT_OUT") else None
     fetcher = weasyprint.URLFetcher(allowed_protocols=["data"])
     problems = []
     for draft in drafts:
-        from reports.generator import SECTIONS
+        from reports.generator import is_list_section, section_specs
 
+        facts = draft_facts.build_facts(draft, member)
         version = ReportDraftVersion.objects.create(
-            draft=draft, number=1, source="generated", state="ready", created_by=member,
-            facts=draft_facts.build_facts(draft, member),
-            sections={key: {"text": long_text if key not in ("accomplishments", "recommendations")
+            draft=draft, number=1, source="generated", state="ready", created_by=member, facts=facts,
+            sections={key: {"text": long_text if not is_list_section(key)
                             else "\n".join([f"Item {n}: {AI_TEXT[:120]} {LONG_WORD}" for n in range(5)]),
-                            "ai": True, "unverified": []} for key, _, _ in SECTIONS[draft.kind]})
-        name = f"generator-{draft.kind}-{'activity' if draft.activity_id else 'period'}"
+                            "ai": True, "unverified": []} for key, _, _ in section_specs(draft.kind, facts)})
+        scope = "activity" if draft.activity_id else "period" if draft.date_range_start else "typed"
+        name = f"generator-{draft.kind}-{scope}-{draft.pk}"
         document = weasyprint.HTML(string=draft_export.pdf_html(version), url_fetcher=fetcher).render()
         found = [p for number, page in enumerate(document.pages, start=1) for p in overflows(page, number, name)]
         print(f"{name:40} {len(document.pages)} pages, {len(found)} problems")

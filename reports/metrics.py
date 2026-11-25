@@ -758,6 +758,109 @@ def paper_sheet_mix(category_names: list[str | None], checked: bool = True) -> d
     return {**_mix(counts, checked), "no_category": missing}
 
 
+PAPER, SYSTEM = "paper", "system"
+
+
+def _person_key(name: str, office: str) -> tuple[str, str, str]:
+    """Name + office, case and spacing ignored: how a paper sheet row is matched to a person (no email on paper)."""
+    return ("name", " ".join((name or "").split()).casefold(), " ".join((office or "").split()).casefold())
+
+
+def attendance_with_paper_sheets(activity_ids: list[int]) -> dict[int, dict]:
+    """The attendees of each activity when CONFIRMED paper Attendance sheets replace the system's attendance for their
+    day (ASSUMPTIONS 443, 447; owner decision 2026-11-26). Used only by the generated Accomplishment Report.
+
+    - Only confirmed sheets of kind Attendance count (a Confirmation of Attendance sheet means "will attend").
+    - Per DAY: a day with a confirmed Attendance sheet uses its included rows (several sheets for one day add up);
+      the other days use ATTENDANCE_DAY. A sheet without a day counts only for a one-day activity.
+    - Each person once per activity: system attendees by email (ignoring case), a paper row by name + office (ignoring
+      case); a paper row matching a system attendee's name + office is that person.
+    - Attended people the system has no day for (rows from before item 434) count while any day is from the system.
+
+    Returns {activity_id: {"attended", "attended_system", "days": [{"day", "source", "count"}], "categories": [name
+    or None per person], "paper_days": n}}. Without any confirmed sheet `attended` == the system's own count (parity
+    with period_summary / activity_rows)."""
+    from registrations.attendance import activity_days
+    from registrations.models import AttendanceDay
+
+    from .models import PaperSheetRead, PaperSheetRow
+
+    activities = {activity.pk: activity for activity in Activity.objects.filter(pk__in=activity_ids)}
+    sheets: dict[int, dict[date, list[int]]] = {}
+    for sheet in PaperSheetRead.objects.filter(activity_id__in=activity_ids, state=PaperSheetRead.State.CONFIRMED,
+                                               sheet_kind=PaperSheetRead.SheetKind.ATTENDANCE):
+        activity = activities[sheet.activity_id]
+        days = activity_days(activity)
+        day = sheet.day or (days[0] if len(days) == 1 else None)
+        if day is not None:
+            sheets.setdefault(sheet.activity_id, {}).setdefault(day, []).append(sheet.pk)
+    paper_rows: dict[int, list] = {}
+    for row in (PaperSheetRow.objects.filter(sheet_id__in=[pk for days in sheets.values() for pks in days.values() for pk in pks],
+                                             is_excluded=False)
+                .select_related("participant_category").order_by("sheet_id", "row_number", "row_id")):
+        paper_rows.setdefault(row.sheet_id, []).append(row)
+    attended = (Registration.objects.filter(activity_id__in=activity_ids, attendance_confirmed=True)
+                .select_related("participant_category"))
+    day_rows: dict[int, set[date]] = {}
+    for registration_id, day in AttendanceDay.objects.filter(registration__activity_id__in=activity_ids).values_list(
+            "registration_id", "day"):
+        day_rows.setdefault(registration_id, set()).add(day)
+    by_activity: dict[int, list[Registration]] = {}
+    for registration in attended:
+        by_activity.setdefault(registration.activity_id, []).append(registration)
+
+    result = {}
+    for activity_id, activity in activities.items():
+        paper_days = sheets.get(activity_id, {})
+        registrations = by_activity.get(activity_id, [])
+        all_days = activity_days(activity)
+        if not paper_days:
+            result[activity_id] = {
+                "attended": len(registrations), "attended_system": len(registrations), "paper_days": 0,
+                "days": [{"day": day, "source": SYSTEM,
+                          "count": sum(1 for r in registrations if day in day_rows.get(r.pk, ()))} for day in all_days],
+                "categories": [r.participant_category.name for r in registrations],
+            }
+            continue
+        people: dict[tuple, int] = {}  # key -> person number
+        categories: list[str | None] = []
+
+        def person(keys: list[tuple], category: str | None) -> None:
+            found = next((people[key] for key in keys if key in people), None)
+            if found is None:
+                found = len(categories)
+                categories.append(category)
+            elif categories[found] is None and category:
+                categories[found] = category
+            for key in keys:
+                people.setdefault(key, found)
+
+        def system_keys(registration: Registration) -> list[tuple]:
+            return [("email", registration.email.strip().casefold()),
+                    _person_key(registration.name, registration.office_agency)]
+
+        days = []
+        for day in all_days:
+            if day in paper_days:
+                rows = [row for pk in paper_days[day] for row in paper_rows.get(pk, [])]
+                for row in rows:
+                    person([_person_key(row.name, row.office)],
+                           row.participant_category.name if row.participant_category_id else None)
+                days.append({"day": day, "source": PAPER, "count": len(rows)})
+            else:
+                present = [r for r in registrations if day in day_rows.get(r.pk, ())]
+                for registration in present:
+                    person(system_keys(registration), registration.participant_category.name)
+                days.append({"day": day, "source": SYSTEM, "count": len(present)})
+        if len(paper_days) < len(all_days):
+            for registration in registrations:
+                if not day_rows.get(registration.pk):
+                    person(system_keys(registration), registration.participant_category.name)
+        result[activity_id] = {"attended": len(categories), "attended_system": len(registrations),
+                               "paper_days": len(paper_days), "days": days, "categories": categories}
+    return result
+
+
 def _rating_questions(answers: QuerySet) -> dict:
     """Group rating answers by question label (ignoring case and outer spaces) with their averages."""
     rows = (

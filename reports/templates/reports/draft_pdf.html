@@ -7,6 +7,10 @@ C. Running Budget, D. Recommendation(s), Prepared by / Noted, Photo Documentatio
 paper sheets; the signed forms are appended as PDF pages) and the form code in the footer. Every number, date, name and
 amount comes from `facts`; the narrative from `sections`. No "AI-generated" label here (editor only). Everything is
 escaped; images are data: URIs only.
+Prompt 7 (ASSUMPTIONS 446-447): the Accomplishment Report ("3RD QUARTER ACCOMPLISHMENT REPORT", program name, Period
+Covered, A. intro + figures + one subsection per activity, B. Objectives / Accomplishments table, C-E), the draft Request
+Letter (memorandum: FOR / THRU / FROM / SUBJECT / DATE, body, Recommending Approval / Approved by) and the draft Activity
+Design (top table, I-IV, budget table, three signature blocks). Signature blocks come from draft_export.signature_blocks.
 {% endcomment %}
 <html lang="en">
 <head>
@@ -43,10 +47,18 @@ escaped; images are data: URIs only.
   .note { font-size: 8.5pt; color: #444; font-style: italic; }
   .blank { color: #777; font-style: italic; }
   table.sign { width: 100%; margin-top: 18pt; break-inside: avoid; }
-  table.sign td { width: 50%; vertical-align: top; padding-right: 10mm; }
-  .sign .line { border-bottom: .6pt solid #111; height: 10mm; width: 65mm; }
+  table.sign { table-layout: fixed; }  /* equal columns; a long name wraps instead of widening the table */
+  table.sign td { vertical-align: top; padding-right: 6mm; overflow-wrap: anywhere; }
+  .sign .line { border-bottom: .6pt solid #111; height: 10mm; width: 90%; }
   .sign .name { font-weight: bold; text-transform: uppercase; margin-top: 2pt; }
   .page-break { break-before: page; }
+  .period { text-align: center; margin: 0 0 10pt; }
+  ol { margin: 0 0 6pt; padding-left: 18pt; }
+  table.memo { width: 100%; border-collapse: collapse; margin: 6pt 0; }
+  table.memo td { padding: 3pt 0; vertical-align: top; overflow-wrap: anywhere; }
+  table.memo td.label { width: 28mm; font-weight: bold; }
+  table.memo .name { font-weight: bold; text-transform: uppercase; }
+  hr.rule { border: 0; border-top: 1pt solid #111; margin: 6pt 0 10pt; }
   .photos { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .photos td { width: 50%; padding: 3mm; text-align: center; vertical-align: top; height: 78mm; }
   .photos img { max-width: 100%; max-height: 70mm; }
@@ -62,6 +74,12 @@ escaped; images are data: URIs only.
     {% if header.office_line %}<p class="office-line">{{ header.office_line }}</p>{% endif %}
   </div>
   <h1>{{ heading }}</h1>
+  {% if kind == "accomplishment_report" %}
+    <p class="title">{{ header.program_name }}</p>
+    <p class="period">Period Covered: {{ header.period_covered }}</p>
+  {% elif kind == "activity_design" %}
+    <p class="title">{{ facts.proposal.title }}</p>
+  {% elif kind != "request_letter" %}
   <p class="title">{{ header.title|default:draft.title }}</p>
 
   <table class="facts">
@@ -70,8 +88,91 @@ escaped; images are data: URIs only.
     {% if header.implementing_unit %}<tr><td class="label">Implementing Unit:</td><td>{{ header.implementing_unit }}</td></tr>{% endif %}
     {% if header.project_leader %}<tr><td class="label">Project Leader:</td><td>{{ header.project_leader }}</td></tr>{% endif %}
   </table>
+  {% endif %}
 
-  {% if kind == "activity_report" %}
+  {% if kind == "accomplishment_report" %}
+    <h2>{{ sections.introduction.label }}</h2>
+    {% for p in sections.introduction.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h3>Figures for the period (from the system)</h3>
+    <table class="list">
+      <tbody>{% for label, value in accomplishment_counts %}<tr><td>{{ label }}</td><td class="num" style="width:30%">{{ value }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% if facts.attendance_note %}<p class="note">{{ facts.attendance_note }}</p>{% endif %}
+    {% if mix_chart %}<div class="chart">{{ mix_chart }}</div>{% endif %}
+    <table class="list">
+      <thead><tr><th>Participant mix</th><th class="num">{{ facts.mix.basis|capfirst|default:"Count" }}</th><th class="num">Share</th></tr></thead>
+      <tbody>{% for row in facts.mix.rows %}<tr><td>{{ row.group }}</td><td class="num">{{ row.count }}</td><td class="num">{{ row.share }}</td></tr>{% empty %}<tr><td colspan="3" class="blank">Nobody yet.</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="note">{{ facts.mix.guideline }}</p>
+    {% if facts.ratings %}
+      <table class="list">
+        <thead><tr><th style="width:60%">Evaluation question (1 lowest – 5 highest)</th><th class="num">Answers</th><th class="num">Mean</th></tr></thead>
+        <tbody>{% for q in facts.ratings %}<tr><td>{{ q.question }}</td><td class="num">{{ q.answers }}</td><td class="num">{{ q.mean }}</td></tr>{% endfor %}</tbody>
+      </table>
+    {% endif %}
+    <table class="list">
+      <thead><tr><th style="width:50%">Fund source</th><th class="num">Activities</th><th class="num">Budget</th></tr></thead>
+      <tbody>
+        {% for row in facts.budget_by_fund_source %}<tr><td>{{ row.fund_source }}</td><td class="num">{{ row.activities }}</td><td class="num">{{ row.total }}</td></tr>{% endfor %}
+        <tr><td><strong>Total</strong></td><td class="num"><strong>{{ facts.counts.activities_conducted }}</strong></td><td class="num"><strong>{{ facts.counts.budget_total }}</strong></td></tr>
+      </tbody>
+    </table>
+    {% for row in activity_rows %}
+      <h3>{{ row.highlights.label }}</h3>
+      <p class="note">Date: {{ row.item.dates }}{% if row.item.time %} · {{ row.item.time }}{% endif %} · Venue: {{ row.item.venue }} · Participants: {{ row.item.categories|default:"—" }} · Registered: {{ row.item.registered }} · Attended: {{ row.item.attended }}</p>
+      {% if row.item.paper_days %}<ul class="note">{% for line in row.item.days %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+      {% for p in row.highlights.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    {% empty %}
+      <p class="blank">No conducted activities in this period.</p>
+    {% endfor %}
+    <h2>B. Accomplishments vis-à-vis Objectives</h2>
+    <table class="list">
+      <thead><tr><th style="width:50%">Objectives</th><th>Accomplishments</th></tr></thead>
+      <tbody>
+        {% for row in activity_rows %}
+          <tr><td><strong>{{ row.item.title }}</strong>{% if row.objectives %}<ul>{% for o in row.objectives %}<li>{{ o }}</li>{% endfor %}</ul>{% else %}<p class="blank">(No objectives given.)</p>{% endif %}{% if row.objectives_read %}<p class="note">Read from the Activity Design.</p>{% endif %}</td>
+              <td>{% if row.accomplishments %}<ul>{% for a in row.accomplishments %}<li>{{ a }}</li>{% endfor %}</ul>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}</td></tr>
+        {% empty %}<tr><td colspan="2" class="blank">No conducted activities in this period.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    <h2>{{ sections.outputs.label }}</h2>
+    {% if sections.outputs.items %}<ol>{% for item in sections.outputs.items %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+    <h2>{{ sections.problems.label }}</h2>
+    {% for p in sections.problems.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h2>{{ sections.recommendations.label }}</h2>
+    {% if sections.recommendations.items %}<ol>{% for item in sections.recommendations.items %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+
+  {% elif kind == "request_letter" %}
+    <table class="memo">
+      {% for label, part in memo_parts %}<tr><td class="label">{{ label }}</td><td><span class="name">{{ part.name|default:"______________________________" }}</span>{% if part.title %}<br>{{ part.title }}{% endif %}</td></tr>{% endfor %}
+      <tr><td class="label">SUBJECT:</td><td><strong>{{ facts.memo.subject }}</strong></td></tr>
+      <tr><td class="label">DATE:</td><td>{{ facts.memo.date }}</td></tr>
+    </table>
+    <hr class="rule">
+    {% for p in sections.body.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+
+  {% elif kind == "activity_design" %}
+    <table class="list">
+      <tbody>{% for label, value in design_rows %}<tr><td style="width:28%"><strong>{{ label }}</strong></td><td>{{ value|default:"—" }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <h2>I. Rationale</h2>
+    {% for p in sections.rationale.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h2>II. Objectives</h2>
+    {% if objectives %}<ol>{% for o in objectives %}<li>{{ o }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+    <h2>III. Expected Outputs</h2>
+    {% if sections.expected_outputs.items %}<ol>{% for item in sections.expected_outputs.items %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+    <h2>IV. Budget</h2>
+    <table class="list">
+      <thead><tr><th style="width:44%">Particulars</th><th>Quantity</th><th class="num">Unit Cost</th><th class="num">Total</th></tr></thead>
+      <tbody>
+        {% for row in facts.budget.rows %}<tr><td>{{ row.particulars }}</td><td>{{ row.quantity }}</td><td class="num">{{ row.unit_cost }}</td><td class="num">{{ row.total }}</td></tr>
+        {% empty %}<tr><td colspan="4" class="blank">No budget lines.</td></tr>{% endfor %}
+        <tr><td colspan="3"><strong>Total</strong></td><td class="num"><strong>{{ facts.budget.total }}</strong></td></tr>
+      </tbody>
+    </table>
+    <p class="note">Fund source: {{ facts.budget.fund_source }}{% if facts.budget.fund_account %} ({{ facts.budget.fund_account }}){% endif %}.</p>
+
+  {% elif kind == "activity_report" %}
     <h2>{{ sections.highlights.label }}</h2>
     {% for p in sections.highlights.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
     <h3>{{ sections.accomplishments.label }}</h3>
@@ -137,8 +238,7 @@ escaped; images are data: URIs only.
 
   <table class="sign">
     <tr>
-      <td>Prepared by:<div class="line"></div><div class="name">{{ facts.prepared_by.name }}</div><div>{{ facts.prepared_by.position }}</div></td>
-      <td>Noted:<div class="line"></div><div class="name">{% if facts.noted_by.name %}{{ facts.noted_by.name }}{% else %}&nbsp;{% endif %}</div><div>{{ facts.noted_by.position }}</div></td>
+      {% for block in signatures %}<td>{{ block.label }}<div class="line"></div><div class="name">{% if block.name %}{{ block.name }}{% else %}&nbsp;{% endif %}</div><div>{{ block.position }}</div></td>{% endfor %}
     </tr>
   </table>
 
