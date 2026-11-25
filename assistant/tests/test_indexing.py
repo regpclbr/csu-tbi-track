@@ -1,5 +1,6 @@
-"""Indexing: only Approved activity documents; parse pdf/docx/xlsx; chunk in order; replace on re-index;
-never index certificates, For Review, excluded types, images or scans; backfill; schedule; task safety."""
+"""Indexing: activity documents in every review state (ASSUMPTIONS 438); parse pdf/docx/xlsx; chunk in order; replace
+on re-index; never index certificates or excluded types; scans and images go to OCR (test_indexing_all_files.py);
+backfill; schedule; task safety."""
 
 import logging
 
@@ -74,11 +75,11 @@ def test_approved_document_is_indexed(make_document, fake_gemini) -> None:
     }
 
 
-def test_for_review_document_is_not_indexed(make_document, fake_gemini) -> None:
+def test_a_document_waiting_for_review_is_indexed_since_438(make_document, fake_gemini) -> None:
+    """Owner decision 2026-11-25 (ASSUMPTIONS 438): every review state is indexed; the source card shows the state."""
     document = make_document(docx_file(*DESIGN), approve=False)
     result = indexing.index_document(document.pk)
-    assert result["status"] == "not_indexable" and "approved" in result["reason"]
-    assert not rows(document) and not fake_gemini.embed_calls
+    assert result["status"] == "indexed" and rows(document)
 
 
 def test_certificate_document_is_not_indexed(make_document, activity, certificate_for) -> None:
@@ -118,13 +119,15 @@ def test_newly_excluded_type_loses_its_old_chunks(make_document, settings) -> No
     assert not rows(document)
 
 
-def test_image_and_scanned_pdf_are_not_searchable(make_document, client, director, caplog) -> None:
+def test_image_and_scan_without_text_are_not_searchable(make_document, client, director, caplog, fake_gemini) -> None:
+    """Both go to OCR (ASSUMPTIONS 438); when the AI finds no text they stay unsearchable."""
     image = make_document(PNG_BYTES, name="poster.png", type_name="Invitation Letter")
     scan = make_document(scanned_pdf(), name="scan.pdf", type_name="Request Letter")
     with caplog.at_level(logging.INFO, logger="assistant.indexing"):
-        assert "Images are not indexed" in indexing.index_document(image.pk)["reason"]
-        assert "no extractable text" in indexing.index_document(scan.pk)["reason"]
+        assert indexing.index_document(image.pk)["reason"] == indexing.OCR_NOTHING
+        assert indexing.index_document(scan.pk)["reason"] == indexing.OCR_NOTHING
     assert "not indexed" in caplog.text
+    assert [call["mime_type"] for call in fake_gemini.read_calls] == ["image/png", "application/pdf"]
 
     client.force_login(director)
     for document in (image, scan):
@@ -227,12 +230,12 @@ def test_backfill_command_twice(make_document, capsys, settings) -> None:
     good = make_document(docx_file(*DESIGN))
     make_document(PNG_BYTES, name="poster.png", type_name="Invitation Letter")  # never pending: an image
     make_document(docx_file("Ana, ana@example.com"), type_name="Attendance Sheet")  # never pending: excluded
-    make_document(docx_file("Not approved yet"), type_name="Request Letter", approve=False)
+    waiting = make_document(docx_file("Not approved yet"), type_name="Request Letter", approve=False)
 
     call_command("index_documents")
     out = capsys.readouterr().out
-    assert "Indexed: 1, not indexable: 0, failed: 0" in out
-    assert rows(good)
+    assert "Indexed: 2, not indexable: 0, failed: 0" in out  # a waiting document too (ASSUMPTIONS 438)
+    assert rows(good) and rows(waiting)
     call_command("index_documents")
     assert "Nothing to index" in capsys.readouterr().out
 

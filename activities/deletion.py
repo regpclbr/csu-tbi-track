@@ -55,6 +55,8 @@ class DeletionSummary:
     approved_evidence: int = 0  # blocks the delete (certificate evidence keeps its own approval)
     cited_documents: int = 0  # blocks the delete (AI_MESSAGE_SOURCE is PROTECT)
     participant_photos: int = 0  # photos / PDFs attendees added to their evaluation (ASSUMPTIONS 435)
+    report_drafts: int = 0  # report generator drafts about this activity, with their versions and files (ASSUMPTIONS 442)
+    paper_sheets: int = 0  # paper sheets read by the AI for this activity (ASSUMPTIONS 443)
     files: int = 0  # stored files (documents, evidence, certificate PDFs, participant photos)
     forms: int = 0
     history: int = 0
@@ -67,7 +69,8 @@ class DeletionSummary:
             "certificates_waiting": self.certificates_waiting, "certificates_approved": self.certificates_approved,
             "documents": self.documents, "documents_approved": self.documents_approved,
             "document_files": self.document_files, "evidence": self.evidence,
-            "participant_photos": self.participant_photos, "files": self.files, "forms": self.forms,
+            "participant_photos": self.participant_photos, "report_drafts": self.report_drafts,
+            "paper_sheets": self.paper_sheets, "files": self.files, "forms": self.forms,
             "history": self.history, "notifications": self.notifications,
         }
 
@@ -85,6 +88,9 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
     deleted_numbers = sorted(number for status, number, _ in statuses if status != Certificate.Status.ISSUED)
     document_files = [name for name in documents.values_list("file_path", flat=True) if name]
     photos = EvaluationAttachment.objects.filter(submission__registration__activity=activity).count()
+    from reports.models import PaperSheetRead, ReportAttachment, ReportDraft  # reports imports activities
+
+    draft_files = ReportAttachment.objects.filter(draft__activity=activity).count()
     activity_documents = documents.filter(related_certificate__isnull=True)
     approved = {"status__status_name": DocumentStatus.APPROVED}
     return DeletionSummary(
@@ -102,7 +108,9 @@ def deletion_summary(activity: Activity) -> DeletionSummary:
         approved_evidence=documents.filter(related_certificate__isnull=False, **approved).count(),
         cited_documents=AIMessageSource.objects.filter(document__activity=activity).values("document").distinct().count(),
         participant_photos=photos,
-        files=len(document_files) + sum(1 for _, _, name in statuses if name) + photos,
+        report_drafts=ReportDraft.objects.filter(activity=activity).count(),
+        paper_sheets=PaperSheetRead.objects.filter(activity=activity).count(),
+        files=len(document_files) + sum(1 for _, _, name in statuses if name) + photos + draft_files,
         forms=FormTemplate.objects.filter(activity=activity).count(),
         history=ActivityAuditLog.objects.filter(activity=activity).count(),
         notifications=Notification.objects.filter(activity=activity).count(),
@@ -155,6 +163,10 @@ def what_will_be_deleted(summary: DeletionSummary) -> list[str]:
     if summary.participant_photos:
         lines.append(_plural(summary.participant_photos, "participant photo or file", "participant photos and files")
                      + " added to evaluations")
+    if summary.report_drafts:
+        lines.append(_plural(summary.report_drafts, "report draft") + " (with their versions and files)")
+    if summary.paper_sheets:
+        lines.append(_plural(summary.paper_sheets, "paper sheet read by the AI", "paper sheets read by the AI"))
     if summary.files:
         lines.append(_plural(summary.files, "stored file") + " removed from the server")
     if summary.forms:

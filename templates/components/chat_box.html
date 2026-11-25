@@ -1,0 +1,24 @@
+{% comment %}
+The shared compact chat bar (ASSUMPTIONS 439, layout corrected by 441): the AI Assistant and the report generator. Include
+it inside a <form> whose Alpine x-data mixes in tbiChatBox.state() (static/js/chat_box.js) and has `busy`:
+  {% include "components/chat_box.html" with id="ask-question" name="question" max=question_max label="Your question" placeholder="…" value=question error=errors.question send_id="ask-send" %}
+One row: [the typing box][Send]. The box starts ONE line tall and grows with the text up to about 5 lines, then scrolls
+inside. Send is an icon button on the right (44 px target). Enter sends, Shift + Enter is a new line, Ctrl / Cmd + Enter
+also sends; on phones Enter is a new line and Send sends. The counter shows inside the bar only from `max` minus 200
+characters. Without JavaScript: a one-line box that the browser lets the member enlarge, and the button submits.
+{% endcomment %}
+<div class="chat-bar">
+  <div class="flex items-end gap-2">
+    <label for="{{ id }}" class="sr-only">{{ label }}</label>
+    <textarea id="{{ id }}" name="{{ name }}" rows="1" maxlength="{{ max }}" x-ref="question" :readonly="busy"
+              placeholder="{{ placeholder }}" x-init="$nextTick(() => checkText())" @input="checkText()" @keydown.enter="enterKey($event)"
+              class="field-input chat-box-input min-w-0 flex-1 resize-none rounded-2xl" aria-describedby="{{ id }}-help{% if error %} {{ id }}-error{% endif %}"
+              {% if error %}aria-invalid="true"{% endif %}>{{ value|default:"" }}</textarea>
+    <button type="submit" id="{{ send_id }}" class="btn btn-primary btn-icon chat-send shrink-0" aria-label="{{ send_label|default:'Send' }}"
+            :disabled="busy || !hasText" :aria-busy="busy.toString()">
+      {% include "components/icon.html" with name="send" class="size-5" %}</button>
+  </div>
+  <p id="{{ id }}-help" class="sr-only">Enter sends, Shift + Enter adds a new line, Ctrl + Enter also sends. On a phone, use the Send button. At most {{ max }} characters.</p>
+  <p id="{{ id }}-count" x-cloak x-show="length >= {{ max }} - 200" class="mt-1 pl-4 text-xs font-semibold tabular-nums"
+     :class="length >= {{ max }} ? 'text-danger' : 'text-slate-700'" aria-live="polite"><span x-text="length"></span> / {{ max }} characters</p>
+</div>

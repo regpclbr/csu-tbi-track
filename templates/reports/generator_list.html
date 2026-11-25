@@ -1,0 +1,109 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/reports/generator/ (reports.generator_views.generator_list, ASSUMPTIONS 442): open anytime, never locked behind
+documents. "New draft": what to make, one activity or a period, notes, files (documents the AI reads, photos for the
+report); then my drafts. The rules are in reports.generator (create_draft); errors come back under their fields.
+{% endcomment %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+  <section class="card p-6" aria-labelledby="new-draft-title">
+    {% include "components/section_header.html" with id="new-draft-title" title="New draft" subtitle="The AI writes the narrative; every number, date, name list and amount comes from the system." %}
+    {% if form.ai_off %}
+      <p class="notice notice-info mb-4 text-sm" role="note">The AI is turned off (no Gemini key): the draft still gets every figure, table, photo and the annex; you write the narrative sections yourself.</p>
+    {% endif %}
+    {% if form.errors.general %}<p class="field-error mb-4" role="alert">{{ form.errors.general }}</p>{% endif %}
+    <form method="post" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ scope: '{{ form.scope|escapejs }}', kind: '{{ form.kind|escapejs }}' }">
+      {% csrf_token %}
+      <fieldset>
+        <legend class="field-label">What to make</legend>
+        <div class="flex flex-wrap gap-2">
+          {% for value, label in form.kinds %}
+            <label class="segmented-item cursor-pointer rounded-full border border-line px-4 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary-soft">
+              <input type="radio" name="kind" value="{{ value }}" class="sr-only" x-model="kind" {% if form.kind == value %}checked{% endif %}>{{ label }}</label>
+          {% endfor %}
+        </div>
+        {% if form.errors.kind %}<p class="field-error">{{ form.errors.kind }}</p>{% endif %}
+      </fieldset>
+
+      <fieldset>
+        <legend class="field-label">About</legend>
+        <div class="flex flex-wrap gap-4 text-sm" x-show="kind !== 'activity_report'">
+          <label class="inline-flex items-center gap-2"><input type="radio" name="scope" value="activity" x-model="scope" {% if form.scope != "period" %}checked{% endif %}>One activity</label>
+          <label class="inline-flex items-center gap-2"><input type="radio" name="scope" value="period" x-model="scope" {% if form.scope == "period" %}checked{% endif %}>A period</label>
+        </div>
+        <div class="mt-2" x-show="scope !== 'period' || kind === 'activity_report'">
+          <label for="gen-activity" class="sr-only">Activity</label>
+          <select id="gen-activity" name="activity" class="field-input field-select" {% if form.errors.activity %}aria-invalid="true" aria-describedby="gen-activity-error"{% endif %}>
+            <option value="">Choose an activity…</option>
+            {% for activity in form.activities %}<option value="{{ activity.pk }}"{% if form.activity_id == activity.pk|stringformat:"s" %} selected{% endif %}>{{ activity.title|truncatechars:70 }} ({{ activity.start_date|date:"M j, Y" }})</option>{% endfor %}
+          </select>
+          {% if form.errors.activity %}<p id="gen-activity-error" class="field-error">{{ form.errors.activity }}</p>{% endif %}
+        </div>
+        <div class="mt-2 grid gap-4 sm:grid-cols-2" x-cloak x-show="scope === 'period' && kind !== 'activity_report'">
+          <div><label for="gen-start" class="field-label">From</label><input type="date" id="gen-start" name="start" value="{{ form.start }}" class="field-input"></div>
+          <div><label for="gen-end" class="field-label">To</label><input type="date" id="gen-end" name="end" value="{{ form.end }}" class="field-input"></div>
+        </div>
+        {% if form.errors.date_range_start or form.errors.date_range_end %}<p class="field-error">{{ form.errors.date_range_start }}{{ form.errors.date_range_end }}</p>{% endif %}
+      </fieldset>
+
+      <div>
+        <label for="gen-message" class="field-label">Notes and instructions <span class="font-normal text-muted">(optional)</span></label>
+        <textarea id="gen-message" name="message" rows="4" maxlength="{{ form.message_max }}" class="field-input"
+                  placeholder="For example: partners were DTI Agusan and the city LGU; the program had two sessions; problems: the projector failed in the morning.">{{ form.message }}</textarea>
+        {% if form.errors.message %}<p class="field-error">{{ form.errors.message }}</p>{% endif %}
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="gen-documents" class="field-label">Files for the AI to read</label>
+          <input type="file" id="gen-documents" name="documents" multiple accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png" class="field-input">
+          <p class="mt-2 text-xs text-muted">Program, speaker list, notes (PDF, DOCX, XLSX, JPG, PNG).</p>
+        </div>
+        <div>
+          <label for="gen-photos" class="field-label">Extra photos for the report</label>
+          <input type="file" id="gen-photos" name="photos" multiple accept=".jpg,.jpeg,.png" class="field-input">
+          <p class="mt-2 text-xs text-muted">JPG or PNG. Photos are never sent to the AI.</p>
+        </div>
+      </div>
+      {% if form.errors.files %}<p class="field-error" role="alert">{{ form.errors.files }}</p>{% endif %}
+      <p class="text-xs text-muted">At most {{ form.max_files }} files per draft.</p>
+
+      <details class="rounded-xl border border-line px-4 py-3" {% if form.title or form.office_line or form.project_leader or form.implementing_unit %}open{% endif %}>
+        <summary class="cursor-pointer text-sm font-semibold text-ink">More settings</summary>
+        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div class="sm:col-span-2"><label for="gen-title" class="field-label">Title</label><input type="text" id="gen-title" name="title" value="{{ form.title }}" maxlength="200" class="field-input" placeholder="Made from what you choose above"></div>
+          <div class="sm:col-span-2"><label for="gen-office" class="field-label">Office line under the letterhead</label><input type="text" id="gen-office" name="office_line" value="{{ form.office_line }}" maxlength="255" class="field-input" placeholder="Vice President for Research and Development, Innovation, and Extension"></div>
+          <div><label for="gen-unit" class="field-label">Implementing Unit</label><input type="text" id="gen-unit" name="implementing_unit" value="{{ form.implementing_unit }}" maxlength="255" class="field-input" placeholder="{{ form.default_unit }}"></div>
+          <div><label for="gen-leader" class="field-label">Project Leader</label><input type="text" id="gen-leader" name="project_leader" value="{{ form.project_leader }}" maxlength="255" class="field-input" placeholder="The activity's creator"></div>
+        </div>
+      </details>
+
+      <div class="flex justify-end">
+        <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="sparkles" class="size-4" %}Write the draft</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card p-6" aria-labelledby="my-drafts-title">
+    {% include "components/section_header.html" with id="my-drafts-title" title="My drafts" subtitle="Only you see your drafts." %}
+    {% if drafts %}
+      <ul class="space-y-3">
+        {% for row in drafts %}
+          <li class="hover-row rounded-xl border border-line px-4 py-3">
+            <a href="{{ row.url }}" class="block">
+              <p class="truncate font-semibold text-ink">{{ row.draft.title }}</p>
+              <p class="truncate text-xs text-muted">{{ row.kind }} · {{ row.scope }}</p>
+              <p class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                {% if row.latest %}{% include "components/badge.html" with text=row.latest.get_state_display tone=row.tone %} Version {{ row.latest.number }}{% endif %}
+                <span>Updated {{ row.draft.updated_at|date:"M j, g:i A" }}</span>
+              </p>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {% include "components/empty_state.html" with icon="file-text" title="No drafts yet" text="Your drafts appear here; every version is kept." compact=True %}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

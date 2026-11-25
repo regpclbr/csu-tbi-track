@@ -248,7 +248,7 @@ def test_source_cards_one_per_cited_document_in_citation_order(director, chat, t
         numbers = {}
         for block in excerpts.split("<excerpt ")[1:]:
             number = int(block.split('n="')[1].split('"')[0])
-            title = block.split('document="')[1].split('"')[0]
+            title = block.split('file="')[1].split('"')[0]
             numbers.setdefault(title, []).append(number)
         design = numbers["Design v2"]
         assert len(design) >= 2  # two chunks of the same document

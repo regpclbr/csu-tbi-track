@@ -41,13 +41,14 @@ def test_unapprove_returns_it_to_the_uploader_and_logs_it(approved_document, dir
     assert note.member == view_only and "Wrong date in the letter" in note.message
 
 
-def test_unapprove_makes_it_missing_in_the_checklist_and_removes_its_chunks(approved_document, director) -> None:
+def test_unapprove_makes_it_missing_in_the_checklist_and_keeps_its_chunks(approved_document, director) -> None:
+    """ASSUMPTIONS 438: every review state is searchable; the source card then says "Returned"."""
     from assistant.models import DocumentEmbedding
 
     DocumentEmbedding.objects.create(document=approved_document, chunk_index=0, chunk_text="x",
                                      embedding_vector=[0.0] * 768)
     services.unapprove_document(director, approved_document, "Redo", now=TEST_NOW)
-    assert not DocumentEmbedding.objects.filter(document=approved_document).exists()
+    assert DocumentEmbedding.objects.filter(document=approved_document).exists()
     item = next(i for i in services.document_checklist(approved_document.activity, now=TEST_NOW)["required"]
                 if i.document_type == approved_document.document_type)
     assert item.state != services.APPROVED

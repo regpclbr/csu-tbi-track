@@ -182,7 +182,8 @@ def test_document_status_questions_get_only_the_existing_record_tools(director, 
     fake_gemini.replies.append(say("Nothing is missing."))
     services.ask(director, chat, "Which documents are missing for the Bootcamp?", now=NOW)
     offered = {spec.name for spec in fake_gemini.generate_calls[0]["tools"]}
-    assert offered == {"find_activities", "get_document_checklist", "list_activity_documents", "documents_needing_attention"}
+    assert offered == {"find_activities", "get_document_checklist", "list_activity_documents", "documents_needing_attention",
+                       "get_pending_approvals"}  # what waits for this member (ASSUMPTIONS 439)
 
 
 def test_content_questions_get_the_document_search(director, chat, calendar_2026, fake_gemini) -> None:

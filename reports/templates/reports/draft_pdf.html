@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+{% comment %}
+A report draft version as a PDF (reports.draft_export.pdf_html; ASSUMPTIONS 442-445), A4 portrait. The Activity Report
+follows NAVIGATU's sample: placeholder letterhead, "ACTIVITY REPORT", the optional office line, the title, Period
+Covered / Venue / Implementing Unit / Project Leader, A. Highlights (+ Major Accomplishments), B. Problems/Constraints,
+C. Running Budget, D. Recommendation(s), Prepared by / Noted, Photo Documentation (6 a page), the annex (participant mix,
+paper sheets; the signed forms are appended as PDF pages) and the form code in the footer. Every number, date, name and
+amount comes from `facts`; the narrative from `sections`. No "AI-generated" label here (editor only). Everything is
+escaped; images are data: URIs only.
+{% endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ draft.title }}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 16mm 16mm 18mm 16mm;
+    {% if form_code %}@bottom-left { content: "{{ form_code }}"; font: 7.5pt "DejaVu Sans", sans-serif; color: #444; }{% endif %}
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt "DejaVu Sans", sans-serif; color: #444; }
+  }
+  body { margin: 0; font: 10pt "DejaVu Sans", Arial, sans-serif; color: #111; line-height: 1.4; }
+  .letterhead { text-align: center; border-bottom: 1.5pt solid #2A4494; padding-bottom: 4pt; margin-bottom: 8pt; }
+  .letterhead .university { font-weight: bold; font-size: 11pt; text-transform: uppercase; letter-spacing: .5pt; }
+  .office-line { text-align: center; font-size: 9pt; margin: 2pt 0 0; }
+  h1 { text-align: center; font-size: 14pt; letter-spacing: 1pt; margin: 8pt 0 2pt; }
+  .title { text-align: center; font-weight: bold; font-size: 12pt; margin: 0 0 10pt; overflow-wrap: anywhere; }
+  table.facts { width: 100%; border-collapse: collapse; margin-bottom: 8pt; }
+  table.facts td { padding: 2pt 0; vertical-align: top; overflow-wrap: anywhere; }
+  table.facts td.label { width: 42mm; font-weight: bold; }
+  h2 { font-size: 11pt; margin: 12pt 0 4pt; break-after: avoid; }
+  h3 { font-size: 10pt; margin: 8pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 6pt; text-align: justify; overflow-wrap: anywhere; }
+  ul { margin: 0 0 6pt; padding-left: 16pt; }
+  li { margin: 0 0 2pt; }
+  table.list { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 2pt 0 6pt; font-size: 9pt; }
+  table.list th, table.list td { border: .6pt solid #333; padding: 2.5pt 4pt; vertical-align: top; overflow-wrap: anywhere; }
+  table.list th { background: #eef1f8; text-align: left; }
+  table.list td.num, table.list th.num { text-align: right; }
+  table.list td.num { white-space: nowrap; }  /* amounts never wrap; headers may ("Total Amount") */
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+  .note { font-size: 8.5pt; color: #444; font-style: italic; }
+  .blank { color: #777; font-style: italic; }
+  table.sign { width: 100%; margin-top: 18pt; break-inside: avoid; }
+  table.sign td { width: 50%; vertical-align: top; padding-right: 10mm; }
+  .sign .line { border-bottom: .6pt solid #111; height: 10mm; width: 65mm; }
+  .sign .name { font-weight: bold; text-transform: uppercase; margin-top: 2pt; }
+  .page-break { break-before: page; }
+  .photos { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .photos td { width: 50%; padding: 3mm; text-align: center; vertical-align: top; height: 78mm; }
+  .photos img { max-width: 100%; max-height: 70mm; }
+  .caption { font-size: 8pt; color: #444; margin-top: 2pt; }
+  .chart svg { max-width: 100%; height: auto; }
+  .annex-image img { max-width: 100%; max-height: 240mm; }
+</style>
+</head>
+<body>
+  <div class="letterhead">
+    <div class="university">{{ letterhead.0 }}</div>
+    <div>{{ letterhead.1 }}</div>
+    {% if header.office_line %}<p class="office-line">{{ header.office_line }}</p>{% endif %}
+  </div>
+  <h1>{{ heading }}</h1>
+  <p class="title">{{ header.title|default:draft.title }}</p>
+
+  <table class="facts">
+    {% if header.period_covered %}<tr><td class="label">Period Covered:</td><td>{{ header.period_covered }}</td></tr>{% endif %}
+    {% if header.venue %}<tr><td class="label">Venue:</td><td>{{ header.venue }}</td></tr>{% endif %}
+    {% if header.implementing_unit %}<tr><td class="label">Implementing Unit:</td><td>{{ header.implementing_unit }}</td></tr>{% endif %}
+    {% if header.project_leader %}<tr><td class="label">Project Leader:</td><td>{{ header.project_leader }}</td></tr>{% endif %}
+  </table>
+
+  {% if kind == "activity_report" %}
+    <h2>{{ sections.highlights.label }}</h2>
+    {% for p in sections.highlights.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h3>{{ sections.accomplishments.label }}</h3>
+    {% if sections.accomplishments.items %}<ul>{% for item in sections.accomplishments.items %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+    <h2>{{ sections.problems.label }}</h2>
+    {% for p in sections.problems.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h2>C. Running Budget</h2>
+    <table class="list">
+      <thead><tr><th style="width:44%">Particulars</th><th>Quantity</th><th class="num">Unit Cost</th><th class="num">Total Amount</th></tr></thead>
+      <tbody>
+        {% for row in facts.budget.rows %}<tr><td>{{ row.particulars }}</td><td>{{ row.quantity }}</td><td class="num">{{ row.unit_cost }}</td><td class="num">{{ row.total }}</td></tr>
+        {% empty %}<tr><td colspan="4" class="blank">No budget lines.</td></tr>{% endfor %}
+        <tr><td colspan="3"><strong>Total</strong></td><td class="num"><strong>{{ facts.budget.total }}</strong></td></tr>
+      </tbody>
+    </table>
+    <p class="note">Fund source: {{ facts.budget.fund_source }}{% if facts.budget.fund_account %} ({{ facts.budget.fund_account }}){% endif %}. {{ facts.budget.note }}</p>
+    <h2>{{ sections.recommendations.label }}</h2>
+    {% if sections.recommendations.items %}<ul>{% for item in sections.recommendations.items %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+
+  {% elif kind == "evaluation_summary" %}
+    <h2>Responses</h2>
+    <table class="list">
+      <tbody>
+        {% if facts.counts.activities is not None %}<tr><td>Activities (Conducted, ended in the period)</td><td class="num">{{ facts.counts.activities }}</td></tr>{% endif %}
+        <tr><td>Registered</td><td class="num">{{ facts.counts.registered }}</td></tr>
+        <tr><td>Cancelled (“Will not attend”, not counted)</td><td class="num">{{ facts.counts.cancelled }}</td></tr>
+        <tr><td>Attended</td><td class="num">{{ facts.counts.attended }}</td></tr>
+        <tr><td>Evaluations submitted</td><td class="num">{{ facts.counts.evaluations }}</td></tr>
+        <tr><td>Response rate (evaluations / attended)</td><td class="num">{{ facts.counts.response_rate }}</td></tr>
+        {% if facts.counts.average_rating %}<tr><td>Average rating (1-5)</td><td class="num">{{ facts.counts.average_rating }}</td></tr>{% endif %}
+      </tbody>
+    </table>
+    <h2>Ratings (1 lowest – 5 highest)</h2>
+    <table class="list">
+      <thead><tr><th style="width:36%">Question</th><th class="num">Answers</th><th class="num">Mean</th>{% for r in "54321" %}<th class="num">{{ r }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for q in facts.ratings %}<tr><td>{{ q.question }}</td><td class="num">{{ q.answers }}</td><td class="num">{{ q.mean }}</td>{% for f in q.frequency %}<td class="num">{{ f.count }}<br><span class="note">{{ f.share }}</span></td>{% endfor %}</tr>
+        {% empty %}<tr><td colspan="8" class="blank">No rating answers.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    <p class="note">The mean only: the TBI has not given an interpretation scale yet.</p>
+    {% if facts.activities %}
+      <h2>Activities</h2>
+      <table class="list">
+        <thead><tr><th style="width:36%">Activity</th><th>Dates</th><th class="num">Attended</th><th class="num">Evaluations</th><th class="num">Response rate</th><th class="num">Average</th></tr></thead>
+        <tbody>{% for a in facts.activities %}<tr><td>{{ a.title }}</td><td>{{ a.dates }}</td><td class="num">{{ a.attended }}</td><td class="num">{{ a.evaluations }}</td><td class="num">{{ a.response_rate }}</td><td class="num">{{ a.average_rating }}</td></tr>{% endfor %}</tbody>
+      </table>
+    {% endif %}
+    <h2>{{ sections.overview.label }}</h2>
+    {% for p in sections.overview.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h2>{{ sections.open_answers.label }}</h2>
+    {% for p in sections.open_answers.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    <h2>{{ sections.recommendations.label }}</h2>
+    {% if sections.recommendations.items %}<ul>{% for item in sections.recommendations.items %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+
+  {% else %}
+    {% for p in sections.body.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    {% if facts.counts %}
+      <h2>Key figures (from the system)</h2>
+      <table class="list"><tbody>{% for label, value in count_rows %}<tr><td>{{ label }}</td><td class="num">{{ value }}</td></tr>{% endfor %}</tbody></table>
+    {% endif %}
+  {% endif %}
+
+  <table class="sign">
+    <tr>
+      <td>Prepared by:<div class="line"></div><div class="name">{{ facts.prepared_by.name }}</div><div>{{ facts.prepared_by.position }}</div></td>
+      <td>Noted:<div class="line"></div><div class="name">{% if facts.noted_by.name %}{{ facts.noted_by.name }}{% else %}&nbsp;{% endif %}</div><div>{{ facts.noted_by.position }}</div></td>
+    </tr>
+  </table>
+
+  {% for page in photo_pages %}
+    <div class="page-break">
+      <h2>Photo Documentation</h2>
+      <table class="photos">
+        {% for photo in page %}{% if forloop.counter0|divisibleby:2 %}<tr>{% endif %}
+          <td><img src="{{ photo.uri }}" alt=""><div class="caption">{{ photo.caption }}</div></td>
+        {% if forloop.counter|divisibleby:2 or forloop.last %}</tr>{% endif %}{% endfor %}
+      </table>
+    </div>
+  {% endfor %}
+
+  {% if kind == "activity_report" %}
+    <div class="page-break">
+      <h2>Annex</h2>
+      <h3>Participant mix</h3>
+      {% if mix_chart %}<div class="chart">{{ mix_chart }}</div>{% endif %}
+      <table class="list">
+        <thead><tr><th>Group</th><th class="num">{{ facts.mix.basis|capfirst|default:"Count" }}</th><th class="num">Share</th></tr></thead>
+        <tbody>{% for row in facts.mix.rows %}<tr><td>{{ row.group }}</td><td class="num">{{ row.count }}</td><td class="num">{{ row.share }}</td></tr>{% endfor %}</tbody>
+      </table>
+      <p class="note">{{ facts.mix.guideline }}{% if facts.mix.problems %} Outside the guideline: {{ facts.mix.problems|join:"; " }}.{% endif %}</p>
+      {% for sheet in facts.paper_sheets %}
+        <h3>From the paper sheet: {{ sheet.kind }}{% if sheet.day %} – {{ sheet.day }}{% endif %}</h3>
+        <table class="list">
+          <thead><tr><th style="width:8%" class="num">No.</th><th>Name</th><th>Designation</th><th>Office</th><th>Category</th></tr></thead>
+          <tbody>{% for row in sheet.rows %}<tr><td class="num">{{ row.number }}</td><td>{{ row.name }}</td><td>{{ row.designation }}</td><td>{{ row.office }}</td><td>{{ row.category }}</td></tr>{% endfor %}</tbody>
+        </table>
+        <table class="list">
+          <thead><tr><th>Group</th><th class="num">Count</th><th class="num">Share</th></tr></thead>
+          <tbody>{% for row in sheet.mix.rows %}<tr><td>{{ row.group }}</td><td class="num">{{ row.count }}</td><td class="num">{{ row.share }}</td></tr>{% endfor %}</tbody>
+        </table>
+      {% endfor %}
+      {% for image in image_annex %}
+        <div class="annex-image page-break"><h3>{{ image.title }}</h3><img src="{{ image.uri }}" alt=""></div>
+      {% endfor %}
+      {% if annex_follows %}<p class="note">The Attendance and Confirmation of Attendance forms follow.</p>{% endif %}
+    </div>
+  {% endif %}
+</body>
+</html>

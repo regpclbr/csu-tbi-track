@@ -26,14 +26,14 @@ from documents import services as document_services
 from documents.models import Document
 from reports import metrics
 
-from . import services
+from . import indexing, services, tools
 from .models import AIChat, AIChatMessage, AIMessageSource
 
 CITATION = re.compile(r"\[(\d+)\]")
 
 # How each "answered from" value is shown (services.answered_from): label and badge tone.
 FROM_BADGES = {
-    services.DOCUMENTS: ("From approved documents", "info"),
+    services.DOCUMENTS: ("From the files", "info"),
     services.RECORDS: ("From the system's records", "success"),
     services.BOTH: ("From documents and records", "info"),
     services.NOT_FOUND_KIND: ("Not found", "neutral"),
@@ -52,7 +52,8 @@ ERROR_HINTS = {
 SOURCES = Prefetch(
     "sources",
     queryset=AIMessageSource.objects.select_related(
-        "document__document_type", "document__activity", "document__status"
+        "document__document_type", "document__activity", "document__status", "generated_report",
+        "submission__activity", "submission__document_type",
     ).order_by("message_source_id"),
 )
 
@@ -221,6 +222,7 @@ def file_card(message: AIChatMessage, document: Document | None, document_id: in
     if document is None:
         return {"dom_id": dom_id, "missing": True, "numbers": numbers or []}
     activity = document.activity
+    label, tone = tools.source_state(indexing.DOCUMENT, document)
     return {
         "dom_id": dom_id,
         "missing": False,
@@ -229,24 +231,64 @@ def file_card(message: AIChatMessage, document: Document | None, document_id: in
         "type": document.document_type.name,
         "activity": activity.title,
         "activity_url": reverse("activities:detail", args=[activity.pk]),
-        "badge": document_pages.state_badge(document),
+        "badge": {"label": label, "tone": tone},
+        "date_label": "Uploaded",
         "uploaded_on": timezone.localtime(document.uploaded_at).date(),
         "open_url": reverse("documents:detail", args=[document.pk]),
         "download_url": reverse("documents:download", args=[document.pk]),
     }
 
 
+def report_card(message: AIChatMessage, report, numbers: list[int]) -> dict:
+    """A cited generated report (ASSUMPTIONS 438): any staff member may download it (reports:download)."""
+    from reports.services import download_name
+
+    label, tone = tools.source_state(indexing.REPORT, report)
+    return {
+        "dom_id": f"m{message.pk}-r{report.pk}", "missing": False, "numbers": numbers,
+        "title": download_name(report), "type": "Report", "activity": "", "activity_url": "",
+        "badge": {"label": label, "tone": tone}, "date_label": "Generated",
+        "uploaded_on": timezone.localtime(report.generated_at).date(),
+        "open_url": "", "download_url": reverse("reports:download", args=[report.pk]),
+    }
+
+
+def submission_card(message: AIChatMessage, submission, numbers: list[int]) -> dict:
+    """A cited submission (ASSUMPTIONS 438): its page and file check who may open it (404 for anyone else)."""
+    label, tone = tools.source_state(indexing.SUBMISSION, submission)
+    activity = submission.activity
+    which = "signed" if submission.signed_file_path else "original"
+    return {
+        "dom_id": f"m{message.pk}-s{submission.pk}", "missing": False, "numbers": numbers,
+        "title": submission.title,
+        "type": submission.document_type.name if submission.document_type_id else "Submission",
+        "activity": activity.title if activity else "",
+        "activity_url": reverse("activities:detail", args=[activity.pk]) if activity else "",
+        "badge": {"label": label, "tone": tone}, "date_label": "Submitted",
+        "uploaded_on": timezone.localtime(submission.submitted_at).date(),
+        "open_url": reverse("approvals:detail", args=[submission.pk]),
+        "download_url": reverse("approvals:file", args=[submission.pk, which]),
+    }
+
+
 def source_cards(message: AIChatMessage) -> tuple[list[dict], dict[int, str]]:
-    """The cited documents of a document-based answer: one card per document (never one per excerpt), in citation
-    order, each with its citation numbers; and where each [n] links to (its card)."""
-    cards: dict[int, dict] = {}
+    """The cited files of a document-based answer: one card per file (never one per excerpt), in citation order, each
+    with its citation numbers and its state (ASSUMPTIONS 438: documents in any review state, generated reports,
+    submissions); and where each [n] links to (its card)."""
+    cards: dict[tuple[str, int], dict] = {}
     links: dict[int, str] = {}
     for number, source in enumerate(message.sources.all(), start=1):
-        document = source.document
-        if document.pk not in cards:
-            cards[document.pk] = file_card(message, document, document.pk, [])
-        cards[document.pk]["numbers"].append(number)
-        links[number] = f"#{cards[document.pk]['dom_id']}"
+        kind, item = tools.source_of(source)
+        key = (kind, item.pk)
+        if key not in cards:
+            if kind == indexing.DOCUMENT:
+                cards[key] = file_card(message, item, item.pk, [])
+            elif kind == indexing.REPORT:
+                cards[key] = report_card(message, item, [])
+            else:
+                cards[key] = submission_card(message, item, [])
+        cards[key]["numbers"].append(number)
+        links[number] = f"#{cards[key]['dom_id']}"
     return list(cards.values()), links
 
 

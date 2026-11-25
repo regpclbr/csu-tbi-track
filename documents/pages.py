@@ -51,6 +51,36 @@ def document_row(member: TBIMember, document: Document) -> dict:
     }
 
 
+def ai_scan_panel(member: TBIMember, document: Document) -> dict | None:
+    """The document page's "Read this scan with AI" card (ASSUMPTIONS 438), or None where the tick does not apply (not
+    a scanned Attendance Sheet / Confirmation of Attendance). States: ticked (who, when), searchable (the file has text
+    the assistant already reads: no tick needed), or the explanation with the button for members who may tick."""
+    reason = services.ai_scan_refused_reason(document)
+    if reason == services.SCAN_TICK_NOT_NEEDED:
+        return None
+    sheets = _paper_sheets(member, document)  # ASSUMPTIONS 443: read the rows of a paper attendance sheet
+    if document.ai_scan_allowed_at is not None:
+        return {"ticked": True, "by": document.ai_scan_allowed_by, "at": document.ai_scan_allowed_at,
+                "searchable": bool(getattr(document, "searchable", False)), **sheets}
+    if getattr(document, "searchable", False):
+        return {"ticked": False, "searchable": True, **sheets}
+    return {"ticked": False, "searchable": False, "may_tick": services.may_allow_ai_scan(member, document), **sheets}
+
+
+def _paper_sheets(member: TBIMember, document: Document) -> dict:
+    """The paper sheets read from this document and whether this member may start one (reports.paper_sheets)."""
+    from registrations.attendance import activity_days
+    from reports import paper_sheets
+    from reports.models import PaperSheetRead
+
+    may = has_permission(member, paper_sheets.PERMISSION) and paper_sheets.document_refused_reason(document) is None
+    return {
+        "sheets": list(PaperSheetRead.objects.filter(document=document).order_by("-read_at")[:5]),
+        "may_read_rows": may, "sheet_kinds": PaperSheetRead.SheetKind.choices, "default_kind": paper_sheets.default_kind(document),
+        "days": [(day.isoformat(), f"{day:%B} {day.day}, {day.year}") for day in activity_days(document.activity)],
+    }
+
+
 def download_url(document: Document) -> str:
     """Activity documents: documents:download; certificate evidence: its own download view (same login rule)."""
     if document.related_certificate_id:

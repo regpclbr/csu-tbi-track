@@ -1,0 +1,6 @@
+{# A version being written (ASSUMPTIONS 442): polls its status every few seconds; the page reloads when it is done. #}
+<div id="gen-progress" class="flex items-center gap-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status"
+     {% if shown.working %}hx-get="{{ shown.status_url }}" hx-trigger="every {{ shown.poll_seconds }}s" hx-swap="outerHTML"{% endif %}>
+  {% include "components/icon.html" with name="loader-circle" class="size-5 motion-safe:animate-spin" %}
+  <span>Version {{ shown.version.number }}: {{ shown.version.progress|default:shown.version.get_state_display }} If nothing changes for minutes, the background worker (qcluster) may be stopped.</span>
+</div>

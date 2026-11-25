@@ -113,7 +113,9 @@ def _load_facts(activities: list[Activity], now: datetime) -> dict[int, _Facts]:
     registrations = (
         Activity.objects.filter(pk__in=ids)
         .annotate(
-            registered=Count("registrations"),
+            # Who counts as registered: reports.metrics.COUNTED (ASSUMPTIONS 440: "Will not attend" only when they came).
+            registered=Count("registrations", filter=Q(registrations__cancelled_at__isnull=True)
+                             | Q(registrations__attendance_confirmed=True)),
             attended=Count("registrations", filter=Q(registrations__attendance_confirmed=True)),
             # Marked attended after the evaluation deadline and not evaluated: their link can never work. Since
             # ASSUMPTIONS 434: no attendance day of theirs was recorded on or before the deadline.

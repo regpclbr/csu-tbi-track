@@ -28,7 +28,7 @@ from .gemini import AssistantUnavailable
 from .models import AIChat
 
 PAGE_TITLE = "AI Assistant"
-PAGE_SUBTITLE = "Answers from approved documents and the system's records, always with their sources"
+PAGE_SUBTITLE = "Answers from the system's files and records, always with their sources and review state"
 
 
 def _context(request: HttpRequest, chat: AIChat | None, **extra) -> dict:

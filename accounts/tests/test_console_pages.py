@@ -334,8 +334,8 @@ def test_counts_of_unindexed_documents_and_unsent_certificates(monkeypatch) -> N
     from assistant import indexing
     from certificates import services as certificate_services
 
-    monkeypatch.setattr(indexing, "pending_documents", lambda: SimpleNamespace(count=lambda: 3))
+    monkeypatch.setattr(indexing, "pending_sources", lambda: [("document", 1), ("report", 2), ("submission", 3)])
     monkeypatch.setattr(certificate_services, "pending_emails", lambda: SimpleNamespace(count=lambda: 1))
-    assert system_status.indexing_status().summary == "3 approved documents are not indexed yet."
+    assert system_status.indexing_status().summary == "3 files are not indexed yet."
     assert system_status.certificate_email_status().summary == "1 issued certificate is not sent yet."
     assert "retry_certificates" in system_status.certificate_email_status().fix

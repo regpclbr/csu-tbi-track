@@ -441,6 +441,39 @@ ASSISTANT_MAX_TOOL_ROUNDS = 4  # function-calling rounds per question
 # reads every approved file, names included (the Attendance Sheet and the Confirmation of Attendance are part of the
 # Activity Report); signature IMAGES are never text, so they never reach Gemini.
 ASSISTANT_EXCLUDED_DOCUMENT_TYPES: list[str] = []
+# Reading scans with Gemini (OCR, ASSUMPTIONS 438): a PDF without text or a JPG / PNG of a document is sent to Gemini to
+# be read once (on upload, replace, approval or the tick; never by the daily backfill), and the text is kept with the
+# chunks. Costs tokens (about 260-1,100 per page + the text read): see ASSUMPTIONS 438. On the free tier Google may use
+# the data: a paid API key is required before real participant data is read (open question, CLAUDE.md).
+ASSISTANT_OCR_ENABLED = os.environ.get("ASSISTANT_OCR_ENABLED", "true").strip().lower() == "true"
+ASSISTANT_OCR_MAX_PAGES = 30  # a longer scanned PDF is not read (cost and time)
+ASSISTANT_OCR_TIMEOUT_SECONDS = 180  # one OCR request (a background task, never a page)
+# Pictures of people, not documents: never read with OCR (names of DOCUMENT_TYPE rows).
+ASSISTANT_OCR_EXCLUDED_TYPES: list[str] = ["Event Photos"]
+# Scans of these types show handwriting and participants' signatures: read only after a member ticks
+# "Read this scan with AI" for that file (DOCUMENT.ai_scan_allowed_by / _at; owner decision 2026-11-25).
+ASSISTANT_SCAN_TICK_TYPES: list[str] = ["Attendance Sheet", "Confirmation of Attendance"]
+# --- Report generator (ASSUMPTIONS 442-445) ---
+REPORT_GENERATOR_MAX_ATTACHMENTS = 10  # files per draft (each at most DOCUMENT_MAX_UPLOAD_MB)
+REPORT_GENERATOR_MESSAGE_MAX = 2000  # characters per request, like the AI Assistant
+REPORT_GENERATOR_FILE_CHARS = 8000  # characters of one file sent to the AI
+REPORT_GENERATOR_TOTAL_FILE_CHARS = 60000  # characters of all files together (the rest is left out and said so)
+REPORT_GENERATOR_TIMEOUT_SECONDS = 180  # writing one version (a background task, never a page)
+REPORT_GENERATOR_PHOTOS_PER_PAGE = 6
+REPORT_GENERATOR_PHOTO_MAX_SIDE = 1600  # photos are shrunk to this before they go into a PDF / DOCX
+# Placeholders until NAVIGATU gives the letterhead (open question, CLAUDE.md).
+REPORT_IMPLEMENTING_UNIT = "CSU Technology Business Incubator"
+ACTIVITY_REPORT_FORM_CODE = "F-COR-001 Rev. 3 10/06/2023"
+ACTIVITY_REPORT_TYPE = "Activity Report"  # the DOCUMENT_TYPE a saved Activity Report becomes (an approved copy)
+EVENT_PHOTOS_TYPE = "Event Photos"
+# Paper sheets (ASSUMPTIONS 443): an office is mapped to a PARTICIPANT_CATEGORY by these words (case ignored, first
+# match wins). DTI and partner agencies count as MSMEs until NAVIGATU confirms (open question, CLAUDE.md). Staff check
+# and correct every row before the numbers are used.
+PAPER_SHEET_CATEGORY_RULES: list[tuple[str, list[str]]] = [
+    ("Faculty", ["caraga state university", "csu", "faculty", "professor", "instructor", "college of"]),
+    ("Incubatees", ["incubatee", "tbi incubat", "startup", "start-up"]),
+    ("MSMEs", ["dti", "department of trade", "negosyo", "msme", "sme", "enterprise", "trading", "store", "partner"]),
+]
 # Daily retry of documents that are approved but not indexed yet (e.g. rate limits).
 ASSISTANT_INDEX_HOUR = 7
 ASSISTANT_INDEX_MINUTE = 30

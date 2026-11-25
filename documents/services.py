@@ -54,6 +54,7 @@ from accounts.models import TBIMember
 from accounts.services import active_document_approvers
 from accounts.permissions import (
     Permission,
+    has_any_permission,
     has_permission,
     has_permission_for,
     require_permission,
@@ -62,7 +63,7 @@ from accounts.permissions import (
 )
 from activities.models import Activity, ActivityStatus
 from activities.services import PageResult, _paginate
-from assistant.indexing import queue_indexing, with_searchable
+from assistant.indexing import MISSING, RETITLE, needs_scan_tick, queue_indexing, with_searchable
 from notifications.models import Notification
 
 from .models import Document, DocumentStatus, DocumentType
@@ -99,12 +100,12 @@ def _approve_copy(document: Document, now: datetime | None) -> None:
     document.reviewed_at = now or timezone.now()
 
 
-def _queue_index_on_commit(document: Document) -> None:
-    """Index an approved activity document for the assistant once the change is saved (Step 8; robust: a problem
-    queueing never undoes the upload). Certificate evidence is never indexed."""
+def _queue_index_on_commit(document: Document, mode: str = MISSING) -> None:
+    """Index an activity document for the assistant once the change is saved: every review state (ASSUMPTIONS 438;
+    robust: a problem queueing never undoes the upload). Certificate evidence is never indexed."""
     if document.related_certificate_id is None:
         document_id = document.pk
-        transaction.on_commit(lambda: queue_indexing(document_id), robust=True)
+        transaction.on_commit(lambda: queue_indexing(document_id, mode), robust=True)
 
 DEFAULT_PAGE_SIZE = 20
 RETURN_REASON_MAX_LENGTH = 300
@@ -339,7 +340,7 @@ def upload_document(
                 write_document_history(activity, member, "", f"{_document_label(document)} {note}")
                 audit_log.info("Document uploaded as an approved copy: document_id=%s activity_id=%s by member_id=%s%s",
                                document.pk, activity.pk, member.pk, " (approved submission)" if approved_by else "")
-                _queue_index_on_commit(document)
+            _queue_index_on_commit(document)  # every review state is indexed (ASSUMPTIONS 438)
             document.scheduled_activity = (
                 auto_schedule and related_certificate is None and is_creation_type(activity, document_type)
                 and schedule_when_documents_complete(activity, member))
@@ -694,8 +695,9 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
     uploader or a member with can_approve_documents for an approved copy (ASSUMPTIONS 432).
 
     Same row, title and type. An approved copy (or a waiting / returned document whose type no longer needs review)
-    stays / becomes Approved by System, its assistant chunks are removed and it is indexed again; a reviewed type
-    clears reviewed_by/reviewed_at, so it waits for a reviewer again. History + documents.audit for every replace.
+    stays / becomes Approved by System; a reviewed type clears reviewed_by/reviewed_at, so it waits for a reviewer
+    again. Either way the assistant chunks are removed and it is indexed again (ASSUMPTIONS 438), and a "Read this scan
+    with AI" tick is cleared. History + documents.audit for every replace.
     The old file is deleted only after the change is saved.
     """
     from activities.services import write_document_history  # activities.services imports this module
@@ -710,6 +712,7 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
         reviewed = needs_review(document.document_type, document.related_certificate)
         old_name = document.file_path.name
         _save_file(document, file, extension, now)
+        document.ai_scan_allowed_by = document.ai_scan_allowed_at = None  # a new file needs a new tick (ASSUMPTIONS 438)
         if reviewed:
             document.reviewed_by = None
             document.reviewed_at = None
@@ -718,11 +721,10 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
         try:
             with transaction.atomic():
                 document.save()
+                document.embeddings.all().delete()  # never answer from the old file; indexed again below
+                _queue_index_on_commit(document)
                 if reviewed:
                     notify_approvers(document, member)
-                else:
-                    document.embeddings.all().delete()  # never answer from the old file; indexed again below
-                    _queue_index_on_commit(document)
                 if document.related_certificate_id is None:
                     write_document_history(document.activity, member, "", f"{_document_label(document)} replaced"
                                            + ("" if reviewed else f" ({APPROVED_COPY_NOTE})"))
@@ -797,7 +799,8 @@ def approve_document(member: TBIMember, document: Document, now: datetime | None
 
         complete_for("document_review", document, member, document.reviewed_at)
 
-        # Step 8: index it for the assistant once the approval is saved (Django-Q2 task).
+        # Step 8: index it for the assistant once the approval is saved (Django-Q2 task). Since ASSUMPTIONS 438 it was
+        # usually indexed at upload already: the task then does nothing (mode MISSING); otherwise this retries it.
         # robust=True: a problem queueing the task never undoes or breaks the approval.
         # Certificate evidence is never indexed (item 151), so it is not queued.
         document_id = document.pk
@@ -880,7 +883,8 @@ def unapprove_document(member: TBIMember, document: Document, reason: str, now: 
     """Take back the approval of a document of a type that needs review (can_approve_documents, a reason required):
     it becomes Returned (For Review, reviewed_by = this member, reviewed_at = now), so it counts as not done in the
     checklist again (it can become overdue; reminders already sent are not repeated) and the uploader replaces the
-    file. Its AI chunks are removed (only Approved documents are searchable). An activity that was Scheduled
+    file. Its AI chunks stay (every review state is searchable since ASSUMPTIONS 438; its source card then says
+    "Returned"). An activity that was Scheduled
     automatically stays Scheduled. One History row ("Documents"), a documents.audit line and a notification to the
     uploader (unless they unapproved it themselves)."""
     from activities.services import write_document_history  # activities.services imports this module
@@ -895,7 +899,6 @@ def unapprove_document(member: TBIMember, document: Document, reason: str, now: 
         document.reviewed_by = member
         document.reviewed_at = now or timezone.now()
         document.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
-        document.embeddings.all().delete()
         write_document_history(document.activity, member, f"{_document_label(document)} approved",
                                f"{_document_label(document)} {UNAPPROVED_HISTORY}: {reason}")
         audit_log.info("Document unapproved: document_id=%s by member_id=%s", document.pk, member.pk)
@@ -937,9 +940,56 @@ def rename_document(member: TBIMember, document: Document, title: str) -> Docume
         document.save(update_fields=["title", "updated_at"])
         if document.related_certificate_id is None:
             write_document_history(document.activity, member, old_label, f"{_document_label(document)} (renamed)")
-            if document.status.status_name == DocumentStatus.APPROVED:
-                _queue_index_on_commit(document)
+            _queue_index_on_commit(document, RETITLE)  # the same text, embedded with the new title (ASSUMPTIONS 438)
         audit_log.info("Document renamed: document_id=%s by member_id=%s", document.pk, member.pk)
+    return document
+
+
+# --- "Read this scan with AI" (ASSUMPTIONS 438) -----------------------------------------------------------------
+
+SCAN_EXTENSIONS = ("pdf", "jpg", "png")
+SCAN_TICK_NOT_NEEDED = "Only a scanned Attendance Sheet or Confirmation of Attendance needs this tick."
+SCAN_TICK_DONE = "This file may already be read with AI."
+SCAN_TICK_HISTORY = "may be read with AI (scan ticked)"
+
+
+def ai_scan_refused_reason(document: Document) -> str | None:
+    """Why "Read this scan with AI" is not offered for this file, or None. Only an activity document of a type in
+    settings.ASSISTANT_SCAN_TICK_TYPES (handwriting and signatures), a PDF / JPG / PNG, not ticked yet."""
+    if document.related_certificate_id is not None or not needs_scan_tick(document):
+        return SCAN_TICK_NOT_NEEDED
+    if document.file_extension.lower() not in SCAN_EXTENSIONS:
+        return SCAN_TICK_NOT_NEEDED
+    if document.ai_scan_allowed_at is not None:
+        return SCAN_TICK_DONE
+    return None
+
+
+def may_allow_ai_scan(member: TBIMember, document: Document) -> bool:
+    """The uploader, a member who creates activities (they generate and upload these forms) or an approver."""
+    return document.uploaded_by_id == member.pk or has_any_permission(
+        member, Permission.CREATE_ACTIVITY, Permission.APPROVE_DOCUMENTS)
+
+
+def allow_ai_scan(member: TBIMember, document: Document, now: datetime | None = None) -> Document:
+    """Tick "Read this scan with AI" for ONE file (owner decision 2026-11-25): the scan, with its handwriting and
+    signatures, may now be sent to Gemini once to be read (OCR) and indexed. Who and when are stored on the document;
+    one History row ("Documents") and a documents.audit line (IDs only). A replaced file needs a new tick."""
+    from activities.services import write_document_history  # activities.services imports this module
+
+    require_staff_member(member)
+    with transaction.atomic():
+        document = _locked(document)
+        if not may_allow_ai_scan(member, document):
+            raise PermissionDenied("Only the uploader, a member who creates activities or an approver can tick this.")
+        if refused := ai_scan_refused_reason(document):
+            raise DocumentError(refused)
+        document.ai_scan_allowed_by = member
+        document.ai_scan_allowed_at = now or timezone.now()
+        document.save(update_fields=["ai_scan_allowed_by", "ai_scan_allowed_at", "updated_at"])
+        write_document_history(document.activity, member, "", f"{_document_label(document)} {SCAN_TICK_HISTORY}")
+        audit_log.info("Document scan may be read with AI: document_id=%s by member_id=%s", document.pk, member.pk)
+        _queue_index_on_commit(document)
     return document
 
 

@@ -2,8 +2,12 @@
 
 1. document status: missing / overdue / waiting / returned / pending / due / checklist ... -> Gemini with the
    existing record tools only (document_checklist() and friends);
+   (participation, ASSUMPTIONS 439: attendance / registered / walk-ins / cancelled / participant mix / evaluation
+   results / ratings words, without a file word, a document type or a "says / according to" word, and either an
+   activity named by its title or no activity word -> Gemini with the participation record tools only (counts, never
+   names); checked before 2, so "the evaluation results of X" is answered from the records);
 2. document content: says / mention / summary / according to ... (with a file word or document type, or no activity
-   word) -> Gemini with search_approved_documents (+ find_activities); the answer shows source cards;
+   word) -> Gemini with search_documents (+ find_activities); the answer shows source cards;
 3. find files: a file word (files, documents, copy, download, attachment, ...) or a DOCUMENT_TYPE name, together with
    an activity title, a period or a document type -> our code lists the files (no Gemini);
 4. activities: an activity word (activities, events, schedule, happening, an ACTIVITY_TYPE name, ...) together with a
@@ -29,7 +33,8 @@ from .periods import FUTURE_CUES, Period, parse_period, period_words
 
 ACTIVITIES, FIND_FILES, BUDGET = "activities", "find_files", "budget"
 DOCUMENT_STATUS, DOCUMENT_CONTENT, GEMINI_ALL_TOOLS = "document_status", "document_content", "gemini_all_tools"
-PATHS = (ACTIVITIES, FIND_FILES, BUDGET, DOCUMENT_STATUS, DOCUMENT_CONTENT, GEMINI_ALL_TOOLS)
+PARTICIPATION = "participation"  # ASSUMPTIONS 439
+PATHS = (ACTIVITIES, FIND_FILES, BUDGET, PARTICIPATION, DOCUMENT_STATUS, DOCUMENT_CONTENT, GEMINI_ALL_TOOLS)
 
 DOCUMENT_STATUS_WORDS = re.compile(
     r"\b(missing|overdue|late|waiting|pending|returned|due|lacking|unapproved|outstanding|checklist|incomplete|"
@@ -45,6 +50,18 @@ CONTENT_WORDS = re.compile(
 BUDGET_WORDS = re.compile(
     r"\b(budgets?|fund ?sources?|source of (?:the )?funds?|funding|funded|how much|costs?|costing|expenses?|"
     r"charging|charged to|allocation|allotted|allocated|line items?|honorarium)\b"
+)
+# ASSUMPTIONS 439: attendance, registration, mix and evaluation numbers (PARTICIPATION path).
+PARTICIPATION_WORDS = re.compile(
+    r"\b(attend(?:ed|ance|ees?|ing)?|walk[- ]?ins?|registrants?|registered|registrations?|sign[- ]?ups?|"
+    r"will not attend|cancell?ed|cancell?ations?|no[- ]?shows?|participant mix|mix of participants|guideline|"
+    r"evaluations?|evaluated|ratings?|rated|response rate|mean score|average score|scores?|satisfaction|"
+    r"check[- ]?ins?|checked in|how many (?:people|participants))\b"
+)
+# What a file SAYS: never the participation path ("What does the evaluation form say?").
+SAYS_WORDS = re.compile(
+    r"\b(say|says|said|saying|mention|mentions|mentioned|according to|summary|summari[sz]e|describe|describes|"
+    r"explain|explains|written|stated?|states|talk about|talks about|discuss|discusses|what is in|what's in|inside)\b"
 )
 FILE_WORDS = re.compile(
     r"\b(files?|documents?|docs?|cop(?:y|ies)|soft ?cop(?:y|ies)|download|downloads|attachments?|attached|"
@@ -177,6 +194,13 @@ def route(question: str, now: datetime) -> Route:
         activity_ids = activities_named(words) if words else []
         if activity_ids:  # an activity is named: its budget from the records; otherwise the paths below decide
             return Route(BUDGET, activity_ids=activity_ids, name_words=words)
+
+    if PARTICIPATION_WORDS.search(text) and not (has_file_word or document_type or SAYS_WORDS.search(text)):
+        words = name_words(text, activity_types, document_types)
+        activity_ids = activities_named(words) if words else []
+        # A period without a named activity ("How many attended in November?") needs the period tools: below.
+        if activity_ids or not (has_activity_word or parse_period(text, now)):
+            return Route(PARTICIPATION, activity_ids=activity_ids or None, name_words=words)
 
     if CONTENT_WORDS.search(text) and (has_file_word or document_type or not has_activity_word):
         return Route(DOCUMENT_CONTENT)

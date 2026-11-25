@@ -15,6 +15,7 @@ urlpatterns = [
     path("<int:document_id>/delete/", page_views.delete, name="delete"),
     path("<int:document_id>/unapprove/", page_views.unapprove, name="unapprove"),  # ASSUMPTIONS 437
     path("<int:document_id>/rename/", page_views.rename, name="rename"),  # ASSUMPTIONS 437
+    path("<int:document_id>/ai-scan/", page_views.ai_scan, name="ai_scan"),  # ASSUMPTIONS 438
     path("<int:document_id>/<str:action>/form/", page_views.action_form, name="action_form"),
     # JSON API
     path("api/", views.repository_api, name="api_repository"),

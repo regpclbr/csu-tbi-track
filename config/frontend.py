@@ -43,6 +43,8 @@ WORKSPACE = [
     NavItem("Approvals", "approvals:inbox", "inbox", "approvals", badge="approval_count"),  # ASSUMPTIONS 437
     NavItem("Startups", "startups:list", "store", "startups"),
     NavItem("Reports", "reports:list", "chart-column", "reports"),
+    NavItem("Report generator", "reports:generator", "pen-line", "report_generator",
+            permission=Permission.CREATE_ACTIVITY),  # ASSUMPTIONS 442
     NavItem("AI Assistant", "assistant:chat", "sparkles", "assistant"),
 ]
 ADMIN = [
@@ -66,6 +68,8 @@ class StaffLayout:
             return ""
         if match.view_name.startswith("accounts:console"):
             return "console"
+        if match.view_name.startswith(("reports:generator", "reports:paper_sheet")):
+            return "report_generator"  # ASSUMPTIONS 442: its own sidebar item, not "Reports"
         return match.namespace or match.view_name
 
     def _items(self, items: list[NavItem]) -> list[dict]:

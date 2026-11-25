@@ -175,6 +175,19 @@ def _count_of(queryset: QuerySet, link: str) -> Coalesce:
     return Coalesce(Subquery(counted, output_field=IntegerField()), 0)
 
 
+# Who counts as registered (ASSUMPTIONS 440, owner decision 2026-11-25): a cancelled registration ("Will not attend",
+# item 434) is NOT counted as registered in the reports, the attendance rate, the participant mix or Needs attention,
+# unless the person came anyway (then registered AND attended). Walk-ins count. The slot rule
+# (activities.services.registered_count) is separate and unchanged.
+COUNTED = Q(cancelled_at__isnull=True) | Q(attendance_confirmed=True)
+NOT_COUNTED = Q(cancelled_at__isnull=False, attendance_confirmed=False)  # shown as "Cancelled: N"
+
+
+def counted_registrations() -> QuerySet:
+    """REGISTRATION rows that count as registered (COUNTED)."""
+    return Registration.objects.filter(COUNTED)
+
+
 def rate(part: int, whole: int) -> float | None:
     """part / whole as a fraction (0.85 = 85%), or None when there is nothing to divide by."""
     return round(part / whole, 4) if whole else None
@@ -222,7 +235,8 @@ def period_summary(filters: ReportFilters, now: datetime | None = None, types: l
     activities = period_activities(filters)
     activities_conducted = activities.count()
     registrations = Registration.objects.filter(in_period(filters)).aggregate(
-        registered=Count("pk"),
+        registered=Count("pk", filter=COUNTED),
+        cancelled=Count("pk", filter=NOT_COUNTED),
         attended=Count("pk", filter=Q(attendance_confirmed=True)),
         unique_attendees=Count(Lower("email"), filter=Q(attendance_confirmed=True), distinct=True),
         evaluations=Count("evaluation_submission"),
@@ -234,6 +248,7 @@ def period_summary(filters: ReportFilters, now: datetime | None = None, types: l
     return {
         "activities_conducted": activities_conducted,
         "registered": registrations["registered"],
+        "cancelled": registrations["cancelled"],
         "attended": registrations["attended"],
         "attendance_rate": rate(registrations["attended"], registrations["registered"]),
         "unique_attendees": registrations["unique_attendees"],
@@ -303,7 +318,8 @@ def activity_rows(filters: ReportFilters) -> list[dict]:
     rows = (
         period_activities(filters)
         .annotate(
-            registered=_count_of(Registration.objects.all(), "activity"),
+            registered=_count_of(counted_registrations(), "activity"),
+            cancelled=_count_of(Registration.objects.filter(NOT_COUNTED), "activity"),
             attended=_count_of(Registration.objects.filter(attendance_confirmed=True), "activity"),
             evaluations=_count_of(EvaluationSubmission.objects.all(), "registration__activity"),
             average_rating=Subquery(average_rating, output_field=FloatField()),
@@ -312,7 +328,7 @@ def activity_rows(filters: ReportFilters) -> list[dict]:
         .order_by("end_date", "start_date", "title", "pk")
         .values(
             "activity_id", "title", "activity_type__name", "categories", "start_date", "end_date", "start_time",
-            "end_time", "venue", "registered", "attended", "evaluations", "average_rating",
+            "end_time", "venue", "registered", "cancelled", "attended", "evaluations", "average_rating",
         )
     )
     return [
@@ -336,7 +352,7 @@ def _with_rate(row: dict) -> dict:
 def by_type(filters: ReportFilters) -> list[dict]:
     """N2: period activities, registered and attended per activity type (adds up to the totals)."""
     activities = period_activities(filters)
-    registrations = Registration.objects.filter(in_period(filters))
+    registrations = counted_registrations().filter(in_period(filters))
     rows = (
         _of_type(ActivityType.objects.all(), filters, "pk")
         .annotate(
@@ -354,7 +370,7 @@ def by_type(filters: ReportFilters) -> list[dict]:
 def by_category(filters: ReportFilters) -> list[dict]:
     """N3 (activities per category, can add up to more than N1) and N9 (registered / attended per
     the registration's category, adds up to N5 / N6). Every category is listed, also with zero."""
-    registrations = Registration.objects.filter(in_period(filters))
+    registrations = counted_registrations().filter(in_period(filters))
     rows = (
         ParticipantCategory.objects.annotate(
             activity_count=_count_of(ActivityParticipantCategory.objects.filter(in_period(filters)), "participant_category"),
@@ -394,7 +410,7 @@ def participants_by_category(activity_ids: list[int]) -> dict[int, dict]:
     Returns {activity_id: {"registered": n, "attended": n, "rows": [{"participant_category_id", "category",
     "registered", "registered_share", "attended", "attended_share"}]}}."""
     counts = (
-        Registration.objects.filter(activity_id__in=activity_ids)
+        counted_registrations().filter(activity_id__in=activity_ids)
         .order_by()
         .values("activity_id", "participant_category_id")
         .annotate(registered=Count("pk"), attended=Count("pk", filter=Q(attendance_confirmed=True)))
@@ -514,7 +530,7 @@ def _mixes(activities: Q, activity_ids: list[int] | None = None) -> dict[int, di
     """participant_mix for the activities that `activities` (a Q on REGISTRATION / ACTIVITY_PARTICIPANT_CATEGORY rows,
     through "activity") selects: two queries. `activity_ids`: also list these when they have no rows."""
     rows = (
-        Registration.objects.filter(activities).order_by()
+        counted_registrations().filter(activities).order_by()
         .values("activity_id", "participant_category__name")
         .annotate(registered=Count("pk"), attended=Count("pk", filter=Q(attendance_confirmed=True)))
     )
@@ -560,7 +576,7 @@ def per_month(filters: ReportFilters) -> list[dict]:
     )
     registration_counts = {
         row["month"]: row
-        for row in Registration.objects.filter(in_period(filters))
+        for row in counted_registrations().filter(in_period(filters))
         .annotate(month=TruncMonth("activity__end_date"))
         .order_by()
         .values("month")
@@ -591,7 +607,8 @@ def activity_evaluation_results(activity: Activity) -> dict:
     open on the end date, possibly before the activity is set to Conducted). Rating questions only:
     never comments or text answers."""
     counts = Registration.objects.filter(activity=activity).aggregate(
-        registered=Count("pk"),
+        registered=Count("pk", filter=COUNTED),
+        cancelled=Count("pk", filter=NOT_COUNTED),
         attended=Count("pk", filter=Q(attendance_confirmed=True)),
         evaluations=Count("evaluation_submission"),
     )
@@ -599,11 +616,24 @@ def activity_evaluation_results(activity: Activity) -> dict:
     return {
         "activity_id": activity.pk,
         "registered": counts["registered"],
+        "cancelled": counts["cancelled"],
         "attended": counts["attended"],
         "evaluations": counts["evaluations"],
         "evaluation_response_rate": rate(counts["evaluations"], counts["attended"]),
         **ratings,
     }
+
+
+def activity_registration_counts(activity: Activity) -> dict:
+    """One activity's registration numbers with the reports' rule (COUNTED): registered (walk-ins included), cancelled
+    ("Will not attend", not counted), walk-ins, attended (at least one day) and the attendance rate. One query."""
+    counts = Registration.objects.filter(activity=activity).aggregate(
+        registered=Count("pk", filter=COUNTED),
+        cancelled=Count("pk", filter=NOT_COUNTED),
+        walk_ins=Count("pk", filter=Q(registration_source=Registration.Source.WALK_IN)),
+        attended=Count("pk", filter=Q(attendance_confirmed=True)),
+    )
+    return {**counts, "attendance_rate": rate(counts["attended"], counts["registered"])}
 
 
 RATING_VALUES = (5, 4, 3, 2, 1)  # the rows of a frequency table, best first (ratings are 1-5, validate_answers)
@@ -618,7 +648,8 @@ def activity_evaluation_summary(activity: Activity) -> dict:
     sorted A-Z (ignoring case) so they cannot be matched to the order of submission. No interpretation scale (owner
     decision 2026-11-17: mean only until the TBI gives its scale). Five queries."""
     counts = Registration.objects.filter(activity=activity).aggregate(
-        registered=Count("pk"),
+        registered=Count("pk", filter=COUNTED),
+        cancelled=Count("pk", filter=NOT_COUNTED),
         attended=Count("pk", filter=Q(attendance_confirmed=True)),
         evaluations=Count("evaluation_submission"),
     )
@@ -659,6 +690,7 @@ def activity_evaluation_summary(activity: Activity) -> dict:
     return {
         "activity_id": activity.pk,
         "registered": counts["registered"],
+        "cancelled": counts["cancelled"],
         "attended": counts["attended"],
         "evaluations": counts["evaluations"],
         "evaluation_response_rate": rate(counts["evaluations"], counts["attended"]),
@@ -667,6 +699,63 @@ def activity_evaluation_summary(activity: Activity) -> dict:
                          for f in fields if f["field_type"] in TEXT_FIELD_TYPES],
         "comments": a_to_z(comments),
     }
+
+
+def period_rating_frequency(filters: ReportFilters) -> list[dict]:
+    """The period's rating questions (grouped by label ignoring case and outer spaces, like evaluation_results) with how
+    many gave each rating 5..1, each rating's share of that question's answers (`shares`) and the mean (ASSUMPTIONS 445,
+    the period Evaluation Summary). One query."""
+    rows = (_rating_answers().filter(in_period(filters, RATING_ACTIVITY))
+            .annotate(key=Lower(Trim("field__field_label"))).order_by()
+            .values("key", "field__field_label", "answer_value").annotate(n=Count("pk"), order=Min("field__sort_order")))
+    groups: dict[str, dict] = {}
+    for row in rows:
+        group = groups.setdefault(row["key"], {"labels": {}, "counts": {}, "order": row["order"]})
+        label = row["field__field_label"].strip()
+        group["labels"][label] = group["labels"].get(label, 0) + row["n"]
+        value = row["answer_value"].strip()
+        group["counts"][value] = group["counts"].get(value, 0) + row["n"]
+        group["order"] = min(group["order"], row["order"])
+    result = []
+    for group in sorted(groups.values(), key=lambda g: (g["order"], min(g["labels"]).lower())):
+        counted = [group["counts"].get(str(value), 0) for value in RATING_VALUES]
+        answers = sum(counted)
+        result.append({
+            "question": min(group["labels"], key=lambda name: (-group["labels"][name], name)),
+            "answers": answers,
+            "mean": _average(sum(v * c for v, c in zip(RATING_VALUES, counted)), answers),
+            "frequency": [{"rating": value, "count": count, "share": share}
+                          for value, count, share in zip(RATING_VALUES, counted, shares(counted))],
+        })
+    return result
+
+
+def period_text_answers(filters: ReportFilters) -> list[str]:
+    """Every written answer and comment of the period's evaluations, WITHOUT names, sorted A-Z (ignoring case) so they
+    cannot be matched to a person or an order (like activity_evaluation_summary). For the AI summary of the open
+    answers only (ASSUMPTIONS 445)."""
+    texts = [value.strip() for value in FormAnswer.objects.filter(
+        in_period(filters, RATING_ACTIVITY), answer_source=FormAnswer.AnswerSource.EVALUATION,
+        field__field_type__in=TEXT_FIELD_TYPES).values_list("answer_value", flat=True) if value and value.strip()]
+    texts += [value.strip() for value in EvaluationSubmission.objects.filter(in_period(filters, "registration__activity"))
+              .values_list("comments", flat=True) if value and value.strip()]
+    return sorted(texts, key=lambda text: (text.casefold(), text))
+
+
+def paper_sheet_mix(category_names: list[str | None], checked: bool = True) -> dict:
+    """The participant mix of the rows of a paper sheet (ASSUMPTIONS 443): one name per included row (None = no category
+    yet). Same groups, whole percentages and guideline check as participant_mix, counted as attendees; rows without a
+    category are counted separately ("no_category") and never in the percentages."""
+    counts: dict[str, dict[str, int]] = {}
+    missing = 0
+    for name in category_names:
+        if not name:
+            missing += 1
+            continue
+        group = counts.setdefault(_mix_group(name), {"registered": 0, "attended": 0})
+        group["registered"] += 1
+        group["attended"] += 1
+    return {**_mix(counts, checked), "no_category": missing}
 
 
 def _rating_questions(answers: QuerySet) -> dict:

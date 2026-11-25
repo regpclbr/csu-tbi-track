@@ -49,7 +49,7 @@ def document_from_url(document_id: int, **kwargs) -> Document:
 def _document(document_id: int) -> Document:
     """Any document: an activity document or certificate evidence (the services apply the same rules to both)."""
     queryset = with_searchable(Document.objects.all()).select_related(
-        "activity", "document_type", "status", "uploaded_by", "reviewed_by", "related_certificate"
+        "activity", "document_type", "status", "uploaded_by", "reviewed_by", "related_certificate", "ai_scan_allowed_by"
     )
     return get_object_or_404(queryset, pk=document_id)
 
@@ -105,7 +105,8 @@ def document_detail(request: HttpRequest, document_id: int) -> HttpResponse:
     context = {"page_title": document.title, **row, "view_row": row, "back_link": pages.back_link(request, document),
                # ASSUMPTIONS 437: "Assign to" while it waits for review, and the assignee's notice
                "assign": approval_pages.assign_panel(request.user, document=document) if document.review_state == Document.WAITING_FOR_REVIEW and services.needs_review(document.document_type, document.related_certificate) else None,
-               "my_assignments": approval_pages.my_assignments_on(request.user, document=document)}
+               "my_assignments": approval_pages.my_assignments_on(request.user, document=document),
+               "ai_scan": pages.ai_scan_panel(request.user, document)}  # ASSUMPTIONS 438
     return render(request, "documents/detail.html", context)
 
 
@@ -266,6 +267,20 @@ def rename(request: HttpRequest, document_id: int) -> HttpResponse:
     else:
         messages.success(request, f'The title is now "{renamed.title}".')
     return _done(request, back)
+
+
+@staff_login_required
+@require_POST
+def ai_scan(request: HttpRequest, document_id: int) -> HttpResponse:
+    """POST: "Read this scan with AI" for this one file (services.allow_ai_scan; ASSUMPTIONS 438)."""
+    document = _document(document_id)
+    try:
+        services.allow_ai_scan(request.user, document)
+    except (PermissionDenied, services.DocumentError) as error:
+        _refused(request, error)
+    else:
+        messages.success(request, "The AI assistant will read this scan in the background (it takes a minute).")
+    return redirect("documents:detail", document_id=document.pk)
 
 
 @staff_login_required

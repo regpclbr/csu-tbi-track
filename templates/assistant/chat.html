@@ -7,8 +7,11 @@ shown with a typing indicator, and "Stop waiting" aborts only the browser's requ
 answer then appears when the chat is opened again). Without JavaScript the form is a normal POST.
 Answers are escaped first, then only bold, italics, lists, line breaks and our citation links are added
 (assistant.pages.answer_html, ASSUMPTIONS 376), never HTML from the model.
-Keyboard and scrolling (ASSUMPTIONS 374-375, the only behaviour in Alpine): Enter sends, Shift + Enter is a new line,
-nothing is sent while the box is empty or an answer is pending (the service still refuses an empty question). The chat
+Keyboard and scrolling (ASSUMPTIONS 374-375, 439, 441, the only behaviour in Alpine): the shared compact chat bar
+(components/chat_box.html + static/js/chat_box.js): [the box][Send]; the box starts one line tall and grows up to 5 lines;
+Enter sends, Shift + Enter is a new line, Ctrl / Cmd + Enter also sends, on phones Enter is a new line; a counter near the
+limit; nothing is sent while the box is empty or an answer is pending (the service still refuses an empty question). The
+activity filter sits in the chat header (form="ask-form"), so the conversation gets most of the height. The chat
 follows new messages while it is scrolled to the bottom; scrolled up on purpose, it stays put and shows "Jump to latest".
 My chats can be hidden (ASSUMPTIONS 326): open or closed is remembered per browser (localStorage, default open).
 When closed, the chat card spans both columns and its header shows "Chats" and a "New chat" button. Without
@@ -16,24 +19,31 @@ JavaScript the toggles stay hidden (x-cloak) and the panel stays open.
 Each chat's menu (assistant/_chat_list.html) opens the shared Rename / Delete dialogs at the bottom (ASSUMPTIONS 377).
 {% endcomment %}
 {% comment %}
-Fits the window (ASSUMPTIONS 380): from 1024 x 600 px the panel does not scroll; main fills the height under the top bar and
-the grid fills main, so both cards reach the bottom and only the messages and the chat list scroll inside them. The
-message box stays at the bottom of the chat card. Lower windows: the panel scrolls and the grid is 34rem high.
+Fits the window (ASSUMPTIONS 380, 439): from 1024 x 600 px the panel does not scroll; main fills the height under the top bar
+and the grid fills main, so both cards reach the bottom and only the messages and the chat list scroll inside them. The
+message box stays at the bottom of the chat card. Lower windows: the panel scrolls and the grid is 34rem high. Below
+1024 px (phones) the panel is the screen's height too (dvh: it shrinks with the keyboard, so the box stays above it),
+My chats starts closed and opens above the chat (at most 40% of the height).
 {% endcomment %}
-{% block panel_scroll %}short-screen:overflow-y-auto fit-screen:flex fit-screen:flex-col fit-screen:overflow-hidden{% endblock %}
-{% block main_class %}px-4 pt-2 pb-8 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-6{% endblock %}
+{% block panel_scroll %}max-lg:flex max-lg:h-dvh max-lg:flex-col max-lg:overflow-hidden short-screen:overflow-y-auto fit-screen:flex fit-screen:flex-col fit-screen:overflow-hidden{% endblock %}
+{% block main_class %}px-4 pt-2 pb-8 sm:px-6 xl:px-8 max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col max-lg:pb-4 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1 fit-screen:flex-col fit-screen:pb-6{% endblock %}
 {% block content %}
-<div id="assistant-layout" class="grid gap-6 short-screen:h-[34rem] fit-screen:min-h-0 fit-screen:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]"
+<div id="assistant-layout" class="flex flex-col gap-4 max-lg:min-h-0 max-lg:flex-1 lg:grid lg:gap-6 short-screen:h-[34rem] fit-screen:min-h-0 fit-screen:flex-1 lg:grid-cols-[15rem_minmax(0,1fr)]"
      x-data="{
        chatsOpen: true,
-       init() { try { this.chatsOpen = localStorage.getItem('tbi.assistant.chats') !== 'closed' } catch (e) {} },
+       init() {
+         let saved = null;
+         try { saved = localStorage.getItem('tbi.assistant.chats') } catch (e) {}
+         {# Phones start with My chats closed (the conversation first); a choice the member made is kept. #}
+         this.chatsOpen = saved ? saved !== 'closed' : window.matchMedia('(min-width: 64rem)').matches;
+       },
        setChats(open) {
          this.chatsOpen = open;
          try { localStorage.setItem('tbi.assistant.chats', open ? 'open' : 'closed') } catch (e) {}
          this.$nextTick(() => document.getElementById(open ? 'chats-hide' : 'chats-show').focus());
        },
      }">
-  <nav id="my-chats-panel" class="card flex min-h-0 flex-col p-3" aria-labelledby="my-chats-title" x-show="chatsOpen">
+  <nav id="my-chats-panel" class="card flex min-h-0 flex-col p-3 max-lg:max-h-[40%] max-lg:shrink-0" aria-labelledby="my-chats-title" x-show="chatsOpen">
     <div class="mb-3 px-1">
       <div class="flex items-center gap-2">
         <h2 id="my-chats-title" class="card-title min-w-0 flex-1 text-base">My chats</h2>
@@ -46,9 +56,10 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
     {% include "assistant/_chat_list.html" %}
   </nav>
 
-  <section class="card flex min-h-[32rem] flex-col p-0 lg:min-h-0" :class="{ 'lg:col-span-2': !chatsOpen }" aria-labelledby="chat-title"
+  <section class="card flex min-h-0 flex-col p-0 max-lg:flex-1" :class="{ 'lg:col-span-2': !chatsOpen }" aria-labelledby="chat-title"
            x-data="{
-             busy: false, stopped: false, pending: '', hasText: false, pinned: true, showJump: false,
+             ...tbiChatBox.state(),
+             busy: false, stopped: false, pending: '', pinned: true, showJump: false,
              nearBottom() { const el = this.$refs.scroll; return el.scrollHeight - el.scrollTop - el.clientHeight < 80 },
              toBottom(smooth) {
                const el = this.$refs.scroll;
@@ -58,17 +69,11 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
              },
              onScroll() { this.pinned = this.nearBottom(); if (this.pinned) this.showJump = false },
              contentAdded() { if (this.pinned) this.$nextTick(() => this.toBottom(false)); else this.showJump = true },
-             checkText() { this.hasText = this.$refs.question.value.trim() !== '' },
-             enterKey(event) {
-               if (event.shiftKey || event.isComposing || event.keyCode === 229) return;
-               event.preventDefault();
-               if (!this.busy && this.hasText) event.target.form.requestSubmit();
-             },
            }"
            @htmx:before-request="if ($event.target.id === 'ask-form') { busy = true; stopped = false; pending = $refs.question.value; $nextTick(() => toBottom(false)) }"
            @htmx:after-request="if ($event.target.id === 'ask-form') { busy = false; pending = '' }"
-           @assistant-answered.window="$refs.question.value = ''; hasText = false; $refs.question.focus()">
-    <header class="flex items-center gap-3 border-b border-line px-6 py-4">
+           @assistant-answered.window="clearBox(); $refs.question.focus()">
+    <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-3 sm:px-6">
       <div x-cloak x-show="!chatsOpen" class="flex shrink-0 items-center gap-2 border-r border-line pr-3">
         <button type="button" id="chats-show" class="btn btn-secondary btn-sm" aria-controls="my-chats-panel" aria-expanded="true"
                 :aria-expanded="chatsOpen.toString()" @click="setChats(true)">
@@ -77,14 +82,21 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
           {% include "components/icon.html" with name="plus" class="size-4" %}</a>
       </div>
       <span class="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">{% include "components/icon.html" with name="sparkles" class="size-4.5" %}</span>
-      <div class="min-w-0">
+      <div class="min-w-0 flex-1 basis-40">
         <h2 id="chat-title" class="truncate font-semibold text-ink">{% if chat %}{{ chat.title }}{% else %}New chat{% endif %}</h2>
-        <p class="text-xs text-muted">Answers cite approved documents with their files; activities, files and what is missing come from the records.</p>
+        <p class="hidden truncate text-xs text-muted sm:block">Answers cite the system's files with their review state; records answer the rest.</p>
       </div>
+      {# The activity filter (ASSUMPTIONS 441): in the header, sent with the question through form="ask-form". #}
+      <label for="ask-activity" class="sr-only">Only this activity</label>
+      <select id="ask-activity" name="activity" form="ask-form" class="field-input field-select pill-select h-9 w-auto max-w-full min-w-0 pl-4 text-xs sm:max-w-64"
+              {% if errors.activity_id %}aria-invalid="true" aria-describedby="ask-activity-error"{% endif %}>
+        <option value="">All activities</option>
+        {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity_id == activity.pk|stringformat:"s" %} selected{% endif %}>{{ activity.title|truncatechars:48 }}</option>{% endfor %}
+      </select>
     </header>
 
     <div class="relative flex min-h-0 flex-1 flex-col">
-      <div id="chat-scroll" x-ref="scroll" class="relative min-h-0 flex-1 overflow-y-auto px-6 py-4"
+      <div id="chat-scroll" x-ref="scroll" class="relative min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6"
            x-init="$nextTick(() => { if (!document.getElementById('chat-empty')) toBottom(false) })" @scroll.passive="onScroll()"
            @htmx:after-settle="if ($event.target.id === 'messages') contentAdded()">
         {% if suggestions %}
@@ -116,6 +128,8 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
               <span class="size-2 rounded-full bg-slate-500 motion-safe:animate-bounce [animation-delay:300ms]"></span>
             </span>
             <span class="text-sm text-muted">The assistant is answering… this can take up to {{ timeout_seconds }} seconds.</span>
+            <button type="button" class="btn btn-ghost btn-sm" @click="htmx.trigger('#ask-form', 'htmx:abort'); busy = false; stopped = true; pending = ''; contentAdded()">
+              {% include "components/icon.html" with name="x" class="size-4" %}Stop waiting</button>
           </div>
         </div>
         <p x-cloak x-show="stopped" class="mt-6 rounded-xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status">
@@ -132,9 +146,9 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
     {# After a new chat's first answer, _exchange.html swaps in a one-time refresh of my chats here (the generated title). #}
     <div id="title-refresh" hidden></div>
 
-    <div class="border-t border-line px-6 pt-4 pb-4">
+    <div class="shrink-0 border-t border-line px-4 py-3 sm:px-6">
       {% if ai_off %}
-        <p id="ai-off-note" class="mb-3 flex items-start gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700" role="note">
+        <p id="ai-off-note" class="mb-2 flex items-start gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-700" role="note">
           {% include "components/icon.html" with name="info" class="mt-px size-4 shrink-0" %}
           <span>The AI is turned off. You can still ask about activities and find files (for example: activities this month, files for the Bootcamp).</span></p>
       {% endif %}
@@ -143,28 +157,7 @@ message box stays at the bottom of the chat card. Lower windows: the panel scrol
             hx-post="{% url 'assistant:ask' %}" hx-target="#messages" hx-swap="beforeend" hx-sync="this:drop">
         {% csrf_token %}
         <input type="hidden" id="ask-chat" name="chat" value="{% if chat %}{{ chat.pk }}{% endif %}">
-        <label for="ask-question" class="sr-only">Your question</label>
-        <textarea id="ask-question" name="question" rows="2" maxlength="{{ question_max }}" x-ref="question" :readonly="busy"
-                  placeholder="Ask about an activity, a document or what is missing…"
-                  x-init="checkText()" @input="checkText()" @keydown.enter="enterKey($event)"
-                  class="field-input resize-none rounded-2xl" aria-describedby="ask-help{% if errors.question %} ask-question-error{% endif %}"
-                  {% if errors.question %}aria-invalid="true"{% endif %}>{{ question }}</textarea>
-        <div class="mt-3 flex flex-wrap items-center gap-3">
-          <label for="ask-activity" class="sr-only">Search the documents of</label>
-          <select id="ask-activity" name="activity" class="field-input field-select pill-select w-auto max-w-72 pl-4"
-                  {% if errors.activity_id %}aria-invalid="true" aria-describedby="ask-activity-error"{% endif %}>
-            <option value="">All activities</option>
-            {% for activity in activities %}<option value="{{ activity.pk }}"{% if activity_id == activity.pk|stringformat:"s" %} selected{% endif %}>{{ activity.title|truncatechars:48 }}</option>{% endfor %}
-          </select>
-          <p id="ask-help" class="text-xs text-muted">Enter to send, Shift + Enter for a new line. At most {{ question_max }} characters.</p>
-          <div class="ml-auto flex items-center gap-2">
-            <button type="button" x-cloak x-show="busy" class="btn btn-secondary btn-sm"
-                    @click="htmx.trigger('#ask-form', 'htmx:abort'); busy = false; stopped = true; pending = ''; contentAdded()">
-              {% include "components/icon.html" with name="x" class="size-4" %}Stop waiting</button>
-            <button type="submit" id="ask-send" class="btn btn-primary" :disabled="busy || !hasText" :aria-busy="busy.toString()">
-              {% include "components/icon.html" with name="send" class="size-4" %}Send</button>
-          </div>
-        </div>
+        {% include "components/chat_box.html" with id="ask-question" name="question" max=question_max label="Your question" placeholder="Ask about an activity or a file…" value=question error=errors.question send_id="ask-send" send_label="Send" %}
       </form>
     </div>
   </section>

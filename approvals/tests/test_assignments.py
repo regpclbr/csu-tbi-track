@@ -165,7 +165,7 @@ def test_the_assignment_itself_is_in_history(activity, director, head) -> None:
 
 def test_a_submission_review_through_an_assignment(submit, staff, director, head) -> None:
     submission = submit(staff)
-    assignment = assignments.assign_work(director, K.SUBMISSION_REVIEW, head, submission=submission, due_date=NOW.date())
+    assignment = assignments.assign_work(director, K.SUBMISSION_REVIEW, head, submission=submission)  # no due date: never stale
     assert services.visible_submissions(head).filter(pk=submission.pk).exists()
     approved = services.approve_submission(head, submission)
     event = approved.events.get(action=SubmissionEvent.Action.APPROVED)

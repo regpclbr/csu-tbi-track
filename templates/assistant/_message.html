@@ -37,15 +37,15 @@ card) or the files found ("Files", grouped by activity). Open = the document pag
                       {% for number in card.numbers %}<span class="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-bold text-primary" aria-label="Source {{ number }}">{{ number }}</span>{% endfor %}
                       <div class="min-w-0 flex-1">
                         <p class="truncate font-semibold text-ink" title="{{ card.title }}">{{ card.title }}</p>
-                        <p class="truncate text-slate-700">{{ card.type }} · <a href="{{ card.activity_url }}" class="text-link hover:underline">{{ card.activity }}</a></p>
+                        <p class="truncate text-slate-700">{{ card.type }}{% if card.activity %} · <a href="{{ card.activity_url }}" class="text-link hover:underline">{{ card.activity }}</a>{% endif %}</p>
                         <p class="mt-1 flex flex-wrap items-center gap-2">
                           {% include "components/badge.html" with text=card.badge.label tone=card.badge.tone %}
-                          <span class="text-muted">Uploaded {{ card.uploaded_on|date:"M j, Y" }}</span>
+                          <span class="text-muted">{{ card.date_label|default:"Uploaded" }} {{ card.uploaded_on|date:"M j, Y" }}</span>
                         </p>
                       </div>
                     </div>
                     <div class="mt-2 flex gap-2">
-                      <a href="{{ card.open_url }}" class="btn btn-secondary btn-sm" aria-label="Open {{ card.title }}">{% include "components/icon.html" with name="external-link" class="size-3.5" %}Open</a>
+                      {% if card.open_url %}<a href="{{ card.open_url }}" class="btn btn-secondary btn-sm" aria-label="Open {{ card.title }}">{% include "components/icon.html" with name="external-link" class="size-3.5" %}Open</a>{% endif %}
                       <a href="{{ card.download_url }}" class="btn btn-ghost btn-sm" aria-label="Download {{ card.title }}">{% include "components/icon.html" with name="download" class="size-3.5" %}Download</a>
                     </div>
                   {% endif %}

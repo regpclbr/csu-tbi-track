@@ -1,0 +1,6 @@
+{# A paper sheet being read (ASSUMPTIONS 443): polls; the page reloads when the rows are there. #}
+<div id="sheet-progress" class="flex items-center gap-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700" role="status"
+     {% if sheet.state == "reading" %}hx-get="{% url 'reports:paper_sheet_status' sheet.pk %}" hx-trigger="every {{ poll_seconds }}s" hx-swap="outerHTML"{% endif %}>
+  {% include "components/icon.html" with name="loader-circle" class="size-5 motion-safe:animate-spin" %}
+  <span>The AI is reading the sheet. This page updates by itself.</span>
+</div>

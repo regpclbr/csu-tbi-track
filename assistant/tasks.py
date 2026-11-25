@@ -15,12 +15,21 @@ INDEX_PENDING_TASK = "assistant.tasks.run_index_pending"
 
 
 def run_index_document(document_id: int) -> dict:
-    """Queued when a document is approved."""
+    """Older queued tasks (before ASSUMPTIONS 438): index one document."""
     try:
         return indexing.index_document(document_id)
     except Exception as error:  # last safety net: log the kind of error, never the text
         logger.error("Indexing document %s crashed: %s.", document_id, type(error).__name__)
         return {"document_id": document_id, "status": indexing.FAILED, "chunks": 0, "reason": type(error).__name__}
+
+
+def run_index_source(kind: str, pk: int, mode: str = indexing.MISSING) -> dict:
+    """Queued when a file is added, replaced, approved, renamed or ticked (ASSUMPTIONS 438)."""
+    try:
+        return indexing.index_source(kind, pk, mode=mode)
+    except Exception as error:  # last safety net: log the kind of error, never the text
+        logger.error("Indexing %s %s crashed: %s.", kind, pk, type(error).__name__)
+        return {"kind": kind, "id": pk, "status": indexing.FAILED, "chunks": 0, "reason": type(error).__name__}
 
 
 def run_generate_chat_title(chat_id: int) -> str:
@@ -36,7 +45,7 @@ def run_generate_chat_title(chat_id: int) -> str:
 
 
 def run_index_pending() -> dict:
-    """Daily (7:30 AM Manila): retry every approved document that is not indexed yet."""
+    """Daily (7:30 AM Manila): index every file that is not indexed yet (no OCR, ASSUMPTIONS 438)."""
     try:
         return indexing.index_pending_documents()
     except Exception as error:

@@ -2553,3 +2553,233 @@ REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and
        `registrations/tests/test_form_history.py`; opt-in Chromium `approvals/tests/test_approvals_browser.py` (the
        inbox and the Assign dialog at 1366 and 390 px; the Approvals tabs now wrap on phones). The certificate migration
        tests now re-apply every app after going back (going back also unapplies approvals / notifications).
+
+## NAVIGATU UAT: the AI Assistant reads every file, new record tools, a bigger chat box, cancelled registrations (2026-11-25)
+
+NAVIGATU UAT: "they want their work to be easier". Built in two parts (owner decision): Part 1 = the AI Assistant
+(items 438-439) and the cancelled-registrations rule (440); Part 2 = the report generator and the Activity Report /
+Evaluation Summary (items 441 onwards).
+
+438. **The AI Assistant reads every file in the system, with its state on the source card** (owner decisions
+     2026-11-25; **amends** business rule "Only Approved documents get embeddings", items 151, 165, 382, 432's indexing
+     note and 437's "chunks removed" on unapprove). *(Open question, CLAUDE.md: Privacy, Gemini.)*
+     - **What is indexed** (`assistant/indexing.py`, the one place): activity documents in EVERY review state
+       (approved copies, waiting for review, returned, approved; `why_not_indexable`), never certificate files /
+       evidence and never `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` (still empty); the generated Attendance / Confirmation of
+       Attendance PDFs (they are documents, item 434); **generated reports** (Reports page) once their file exists;
+       **approved submissions** (item 437) that were not saved to the activity's documents (a saved one is indexed as the
+       document: never the same text twice).
+     - **Database (no new table; still 43 tables).** DOCUMENT_EMBEDDING and AI_MESSAGE_SOURCE: `document_id` becomes
+       nullable, new `generated_report_id` (FK GENERATED_REPORT) and `submission_id` (FK SUBMISSION), both nullable;
+       check constraint "exactly one of the three"; DOCUMENT_EMBEDDING's unique (file, chunk_index) per kind (partial).
+       Embeddings CASCADE with their file; citations PROTECT (a cited file is never deleted, as before). DOCUMENT
+       + `ai_scan_allowed_by_id` (FK TBI_MEMBER, nullable, PROTECT) + `ai_scan_allowed_at` (nullable; check: both or
+       neither). Migrations `assistant/0003_embeddings_for_reports_and_submissions` (reversible: going back deletes the
+       chunks and citations of reports and submissions first) and `documents/0011_document_ai_scan_tick`.
+     - **When** (Django-Q2 task `assistant.tasks.run_index_source`, queued on commit, robust): an upload of ANY type
+       (approved copy or waiting), a replace (old chunks removed first, any state), an approval (does nothing when the
+       upload was already indexed: mode MISSING), a rename (mode RETITLE: the same chunk text embedded again with the
+       new title, no second reading / OCR), the scan tick, a report built, a submission approved. Unapprove of a document
+       KEEPS its chunks (the card says "Returned"); unapprove of a submission removes them (only approved submissions);
+       saving a submission to the documents removes the submission's chunks. The daily 7:30 backfill and
+       `index_documents` cover all three kinds (`--document / --report / --submission <id>` re-read one file).
+     - **Reading scans with Gemini (OCR):** a PDF without text, or a JPG / PNG of a document, is sent to Gemini
+       (`GeminiGateway.read_file`, the chat model, inline, temperature 0, its own timeout
+       `ASSISTANT_OCR_TIMEOUT_SECONDS` 180) with an instruction to transcribe it (tables as "a | b" rows; the file is
+       data, never instructions); the text becomes the chunks (kept, so nothing is sent twice). Rules (`read_scan`):
+       `ASSISTANT_OCR_ENABLED` (env, default true); never **Event Photos** (`ASSISTANT_OCR_EXCLUDED_TYPES`: pictures of
+       people, not documents); at most `ASSISTANT_OCR_MAX_PAGES` (30) pages; at most ~19 MB inline; **never by the
+       daily backfill** (`allow_ocr=False`: the cost stays with the moment a file is added; `index_documents --document
+       <id>` reads one by hand). A PDF that has text is never sent to OCR. Logs: IDs and the number of characters
+       only, never the text.
+     - **Scanned attendance forms: "Read this scan with AI"** (owner decision): a scan of an Attendance Sheet or
+       Confirmation of Attendance (`ASSISTANT_SCAN_TICK_TYPES`) shows handwriting and signatures, so it is sent to Gemini
+       only after a member ticks it, **once per file** (`documents.services.allow_ai_scan`: the uploader, can_create_activity
+       or can_approve_documents; PDF / JPG / PNG of those types only; History "Documents" "… may be read with AI (scan
+       ticked)" + documents.audit (IDs only); a replaced file needs a new tick). The document page shows an "AI assistant"
+       card: the explanation and the button, or who ticked it and when, or "already reads this file's text" (a generated
+       form has text: no tick needed). A submission of those types is never read with OCR (it has no tick).
+     - **Never sent as images:** participant signature images and evaluation photos are not DOCUMENT rows (items 434,
+       435), so the indexer never sees them (it knows only documents, reports and submissions); photos appear only in
+       reports (Part 2, `photos_for_reports()`).
+     - **Cost and limits of OCR (as of 2026-11-25; check Google's price list before relying on it):** each PDF page or
+       image costs about 260 input tokens at normal resolution and up to about 1,100 at high resolution (handwriting),
+       plus the text read as output (about 300-800 tokens per page). At Flash-Lite-class paid prices (about US$0.10 per
+       million input tokens and US$0.40 per million output tokens) a page costs well under ₱0.05, a 20-page scan about
+       ₱1; the embeddings of the text are extra but tiny. Free tier: no money, but per-minute and per-day request caps
+       (a failure is logged and retried by hand) and **Google may use free-tier data to improve its products: a paid API
+       key is required before real participant data is read** (open question, CLAUDE.md). Handwriting is not always read
+       correctly; the answers say what the files say, and staff check the source.
+     - **Answers:** the tool `search_approved_documents` is now `search_documents`; each excerpt carries `file`, `kind`
+       (activity document / generated report / submission to the Director), `type`, `activity`, `state` and `dated`; the
+       instruction tells Gemini to say when a file is still waiting for review or returned and to prefer approved and
+       recent files. "Not found" is now "I couldn't find the answer in the system's files." With an activity chosen, only
+       its documents and submissions are searched (reports cover periods).
+     - **Who sees what:** documents and generated reports are open to any staff member (as their downloads are);
+       submission excerpts only for members who may open that submission (`approvals.services.visible_submissions`:
+       submitter, reviewers, an assignee), so an answer never shows a file the member would get a 404 for.
+     - **Source cards** (item 382): the state badge for every kind ("Approved copy", "Approved", "Waiting for review",
+       "Returned", "Generated report", "Approved submission" / "Returned submission"); reports: Download only
+       (`reports:download`); submissions: Open = `approvals:detail`, Download = `approvals:file` (their own 404 rule).
+       The answer badge "From approved documents" is now "From the files".
+     - Tests: `assistant/tests/test_indexing_all_files.py` (every state, queueing, MISSING / RETITLE, OCR of images and
+       scanned PDFs with the fake only, never a PDF with text, Event Photos never, the tick before any OCR of an
+       attendance scan, the backfill never reads scans, page limit, OCR off, failures keep old chunks, no key, the tick's
+       rules / page / History / constraint, reports, submissions (approved only, unapprove, saved, who may see), cards for
+       every kind, exactly one file per source); updated `test_indexing.py`, `test_answering.py`, `test_find_files.py`,
+       `documents/tests/test_unapprove_and_rename.py` (chunks kept).
+
+439. **New record tools; the chat box is bigger** (NAVIGATU UAT; owner decisions 2026-11-25). **The chat box layout below is replaced by item 441** (compact one-line bar, Send on the right, filter in the header).
+     - **Record tools** (`assistant/tools.py`, counts only, never names; the existing ones are unchanged):
+       `get_attendance_by_day` (`registrations.attendance.checkins_by_day`: per day attended, by QR, by staff; attended at
+       least one day), `get_registration_counts` (`reports.metrics.activity_registration_counts`, item 440's rule:
+       registered, cancelled, walk-ins, attended, rate; the Overview's Will attend / Will not attend; max slots and slots
+       left), `get_participant_mix` (`metrics.participant_mix` + the guideline check), `get_evaluation_results`
+       (`metrics.activity_evaluation_summary`, numbers only: per rating question the answers, mean and counts 5..1,
+       response rate; never the written answers or comments) and `get_pending_approvals` (the asking member's own
+       `approvals.inbox.inbox` + open `assignments.assigned_to_me`: titles, kinds, dates).
+     - **Routing** (`assistant/routing.py`): new path `participation` (attendance / registered / walk-ins / cancelled /
+       mix / guideline / evaluation / ratings / response rate words, WITHOUT a file word, a document type or a
+       "says / according to" word, and either an activity named by its title or neither an activity word nor a period)
+       -> Gemini with find_activities + the four participation tools. Checked after the budget rule and before the
+       content rule ("the evaluation results of X" is answered from the records; "What does the evaluation form say?"
+       still searches the files). The document-status path also offers `get_pending_approvals` ("Which submissions are
+       waiting for my approval?"). Phrasing tests in `assistant/tests/test_record_tools.py`.
+     - **The chat box** (owner feedback "too small"): the shared `components/chat_box.html` + `static/js/chat_box.js`
+       (loaded in `base.html` before Alpine; a page mixes `tbiChatBox.state()` into its x-data and provides `busy`;
+       Part 2's generator uses the same component). It starts 4 lines tall (`.chat-box-input`, min-height 6.5rem),
+       grows with the text up to 40% of the screen height (`max-height: 40dvh`) and then scrolls inside; full width of
+       the conversation column with the activity filter and Send on one row below it. Keys (owner decision): Enter sends,
+       Shift + Enter is a new line, **Ctrl / Cmd + Enter also sends**; on phones (touch, no hover) Enter is a new line and
+       the Send button sends (44 px tall). The 2,000-character limit stays; a counter appears from 1,800. 16 px text on
+       phones (no zoom on focus). Behaviour only: the server still checks the length and refuses an empty question.
+     - **The page fits the screen on phones too:** below 1024 px the panel is the screen's height (`max-lg:h-dvh`, so it
+       shrinks with an on-screen keyboard that resizes the page) and only the messages scroll; My chats starts closed on
+       phones (a saved choice wins) and opens above the chat (at most 40% of the height). 1024 px and up: item 380 as
+       before.
+     - Tests: `assistant/tests/test_record_tools.py` (every tool's numbers with the cancelled rule, no names, own inbox,
+       routing and offered tools), `test_chat_features.py` (help text, keys, counter, script rules, phone layout classes),
+       `test_pages.py`; opt-in Chromium `assistant/tests/test_chat_browser.py` at 1366 and 390 px (starts about 4 lines,
+       full width, one row below, grows to at most 40% then scrolls inside, nothing hidden, no sideways or page scroll,
+       counter near the limit, Ctrl + Enter sends, Enter is a new line on a phone, Send 44 px, My chats closed on a phone).
+
+440. **Cancelled registrations do not count as registered in the reports** (owner decision 2026-11-25; **amends item
+     434's** "the reports' registered numbers still count every registration").
+     - **The rule** (`reports.metrics.COUNTED` / `NOT_COUNTED` / `counted_registrations()`, the one place): registered =
+       not cancelled, OR attended at least one day (a cancelled person who came anyway counts as registered AND
+       attended). Walk-ins count. "Cancelled" = cancelled and never attended.
+     - **Where:** every report and dashboard number (`period_summary` + `cancelled`, `activity_rows` + `cancelled`,
+       `by_type`, `by_category`, `per_month`, `participants_by_category`, the participant mix, `activity_evaluation_results`
+       / `activity_evaluation_summary` + `cancelled`, new `activity_registration_counts`), so the attendance rate and the
+       mix use it too; Needs attention (`activities.attention`, "No one registered" when only cancellations). The report
+       summary and the evaluation summary show "Cancelled ("Will not attend", not counted …)" as their own row.
+     - **Unchanged:** the slot rule (`activities.services.registered_count`, item 434: every cancellation frees its slot,
+       also one who came later), the Overview's Will attend / Will not attend (what people signified), certificates.
+     - Tests: `reports/tests/test_cancelled_registrations.py`; `assistant/tests/test_record_tools.py`.
+
+## NAVIGATU UAT, Part 2: the report generator, the Activity Report and the Evaluation Summary (2026-11-26)
+
+441. **The AI Assistant's layout, corrected** (owner feedback 2026-11-26: item 439's request was misdescribed; the
+     CONVERSATION was too small, not the typing box). **Replaces item 439's "4 lines / 40%" and its filter row.**
+     - The conversation (messages and suggestion chips) fills everything between the chat header and the typing bar:
+       at least about 70% of the chat panel (measured: 76% at 1366 × 768, 73% at 390 × 844).
+     - The shared `components/chat_box.html` is now a compact bar: [the box][Send]. The box starts ONE line tall
+       (44 px, `.chat-box-input`, min-height 2.75rem), grows with the text up to about 5 lines (`max-height:
+       calc(5lh + …)`), then scrolls inside; an empty box is always one line (`static/js/chat_box.js`: a wrapped
+       placeholder never counts). Send is an icon button on the RIGHT, on the same row (`.chat-send`, 44 × 44 px). The
+       counter shows inside the bar only from 1,800 of 2,000. The help text is for screen readers only.
+     - The activity filter moved to the chat header (a small pill select next to the title, `form="ask-form"`, sent with
+       the question); "Stop waiting" moved next to the typing indicator. Keys unchanged: Enter sends, Shift + Enter new
+       line, Ctrl / Cmd + Enter sends, phones: Enter = new line and Send sends. Only the messages scroll.
+     - The report generator's draft page uses the same bar.
+     - Tests: `assistant/tests/test_chat_features.py`; opt-in Chromium `assistant/tests/test_chat_browser.py`
+       (`test_the_compact_chat_bar_at_1366_and_390`: conversation ≥ ~70% of the panel, one line at the start, growth
+       stops at ~5 lines then scrolls inside, Send on the right and 44 px, the filter in the header, no sideways or page
+       scroll, counter near the limit only, Ctrl + Enter sends, Enter is a new line on a phone, My chats closed on a
+       phone).
+
+442. **The report generator** (NAVIGATU UAT: "make their work easier"; owner decisions 2026-11-25). A page
+     `/reports/generator/` (sidebar "Report generator"), open ANYTIME (never locked behind documents), like a chat:
+     - **Who:** can_create_activity, or an open "Prepare a report" assignment (item 437, `require_permission_for`). A
+       draft is its maker's only (404 for anyone else); the Director sees what is submitted to them.
+     - **A draft:** what to make (Activity Report, Evaluation Summary, or "Other" free form; Prompt 7 adds the
+       Accomplishment Reports), one activity (always for the Activity Report) OR a period (both dates), optional notes,
+       a title and the office line / implementing unit / project leader, and files: "for the AI to read" (program,
+       speaker list, notes; the document upload checks, by content) or "photos for the report" (JPG / PNG, NEVER sent to
+       the AI). At most `REPORT_GENERATOR_MAX_ATTACHMENTS` (10). Stored as `report-drafts/<year>/draft-<id>-<random>.<ext>`;
+       a failure stores nothing; downloads only through `reports:generator_file` (the maker, attachment, no-store).
+     - **Versions:** a Django-Q2 task (`reports.tasks.run_generate_draft`) writes version 1 (progress shown, the page
+       polls every 3 s and reloads when it is done); each follow-up message writes the next version from the previous one
+       (one at a time); the member may edit a section by hand (a new version, "Edited by the member"); "Try again" after a
+       failure. Every version is kept (REPORT_DRAFT_VERSION), with the conversation (REPORT_CHAT_MESSAGE).
+     - **The numbers rule (`reports/generator.py`):** every number, date, name list and amount is a FACT collected from
+       the database and the generated forms when the version is written (`reports/draft_facts.py`, stored on the version:
+       a version always prints what it showed). The AI writes only the narrative sections and puts figures in as
+       `[[placeholders]]` that our code fills. A number the AI wrote itself that is not among the facts, or an unknown
+       placeholder, is listed "Not from the system" on its section; export, save and submit are refused until the
+       member edits that section (their own text is theirs) or asks for a new version.
+     - **What the AI reads:** the activity's / period's files through their indexed text (documents in any review state,
+       approved submissions; item 438), the draft's document attachments (text, or OCR for a scan / an image: the member
+       chose "for the AI to read"), the notes, the resource persons and topics, objectives, counts, the budget lines'
+       particulars and the mix. NOT the participants' names (not needed for the narrative), never photos, never signature
+       images. For the Evaluation Summary also the written answers and comments, without names.
+     - **Without the Gemini key:** a version is still made: every fact, table, photo and the annex; the narrative sections
+       are empty for the member to write; exports, save and submit work.
+     - **"AI-generated draft – check before use"** on every AI-written section in the editor only, never in an export.
+     - **Exports** (`reports/draft_export.py`): DOCX (python-docx, editable; the annex name lists as tables, no signature
+       images) and PDF (WeasyPrint, A4 portrait, `reports/templates/reports/draft_pdf.html`). **Save to the activity's
+       documents:** the PDF through `upload_document` as an approved copy (item 432) of the Activity Report type (other
+       kinds: "Other"), once per version, only for one activity. **Submit to the Director:** item 437's
+       `submit_generated` (PDF, stampable), once per version.
+     - **Database (43 -> 49 tables, migration `reports/0002_report_generator`, schema only):** REPORT_DRAFT,
+       REPORT_DRAFT_VERSION, REPORT_CHAT_MESSAGE, REPORT_ATTACHMENT (+ PAPER_SHEET_READ, PAPER_SHEET_ROW, item 443).
+       Drafts CASCADE with their activity (item 389's dialog and ACTIVITY_DELETION.counts now list `report_drafts` and
+       `paper_sheets`; files removed after the commit by a `post_delete` receiver, `ReportsConfig.ready`).
+     - Tests: `reports/tests/test_generator.py`; opt-in Chromium `reports/tests/test_generator_browser.py` (1366 and 390
+       px: the compact bar, the conversation most of its card, the Chat / Draft switch on a phone, nothing sideways).
+
+443. **Paper attendance sheets read by the AI** (owner decisions 2026-11-25). *(Open question, CLAUDE.md: DTI as MSMEs.)*
+     - Staff choose a scanned Attendance / Confirmation of Attendance (an activity document of those types, PDF / JPG /
+       PNG, from its document page; or a scan attached to a draft about one activity) and click "Read the rows with AI".
+       That click is the per-file consent of item 438 (for a document it also sets its "Read this scan with AI" tick). A
+       task (`run_read_paper_sheet`) asks Gemini for the rows (name, designation, office) as JSON; our code maps each
+       office to a category by `settings.PAPER_SHEET_CATEGORY_RULES` (whole words, case ignored, first rule wins: CSU /
+       faculty words -> Faculty, incubatee / startup -> Incubatees, DTI, partner agencies, enterprises -> MSMEs, pending
+       NAVIGATU).
+     - Staff check every row on `/reports/paper-sheets/<id>/` (name, designation, office, category, "Not a participant",
+       "Add a row"; who and when per corrected row), see the counts and percentages (`metrics.paper_sheet_mix`: the mix
+       groups and NAVIGATU's guideline), then **Confirm** (refused while an included row has no name or category). A
+       confirmed sheet is locked until "Reopen". Only CONFIRMED sheets are used, and only in the generated reports
+       ("From the paper sheet": rows and mix in the Activity Report's annex); never added to REGISTRATION, never in the
+       dashboard or the period reports. Without the key or when nothing is read: the rows can be typed by hand.
+     - Database: PAPER_SHEET_READ (exactly one of document / attachment; confirmed with who and when) and PAPER_SHEET_ROW.
+     - Tests: `reports/tests/test_paper_sheets.py`.
+
+444. **The Activity Report (= Narrative Report), per activity, following NAVIGATU's sample.**
+     - Placeholder letterhead (`attendance_forms.PLACEHOLDER_HEADER`, until NAVIGATU gives the files), "ACTIVITY REPORT",
+       the optional office line, the title; Period Covered (the activity's dates), Venue, Implementing Unit
+       (`REPORT_IMPLEMENTING_UNIT` or typed), Project Leader (the activity's creator or typed).
+     - A. Highlights of the Activity (AI) with "Major Accomplishments" bullets (AI); B. Problems/Constraints Met (AI);
+       C. Running Budget = `activities.budget.budget_summary` (Particulars, Quantity, Unit Cost, Total Amount, Total, the
+       fund source) and "Actual spending is reconciled with the liquidation."; D. Recommendation(s) (AI).
+     - "Prepared by:" the member generating it with their POSITION (item 429); "Noted:" ALWAYS the TBI Director: the
+       active signatory linked to an active Director's account (item 437; `Role.DIRECTOR` only says who), its name and
+       position; a blank line to sign when none is linked.
+     - Photo Documentation (6 a page): Event Photos documents (JPG / PNG), the draft's photos and the participants'
+       photos from `photos_for_reports()` ONLY (ticked "Use in reports", item 435; an unticked one is never printed, also
+       if it was unticked after the version was written); shrunk by Pillow, metadata dropped.
+     - Annex: the participant mix (chart + table, the guideline), confirmed paper sheets, then (PDF) the activity's newest
+       Attendance Sheet and Confirmation of Attendance documents appended (pypdf; a JPG / PNG scan as an image page),
+       or the generated forms rendered in memory when there is none (never saved). DOCX: the same name lists as tables.
+     - Footer: form code "F-COR-001 Rev. 3 10/06/2023" (`ACTIVITY_REPORT_FORM_CODE`).
+     - Tests: `reports/tests/test_generator.py`; real WeasyPrint `reports/tests/test_report_pdf_layout.py`
+       (`test_no_report_generator_pdf_is_cut_off`: nothing past the page or out of a cell; number headers may wrap).
+
+445. **The Evaluation Summary Report, per activity and per period.** Numbers from `reports.metrics` only: registered (item
+     440), cancelled, attended, evaluations, response rate; per rating question the answers, the mean and how many gave
+     each rating 5..1 with shares (per activity `activity_evaluation_summary`; per period the new
+     `period_rating_frequency` and `period_text_answers`); per period also the activities with their response rates and
+     averages. No interpretation scale (still pending). The AI writes "Summary", "What the participants wrote" (from the
+     written answers and comments WITHOUT names, sorted A-Z) and "Recommendations". The photos from
+     `photos_for_reports()` as Photo Documentation. Same exports, save (one activity only) and submit.
+     - Tests: `reports/tests/test_generator.py`, `reports/tests/test_period_evaluation_metrics.py`.

@@ -20,6 +20,8 @@ class FakeGemini(GeminiGateway):
         self.replies: list[ModelReply | Callable[..., ModelReply]] = []
         self.embed_calls: list[dict] = []
         self.generate_calls: list[dict] = []
+        self.read_calls: list[dict] = []  # OCR calls (ASSUMPTIONS 438): size and type only
+        self.ocr_text: str | Exception = ""  # what read_file returns (or raises)
         self.models: list[ModelInfo] = [
             ModelInfo("gemini-embedding-001", ("embedContent", "countTextTokens")),
             ModelInfo("gemini-3.5-flash-lite", ("generateContent", "countTokens")),
@@ -55,6 +57,13 @@ class FakeGemini(GeminiGateway):
 
     def list_models(self) -> list[ModelInfo]:
         return list(self.models)
+
+    def read_file(self, data: bytes, mime_type: str, *, instruction: str, model: str | None = None) -> str:
+        """OCR (ASSUMPTIONS 438): returns `ocr_text` (default ""), recording only the size and the type."""
+        self.read_calls.append({"bytes": len(data), "mime_type": mime_type, "model": model or settings.GEMINI_CHAT_MODEL})
+        if isinstance(self.ocr_text, Exception):
+            raise self.ocr_text
+        return self.ocr_text
 
     # -- helpers for scripting --
 

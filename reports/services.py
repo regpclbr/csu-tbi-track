@@ -554,6 +554,12 @@ def file_name_for(report: GeneratedReport) -> str:
     return f"reports/{year}/report-{report.pk}-{report.report_type}.{EXTENSIONS[report.format]}"
 
 
+def _queue_indexing(report_id: int) -> None:
+    from assistant.indexing import REPORT, queue_source_indexing
+
+    queue_source_indexing(REPORT, report_id)
+
+
 def build_report(report_id: int, now: datetime | None = None) -> str:
     """Compute, render and save the report file. Returns "generated" or "already generated".
 
@@ -580,6 +586,7 @@ def build_report(report_id: int, now: datetime | None = None) -> str:
             locked.file_path.name = name
             locked.ai_prompt = written.prompt_record if written else None
             locked.save(update_fields=["file_path", "ai_prompt"])
+            transaction.on_commit(lambda: _queue_indexing(report_id), robust=True)  # the assistant reads it (438)
     except BaseException:
         if saved:
             storage.delete(name)

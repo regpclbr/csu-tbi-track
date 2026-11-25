@@ -1,6 +1,6 @@
 """Dashboard API: access, scopes, filters, query limit, and the same numbers as a report."""
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from django.db import connection
@@ -107,7 +107,8 @@ def test_now_cards_ignore_the_range_but_period_cards_do_not(view_only, login, so
         assert this_year[key]["value"] == other_year[key]["value"], key
 
 
-def test_now_cards_respect_the_activity_type(view_only, login, some_data) -> None:
+def test_now_cards_respect_the_activity_type(view_only, login, some_data, clock) -> None:
+    clock(datetime(2026, 10, 23, 9, 0))  # the reports' test day: the Scheduled Seminar (Nov 25) is still upcoming
     some_data()
     seminar = ActivityType.objects.get(name="Seminar")
     data = cards(login(view_only).get(URL, {"activity_type": seminar.pk}).json())

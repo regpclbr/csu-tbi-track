@@ -437,13 +437,34 @@ def test_delete_and_rename_need_post_and_a_login(director, login) -> None:
 
 
 def test_enter_sends_and_the_help_text_says_so(director, login) -> None:
+    """ASSUMPTIONS 374, 439, 441: the shared compact chat bar (components/chat_box.html + static/js/chat_box.js):
+    [box][Send] on one row, the box one line tall; Enter sends, Shift + Enter is a new line, Ctrl + Enter also sends,
+    phones send with the button; a counter near the limit; the activity filter is in the chat header."""
     html = login(director).get(reverse("assistant:chat")).content.decode()
-    assert "Enter to send, Shift + Enter for a new line. At most 2000 characters." in html
-    assert "Ctrl + Enter" not in html and "keydown.enter.ctrl" not in html
-    assert '@keydown.enter="enterKey($event)"' in html and "if (event.shiftKey || event.isComposing" in html
-    assert "if (!this.busy &amp;&amp; this.hasText) event.target.form.requestSubmit()" in html or \
-           "if (!this.busy && this.hasText) event.target.form.requestSubmit()" in html
+    assert "Enter sends, Shift + Enter adds a new line, Ctrl + Enter also sends. On a phone, use the Send button." in html
+    assert "At most 2000 characters." in html
+    assert '@keydown.enter="enterKey($event)"' in html and "...tbiChatBox.state()" in html
+    assert 'x-show="length >= 2000 - 200"' in html and 'maxlength="2000"' in html and 'rows="1"' in html
     assert ':disabled="busy || !hasText"' in html and 'hx-sync="this:drop"' in html
+    assert "js/chat_box.js" in html
+    bar = html[html.index('<div class="chat-bar">'):]
+    assert bar.index('id="ask-question"') < bar.index('id="ask-send"') < bar.index("</form>")  # Send right of the box
+    title = html.index('<h2 id="chat-title"')
+    header = html[title:html.index("</header>", title)]
+    assert 'id="ask-activity" name="activity" form="ask-form"' in header  # the filter left the typing bar
+
+
+def test_the_chat_box_script_rules() -> None:
+    """The keys live in one small script (behaviour only, never a rule)."""
+    from pathlib import Path
+
+    from django.conf import settings as django_settings
+
+    script = (Path(django_settings.BASE_DIR) / "static" / "js" / "chat_box.js").read_text(encoding="utf-8")
+    assert "if (event.ctrlKey || event.metaKey) return true;" in script
+    assert "if (event.shiftKey || event.altKey) return false;" in script
+    assert "return !isTouch();" in script  # phones: Enter is a new line
+    assert 'el.style.overflowY = wanted > max ? "auto" : "hidden";' in script
 
 
 def test_the_chat_follows_new_messages_and_offers_jump_to_latest(director, login) -> None:
@@ -481,7 +502,8 @@ def test_only_the_assistant_page_fits_the_window(director, login) -> None:
     html = client.get(reverse("assistant:chat")).content.decode()
     panel = html[html.index('<div id="content-panel"'):].split(">", 1)[0]
     assert "fit-screen:overflow-hidden" in panel and "short-screen:overflow-y-auto" in panel and "lg:overflow-y-auto" not in panel
-    assert 'class="px-4 pt-2 pb-8 sm:px-6 xl:px-8 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1' in html  # spacing scale (411)
+    assert "max-lg:h-dvh max-lg:flex-col max-lg:overflow-hidden" in panel  # phones too (ASSUMPTIONS 439)
+    assert 'class="px-4 pt-2 pb-8 sm:px-6 xl:px-8 max-lg:flex max-lg:min-h-0 max-lg:flex-1 max-lg:flex-col max-lg:pb-4 fit-screen:flex fit-screen:min-h-0 fit-screen:flex-1' in html  # spacing scale (411)
     assert "fit-screen:flex-1" in html and "lg:h-[calc(100vh" not in html
     # Scroll boxes holding sr-only text must be positioned, or that text stretches the page (CLAUDE.md).
     assert 'id="chat-scroll" x-ref="scroll" class="relative ' in html and 'id="chat-list" class="relative ' in html

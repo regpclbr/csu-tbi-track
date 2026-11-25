@@ -42,6 +42,9 @@ KEY_REJECTED = "The Gemini API key was rejected. Check GEMINI_API_KEY in .env."
 MODEL_UNAVAILABLE = "The AI model {model} is not available for this API key. Run: python manage.py check_gemini"
 TOO_SLOW = "The AI assistant took too long to answer (more than {seconds} seconds). Please try again in a moment."
 DETAIL_MAX_LENGTH = 300
+# Gemini takes a file inline up to about 20 MB per request; uploads are at most DOCUMENT_MAX_UPLOAD_MB (10).
+OCR_MAX_INLINE_BYTES = 19 * 1024 * 1024
+OCR_TOO_LARGE = "The file is too large to be read by the AI service."
 
 
 # --- Time limit for one question -------------------------------------------------------------------
@@ -175,6 +178,12 @@ class GeminiGateway(ABC):
     def list_models(self) -> list[ModelInfo]:
         """The models this API key can use, with their supported actions."""
 
+    @abstractmethod
+    def read_file(self, data: bytes, mime_type: str, *, instruction: str, model: str | None = None) -> str:
+        """OCR (ASSUMPTIONS 438): the text Gemini reads in a scanned PDF or an image of a document. `data` goes inline
+        (at most OCR_MAX_INLINE_BYTES). Returns plain text, "" when there is none. `model` defaults to
+        settings.GEMINI_CHAT_MODEL. Never logs the file or the text."""
+
 
 class GoogleGemini(GeminiGateway):
     """The real gateway. Batches embeddings and retries rate limits / server errors with backoff."""
@@ -301,6 +310,28 @@ class GoogleGemini(GeminiGateway):
             raw=content,
         )
 
+
+    # -- reading scans (OCR, ASSUMPTIONS 438) --
+
+    def read_file(self, data: bytes, mime_type: str, *, instruction: str, model: str | None = None) -> str:
+        from google.genai import types
+
+        if len(data) > OCR_MAX_INLINE_BYTES:
+            raise AssistantUnavailable(OCR_TOO_LARGE, "rejected")
+        model = model or settings.GEMINI_CHAT_MODEL
+        config = types.GenerateContentConfig(
+            temperature=0.0,
+            # A scan of many pages takes longer than a chat round: its own timeout (milliseconds).
+            http_options=types.HttpOptions(timeout=int(settings.ASSISTANT_OCR_TIMEOUT_SECONDS * 1000)),
+        )
+        contents = [types.Content(role="user", parts=[types.Part.from_bytes(data=data, mime_type=mime_type),
+                                                     types.Part(text=instruction)])]
+        response = self._call("reading a scan", model, self.client.models.generate_content, model=model,
+                              contents=contents, config=config)
+        candidates = response.candidates or []
+        content = candidates[0].content if candidates else None
+        parts = list(content.parts or []) if content else []
+        return "".join(part.text for part in parts if part.text and not part.thought).strip()
 
     # -- models --
 

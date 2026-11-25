@@ -130,6 +130,12 @@ class Document(models.Model):
     file_path = models.FileField(upload_to=document_upload_to, max_length=255)
     file_extension = models.CharField(max_length=10)
     file_size_kb = models.PositiveIntegerField()
+    # "Read this scan with AI" (ASSUMPTIONS 438): a scanned Attendance Sheet / Confirmation of Attendance (handwriting
+    # and signatures) is sent to Gemini to be read only after a member ticks it, once per file. Cleared when the file
+    # is replaced (a new file needs a new tick).
+    ai_scan_allowed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                           related_name="+")
+    ai_scan_allowed_at = models.DateTimeField(null=True, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -138,6 +144,13 @@ class Document(models.Model):
     class Meta:
         db_table = "document"
         ordering = ["-uploaded_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(ai_scan_allowed_by__isnull=True, ai_scan_allowed_at__isnull=True)
+                | models.Q(ai_scan_allowed_by__isnull=False, ai_scan_allowed_at__isnull=False),
+                name="ai_scan_allowed_by_and_at_together",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.title

@@ -217,6 +217,7 @@ def _summary(filters: ReportFilters, summary: dict) -> Section:
     rows = [
         ["Activities conducted", s["activities_conducted"]],
         ["Registered participants", s["registered"]],
+        ["Cancelled (\u201cWill not attend\u201d, not counted as registered)", s["cancelled"]],
         ["Attended", s["attended"]],
         ["Attendance rate (attended / registered)", Cell(s["attendance_rate"], PERCENT)],
         ["Unique attendees (by email)", s["unique_attendees"]],
@@ -508,6 +509,7 @@ def build_evaluation_summary(activity, data: dict, *, generated_by: str, generat
     """The evaluation summary of ONE activity from metrics.activity_evaluation_summary (no names anywhere)."""
     responses = Section("responses", "Responses", tables=[Table("Responses vs attendees", [Column("Measure"), Column("Value", INT)], [
         ["Registered", data["registered"]],
+        ["Cancelled (\u201cWill not attend\u201d, not counted)", data.get("cancelled", 0)],
         ["Attended", data["attended"]],
         ["Evaluations submitted", data["evaluations"]],
         ["Response rate (evaluations / attended)", Cell(data["evaluation_response_rate"], PERCENT)],

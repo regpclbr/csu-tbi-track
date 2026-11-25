@@ -135,14 +135,14 @@ def pdf_status() -> StatusItem:
 
 
 def indexing_status() -> StatusItem:
-    from assistant.indexing import pending_documents
+    from assistant.indexing import pending_sources
 
-    count = pending_documents().count()
-    label = "Documents for the AI assistant"
+    count = len(pending_sources())  # documents (any review state), reports, approved submissions (ASSUMPTIONS 438)
+    label = "Files for the AI assistant"
     if count:
-        return StatusItem("indexing", label, WARNING, f"{count} approved document{'s are' if count != 1 else ' is'} not indexed yet.",
+        return StatusItem("indexing", label, WARNING, f"{count} file{'s are' if count != 1 else ' is'} not indexed yet.",
                           fix="They are indexed at 7:30 each morning while qcluster runs, or now: python manage.py index_documents")
-    return StatusItem("indexing", label, OK, "Every approved document that can be searched is indexed.")
+    return StatusItem("indexing", label, OK, "Every file that can be searched is indexed.")
 
 
 def certificate_email_status() -> StatusItem:

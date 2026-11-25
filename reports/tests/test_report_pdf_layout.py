@@ -1,6 +1,6 @@
 """Nothing in a report PDF is cut off (ASSUMPTIONS 385), checked with REAL WeasyPrint. Opt-in (slow, needs Pango):
     $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS
-It fills the TEST database with the demo data (seed_demo: invented names, never the development database) plus one
+It also lays out the report generator's PDFs (ASSUMPTIONS 444-445). It fills the TEST database with the demo data (seed_demo: invented names, never the development database) plus one
 activity with a very long title, venue and an unbroken word, builds every report type (its default sections) and one
 report with every section, plus one activity's evaluation summary and one participant's evaluation (ASSUMPTIONS
 401-402, with a very long text answer), lays each out with WeasyPrint and fails if any box on any page reaches past the page content
@@ -180,4 +180,54 @@ def test_no_report_pdf_is_cut_off(weasyprint, settings, tmp_path) -> None:
             pdf_path = out / f"report-{name}.pdf"
             document.write_pdf(pdf_path)
             write_pngs(pdf_path, PNG_PAGES)
+    assert not problems, "\n".join(problems[:40])
+
+
+@pytest.mark.django_db
+def test_no_report_generator_pdf_is_cut_off(weasyprint, settings, tmp_path) -> None:
+    """ASSUMPTIONS 444-445: the generator's Activity Report and Evaluation Summary (A4 portrait, reports/draft_pdf.html)
+    with the long-text activity, long sections (standing in for the AI) and an unbroken word."""
+    from accounts.models import TBIMember
+    from activities.models import Activity
+    from reports import draft_export, draft_facts
+    from reports.models import ReportDraft, ReportDraftVersion
+
+    settings.DEBUG = True
+    settings.MEDIA_ROOT = tmp_path
+    call_command("seed_demo", verbosity=0)
+    today = today_in_manila()
+    add_long_text_activity(today)
+    member = TBIMember.objects.get(email="director@demo.example.com")
+    activity = Activity.objects.get(title__contains=LONG_WORD)
+    long_text = (AI_TEXT + f" {LONG_WORD}.\n\n") * 3
+    drafts = [
+        ReportDraft.objects.create(kind=ReportDraft.Kind.ACTIVITY_REPORT, title=activity.title, activity=activity,
+                                   options={"office_line": "Vice President for Research and Development, Innovation, and Extension"},
+                                   created_by=member),
+        ReportDraft.objects.create(kind=ReportDraft.Kind.EVALUATION_SUMMARY, title="Evaluation Summary", activity=activity,
+                                   created_by=member),
+        ReportDraft.objects.create(kind=ReportDraft.Kind.EVALUATION_SUMMARY, title="Evaluation Summary - the year",
+                                   date_range_start=today - timedelta(days=365), date_range_end=today, created_by=member),
+    ]
+    out = Path(os.environ["PDF_LAYOUT_OUT"]) if os.environ.get("PDF_LAYOUT_OUT") else None
+    fetcher = weasyprint.URLFetcher(allowed_protocols=["data"])
+    problems = []
+    for draft in drafts:
+        from reports.generator import SECTIONS
+
+        version = ReportDraftVersion.objects.create(
+            draft=draft, number=1, source="generated", state="ready", created_by=member,
+            facts=draft_facts.build_facts(draft, member),
+            sections={key: {"text": long_text if key not in ("accomplishments", "recommendations")
+                            else "\n".join([f"Item {n}: {AI_TEXT[:120]} {LONG_WORD}" for n in range(5)]),
+                            "ai": True, "unverified": []} for key, _, _ in SECTIONS[draft.kind]})
+        name = f"generator-{draft.kind}-{'activity' if draft.activity_id else 'period'}"
+        document = weasyprint.HTML(string=draft_export.pdf_html(version), url_fetcher=fetcher).render()
+        found = [p for number, page in enumerate(document.pages, start=1) for p in overflows(page, number, name)]
+        print(f"{name:40} {len(document.pages)} pages, {len(found)} problems")
+        problems += found
+        if out:
+            out.mkdir(parents=True, exist_ok=True)
+            document.write_pdf(out / f"{name}.pdf")
+            write_pngs(out / f"{name}.pdf", PNG_PAGES)
     assert not problems, "\n".join(problems[:40])

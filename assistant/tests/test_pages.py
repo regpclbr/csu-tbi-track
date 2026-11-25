@@ -88,7 +88,7 @@ def test_a_question_starts_a_chat_and_shows_the_cited_answer(director, login, bu
     assert f'<a href="#{card}" class="cite" aria-label="Source 1">[1]</a>' in html and f'id="{card}"' in html
     assert f'href="{detail}"' in html and "Design v2" in html and "Activity Design" in html and "Pitching Workshop" in html
     assert f'href="{reverse("documents:download", args=[budget.pk])}"' in html
-    assert "From approved documents" in html
+    assert "From the files" in html
     assert "What is the budget?" in html  # the question bubble
     assert 'id="chat-list" ' in html and 'hx-swap-oob="true"' in html and f'value="{chat.pk}"' in html
     assert 'id="answer-live" hx-swap-oob="innerHTML">The assistant answered: The budget is 30,000 pesos [1].' in html
@@ -228,7 +228,9 @@ def test_my_chats_panel_can_be_hidden_with_accessible_toggles(director, login) -
         assert 'aria-controls="my-chats-panel"' in button and 'aria-expanded="true"' in button
         assert ':aria-expanded="chatsOpen.toString()"' in button and label in " ".join(button.split())
     assert 'aria-label="New chat"' in html  # New chat stays reachable when the panel is closed
-    assert "try { this.chatsOpen = localStorage.getItem('tbi.assistant.chats')" in html
+    assert "try { saved = localStorage.getItem('tbi.assistant.chats') } catch (e) {}" in html
+    # Phones start closed (ASSUMPTIONS 439); a saved choice wins.
+    assert "this.chatsOpen = saved ? saved !== 'closed' : window.matchMedia('(min-width: 64rem)').matches;" in html
     assert "lg:grid-cols-[15rem_minmax(0,1fr)]" in html and "'lg:col-span-2': !chatsOpen" in html
 
 

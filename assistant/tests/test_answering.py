@@ -124,16 +124,16 @@ def test_excerpts_carry_the_approval_date_and_the_recency_rule(director, chat, l
     fake_gemini.replies += [call(tools.SEARCH_TOOL, query="budget"), say("30,000 [1]; an older version says 25,000 [2].")]
     ask(director, chat)
     excerpts = fake_gemini.tool_results()[0][1]["excerpts"]
-    assert 'document="Design v2"' in excerpts and 'approved_on="2026-10-01"' in excerpts
-    assert 'approved_on="2026-09-01"' in excerpts
+    assert 'file="Design v2"' in excerpts and 'dated="2026-10-01"' in excerpts and 'state="Approved"' in excerpts
+    assert 'dated="2026-09-01"' in excerpts
     instruction = fake_gemini.generate_calls[0]["system_instruction"]
-    assert "When excerpts disagree, prefer the most recently approved document" in instruction
+    assert "When excerpts disagree, prefer an approved file and the most recent one" in instruction
 
 
 def test_equal_scores_are_ordered_the_same_way_every_time(director, chat, library, fake_gemini) -> None:
     fake_gemini.replies += [call(tools.SEARCH_TOOL, query="budget"), say("[1]")]
     ask(director, chat)
-    titles = [block.split('document="')[1].split('"')[0] for block in fake_gemini.tool_results()[0][1]["excerpts"].split("</excerpt>")[:-1]]
+    titles = [block.split('file="')[1].split('"')[0] for block in fake_gemini.tool_results()[0][1]["excerpts"].split("</excerpt>")[:-1]]
     assert titles == ["Design v1", "Design v2", "Forum design"]  # same similarity: by document, then chunk
 
 
@@ -142,7 +142,7 @@ def test_activity_filter_limits_the_search(director, chat, library, fake_gemini)
     answer = ask(director, chat, activity_id=library["other"].activity_id)
     excerpts = fake_gemini.tool_results()[0][1]["excerpts"]
     assert excerpts.count("<excerpt ") == 1 and "Forum design" in excerpts
-    assert "Only search the documents of activity" in fake_gemini.generate_calls[0]["turns"][-1].text
+    assert "Only search its files." in fake_gemini.generate_calls[0]["turns"][-1].text
     assert sources(answer.message) == [("Forum design", 0)]
 
 
@@ -225,7 +225,7 @@ def test_attributes_are_escaped(director, chat, make_document, fake_gemini) -> N
     indexing.index_document(document.pk)
     fake_gemini.replies += [call(tools.SEARCH_TOOL, query="budget"), say("10 [1]")]
     ask(director, chat)
-    assert 'document="Plan &quot;A&quot; &lt;b&gt;"' in fake_gemini.tool_results()[0][1]["excerpts"]
+    assert 'file="Plan &quot;A&quot; &lt;b&gt;"' in fake_gemini.tool_results()[0][1]["excerpts"]
 
 
 # --- Chats --------------------------------------------------------------------------------------------------

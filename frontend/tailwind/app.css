@@ -326,6 +326,23 @@
   .field-input[aria-invalid="true"] {
     @apply border-danger focus:ring-danger/20;
   }
+  /* The compact chat bar (components/chat_box.html, ASSUMPTIONS 441, replaces 439's 4 lines / 40%): the box starts ONE
+     line tall (44 px, like Send), grows with the text (static/js/chat_box.js) up to 5 lines, then scrolls inside.
+     16 px text on phones (no zoom on focus), 14 px from 640 px like every other field. */
+  .chat-box-input {
+    @apply text-base leading-normal sm:text-sm;
+    min-height: 2.75rem;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    max-height: 9rem;
+    max-height: calc(5lh + 1.25rem + 2px);
+  }
+  /* Send: an icon button on the right of the box, a 44 px target. */
+  .chat-send {
+    @apply px-0;
+    width: 2.75rem;
+    height: 2.75rem;
+  }
   /* Every <select>: class="field-input field-select" (a test checks all our templates). One chevron (Lucide
      chevron-down, slate-500), vertically centred, and the same right padding everywhere so text never runs under it.
      Never on list boxes (multiple / size): they have no arrow. */

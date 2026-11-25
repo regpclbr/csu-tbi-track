@@ -28,7 +28,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Apps
 `accounts`, `activities`, `registrations`, `documents`, `certificates`, `reports`,
 `startups`, `assistant`, `notifications`, `approvals` (submissions to the Director, the inbox, work assignments;
-ASSUMPTIONS 437). The project package is `config`.
+ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUMPTIONS 442-445). The project package is `config`.
 
 ## Model decisions
 - TBI_MEMBER is the custom user model (`AUTH_USER_MODEL = "accounts.TBIMember"`, email login,
@@ -286,7 +286,9 @@ ASSUMPTIONS 437). The project package is `config`.
   Confirmation of Attendance and Activity Report whose two forms are newer than `signatures.last_change`.
 - "I can no longer attend" (ASSUMPTIONS 434): signed link `/registration/cancel/<token>/` in the confirmation email; GET
   only shows, POST cancels (`cancel_registration`) or restores (`restore_registration`); rule `cancellation_state`.
-  `registered_count()` (and `open_for_registration`) leave cancelled rows out; reports still count every registration.
+  `registered_count()` (and `open_for_registration`) leave cancelled rows out. Reports: `reports.metrics.COUNTED`
+  (ASSUMPTIONS 440): a cancelled registration is NOT registered (rate, mix, Needs attention too) unless the person came
+  anyway; walk-ins count; "Cancelled: N" shown separately.
 - Generated forms (ASSUMPTIONS 434): `registrations/attendance_forms.py` ("ATTENDANCE" one sheet per day, "CONFIRMATION
   OF ATTENDANCE" without walk-ins; Prepared by + POSITION, form code, footer note, placeholder header), saved through
   `upload_document` as approved copies (Attendance Sheet / Confirmation of Attendance types); Documents tab payment
@@ -461,16 +463,29 @@ ASSUMPTIONS 437). The project package is `config`.
   document text. Tests use `assistant.testing.FakeGemini` (root conftest); a real client fails a test.
 - A terminal opened before `.env` changed keeps the old values (VS Code `python.terminal.useEnvFile`;
   `load_dotenv` never overrides). Open a new terminal; `check_gemini` shows where each value comes from.
-- Indexing rules live only in `assistant.indexing.why_not_indexable()`: Approved activity documents,
-  not `ASSISTANT_EXCLUDED_DOCUMENT_TYPES` (EMPTY since ASSUMPTIONS 434, owner decision: the AI reads every file, names
-  included; signature images are never text), pdf/docx/xlsx with text.
-  `index_document()` replaces a document's chunks in one transaction; failures keep old chunks.
-  Approval queues it on commit, and so does an approved-copy upload or replace (ASSUMPTIONS 432); `index_documents` (and
-  the 7:30 schedule) backfills.
+- Indexing rules live only in `assistant/indexing.py` (ASSUMPTIONS 438): activity documents in EVERY review state
+  (`why_not_indexable`: never certificate evidence, never `ASSISTANT_EXCLUDED_DOCUMENT_TYPES`, EMPTY since 434), generated
+  reports with a file (`report_not_indexable`) and APPROVED submissions not saved to the documents
+  (`submission_not_indexable`). DOCUMENT_EMBEDDING / AI_MESSAGE_SOURCE point to exactly ONE of document / generated_report
+  / submission (check constraint). `index_source(kind, pk, mode)` (FULL / MISSING = skip when indexed / RETITLE = same
+  text, new title) replaces a file's chunks in one transaction; failures keep old chunks. Queued on commit
+  (`queue_source_indexing`, task `run_index_source`): every upload and replace (old chunks removed), approval (MISSING),
+  rename (RETITLE), the scan tick, a built report, an approved submission; a document's unapprove KEEPS its chunks; a
+  submission's unapprove or save-to-documents removes them. `index_documents` (and the 7:30 schedule) backfills all kinds.
+- OCR (ASSUMPTIONS 438): a PDF without text or a JPG / PNG goes to Gemini (`GeminiGateway.read_file`, `indexing.read_scan`)
+  only inside these rules: `ASSISTANT_OCR_ENABLED`, never `ASSISTANT_OCR_EXCLUDED_TYPES` (Event Photos), at most
+  `ASSISTANT_OCR_MAX_PAGES`, NEVER in the backfill (`allow_ocr=False`), and a scan of `ASSISTANT_SCAN_TICK_TYPES`
+  (Attendance Sheet, Confirmation of Attendance: handwriting + signatures) only after "Read this scan with AI"
+  (`documents.services.allow_ai_scan`, DOCUMENT.ai_scan_allowed_by / _at, once per file, cleared on replace, History +
+  audit; the document page's "AI assistant" card). Signature images and evaluation photos are never DOCUMENT rows, so
+  never sent. Tests: `FakeGemini.ocr_text` / `read_calls`.
 - "Searchable" = has embeddings (`with_searchable()`), never stored.
-- Routing is OUR code (`assistant/routing.py`, ASSUMPTIONS 381, 383), in this order: missing/overdue/waiting/returned →
-  Gemini with the existing record tools only (`tools.STATUS_TOOL_SPECS`); says/summary/according to (+ a file word or
-  type) → `search_approved_documents` (`CONTENT_TOOL_SPECS`); file word or DOCUMENT_TYPE + activity/period/type →
+- Routing is OUR code (`assistant/routing.py`, ASSUMPTIONS 381, 383, 439), in this order: missing/overdue/waiting/returned →
+  Gemini with the existing record tools only + `get_pending_approvals` (`tools.STATUS_TOOL_SPECS`); budget (below);
+  participation words (attended / registered / walk-ins / cancelled / mix / evaluation results …) without a file word,
+  document type or "says" word, with a named activity or no activity word and no period → `PARTICIPATION_TOOL_SPECS`
+  (attendance per day, registration counts, mix, evaluation numbers; counts only, never names); says/summary/according
+  to (+ a file word or type) → `search_documents` (`CONTENT_TOOL_SPECS`); file word or DOCUMENT_TYPE + activity/period/type →
   find files; activity word + period/status/count/list → activities; budget words + a named activity (no other content/file word) → our
   `listings.budget_answer` (ASSUMPTIONS 433, checked before content; record tool `get_activity_budget`); else Gemini
   with every tool. Types are matched
@@ -487,11 +502,15 @@ ASSUMPTIONS 437). The project package is `config`.
 - Links and file cards come from markers in the saved text (`[activity:<id>]`, `[file:<id>]`, `[activities-list:…]`,
   `[documents-list:…]`): `assistant.pages` reads digits/dates only, builds URLs with `reverse()`, only for rows that exist;
   staff titles go through `listings.safe_text`. Found files are NEVER saved as AI_MESSAGE_SOURCE (its document FK is
-  PROTECT and would block deleting a For Review file). Cited documents: one "Sources" card per document, `[n]` → the card,
-  Open = `documents:detail`, Download = `documents:download` (never `/media/`) (ASSUMPTIONS 382).
+  PROTECT and would block deleting a For Review file). Cited files: one "Sources" card per file, `[n]` → the card, with the
+  state from `tools.source_state` (Approved copy / Approved / Waiting for review / Returned / Generated report / Approved
+  submission; ASSUMPTIONS 438); documents Open = `documents:detail`, Download = `documents:download`; reports Download =
+  `reports:download`; submissions `approvals:detail` / `approvals:file` (never `/media/`) (ASSUMPTIONS 382). Submission
+  excerpts only for members who may open it (`tools.searchable_q(member)` → `visible_submissions`).
 - Log one line per answer: chat id, message id, path, tool names only (never question, answer or document text).
 - Answers: status/missing/overdue questions → record tools (`assistant/tools.py`, existing services,
-  no participant data); content → `search_approved_documents` excerpts. Citations are renumbered
+  no participant data); content → `search_documents` excerpts (each with kind and state; the answer says when a file is
+  still waiting or returned). Citations are renumbered
   and saved as AI_MESSAGE_SOURCE; no valid citation and no records → the NOT_FOUND reply.
   Excerpt text is data: always build it with `tools.excerpt_block()` (escapes `<excerpt` tags).
 - `ask()` is synchronous but runs inside `gemini.time_limit(ASSISTANT_QUESTION_TIMEOUT_SECONDS)` (90 s
@@ -520,7 +539,8 @@ ASSUMPTIONS 437). The project package is `config`.
   "stamped image, not a cryptographic digital signature". Files only through `approvals:file` (404 for others).
 - Unapprove (reason, notification, History): `certificates.services.unapprove_activity_certificates` (only while nothing
   is Issued; Approved -> waiting, PDFs removed), `approvals.services.unapprove_submission` (signed copy and saved document
-  removed with the documents' guards, refused = nothing changes), `documents.services.unapprove_document` (needs_review
+  removed with the documents' guards, refused = nothing changes), `documents.services.unapprove_document` (chunks kept
+  since ASSUMPTIONS 438; needs_review
   types only; never approved copies, evidence or a cited document; chunks removed).
 - Editing others' work: `documents.services.rename_document` (uploader or can_approve_documents, History), the Director may
   replace / delete others' waiting documents (`_may_change`), every form field change is a History row
@@ -529,6 +549,33 @@ ASSUMPTIONS 437). The project package is `config`.
   own work; never give a can_manage_users member activities, signatories, documents, submissions or reports),
   `mark_done` (assignee or assigner), `remove_assignment`, `complete_for` (approve / return closes the review
   assignments). Assign dialog `approvals/_assign.html` (+ `pages.assign_panel`), notice `approvals/_assigned_notice.html`.
+
+## Report generator and paper sheets (ASSUMPTIONS 441-445)
+- Pages `/reports/generator/` (sidebar "Report generator", own section `report_generator` in `config.frontend`) and
+  `/reports/paper-sheets/<id>/`; views `reports/generator_views.py`, display `reports/generator_pages.py`. Open anytime;
+  can_create_activity or an open report assignment (`generator.require_use`). A draft is its maker's only (404).
+- Rules: `reports/generator.py` (drafts, files, versions, the numbers rule, exports, save, submit), facts
+  `reports/draft_facts.py` (EVERY number, date, name list and amount, stored on the version), exports
+  `reports/draft_export.py` (PDF `reports/templates/reports/draft_pdf.html`, A4 portrait; DOCX python-docx), paper sheets
+  `reports/paper_sheets.py`. Tasks `reports.tasks.run_generate_draft` / `run_read_paper_sheet` (never raise).
+- The numbers rule: the AI writes only the sections in `generator.SECTIONS` and uses `[[placeholders]]` from
+  `facts["placeholders"]`; any other number or an unknown placeholder is "Not from the system" (`check_numbers`) and
+  `export_refused_reason` refuses export / save / submit until the member edits that section (a new "edited" version).
+  Never take a number from the model's text. "AI-generated draft – check before use" in the editor only.
+- The AI gets the files' indexed text (438), the draft's document attachments, notes, resource persons, objectives,
+  counts, budget particulars, the mix; NEVER participants' names, photos or signature images; evaluation answers only
+  without names (`draft_facts.evaluation_texts`). Without the key a version is still made (facts, tables, photos, annex).
+- Photos: only Event Photos documents, the draft's photo attachments and `photos_for_reports()` (ticked ones). Annex:
+  the newest Attendance Sheet / Confirmation documents appended (pypdf), else the generated forms in memory (never saved).
+  "Noted:" = `draft_facts.noted_by()` (the signatory linked to an active Director); "Prepared by:" = the member + POSITION.
+- Save: `upload_document` as an approved copy (Activity Report type; "Other" for other kinds), once per version, one
+  activity only. Submit: `approvals.services.submit_generated`, once per version.
+- Paper sheets: "Read the rows with AI" (the per-file consent; a document also gets its scan tick), rows mapped by
+  `settings.PAPER_SHEET_CATEGORY_RULES`, staff correct and CONFIRM; only confirmed sheets, only in generated reports
+  ("From the paper sheet"), never REGISTRATION or the dashboard. Counts: `metrics.paper_sheet_mix`.
+- Tables (49): REPORT_DRAFT, REPORT_DRAFT_VERSION, REPORT_CHAT_MESSAGE, REPORT_ATTACHMENT, PAPER_SHEET_READ,
+  PAPER_SHEET_ROW (migration reports/0002). Drafts / sheets CASCADE with the activity (counted in item 389's dialog);
+  attachment files removed after the commit (`generator.remove_file_after_delete`).
 
 ## Certificates (Step 9)
 - All rules live in `certificates/services.py`; status changes only through `set_certificate_status()`.
@@ -849,8 +896,15 @@ ASSUMPTIONS 437). The project package is `config`.
   `assistant.pages.answer_html()` (escapes everything FIRST, then only bold, italics, `#`–`###` as a bold line, bullet/numbered
   lists, `<br>` and our `[n]` links; ASSUMPTIONS 376); never `|safe`, raw HTML, links or images from the model. Widening the subset
   needs an owner decision and attack tests. A first question that fails removes its new chat (`services.discard_if_empty`).
-- AI Assistant: "My chats" is 240 px and can be hidden (Alpine + localStorage `tbi.assistant.chats`, default open, ASSUMPTIONS 326);
-  its header holds only the heading and the hide button, "New chat" below (379). Enter sends, Shift + Enter new line, Send disabled
+- AI Assistant: "My chats" is 240 px and can be hidden (Alpine + localStorage `tbi.assistant.chats`, default open; phones
+  start closed, ASSUMPTIONS 326, 439);
+  its header holds only the heading and the hide button, "New chat" below (379). The typing bar is the shared compact
+  `components/chat_box.html` + `static/js/chat_box.js` (ASSUMPTIONS 441, replaces 439's layout; the report generator uses
+  it too): [box][Send] on ONE row; the box starts one line (44 px), grows to about 5 lines, then scrolls inside (an empty
+  box is always one line); Send is a 44 px icon button on the right; the activity filter is in the chat header
+  (`form="ask-form"`); the conversation fills the rest (at least ~70% of the panel). Enter sends, Shift + Enter new line,
+  Ctrl / Cmd + Enter also sends, phones: Enter = new line; counter only from 1,800 of 2,000; below 1024 px the panel is
+  `h-dvh` (only the messages scroll). Send disabled
   while empty/waiting (374); the chat follows new messages only while at the bottom, else "Jump to latest" (375). Only the keyboard
   and scrolling are Alpine (opt-in browser test `assistant/tests/test_chat_browser.py`). Each row's "⋯" menu opens the page's shared
   Rename / Delete dialogs (data attributes, never titles inside JS); both POST and end on the open chat (`current`) (377).
@@ -879,7 +933,8 @@ ASSUMPTIONS 437). The project package is `config`.
 - A certificate is emailed only when its status is Approved, its delivery method is email,
   and its evaluation has been submitted. Participants get a Certificate of Participation by
   email; resource persons get a Certificate of Appreciation in hard copy.
-- Only Approved documents get embeddings. Answers must cite source documents. Questions
+- Every activity document (any review state), generated report and approved submission gets embeddings (owner decision,
+  ASSUMPTIONS 438); answers show each source's review state. Answers must cite source files. Questions
   about what is missing are answered from database checks, not from documents.
 - Every edit to an ACTIVITY writes an ACTIVITY_AUDIT_LOG row with the field name and the
   readable old and new values.
@@ -1087,6 +1142,17 @@ ASSUMPTIONS 437). The project package is `config`.
   logging (437). Database: approvals 0001-0002, accounts 0011-0012, activities 0015, certificates 0017, notifications
   0003-0004; 43 tables. ERD: SUBMISSION, SUBMISSION_EVENT, WORK_ASSIGNMENT, ROLE.can_assign_work,
   CERTIFICATE_SIGNATORY.member_id, ACTIVITY_AUDIT_LOG.on_behalf_of_id, NOTIFICATION.submission_id / work_assignment_id.
+- AI Assistant reads every file (2026-11-25, NAVIGATU UAT, Part 1 of "make their work easier"): documents in every review
+  state, generated reports and approved submissions indexed, state on every source card, OCR of scans with Gemini
+  ("Read this scan with AI" for attendance scans, never Event Photos, never in the backfill) (438); record tools for
+  attendance per day, registration counts, the mix, evaluation numbers and what waits for approval, a participation
+  route, the bigger shared chat box (Ctrl + Enter, phones) (439); cancelled registrations not counted as registered in
+  reports (440). Database: assistant 0003 (DOCUMENT_EMBEDDING / AI_MESSAGE_SOURCE: document nullable + generated_report_id
+  + submission_id, exactly one), documents 0011 (DOCUMENT.ai_scan_allowed_by_id / _at); still 43 tables.
+- Report generator (2026-11-26, Part 2): the AI Assistant's compact chat bar, conversation ~70%+ of the panel, filter in
+  the header (441); the report generator with versions, the numbers rule, DOCX / PDF, save / submit (442); paper sheets
+  read by the AI and confirmed by staff (443); the Activity Report after NAVIGATU's sample (444); the Evaluation Summary
+  per activity and per period (445). Database: reports 0002 (six tables); 49 tables.
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
@@ -1141,7 +1207,7 @@ python manage.py changepassword director@demo.example.com   # give a demo accoun
 python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links (also 3 h before the end)
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
 python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
-python manage.py index_documents          # index approved documents not indexed yet (--document <id>: redo one)
+python manage.py index_documents          # index files not indexed yet, no OCR (--document / --report / --submission <id>: re-read one, scans included)
 python manage.py check_gemini             # models in use (and where from), models the key can use, tiny real calls
 python manage.py check_pdf                # WeasyPrint renders a test PDF in memory: OK or the exact error
 python manage.py send_test_email you@example.com [--smtp]   # one test email (--smtp: really send it, even in DEBUG)
@@ -1163,20 +1229,22 @@ $env:BROWSER_TESTS = "1"; pytest -n 0 -s certificates/tests/test_signatories_bro
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_checkin_browser.py; Remove-Item Env:BROWSER_TESTS   # drawing a signature, the QR check-in page at 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_evaluation_photos_browser.py; Remove-Item Env:BROWSER_TESTS   # evaluation photos at 390 px, "Use in reports" at 1280 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s approvals/tests/test_approvals_browser.py; Remove-Item Env:BROWSER_TESTS   # the inbox and the Assign dialog at 1366 / 390 px
-$env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s assistant/tests/test_chat_browser.py; Remove-Item Env:BROWSER_TESTS   # AI Assistant: keys, scrolling, fits the window, the chat box at 1366 / 390 px
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_generator_browser.py; Remove-Item Env:BROWSER_TESTS   # the report generator page at 1366 / 390 px
+$env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation, the generator's Activity Report / Evaluation Summary) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time
 ```
 
 ## Open questions for NAVIGATU
 Still unanswered (the system keeps the current rule until then; details in the ASSUMPTIONS item). One line each.
-- Letterhead (434): the official CSU / TBI letterhead files (logos, header, footer; PNG or SVG) for the generated forms.
+- Letterhead (434, 444): the official CSU / TBI letterhead files (logos, header, footer; PNG or SVG) for the generated forms and the Activity Report.
 - Digital signatures (434): does the Supply Office accept the generated Attendance / Confirmation of Attendance with signatures given in the system?
 - Participant photos (435): how long may they be kept, and is a photo release needed before photos of people go into reports?
-- Participant mix (424): do DTI staff count as MSMEs, and do MSMEs count with the Incubatees for the 70%?
+- Participant mix (424, 443): do DTI staff and partner agencies count as MSMEs (also on paper sheets), and do MSMEs count with the Incubatees for the 70%?
 - Stamped signature (437): is the Director's stamped image (at "Noted:", PDF only) accepted, and is "Noted:" the right line?
-- Privacy (394, 414, 434): the final notice text, the contact person / Data Protection Officer, retention of UAT data and signatures.
+- Privacy (394, 414, 434, 438): the final notice text, the contact person / Data Protection Officer, retention of UAT data and signatures; may scanned attendance sheets (handwriting, signatures) be sent to Gemini to be read ("Read this scan with AI", per file)?
 - Certificates (177, 183, 363): the official design image, the wording, the office name and the two default signatories.
 - Stand-in (344, 421, 431): who approves documents / certificates and chooses signatories when the Director is away?
 - Reports (390/429, 399, 401): the official position titles for "Prepared by", calendar-year quarters, the rating interpretation scale.
-- Gemini (165): may real TBI documents (with participants' names) be sent to the free tier, or is a paid tier required?
+- Gemini (165, 438): on the free tier Google may use the data, so a paid API key is required before real participant data (documents, scans) is read: who provides it?

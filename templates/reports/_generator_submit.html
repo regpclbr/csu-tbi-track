@@ -1,0 +1,13 @@
+{# "Submit to the Director" (ASSUMPTIONS 442, item 437's submit_generated): the PDF of this version with an optional note. #}
+<form method="post" action="{% url 'reports:generator_submit' shown.version.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">The PDF of version {{ shown.version.number }} goes to the Director for approval. They can approve it, return it with a reason, or stamp their signature.</p>
+  <div>
+    <label for="submit-note" class="field-label">Note to the Director <span class="font-normal text-muted">(optional)</span></label>
+    <textarea id="submit-note" name="note" rows="3" maxlength="1000" class="field-input" autofocus></textarea>
+  </div>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()">Cancel</button>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </div>
+</form>

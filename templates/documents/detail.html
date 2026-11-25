@@ -30,6 +30,44 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
     </div>
   </section>
 
+  {% if ai_scan %}
+    <section class="card p-6" aria-labelledby="ai-scan-title">
+      {% include "components/section_header.html" with id="ai-scan-title" title="AI assistant" %}
+      {% if ai_scan.ticked %}
+        <p class="text-sm text-slate-700">{{ ai_scan.by.name }} allowed the AI assistant to read this scan on <time datetime="{{ ai_scan.at|date:'c' }}">{{ ai_scan.at|date:"M j, Y g:i A" }}</time>.{% if not ai_scan.searchable %} It is read in the background; if it is still not searchable after a few minutes, the System Administrator can check the worker (qcluster).{% endif %}</p>
+      {% elif ai_scan.searchable %}
+        <p class="text-sm text-slate-700">The AI assistant already reads this file's text. No scan reading is needed.</p>
+      {% else %}
+        <p class="text-sm text-slate-700">This looks like a scanned form. A scan shows handwriting and participants' signatures, so it is sent to Gemini (Google's AI service) to be read only when you allow it, for this one file. The text read is kept for the AI assistant; the signatures are not.</p>
+        {% if ai_scan.may_tick %}
+          <form method="post" action="{% url 'documents:ai_scan' document.pk %}" class="mt-4">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-secondary">{% include "components/icon.html" with name="sparkles" class="size-4" %}Read this scan with AI</button>
+          </form>
+        {% else %}
+          <p class="mt-2 text-sm text-muted">The uploader, a member who creates activities or the Director can allow it.</p>
+        {% endif %}
+      {% endif %}
+      {% if ai_scan.sheets %}
+        <ul class="mt-4 space-y-1 text-sm">{% for sheet in ai_scan.sheets %}<li><a href="{% url 'reports:paper_sheet' sheet.pk %}" class="link">Paper sheet read {{ sheet.read_at|date:"M j, Y g:i A" }}: {{ sheet.get_state_display }}</a></li>{% endfor %}</ul>
+      {% endif %}
+      {% if ai_scan.may_read_rows %}
+        <details class="mt-4 rounded-xl border border-line px-4 py-3">
+          <summary class="cursor-pointer text-sm font-semibold text-ink">Read the rows of this paper sheet</summary>
+          <p class="mt-2 text-sm text-slate-700">The AI lists the rows (name, designation, office) and suggests each person's category. You check every row before the counts are used, only in the generated reports.</p>
+          <form method="post" action="{% url 'reports:paper_sheet_from_document' document.pk %}" class="mt-3 flex flex-wrap items-end gap-3">
+            {% csrf_token %}
+            <div><label for="sheet-kind" class="field-label">Sheet</label>
+              <select id="sheet-kind" name="sheet_kind" class="field-input field-select">{% for value, label in ai_scan.sheet_kinds %}<option value="{{ value }}"{% if value == ai_scan.default_kind %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div><label for="sheet-day" class="field-label">Day</label>
+              <select id="sheet-day" name="day" class="field-input field-select"><option value="">All days</option>{% for value, label in ai_scan.days %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+            <button type="submit" class="btn btn-secondary">{% include "components/icon.html" with name="list" class="size-4" %}Read the rows with AI</button>
+          </form>
+        </details>
+      {% endif %}
+    </section>
+  {% endif %}
+
   <section class="card p-6" aria-labelledby="facts-title">
     {% include "components/section_header.html" with id="facts-title" title="Details" %}
     <dl class="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">

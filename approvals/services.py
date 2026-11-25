@@ -390,6 +390,7 @@ def approve_submission(member: TBIMember, submission: Submission, *, sign: bool 
                 from .assignments import complete_for
 
                 complete_for("submission_review", submission, member, now)
+                _queue_index_on_commit(submission)
                 _notify_submitter(submission, member, Notification.SUBMISSION_APPROVED,
                                   f'"{submission.title[:150]}" was approved by {member.name[:60]}'
                                   + (" and signed." if signed_name else "."))
@@ -448,12 +449,22 @@ def unapprove_submission(member: TBIMember, submission: Submission, reason: str,
         submission.signed_by = submission.signed_at = submission.signatory = None
         submission.save()
         _event(submission, SubmissionEvent.Action.UNAPPROVED, member, reason)
+        submission.embeddings.all().delete()  # only approved submissions are searchable (ASSUMPTIONS 438)
         audit_log.info("Submission unapproved: submission_id=%s by member_id=%s", submission.pk, member.pk)
         _notify_submitter(submission, member, Notification.SUBMISSION_UNAPPROVED,
                           f'The approval of "{submission.title[:150]}" was taken back by {member.name[:60]}: {reason}')
         if signed_name:
             transaction.on_commit(lambda: _delete_file(signed_name))
     return submission
+
+
+def _queue_index_on_commit(submission: Submission) -> None:
+    """Index an approved submission for the assistant once the approval is saved (ASSUMPTIONS 438; robust: a problem
+    queueing never undoes the approval)."""
+    from assistant.indexing import SUBMISSION, queue_source_indexing
+
+    submission_id = submission.pk
+    transaction.on_commit(lambda: queue_source_indexing(SUBMISSION, submission_id), robust=True)
 
 
 # --- Save to the activity's documents -------------------------------------------------------------------------------
@@ -487,6 +498,7 @@ def save_to_documents(member: TBIMember, submission: Submission, document_type: 
                 approved_by=submission.reviewed_by, approved_at=submission.reviewed_at)
         submission.saved_document = document
         submission.save(update_fields=["saved_document", "updated_at"])
+        submission.embeddings.all().delete()  # the saved document is indexed instead (never the same text twice)
         _event(submission, SubmissionEvent.Action.SAVED, member, f"{document_type.name}: {document.title}")
         audit_log.info("Submission saved to documents: submission_id=%s document_id=%s by member_id=%s", submission.pk,
                        document.pk, member.pk)
