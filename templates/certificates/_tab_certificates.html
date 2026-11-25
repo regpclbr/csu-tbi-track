@@ -65,6 +65,9 @@ Every action redirects back to /activities/<id>/?tab=certificates.
     {% if approval.can_prepare %}
       {% include "components/modal.html" with id="prepare-certificates-dialog" title="Prepare the certificates now?" body="certificates/_prepare_form.html" trigger_label="Prepare the certificates now" trigger_icon="file-check" trigger_class="btn btn-secondary" %}
     {% endif %}
+    {% if approval.can_unapprove %}
+      {% include "components/modal.html" with id="unapprove-activity-dialog" title="Unapprove the certificates of this activity?" body="certificates/_unapprove_activity_form.html" trigger_label="Unapprove" trigger_icon="undo-2" trigger_class="btn btn-danger" %}
+    {% endif %}
     {% if approval.can_approve %}
       {% if approval.closed_reason %}
         <button type="button" class="btn btn-primary" disabled aria-describedby="approval-reason">

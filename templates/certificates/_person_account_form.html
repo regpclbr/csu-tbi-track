@@ -1,0 +1,20 @@
+{% comment %}Inside the "Account" dialog of a row on the Signatories page (can_manage_signatories, ASSUMPTIONS 437): the staff
+account this person signs as. Only that member may stamp this signature on a submission they approve (never delegated).
+POST certificates:signatory_account (services.link_signatory_account; one active person per account).{% endcomment %}
+{% with person=row.signatory %}
+<form method="post" action="{% url 'certificates:signatory_account' person.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">When this member approves a PDF submitted to the Director, they can stamp {{ person.name }}'s signature image on a copy. It is a stamped image, not a cryptographic digital signature.</p>
+  <div>
+    <label for="account-{{ person.pk }}" class="text-sm font-semibold text-ink">Staff account</label>
+    <select id="account-{{ person.pk }}" name="account" class="field-input field-select mt-2">
+      <option value="">No account (cannot sign submissions)</option>
+      {% for account in accounts %}<option value="{{ account.pk }}"{% if person.member_id == account.pk %} selected{% endif %}>{{ account.name }} · {{ account.email }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()">Cancel</button>
+    <button type="submit" class="btn btn-primary">Save</button>
+  </div>
+</form>
+{% endwith %}

@@ -8,7 +8,7 @@ from django.db.models.functions import Lower, Trim
 
 
 class Role(models.Model):
-    """A staff role. Never deleted. Permissions come only from the six flags, never from the name.
+    """A staff role. Never deleted. Permissions come only from the seven flags, never from the name.
 
     SYSTEM_ADMINISTRATOR is the role create_superuser and seed_data give the system administrator: it manages users
     and does not create activities (separation of duties, ASSUMPTIONS 85 and 339).
@@ -37,6 +37,10 @@ class Role(models.Model):
     # (ASSUMPTIONS 418, NAVIGATU: only the TBI Director). Director only by default; switched in the Admin Console. Never
     # together with can_manage_users (separation of duties, check_role_flags).
     can_manage_signatories = models.BooleanField(default=False, db_default=False)
+    # Assign work to a member (ASSUMPTIONS 437, NAVIGATU: the Director assigns work): WORK_ASSIGNMENT gives the assignee
+    # permission for that one task only. Director only by default; switched in the Admin Console. Never together with
+    # can_manage_users (separation of duties, check_role_flags). The assigner must also hold the flag of the work.
+    can_assign_work = models.BooleanField(default=False, db_default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

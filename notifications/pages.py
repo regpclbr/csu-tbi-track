@@ -11,7 +11,9 @@ def target_url(notification: Notification) -> str:
     """The page a notification is about: a document reminder or a returned document opens the activity's Documents tab
     with that type preselected; prepared certificates open the Certificates tab (ASSUMPTIONS 420); another notification
     about an activity opens the activity; anything else the dashboard (startup notifications without an activity,
-    item 223)."""
+    item 223); a notification about a submission opens it (ASSUMPTIONS 437)."""
+    if notification.submission_id is not None:  # ASSUMPTIONS 437
+        return reverse("approvals:detail", args=[notification.submission_id])
     if notification.activity_id is None:
         return reverse("home")
     url = reverse("activities:detail", args=[notification.activity_id])
@@ -25,6 +27,8 @@ def target_url(notification: Notification) -> str:
 def target_label(notification: Notification) -> str:
     """The words of the link to target_url(): "Open documents", "Open certificates", "Open activity", or "" when it
     leads nowhere special."""
+    if notification.submission_id is not None:
+        return "Open submission"
     if notification.activity_id is None:
         return ""
     if notification.type in Notification.CERTIFICATE_TYPES:

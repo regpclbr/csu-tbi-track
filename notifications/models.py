@@ -23,7 +23,22 @@ class Notification(models.Model):
     # to the activity's creator when a Draft became Scheduled because someone else uploaded the last of its Activity
     # Design and Request Letter (ASSUMPTIONS 431)
     ACTIVITY_SCHEDULED = "activity_scheduled"
-    CERTIFICATE_TYPES = (CERTIFICATES_PREPARED, CERTIFICATES_WAITING)  # both open the Certificates tab
+    # ASSUMPTIONS 437: the approval of an activity's certificates was withdrawn (to its creator and the preparer)
+    CERTIFICATES_UNAPPROVED = "certificates_unapproved"
+    # ASSUMPTIONS 437: an approved document of a type that needs review went back to "Returned" (to the uploader)
+    DOCUMENT_UNAPPROVED = "document_unapproved"
+    # ASSUMPTIONS 437, work submitted to the Director (NOTIFICATION.submission set): to the approvers / to the submitter
+    SUBMISSION_WAITING = "submission_waiting"
+    SUBMISSION_APPROVED = "submission_approved"
+    SUBMISSION_RETURNED = "submission_returned"
+    SUBMISSION_UNAPPROVED = "submission_unapproved"
+    # ASSUMPTIONS 437: work assigned to a member / removed / marked done (to the assigner) / overdue (to the assigner)
+    WORK_ASSIGNED = "work_assigned"
+    WORK_ASSIGNMENT_REMOVED = "work_assignment_removed"
+    WORK_ASSIGNMENT_DONE = "work_assignment_done"
+    SUBMISSION_TYPES = (SUBMISSION_WAITING, SUBMISSION_APPROVED, SUBMISSION_RETURNED, SUBMISSION_UNAPPROVED)
+    # these open the Certificates tab
+    CERTIFICATE_TYPES = (CERTIFICATES_PREPARED, CERTIFICATES_WAITING, CERTIFICATES_UNAPPROVED)
     REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
 
     notification_id = models.BigAutoField(primary_key=True)
@@ -38,6 +53,14 @@ class Notification(models.Model):
     )
     document_type = models.ForeignKey(
         "documents.DocumentType", on_delete=models.PROTECT, null=True, blank=True, related_name="notifications"
+    )
+    # ASSUMPTIONS 437: the submission a notification is about (opens it in one click); CASCADE like the others.
+    submission = models.ForeignKey(
+        "approvals.Submission", on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
+    )
+    # ASSUMPTIONS 437: the assignment a notification is about (opens the work in one click).
+    work_assignment = models.ForeignKey(
+        "approvals.WorkAssignment", on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
     )
     message = models.CharField(max_length=500)
     type = models.CharField(max_length=50, help_text="For example: document_reminder.")

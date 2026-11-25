@@ -5,6 +5,7 @@ generates reports, services.GENERATE_REPORT_PERMISSION; always open: the prompt 
 without scrolling at 1366x768, ASSUMPTIONS 384) and the history. Every value is checked by reports.services.request_report; its messages
 appear under their fields.
 {% endcomment %}
+{% block page_actions %}{% include "approvals/_assign.html" with assign=assign next=request.get_full_path %}{% endblock %}
 {% block content %}
 <div class="space-y-6">
   {% if can_generate %}

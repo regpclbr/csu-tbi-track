@@ -51,6 +51,9 @@ ROLES: dict[str, tuple[bool, bool, bool, bool, bool, bool, str]] = {
     ),
 }
 
+# ASSUMPTIONS 437: can_assign_work only for the Director (set when the role is created, like the other flags).
+ASSIGN_WORK_ROLES = {Role.DIRECTOR}
+
 START = DocumentType.DueReference.START_DATE
 END = DocumentType.DueReference.END_DATE
 
@@ -132,6 +135,7 @@ def load_lookups() -> SeedResult:
                 "can_approve_certificates": can_approve_certificates,
                 "can_delete_activities": can_delete,
                 "can_manage_signatories": can_manage_signatories,
+                "can_assign_work": role_name in ASSIGN_WORK_ROLES,
                 "description": description,
             },
         )

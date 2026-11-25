@@ -15,7 +15,7 @@ clean_attachments and store_attachments; one evaluation, never anonymous).
 - photos_for_reports() is the ONE query for reports (Prompts 6–7): ticked files only. Nothing here is a DOCUMENT, so
   the checklist, the payment packet and the AI index never see these files.
 - Deleting a submission, a registration or an activity removes the files after the commit (post_delete receiver,
-  connected in RegistrationsConfig.ready). No automatic retention yet (TBI_QUESTIONS).
+  connected in RegistrationsConfig.ready). No automatic retention yet (open question, CLAUDE.md).
 """
 
 import logging

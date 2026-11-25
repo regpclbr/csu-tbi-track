@@ -113,7 +113,9 @@ def test_buttons_follow_allowed_actions(director, head, view_only, login, schedu
     assert action("approve", document) not in as_uploader and "/return/form/" not in as_uploader
     assert "/replace/form/" in as_uploader and "/delete/form/" in as_uploader
     as_reviewer = login(director).get(tab(scheduled)).content.decode()
-    assert action("approve", document) in as_reviewer and "/return/form/" in as_reviewer and "/delete/form/" not in as_reviewer
+    assert action("approve", document) in as_reviewer and "/return/form/" in as_reviewer
+    # ASSUMPTIONS 437: the Director may also replace / delete another member's waiting document
+    assert reverse("documents:action_form", args=[document.pk, "delete"]) in as_reviewer
     own = upload(director, scheduled, document_type=DocumentType.objects.get(name="Activity Design"))
     as_approver_uploader = login(director).get(tab(scheduled)).content.decode()
     assert action("approve", own) in as_approver_uploader  # self-approval is allowed (ASSUMPTIONS 344)
@@ -193,14 +195,14 @@ def test_replace_errors_and_refusals(head, director, login, scheduled, upload) -
     response = login(director).post(action("replace", document), {"file": make_file("bad.txt", b"no")}, **HTMX)
     assert response.status_code == 200 and 'id="replace-file-error"' in response.content.decode()
     response = login(head).post(action("replace", document), {"file": make_file()}, follow=True)
-    assert "Only the member who uploaded this document can replace it." in messages_of(response)
+    assert "Only the member who uploaded this document or the Director can replace it." in messages_of(response)
 
 
 def test_delete_by_the_uploader_only_and_never_approved(head, director, login, scheduled, upload) -> None:
     document = upload(director, scheduled)
     response = login(head).post(action("delete", document), follow=True)
     assert Document.objects.filter(pk=document.pk).exists()
-    assert "Only the member who uploaded this document can delete it." in messages_of(response)
+    assert "Only the member who uploaded this document or the Director can delete it." in messages_of(response)
     response = login(director).post(action("delete", document), {"next": action("detail", document)}, follow=True)
     assert not Document.objects.filter(pk=document.pk).exists()
     assert response.redirect_chain[-1][0] == tab(scheduled)  # not the deleted document's page

@@ -1,0 +1,13 @@
+{# Inside the "Submit again" dialog (the submitter, a returned submission): a new file and an optional note. #}
+<form method="post" action="{% url 'approvals:resubmit' submission.pk %}" enctype="multipart/form-data" class="space-y-4">
+  {% csrf_token %}
+  {% include "components/file_drop.html" with id="resubmit-file" name="file" limits=limits label="New file" %}
+  <div>
+    <label for="resubmit-note" class="text-sm font-semibold text-ink">Note (optional)</label>
+    <textarea id="resubmit-note" name="note" rows="3" maxlength="{{ note_max }}" class="field-input mt-2" placeholder="What did you change?"></textarea>
+  </div>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()">Cancel</button>
+    <button type="submit" class="btn btn-primary">Submit again</button>
+  </div>
+</form>

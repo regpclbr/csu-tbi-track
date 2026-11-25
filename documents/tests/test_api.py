@@ -32,7 +32,8 @@ def test_upload_through_the_api(client, view_only, scheduled, doc_type) -> None:
     assert data["status"] == "For Review" and data["review_state"] == "waiting_for_review"
     assert data["title"] == "Signed" and data["file_name"] == "Invitation.pdf"
     assert data["uploaded_at"].endswith("+08:00")  # Manila time
-    assert data["allowed_actions"] == {"approve": False, "return": False, "replace": True, "delete": True}
+    assert data["allowed_actions"] == {"approve": False, "return": False, "replace": True, "delete": True,
+                                       "unapprove": False, "rename": True}  # rename / unapprove: ASSUMPTIONS 437
     assert data["download_url"] == api("download", data["document_id"])
 
 

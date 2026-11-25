@@ -30,6 +30,20 @@ flex-nowrap: it pushed Approve / Return over the State badges on the Documents p
        hx-on::after-request="if (event.detail.successful) document.getElementById('document-dialog').showModal()">
       {% include "components/icon.html" with name="undo-2" class="size-4" %}Return<span class="sr-only"> {{ document.title }}</span></a>
   {% endif %}
+  {% if row.actions.rename and not compact %}
+    {% url 'documents:action_form' document.pk 'rename' as form_url %}
+    <a href="{{ form_url }}?next={{ next|urlencode }}" class="btn btn-ghost btn-sm" aria-haspopup="dialog"
+       hx-get="{{ form_url }}?next={{ next|urlencode }}" hx-target="#document-dialog-body" hx-on::before-request="window.documentDialogOpener = this"
+       hx-on::after-request="if (event.detail.successful) document.getElementById('document-dialog').showModal()">
+      {% include "components/icon.html" with name="pencil" class="size-4" %}Rename<span class="sr-only"> {{ document.title }}</span></a>
+  {% endif %}
+  {% if row.actions.unapprove %}
+    {% url 'documents:action_form' document.pk 'unapprove' as form_url %}
+    <a href="{{ form_url }}?next={{ next|urlencode }}" class="btn btn-danger btn-sm" aria-haspopup="dialog"
+       hx-get="{{ form_url }}?next={{ next|urlencode }}" hx-target="#document-dialog-body" hx-on::before-request="window.documentDialogOpener = this"
+       hx-on::after-request="if (event.detail.successful) document.getElementById('document-dialog').showModal()">
+      {% include "components/icon.html" with name="undo-2" class="size-4" %}Unapprove<span class="sr-only"> {{ document.title }}</span></a>
+  {% endif %}
   {% if row.actions.replace %}
     {% url 'documents:action_form' document.pk 'replace' as form_url %}
     <a href="{{ form_url }}?next={{ next|urlencode }}" class="btn btn-secondary btn-sm" aria-haspopup="dialog"{% if compact %} title="Replace the file"{% endif %}

@@ -17,7 +17,14 @@ from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_POST
 
-from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from accounts.permissions import (
+    Permission,
+    has_permission,
+    is_htmx,
+    object_permission_required,
+    permission_required,
+    staff_login_required,
+)
 from config.links import post_only_or_tab
 from config.parsing import parse_bool
 from activities.models import Activity
@@ -30,6 +37,17 @@ from reports.page_views import activity_file_response
 from .models import EvaluationAttachment, EvaluationSubmission, FormField, FormTemplate, FormType, Registration
 
 logger = logging.getLogger("registrations")
+
+
+def form_activity_from_url(activity_id: int | None = None, template_id: int | None = None, field_id: int | None = None,
+                           **kwargs) -> Activity:
+    """The activity a form URL is about (its own ID, a form's or a field's), 404 if missing: the object of
+    object_permission_required, so an activity's assignee may edit its forms and attendance (ASSUMPTIONS 437)."""
+    if activity_id is not None:
+        return _activity(activity_id)
+    if template_id is not None:
+        return get_object_or_404(FormTemplate.objects.select_related("activity__status"), pk=template_id).activity
+    return get_object_or_404(FormField.objects.select_related("template__activity__status"), pk=field_id).template.activity
 
 
 def _activity(activity_id: int) -> Activity:
@@ -63,7 +81,7 @@ def _card(request: HttpRequest, form: FormTemplate, text: str = "", level: str =
 # --- Forms tab --------------------------------------------------------------------------------------------
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @post_only_or_tab("forms")
 def form_create(request: HttpRequest, activity_id: int, form_type: str) -> HttpResponse:
     """Create from the activity type's default fields. A full page load afterwards, so the header's
@@ -79,7 +97,7 @@ def form_create(request: HttpRequest, activity_id: int, form_type: str) -> HttpR
     return redirect(_tab_url(activity, "forms"))
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @post_only_or_tab("forms")
 def form_ready(request: HttpRequest, activity_id: int) -> HttpResponse:
     """"Open registration" (ASSUMPTIONS 409): the registration form is marked ready, so registration can open. A full
@@ -104,7 +122,7 @@ def form_card(request: HttpRequest, template_id: int) -> HttpResponse:
     return _card(request, get_object_or_404(FormTemplate.objects.select_related("activity"), pk=template_id))
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @require_GET
 def field_editor(request: HttpRequest, template_id: int, field_id: int | None = None) -> HttpResponse:
     """HTMX: the card with the inline editor open (a new field, or field_id)."""
@@ -147,21 +165,21 @@ def _save_field(request: HttpRequest, form: FormTemplate, field: FormField | Non
     return _card(request, form, f"“{saved.field_label}” {'added' if field is None else 'saved'}.")
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @require_POST
 def field_add(request: HttpRequest, template_id: int) -> HttpResponse:
     form = get_object_or_404(FormTemplate.objects.select_related("activity"), pk=template_id)
     return _save_field(request, form, None)
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @require_POST
 def field_update(request: HttpRequest, field_id: int) -> HttpResponse:
     field = get_object_or_404(FormField.objects.select_related("template__activity"), pk=field_id)
     return _save_field(request, field.template, field)
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @require_POST
 def field_remove(request: HttpRequest, field_id: int) -> HttpResponse:
     field = get_object_or_404(FormField.objects.select_related("template__activity"), pk=field_id)
@@ -173,7 +191,7 @@ def field_remove(request: HttpRequest, field_id: int) -> HttpResponse:
     return _card(request, form, f"“{label}” removed.")
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @require_POST
 def field_move(request: HttpRequest, field_id: int) -> HttpResponse:
     """POST direction=up|down. Refused on a locked form (owner decision: a locked form shows no edit
@@ -232,7 +250,7 @@ def _attendance_request(post) -> tuple[list[str], bool]:
     return ids, post.get("action") == "mark"
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @post_only_or_tab("registrations")
 def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST day=<YYYY-MM-DD> (the tab's day choice, ASSUMPTIONS 434), then either row_action=mark:<id>|undo:<id> or
@@ -270,7 +288,7 @@ def attendance(request: HttpRequest, activity_id: int) -> HttpResponse:
     return redirect(back)
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
 @require_GET
 def attendance_signature(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
     """HTMX: the "Mark attended" dialog body for a person without a signature (owner decision b): sign on this device

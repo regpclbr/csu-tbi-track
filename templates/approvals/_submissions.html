@@ -1,0 +1,28 @@
+{% comment %}My submissions / all submissions (approvals.services.list_submissions), newest first, swapped by the filters and the pager.{% endcomment %}
+<p class="mb-3 text-sm text-muted" role="status">{{ result.total }} submission{{ result.total|pluralize }}</p>
+{% if rows %}
+  <ul class="space-y-2">
+    {% for row in rows %}{% with submission=row.submission %}
+      <li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3">
+        <div class="min-w-0 grow basis-64 [overflow-wrap:anywhere]">
+          <p class="flex flex-wrap items-center gap-2">
+            {% include "components/badge.html" with text=row.state.label tone=row.state.tone %}
+            {% if submission.signed_file_path %}<span class="badge badge-success">{% include "components/icon.html" with name="pen-line" class="size-3.5" %}Signed</span>{% endif %}
+            <a href="{% url 'approvals:detail' submission.pk %}" class="font-semibold text-ink hover:text-primary hover:underline">{{ submission.title }}</a>
+          </p>
+          <p class="mt-1 text-sm text-slate-700">{% if tab != "mine" %}{{ submission.submitted_by.name }} · {% endif %}{{ submission.file_extension|upper }}{% if submission.activity %} · {{ submission.activity.title }}{% endif %}</p>
+          <p class="mt-1 text-xs text-muted">Submitted <time datetime="{{ submission.submitted_at|date:'c' }}">{{ submission.submitted_at|date:"M j, Y g:i A" }}</time>{% if submission.reviewed_by %} · {{ submission.get_status_display }} by {{ submission.reviewed_by.name }}{% endif %}</p>
+        </div>
+        <a href="{% url 'approvals:detail' submission.pk %}" class="btn btn-secondary btn-sm ml-auto">Open<span class="sr-only"> {{ submission.title }}</span></a>
+      </li>
+    {% endwith %}{% endfor %}
+  </ul>
+  {% include "components/pagination.html" with result=result query=query hx_target="#approval-list" base_url=list_url %}
+{% elif q or status %}
+  {% include "components/empty_state.html" with icon="search" title="No submissions match the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
+{% elif tab == "mine" %}
+  {% url 'approvals:submit' as submit_url %}
+  {% include "components/empty_state.html" with icon="send" title="You have not submitted anything yet" text="Submit a letter, report or other document to the Director for approval." action_url=submit_url action_label="Submit to the Director" %}
+{% else %}
+  {% include "components/empty_state.html" with icon="send" title="No submissions yet" text="Work members submit to the Director appears here." %}
+{% endif %}

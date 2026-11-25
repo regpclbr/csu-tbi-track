@@ -8,7 +8,7 @@ and the payment packet: "Attendance" as the Attendance Sheet type, the other as 
 Generating again adds a new document (the older one can be deleted). Staff can still upload a scanned paper sheet.
 
 "Prepared by": the member who generates it, with their POSITION (item 429). Header: a plain placeholder until NAVIGATU
-gives the letterhead files (docs/TBI_QUESTIONS.md).
+gives the letterhead files (open question, CLAUDE.md).
 """
 
 from dataclasses import dataclass

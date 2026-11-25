@@ -1,0 +1,81 @@
+{% comment %}
+"Assign to" (ASSUMPTIONS 437), one include per piece of work: {% include "approvals/_assign.html" with assign=assign next=request.get_full_path %}
+`assign` = approvals.pages.assign_panel (None = this member assigns nothing here, nothing is shown). A secondary button
+opens a <dialog class="modal">: what to assign (the kinds still free), who (any active member; the service refuses a
+member a rule excludes, with the reason), an optional note and due date, and the open assignments of this work with
+Remove. POST approvals:assign / approvals:assignment_remove; approvals.assignments checks everything again.
+{% endcomment %}
+{% if assign %}
+<div x-data="{ open() { $refs.dialog.showModal() }, close() { $refs.dialog.close() } }">
+  <button type="button" class="btn btn-secondary btn-sm" x-ref="trigger" @click="open()" aria-haspopup="dialog" data-assign-trigger>
+    {% include "components/icon.html" with name="user-plus" class="size-4" %}Assign{% if assign.current %} ({{ assign.current|length }}){% endif %}</button>
+  <dialog id="assign-dialog" x-ref="dialog" class="modal max-w-xl" aria-labelledby="assign-dialog-title" @close="$refs.trigger.focus()" @click.self="close()" data-assign-dialog>
+    <div class="p-6">
+      {% include "components/modal_header.html" with id="assign-dialog" title="Assign to a member" %}
+      {% if assign.current %}
+        <ul class="mb-4 space-y-2" aria-label="Already assigned">
+          {% for row in assign.current %}
+            <li class="flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2 text-sm {% if row.overdue %}border-danger-line bg-danger-soft/60{% else %}border-line{% endif %}">
+              <span class="min-w-0 grow basis-48"><span class="font-semibold text-ink">{{ row.label }}</span> · {{ row.assignment.assigned_to.name }}{% if row.assignment.due_date %} · due {{ row.assignment.due_date|date:"M j" }}{% if row.overdue %} <span class="font-semibold text-danger">(overdue)</span>{% endif %}{% endif %}{% if assign.report %}<br><span class="text-muted">{{ row.title }}</span>{% endif %}</span>
+              <form method="post" action="{% url 'approvals:assignment_remove' row.assignment.pk %}" class="ml-auto">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ next }}">
+                <button type="submit" class="btn btn-danger btn-sm">Remove<span class="sr-only"> the assignment of {{ row.assignment.assigned_to.name }}</span></button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if assign.kinds %}
+        <form method="post" action="{% url 'approvals:assign' %}" class="space-y-4" novalidate>
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ next }}">
+          {% if assign.activity %}<input type="hidden" name="activity" value="{{ assign.activity.pk }}">{% endif %}
+          {% if assign.document %}<input type="hidden" name="document" value="{{ assign.document.pk }}">{% endif %}
+          {% if assign.submission %}<input type="hidden" name="submission" value="{{ assign.submission.pk }}">{% endif %}
+          {% if assign.kinds|length == 1 %}
+            <input type="hidden" name="kind" value="{{ assign.kinds.0.0 }}">
+            <p class="text-sm text-slate-700"><span class="font-semibold text-ink">{{ assign.kinds.0.1 }}</span></p>
+          {% else %}
+            <div>
+              <label for="assign-kind" class="text-sm font-semibold text-ink">What</label>
+              <select id="assign-kind" name="kind" class="field-input field-select mt-2">
+                {% for kind, label in assign.kinds %}<option value="{{ kind }}">{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+          {% endif %}
+          {% if assign.report %}
+            <div>
+              <label for="assign-report-title" class="text-sm font-semibold text-ink">Which report <span class="text-danger" aria-hidden="true">*</span></label>
+              <input id="assign-report-title" name="report_title" maxlength="255" required class="field-input mt-2" placeholder="For example: Accomplishment Report - Q4 2026">
+            </div>
+          {% endif %}
+          <div>
+            <label for="assign-member" class="text-sm font-semibold text-ink">Assign to <span class="text-danger" aria-hidden="true">*</span></label>
+            <select id="assign-member" name="assigned_to" required class="field-input field-select mt-2">
+              <option value="">Choose a member</option>
+              {% for person in assign.members %}<option value="{{ person.pk }}">{{ person.name }} · {{ person.role.role_name }}</option>{% endfor %}
+            </select>
+            <p class="field-help">They get a notification and permission for this task only, until it is done or you remove it. What they do is logged “on behalf of” you.</p>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="min-w-0">
+              <label for="assign-due" class="text-sm font-semibold text-ink">Due date (optional)</label>
+              <input id="assign-due" type="date" name="due_date" class="field-input mt-2">
+            </div>
+          </div>
+          <div>
+            <label for="assign-note" class="text-sm font-semibold text-ink">Note (optional)</label>
+            <textarea id="assign-note" name="note" rows="3" maxlength="{{ assign.note_max }}" class="field-input mt-2"></textarea>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button type="button" class="btn btn-secondary" @click="close()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Assign</button>
+          </div>
+        </form>
+      {% else %}
+        <p class="text-sm text-slate-700">Everything here is already assigned. Remove an assignment to give it to someone else.</p>
+      {% endif %}
+    </div>
+  </dialog>
+</div>
+{% endif %}

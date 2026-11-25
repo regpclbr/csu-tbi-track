@@ -1,0 +1,17 @@
+{% comment %}Inside the "Save to the activity's documents" dialog: the type (the submission's own preselected);
+approvals.services.save_to_documents saves the signed copy when there is one, approved in the reviewer's name.{% endcomment %}
+<form method="post" action="{% url 'approvals:save' submission.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">“{{ submission.title }}” becomes a document of <span class="font-semibold text-ink">{{ submission.activity.title }}</span>, already approved{% if submission.signed_file_path %} (the signed copy){% endif %}.</p>
+  <div>
+    <label for="save-type" class="text-sm font-semibold text-ink">Document type</label>
+    <select id="save-type" name="document_type" required class="field-input field-select mt-2">
+      <option value="">Choose the type</option>
+      {% for type in types %}<option value="{{ type.pk }}"{% if submission.document_type_id == type.pk %} selected{% endif %}>{{ type.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary">Save to the documents</button>
+  </div>
+</form>

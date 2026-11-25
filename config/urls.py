@@ -54,6 +54,7 @@ urlpatterns = [
     path("startups/", include("startups.urls")),
     path("assistant/", include("assistant.urls")),
     path("notifications/", include("notifications.urls")),
+    path("approvals/", include("approvals.urls")),  # ASSUMPTIONS 437
 ]
 
 # Errors for /api/ URLs are JSON (403 with the reason, 404, 500); pages get templates/errors/*.html.

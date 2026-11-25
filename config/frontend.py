@@ -40,6 +40,7 @@ WORKSPACE = [
     NavItem("Activities", "activities:list", "calendar", "activities"),
     NavItem("Documents", "documents:list", "folder", "documents", badge="review_count"),
     NavItem("Certificates", "certificates:list", "award", "certificates"),
+    NavItem("Approvals", "approvals:inbox", "inbox", "approvals", badge="approval_count"),  # ASSUMPTIONS 437
     NavItem("Startups", "startups:list", "store", "startups"),
     NavItem("Reports", "reports:list", "chart-column", "reports"),
     NavItem("AI Assistant", "assistant:chat", "sparkles", "assistant"),
@@ -47,6 +48,9 @@ WORKSPACE = [
 ADMIN = [
     NavItem("Admin Console", "accounts:console", "shield", "console", permission=Permission.MANAGE_USERS),
 ]
+
+
+BADGE_LABELS = {"review_count": "documents waiting for your review", "approval_count": "items waiting for your approval"}
 
 
 class StaffLayout:
@@ -73,7 +77,7 @@ class StaffLayout:
                 "icon": item.icon,
                 "active": item.section == section,
                 "badge": getattr(self, item.badge) if item.badge else 0,
-                "badge_label": "documents waiting for your review" if item.badge == "review_count" else "",
+                "badge_label": BADGE_LABELS.get(item.badge, ""),
             }
             for item in items
             if item.permission is None or has_permission(self.member, item.permission)
@@ -92,6 +96,13 @@ class StaffLayout:
         """Documents waiting for MY review (documents.services.review_queue; 0, so no badge, without
         can_approve_documents)."""
         return review_queue(self.member).count()
+
+    @cached_property
+    def approval_count(self) -> int:
+        """Everything waiting for MY approval (approvals.inbox.inbox_counts; 0 for a member who approves nothing)."""
+        from approvals.inbox import has_inbox, inbox_counts
+
+        return inbox_counts(self.member)["total"] if has_inbox(self.member) else 0
 
     @cached_property
     def unread_count(self) -> int:

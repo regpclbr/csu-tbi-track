@@ -19,7 +19,7 @@ you connect with `ssh` (step 3). Never paste a password, App Password or secret 
 
 ## Before the review starts (checklist; Azure server: not used)
 
-- [ ] NAVIGATU approved using real data on the hosted version (TBI_QUESTIONS, "Hosted client review version").
+- [ ] NAVIGATU approved using real data on the hosted version (open question, CLAUDE.md).
 - [ ] Privacy placeholders filled in: contact person, retention period, approval date
       (`templates/public/privacy.html` and `templates/public/_privacy_consent.html`), committed and deployed.
 - [ ] The certificate design file is ready (A4 landscape PNG or JPG, at least 1754 × 1240 pixels).

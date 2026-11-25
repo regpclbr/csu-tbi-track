@@ -19,7 +19,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, has_permission, require_permission
+from accounts.permissions import Permission, has_permission, require_permission, require_permission_for
 from activities.formatting import format_date, format_datetime, format_time, format_time_range
 from activities.models import Activity, ActivityStatus, ParticipantCategory
 from activities.services import activity_start_end, is_registration_open, open_for_registration, slots_remaining
@@ -319,6 +319,23 @@ def form_is_locked(form: FormTemplate) -> bool:
 FORM_LOCKED = "This form already has answers, so its fields are locked: they cannot be added, edited or removed."
 
 
+FORM_HISTORY_LABELS = {FormType.REGISTRATION: "Registration form", FormType.EVALUATION: "Evaluation form"}
+
+
+def _form_history(form: FormTemplate, member: TBIMember, old: str, new: str) -> None:
+    """One History row on the form's activity for a field change (ASSUMPTIONS 437: who and when, also when the Director
+    edits a form another member made)."""
+    from activities.services import write_form_history
+
+    write_form_history(form.activity, member, FORM_HISTORY_LABELS.get(form.form_type, "Form"), old, new)
+
+
+def _field_text(field: FormField) -> str:
+    required = "required" if field.is_required else "optional"
+    options = f", options: {', '.join(field.options)}" if field.options else ""
+    return f'"{field.field_label}" ({FieldType(field.field_type).label.lower()}, {required}{options})'
+
+
 def _ensure_unlocked(form: FormTemplate) -> None:
     if form_is_locked(form):
         raise RegistrationError(FORM_LOCKED)
@@ -328,7 +345,7 @@ def _ensure_unlocked(form: FormTemplate) -> None:
 def create_form(member: TBIMember, activity: Activity, form_type: str, title: str = "") -> FormTemplate:
     """Create the activity's registration or evaluation form, copying the default fields
     for the activity's type (generated_from_default is true when any were copied)."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)  # or its assignment (437)
     if form_type not in FormType.values:
         raise RegistrationError(f'Unknown form type "{form_type}". Use registration or evaluation.')
     Activity.objects.select_for_update().get(pk=activity.pk)  # one form per type, even if two clicks race
@@ -356,6 +373,7 @@ def create_form(member: TBIMember, activity: Activity, form_type: str, title: st
             is_required=default.is_required,
             sort_order=number,
         )
+    _form_history(form, member, "", f"Created ({len(defaults)} default field{'' if len(defaults) == 1 else 's'})")
     return form
 
 
@@ -378,24 +396,27 @@ def _clean_field(form: FormTemplate, label: str, field_type: str, options, exclu
 def add_field(
     member: TBIMember, form: FormTemplate, *, field_label: str, field_type: str, options=None, is_required: bool = True
 ) -> FormField:
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, form.activity)
     _ensure_unlocked(form)
     label, stored_options = _clean_field(form, field_label, field_type, options)
     last = form.fields.aggregate(last=Max("sort_order"))["last"] or 0
-    return FormField.objects.create(
+    field = FormField.objects.create(
         template=form, field_label=label, field_type=field_type, options=stored_options,
         is_required=parse_bool(is_required, "is_required", default=True), sort_order=last + 1,
     )
+    _form_history(form, member, "", f"Field {_field_text(field)} added")
+    return field
 
 
 @transaction.atomic
 def update_field(member: TBIMember, field: FormField, **changes) -> FormField:
     """Change a field's label, type, options or is_required (refused once the form has answers)."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, field.template.activity)
     allowed = {"field_label", "field_type", "options", "is_required"}
     if unknown := set(changes) - allowed:
         raise RegistrationError(f"These cannot be changed: {', '.join(sorted(unknown))}.")
     _ensure_unlocked(field.template)
+    before = _field_text(field)
     label = changes.get("field_label", field.field_label)
     field_type = changes.get("field_type", field.field_type)
     if "options" in changes:
@@ -408,20 +429,24 @@ def update_field(member: TBIMember, field: FormField, **changes) -> FormField:
     field.field_type = field_type
     field.is_required = parse_bool(changes.get("is_required"), "is_required", default=field.is_required)
     field.save()
+    if (after := _field_text(field)) != before:
+        _form_history(field.template, member, f"Field {before}", f"Field {after}")
     return field
 
 
 @transaction.atomic
 def remove_field(member: TBIMember, field: FormField) -> None:
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, field.template.activity)
     _ensure_unlocked(field.template)
+    text = _field_text(field)
     field.delete()
+    _form_history(field.template, member, f"Field {text}", "Removed")
 
 
 @transaction.atomic
 def reorder_fields(member: TBIMember, form: FormTemplate, field_ids: list[int]) -> None:
     """Put the fields in the given order. Allowed even after answers (order does not change meaning)."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, form.activity)
     fields = {field.pk: field for field in form.fields.all()}
     try:
         ids = [int(field_id) for field_id in field_ids]
@@ -429,8 +454,12 @@ def reorder_fields(member: TBIMember, form: FormTemplate, field_ids: list[int]) 
         raise RegistrationError("field_ids must be a list of numbers.") from error
     if sorted(ids) != sorted(fields):
         raise RegistrationError("Give every field of this form exactly once.")
+    old_order = [fields[pk].field_label for pk in sorted(fields, key=lambda pk: (fields[pk].sort_order, pk))]
     for number, field_id in enumerate(ids, start=1):
         FormField.objects.filter(pk=field_id).update(sort_order=number)
+    new_order = [fields[pk].field_label for pk in ids]
+    if new_order != old_order:
+        _form_history(form, member, "Order: " + ", ".join(old_order), "Order: " + ", ".join(new_order))
 
 
 # --- Public registration (no login) ------------------------------------------------------
@@ -489,7 +518,7 @@ def mark_registration_form_ready(member: TBIMember, activity: Activity, now: dat
     it counts for registration (the activity still has to be Scheduled, before the deadline and with slots left).
     can_create_activity. One History row ("Registration form": "" -> "Marked ready …"). Not undone: the fields stay
     editable until the first registration, and Scheduled -> Draft closes registration while nobody has registered."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)
     Activity.objects.select_for_update().get(pk=activity.pk)
     form = get_form(activity, FormType.REGISTRATION)
     if form is None:

@@ -28,7 +28,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, require_permission
+from accounts.permissions import Permission, require_permission, require_permission_for
 from activities.formatting import format_date, format_datetime, format_time
 from activities.models import Activity, ActivityStatus
 from config.ratelimit import count_attempt
@@ -332,7 +332,7 @@ def mark_by_staff(
 
     from .services import RegistrationError, attendance_closed_reason
 
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)  # or its assignment (437)
     now = now or timezone.now()
     locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     if reason := attendance_closed_reason(locked):

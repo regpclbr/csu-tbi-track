@@ -72,7 +72,7 @@ def _registration_context(activity, form, values: dict, errors: dict[str, str]) 
 @require_GET
 def privacy_notice(request: HttpRequest) -> HttpResponse:
     """/privacy/: the privacy notice (ASSUMPTIONS 394). The registration and evaluation pages link here and ask for
-    consent; review version (UAT) text of 2026-11-17, final text pending NAVIGATU and the TBI (docs/TBI_QUESTIONS.md)."""
+    consent; review version (UAT) text of 2026-11-17, final text pending NAVIGATU and the TBI (open question, CLAUDE.md)."""
     return render(request, "public/privacy.html")
 
 

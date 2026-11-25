@@ -1,0 +1,79 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/approvals/<id>/ (approvals.page_views.detail; the submitter and members with can_approve_documents, 404 for anyone else;
+ASSUMPTIONS 437): the facts, the files (original, signed copy), the history (SUBMISSION_EVENT) and only the actions
+approvals.services.allowed_actions offers this member. Each action opens a dialog (components/modal.html) and posts;
+the service checks everything again and refusals come back as toasts.
+{% endcomment %}
+{% block page_header %}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-6">
+  <a href="{% if actions.approve or actions.unapprove %}{% url 'approvals:inbox' %}{% else %}{% url 'approvals:mine' %}{% endif %}" class="link inline-flex items-center gap-2 text-sm">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Approvals</a>
+
+  <section class="card p-6" aria-labelledby="submission-title">
+    <p class="text-xs font-semibold tracking-wide text-primary uppercase">Submitted to the Director</p>
+    <h1 id="submission-title" class="page-title mt-1 [overflow-wrap:anywhere]">{{ submission.title }}</h1>
+    <div class="mt-2 flex flex-wrap items-center gap-2">
+      {% include "components/badge.html" with text=state.label tone=state.tone %}
+      {% if submission.signed_file_path %}<span class="badge badge-success">{% include "components/icon.html" with name="pen-line" class="size-3.5" %}Signed by {{ submission.signed_by.name }}</span>{% endif %}
+      {% if submission.saved_document %}<a href="{% url 'documents:detail' submission.saved_document.pk %}" class="badge badge-info hover:underline">Saved to the activity's documents</a>{% endif %}
+    </div>
+    {% include "approvals/_assigned_notice.html" %}
+    {% if submission.status == "returned" and submission.review_reason %}
+      <div class="notice notice-warning mt-4" role="status">{% include "components/icon.html" with name="undo-2" class="size-4" %}<p><span class="font-semibold">Returned by {{ submission.reviewed_by.name }}:</span> {{ submission.review_reason }}</p></div>
+    {% endif %}
+    <div class="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4" data-actions-group>
+      <a href="{% url 'approvals:file' submission.pk 'original' %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download{% if submission.signed_file_path %} the original{% endif %}</a>
+      {% if submission.file_extension == "pdf" %}<a href="{% url 'approvals:file' submission.pk 'original' %}?inline=1" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="external-link" class="size-4" %}Open the PDF</a>{% endif %}
+      {% if submission.signed_file_path %}
+        <a href="{% url 'approvals:file' submission.pk 'signed' %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="download" class="size-4" %}Download the signed copy</a>
+        <a href="{% url 'approvals:file' submission.pk 'signed' %}?inline=1" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="external-link" class="size-4" %}Open the signed copy</a>
+      {% endif %}
+      <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+        {% include "approvals/_assign.html" with assign=assign next=request.get_full_path %}
+        {% if actions.return %}
+          {% include "components/modal.html" with id="return-dialog" title="Return to the member?" body="approvals/_return_form.html" trigger_label="Return" trigger_icon="undo-2" trigger_class="btn btn-danger" %}
+        {% endif %}
+        {% if actions.unapprove %}
+          {% include "components/modal.html" with id="unapprove-dialog" title="Unapprove this submission?" body="approvals/_unapprove_form.html" trigger_label="Unapprove" trigger_icon="undo-2" trigger_class="btn btn-danger" %}
+        {% endif %}
+        {% if actions.save %}
+          {% include "components/modal.html" with id="save-dialog" title="Save to the activity's documents" body="approvals/_save_form.html" trigger_label="Save to the activity's documents" trigger_icon="folder" trigger_class="btn btn-secondary" %}
+        {% endif %}
+        {% if actions.resubmit %}
+          {% include "components/modal.html" with id="resubmit-dialog" title="Submit again" body="approvals/_resubmit_form.html" trigger_label="Submit again" trigger_icon="upload" trigger_class="btn btn-primary" %}
+        {% endif %}
+        {% if actions.approve %}
+          {% include "components/modal.html" with id="approve-dialog" title="Approve this submission?" body="approvals/_approve_form.html" trigger_label="Approve" trigger_icon="circle-check" trigger_class="btn btn-primary" %}
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card p-6" aria-labelledby="facts-title">
+    {% include "components/section_header.html" with id="facts-title" title="Details" %}
+    <dl class="grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2">
+      <div><dt class="font-semibold text-ink">Submitted by</dt><dd class="mt-1 text-slate-700">{{ submission.submitted_by.name }} on <time datetime="{{ submission.submitted_at|date:'c' }}">{{ submission.submitted_at|date:"M j, Y g:i A" }}</time></dd></div>
+      <div><dt class="font-semibold text-ink">File</dt><dd class="mt-1 break-all text-slate-700">{{ submission.file_name }} · {{ submission.file_extension|upper }} · {{ submission.file_size_kb }} KB</dd></div>
+      <div><dt class="font-semibold text-ink">Activity</dt><dd class="mt-1 text-slate-700">{% if submission.activity %}<a href="{% url 'activities:detail' submission.activity_id %}" class="link">{{ submission.activity.title }}</a>{% else %}Not for one activity{% endif %}</dd></div>
+      <div><dt class="font-semibold text-ink">Document type</dt><dd class="mt-1 text-slate-700">{{ submission.document_type.name|default:"Not chosen" }}</dd></div>
+      {% if submission.note %}<div class="sm:col-span-2"><dt class="font-semibold text-ink">Note</dt><dd class="mt-1 whitespace-pre-line text-slate-700">{{ submission.note }}</dd></div>{% endif %}
+      {% if submission.signed_file_path %}<div class="sm:col-span-2"><dt class="font-semibold text-ink">Signature</dt><dd class="mt-1 text-slate-700">Stamped by {{ submission.signed_by.name }} on <time datetime="{{ submission.signed_at|date:'c' }}">{{ submission.signed_at|date:"M j, Y g:i A" }}</time>. {{ stamp_note }} The original file is kept unchanged.</dd></div>{% endif %}
+    </dl>
+  </section>
+
+  <section class="card p-6" aria-labelledby="history-title">
+    {% include "components/section_header.html" with id="history-title" title="History" %}
+    <ol class="space-y-3 text-sm">
+      {% for event in events %}
+        <li class="flex flex-wrap items-baseline gap-x-2">
+          <time class="text-xs text-muted" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"M j, Y g:i A" }}</time>
+          <span class="font-semibold text-ink">{{ event.get_action_display }}</span>
+          <span class="text-slate-700">by {{ event.member.name }}{% if event.on_behalf_of %} on behalf of {{ event.on_behalf_of.name }}{% endif %}</span>
+          {% if event.reason %}<p class="w-full text-slate-700">“{{ event.reason }}”</p>{% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+</div>
+{% endblock %}

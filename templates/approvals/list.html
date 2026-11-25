@@ -1,0 +1,74 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/approvals/ ("For your approval", approvals.inbox, ASSUMPTIONS 437), /approvals/submissions/ (every submission, for
+can_approve_documents) and /approvals/mine/ (my submissions): three tabs of one page. The inbox tab is shown only to a
+member who approves something (inbox.has_inbox). Filters stay in the URL and swap only the list (HTMX).
+{% endcomment %}
+{% block page_actions %}
+  {# Four tabs: they wrap onto two lines on phones (a rounded box there, a pill from 640 px; checked at 390 px by test_approvals_browser) #}
+  <nav class="segmented max-w-full flex-wrap rounded-2xl sm:rounded-full" aria-label="Approval lists">
+    {% if has_inbox %}
+      <a href="{% url 'approvals:inbox' %}" class="segmented-item {% if tab == 'inbox' %}is-selected{% endif %}"{% if tab == "inbox" %} aria-current="page"{% endif %}>
+        {% include "components/icon.html" with name="inbox" class="size-4" %}For your approval
+        <span class="rounded-full px-2 text-xs font-bold {% if inbox_total %}bg-primary-soft text-primary{% else %}bg-slate-200 text-slate-700{% endif %}">{{ inbox_total }}<span class="sr-only"> waiting</span></span></a>
+    {% endif %}
+    {% if can_review %}
+      <a href="{% url 'approvals:all' %}" class="segmented-item {% if tab == 'all' %}is-selected{% endif %}"{% if tab == "all" %} aria-current="page"{% endif %}>
+        {% include "components/icon.html" with name="list" class="size-4" %}All submissions</a>
+    {% endif %}
+    <a href="{% url 'approvals:assigned' %}" class="segmented-item {% if tab == 'assigned' %}is-selected{% endif %}"{% if tab == "assigned" %} aria-current="page"{% endif %}>
+      {% include "components/icon.html" with name="user-plus" class="size-4" %}Assigned to me
+      {% if assigned_total %}<span class="rounded-full bg-primary-soft px-2 text-xs font-bold text-primary">{{ assigned_total }}<span class="sr-only"> open</span></span>{% endif %}</a>
+    <a href="{% url 'approvals:mine' %}" class="segmented-item {% if tab == 'mine' %}is-selected{% endif %}"{% if tab == "mine" %} aria-current="page"{% endif %}>
+      {% include "components/icon.html" with name="send" class="size-4" %}My submissions</a>
+  </nav>
+  <a href="{% url 'approvals:submit' %}" class="btn btn-primary">{% include "components/icon.html" with name="upload" class="size-4" %}Submit to the Director</a>
+{% endblock %}
+{% block content %}
+<section class="card p-6" aria-label="{{ page_title }}">
+  {% if tab == "assigned" %}
+    {% include "approvals/_assigned.html" %}
+  {% elif tab == "inbox" %}
+    <form method="get" action="{{ list_url }}" hx-get="{{ list_url }}" hx-target="#approval-list" hx-push-url="true" hx-trigger="change, keyup changed delay:400ms from:#inbox-q"
+          hx-indicator="#approval-list" class="mb-6 flex flex-wrap items-end gap-3" data-inbox-filters>
+      <div class="min-w-0 grow basis-48">
+        <label for="inbox-q" class="text-sm font-semibold text-ink">Search</label>
+        <input id="inbox-q" type="search" name="q" value="{{ filters.q }}" placeholder="Title or name" class="field-input mt-2">
+      </div>
+      <div class="min-w-0 grow basis-48">
+        <label for="inbox-kind" class="text-sm font-semibold text-ink">Kind</label>
+        <select id="inbox-kind" name="kind" class="field-input field-select mt-2">
+          <option value="">Everything</option>
+          {% for key, label in kinds %}<option value="{{ key }}"{% if filters.kind == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="min-w-0 grow basis-64">
+        <label for="inbox-activity" class="text-sm font-semibold text-ink">Activity</label>
+        <select id="inbox-activity" name="activity" class="field-input field-select mt-2">
+          <option value="">Any activity</option>
+          {% for activity in activities %}<option value="{{ activity.pk }}"{% if filters.activity == activity.pk %} selected{% endif %}>{{ activity.title|truncatechars:70 }}</option>{% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-secondary">Apply</button></noscript>
+    </form>
+    <div id="approval-list" class="htmx-dim">{% include "approvals/_inbox.html" %}</div>
+  {% else %}
+    <form method="get" action="{{ list_url }}" hx-get="{{ list_url }}" hx-target="#approval-list" hx-push-url="true" hx-trigger="change, keyup changed delay:400ms from:#submissions-q"
+          hx-indicator="#approval-list" class="mb-6 flex flex-wrap items-end gap-3">
+      <div class="min-w-0 grow basis-48">
+        <label for="submissions-q" class="text-sm font-semibold text-ink">Search</label>
+        <input id="submissions-q" type="search" name="q" value="{{ q }}" placeholder="Title, activity or name" class="field-input mt-2">
+      </div>
+      <div class="min-w-0 grow basis-48">
+        <label for="submissions-status" class="text-sm font-semibold text-ink">State</label>
+        <select id="submissions-status" name="status" class="field-input field-select mt-2">
+          <option value="">Any state</option>
+          {% for value, label in statuses %}<option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-secondary">Apply</button></noscript>
+    </form>
+    <div id="approval-list" class="htmx-dim">{% include "approvals/_submissions.html" %}</div>
+  {% endif %}
+</section>
+{% endblock %}

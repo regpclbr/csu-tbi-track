@@ -23,8 +23,10 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
         </div>
       </div>
     </div>
-    <div class="mt-6 border-t border-line pt-4">
-      {% include "documents/_actions.html" with row=view_row next=request.get_full_path %}
+    {% include "approvals/_assigned_notice.html" %}
+    <div class="mt-6 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+      <div class="min-w-0 grow">{% include "documents/_actions.html" with row=view_row next=request.get_full_path %}</div>
+      {% include "approvals/_assign.html" with assign=assign next=request.get_full_path %}
     </div>
   </section>
 
@@ -41,7 +43,7 @@ page the member came from (?next=, documents.pages.back_link); the Activity link
           {% if document.review_state == "approved" and not document.reviewed_by_id %}
             Uploaded as an approved copy on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time> (approved by System). The uploader or the Director can replace or delete it.
           {% elif document.review_state == "approved" %}
-            Approved by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. Approved documents are final.
+            Approved by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. The Director can take the approval back with a reason (Unapprove).
           {% elif document.review_state == "returned" %}
             Returned by {{ document.reviewed_by.name }} on <time datetime="{{ document.reviewed_at|date:'c' }}">{{ document.reviewed_at|date:"M j, Y g:i A" }}</time>. The reason was sent to {{ document.uploaded_by.name }} as a notification. It can be reviewed again after the file is replaced.
           {% else %}

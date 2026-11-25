@@ -259,6 +259,10 @@ class ActivityAuditLog(models.Model):
     changed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_changes", null=True, blank=True
     )
+    # ASSUMPTIONS 437: the member whose work this was, when it was done through a WORK_ASSIGNMENT ("on behalf of").
+    on_behalf_of = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="activity_changes_on_behalf", null=True, blank=True
+    )
     field_changed = models.CharField(max_length=100)
     old_value = models.TextField(blank=True)
     new_value = models.TextField(blank=True)

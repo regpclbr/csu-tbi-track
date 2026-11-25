@@ -25,3 +25,8 @@ Thumbs.db
 
 # Tailwind CLI binary (python manage.py tailwind install)
 tools/
+
+# Database and media backups (never commit)
+*.dump
+backups/
+backup-*/

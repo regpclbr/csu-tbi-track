@@ -1,0 +1,13 @@
+{# Inside the Return dialog: POST approvals:return with a required reason (approvals.services.return_submission). #}
+<form method="post" action="{% url 'approvals:return' submission.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <div>
+    <label for="return-reason" class="text-sm font-semibold text-ink">Reason <span class="text-danger" aria-hidden="true">*</span></label>
+    <textarea id="return-reason" name="reason" rows="4" maxlength="{{ reason_max }}" required class="field-input mt-2" aria-describedby="return-reason-help"></textarea>
+    <p id="return-reason-help" class="field-help">At most {{ reason_max }} characters. {{ submission.submitted_by.name }} gets it as a notification and can submit a new file.</p>
+  </div>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-danger btn-danger-solid">Return</button>
+  </div>
+</form>

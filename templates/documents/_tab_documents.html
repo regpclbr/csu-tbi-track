@@ -117,6 +117,9 @@ Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back 
         {% include "components/icon.html" with name="upload" class="size-4" %}<span x-show="!busy">Upload</span><span x-show="busy" x-cloak>Uploading…</span>
       </button>
     </form>
+    {# ASSUMPTIONS 437: a letter or report that needs the Director's approval (and signature) goes through Approvals #}
+    <p class="mt-4 border-t border-line pt-4 text-sm text-slate-700">Needs the Director's approval or signature first?
+      <a href="{% url 'approvals:submit' %}?activity={{ activity.pk }}" class="link font-semibold">Submit it to the Director</a>.</p>
   </section>
   {% include "documents/_dialog.html" %}
 </div>

@@ -409,7 +409,7 @@ def signatory_form_options(member, activity: Activity | None = None) -> dict:
                    for slot, person in certificate_services.default_signatories().items()}
     return {"current_signatories": current, "current_titles": titles,
             "can_add_person": has_permission(member, Permission.MANAGE_SIGNATORIES),
-            "can_choose_signatories": certificate_services.can_choose_signatories(member)}
+            "can_choose_signatories": certificate_services.can_choose_signatories(member, activity)}
 
 
 TEXT_MODE_FIELD = "certificate_text_mode"  # "default" | "custom" inside "Prepare the certificates now"

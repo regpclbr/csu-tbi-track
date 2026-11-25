@@ -16,7 +16,7 @@ from django.db.models.functions import Coalesce, Lower, Trim
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, require_permission
+from accounts.permissions import Permission, acting_on_behalf_of, require_permission, require_permission_for
 from registrations.models import FormTemplate, FormType, Registration
 
 from .formatting import format_audit_value, format_date, format_time_range
@@ -325,11 +325,14 @@ def _ensure_not_conducted(activity: Activity, action: str) -> None:
 
 def _write_audit(activity: Activity, member: TBIMember | None, changes: list[tuple[str, object, object]]) -> None:
     """Insert one ACTIVITY_AUDIT_LOG row per (label, old value, new value). member None = System
-    (an automatic status change)."""
+    (an automatic status change). on_behalf_of: the assigner when the member acts through a WORK_ASSIGNMENT
+    (accounts.permissions.acting_on_behalf_of, ASSUMPTIONS 437)."""
+    on_behalf_of = acting_on_behalf_of(member)
     for label, old, new in changes:
         ActivityAuditLog.objects.create(
             activity=activity,
             changed_by=member,
+            on_behalf_of=on_behalf_of,
             field_changed=label,
             old_value=format_audit_value(old),
             new_value=format_audit_value(new),
@@ -353,6 +356,21 @@ def write_registration_form_history(activity: Activity, member: TBIMember | None
     from registrations.services import REGISTRATION_FORM_HISTORY_LABEL  # registrations.services imports this module
 
     _write_audit(activity, member, [(REGISTRATION_FORM_HISTORY_LABEL, old, new)])
+
+
+ASSIGNMENT_LABEL = "Assignment"  # work assigned to a member, done, removed (approvals.assignments, ASSUMPTIONS 437)
+
+
+def write_assignment_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
+    """One History row about work assigned on this activity (approvals.assignments, ASSUMPTIONS 437):
+    "Assignment": "" -> "Approve the certificates assigned to Ana Cruz, due Dec 1, 2026"."""
+    _write_audit(activity, member, [(ASSIGNMENT_LABEL, old, new)])
+
+
+def write_form_history(activity: Activity, member: TBIMember | None, label: str, old: str, new: str) -> None:
+    """One History row about a registration or evaluation form's fields (registrations.services, ASSUMPTIONS 437: every
+    edit is logged with who and when): "Registration form": "" -> 'Field "Company" added'."""
+    _write_audit(activity, member, [(label, old, new)])
 
 
 def write_certificate_approval_history(activity: Activity, member: TBIMember | None, old: str, new: str) -> None:
@@ -407,7 +425,7 @@ def get_audit_log(
     per_page: int = DEFAULT_PAGE_SIZE,
 ) -> PageResult:
     """The Audit Log tab: newest first, optionally filtered by field and date (Manila time)."""
-    rows = ActivityAuditLog.objects.filter(activity=activity).select_related("changed_by")
+    rows = ActivityAuditLog.objects.filter(activity=activity).select_related("changed_by", "on_behalf_of")
     if field:
         rows = rows.filter(field_changed=field)
     if date_from:
@@ -423,7 +441,7 @@ RECENT_CHANGES_LIMIT = 5
 def recent_audit_entries(limit: int = RECENT_CHANGES_LIMIT) -> list[ActivityAuditLog]:
     """The newest audit rows across all activities (the dashboard's "Recent changes"), with the
     member and the activity. Read only."""
-    rows = ActivityAuditLog.objects.select_related("changed_by", "activity").order_by("-changed_at", "-log_id")
+    rows = ActivityAuditLog.objects.select_related("changed_by", "on_behalf_of", "activity").order_by("-changed_at", "-log_id")
     return list(rows[:limit])
 
 
@@ -546,7 +564,7 @@ def update_activity(member: TBIMember, activity: Activity, data: dict, now: date
     transaction by certificates.services.set_activity_signatories (its History rows, certificates refreshed). Only
     with can_approve_certificates (ASSUMPTIONS 431); others pass None (the form shows the signatories read only).
     """
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)  # or its assignment (437)
     changes = _clean_values(data)
     new_lines = changes.pop(budget.LINES_KEY, None)  # None = the budget lines stay as they are (ASSUMPTIONS 433)
     # Lock the row so two people editing at once cannot overwrite each other's old values.
@@ -619,7 +637,7 @@ def set_registration_closed_by_hand(member: TBIMember, activity: Activity, close
     """Close registration by hand (closed=True) or reopen it (False) on a Scheduled activity; one History row
     "Registration". Reopening only removes the hand closing: the deadline, the slots, Scheduled and a ready
     registration form still decide (registrations.services.registration_closed_reason)."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)
     current = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     if current.status.name != SCHEDULED:
         raise ActivityError("Registration can be closed or reopened by hand only while the activity is Scheduled.")
@@ -687,7 +705,7 @@ def _move_status(current: Activity, new_status: str, member: TBIMember | None, n
 def change_status(member: TBIMember, activity: Activity, new_status: str) -> Activity:
     """Move an activity to `new_status` (a status name) by hand. Only ALLOWED_STATUS_MOVES are possible;
     staff may also move Ongoing -> Conducted when no attendance was recorded."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)
     current = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     _move_status(current, new_status, member)
     activity.refresh_from_db()
@@ -785,7 +803,7 @@ def add_resource_person(
     member: TBIMember, activity: Activity, resource_person: ResourcePerson, topic: str = ""
 ) -> ActivityResourcePerson:
     """Link a resource person to an activity (once per activity) and write an audit row."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)
     current = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
     _ensure_not_conducted(current, "changing resource persons")
     if ActivityResourcePerson.objects.filter(activity=current, resource_person=resource_person).exists():
@@ -799,7 +817,7 @@ def add_resource_person(
 @transaction.atomic
 def remove_resource_person(member: TBIMember, activity: Activity, resource_person: ResourcePerson) -> None:
     """Unlink a resource person from an activity and write an audit row."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)
     current = Activity.objects.select_for_update().select_related("status").get(pk=activity.pk)
     _ensure_not_conducted(current, "changing resource persons")
     link = ActivityResourcePerson.objects.filter(activity=current, resource_person=resource_person).first()

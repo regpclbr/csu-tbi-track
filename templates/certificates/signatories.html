@@ -41,6 +41,7 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
                 {% if row.default_label %}{% include "components/badge.html" with text=row.default_label tone="info" %}{% endif %}
                 <span>Used by {{ row.activities }} activit{{ row.activities|pluralize:"y,ies" }}</span>
               </p>
+              <p class="mt-1 text-xs text-muted" data-signatory-account>{% if person.member %}Signs approved submissions as {{ person.member.name }}{% else %}Not linked to an account (cannot sign submissions){% endif %}</p>
             </div>
             <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
               {% include "components/modal.html" with id=row.edit_id title="Edit "|add:person.name body="certificates/_edit_person_form.html" trigger_label="Edit" trigger_icon="pencil" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
@@ -49,6 +50,7 @@ Nobody is ever deleted (there is no delete URL). Signature thumbnails come from 
               {% else %}
                 {% include "components/modal.html" with id=row.image_id title="Add signature" body="certificates/_person_image_form.html" trigger_label="Add signature" trigger_icon="pen-line" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
               {% endif %}
+              {% include "components/modal.html" with id=row.account_id title="Who signs as "|add:person.name body="certificates/_person_account_form.html" trigger_label="Account" trigger_icon="user-round" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
               {% if row.background_removable %}
                 {% include "components/modal.html" with id=row.background_id title="Remove the white background?" body="certificates/_remove_background_form.html" trigger_label="Remove white background" trigger_icon="eraser" trigger_class="btn btn-ghost btn-sm" trigger_sr=person.name %}
               {% endif %}

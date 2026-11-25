@@ -94,6 +94,55 @@ next activity (beside the welcome banner, a filled block like the banner: ASSUMP
   </div>
 </div>
 
+{# --- For your approval (ASSUMPTIONS 437; reports.dashboard_page.approvals_card = approvals.inbox), full width below the KPI cards --- #}
+{% if page.approvals %}{% with approvals=page.approvals %}
+<section id="for-your-approval" class="card p-6 xl:col-span-2 xl:row-start-5{% if approvals.total %} has-accent accent-info{% endif %}" aria-labelledby="approvals-title" data-approvals-card>
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h2 id="approvals-title" class="card-title flex items-center gap-2">{% include "components/icon.html" with name="inbox" class="size-5 text-primary" %}For your approval</h2>
+    <p class="flex flex-wrap gap-2 text-sm">
+      {% for kind in approvals.counts %}<span class="badge badge-{% if kind.count %}info{% else %}neutral{% endif %} rounded-full">{{ kind.label }}: {{ kind.count }}</span>{% endfor %}
+    </p>
+  </div>
+  {% if approvals.items %}
+    <ul class="space-y-2">
+      {% for item in approvals.items %}
+        <li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3">
+          <div class="min-w-0 grow basis-64 [overflow-wrap:anywhere]">
+            <p class="font-semibold text-ink"><span class="text-xs font-semibold tracking-wide text-primary uppercase">{{ item.kind_label }}</span> · {{ item.title }}</p>
+            <p class="mt-1 text-sm text-muted">{% if item.detail %}{{ item.detail }}{% endif %}{% if item.who %} · {{ item.who }}{% endif %} · since {{ item.since|date:"M j" }}</p>
+          </div>
+          <a href="{{ item.url }}" class="btn {% if forloop.first %}btn-primary{% else %}btn-secondary{% endif %} btn-sm ml-auto">Open<span class="sr-only"> {{ item.title }}</span></a>
+        </li>
+      {% endfor %}
+    </ul>
+    <a href="{% url 'approvals:inbox' %}" class="link mt-4 inline-flex items-center gap-2 text-sm">{% if approvals.more %}Show all {{ approvals.total }}{% else %}Open For your approval{% endif %}{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+  {% else %}
+    {% include "components/empty_state.html" with icon="circle-check" title="Nothing is waiting for your approval" text="Certificates to approve, work submitted to you and documents to review appear here." compact=True %}
+  {% endif %}
+</section>
+{% endwith %}{% endif %}
+
+{# --- Assigned to me (ASSUMPTIONS 437): only while the member has open assignments --- #}
+{% if page.assigned %}
+<section id="assigned-to-me" class="card has-accent accent-info p-6 xl:col-span-2 xl:row-start-6" aria-labelledby="assigned-title" data-assigned-card>
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h2 id="assigned-title" class="card-title flex items-center gap-2">{% include "components/icon.html" with name="user-plus" class="size-5 text-primary" %}Assigned to me</h2>
+    <a href="{% url 'approvals:assigned' %}" class="link text-sm">See all</a>
+  </div>
+  <ul class="space-y-2">
+    {% for row in page.assigned|slice:":4" %}
+      <li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border px-4 py-3 {% if row.overdue %}border-danger-line bg-danger-soft/60{% else %}border-line bg-white{% endif %}">
+        <div class="min-w-0 grow basis-64 [overflow-wrap:anywhere]">
+          <p class="font-semibold text-ink"><span class="text-xs font-semibold tracking-wide text-primary uppercase">{{ row.label }}</span> · {{ row.title }}</p>
+          <p class="mt-1 text-sm text-muted">From {{ row.assignment.assigned_by.name }}{% if row.assignment.due_date %} · due {{ row.assignment.due_date|date:"M j" }}{% if row.overdue %} (overdue){% endif %}{% endif %}</p>
+        </div>
+        <a href="{{ row.url }}" class="btn btn-secondary btn-sm ml-auto">Open<span class="sr-only"> {{ row.title }}</span></a>
+      </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {% with next=page.next_activity %}
 {# --- Spotlight beside the banner: "Happening now" or "Next activity" (reports.services.dashboard_spotlight) --- #}
 {% if next %}

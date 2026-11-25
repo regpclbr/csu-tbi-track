@@ -322,7 +322,7 @@ def migrate(targets) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_migration_gives_every_certificate_the_default_and_approves_nothing(generated, capsys) -> None:
     activity, people = generated
-    latest = [key for key in MigrationExecutor(connection).loader.graph.leaf_nodes() if key[0] == "certificates"]
+    latest = list(MigrationExecutor(connection).loader.graph.leaf_nodes())  # every app: going back also unapplies approvals / notifications (ASSUMPTIONS 437)
     try:
         migrate([("certificates", "0012_certificate_text")])
         migrate([("certificates", "0013_certificate_text_data")])

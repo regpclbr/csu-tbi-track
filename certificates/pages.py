@@ -13,7 +13,8 @@ from django.http import HttpRequest, QueryDict
 from django.conf import settings
 from django.urls import reverse
 
-from accounts.permissions import Permission, has_any_permission, has_permission
+from accounts.models import TBIMember
+from accounts.permissions import Permission, has_any_permission, has_permission, has_permission_for
 from activities.models import Activity
 from config.links import activity_tab_url, is_internal_path
 from config.mail import prints_emails
@@ -184,7 +185,8 @@ def approval_panel(member, activity: Activity, certificates: list[Certificate]) 
     closed (services.approval_closed_reason). All issued / no certificates: no button and no reason at all. Admin
     Staff: the state only. `certificates` = all of the activity's certificates."""
     approved = services.is_approved(activity)
-    can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    # the role flag, or this activity's "Approve the certificates" assignment (ASSUMPTIONS 437)
+    can_approve = has_permission_for(member, Permission.APPROVE_CERTIFICATES, activity)
     not_issued = [c for c in certificates if c.status != Status.ISSUED]
     by_email = sum(1 for c in not_issued if c.delivery_method == DeliveryMethod.EMAIL)
     state = services.approval_state(activity, Counter(c.status for c in certificates))
@@ -209,6 +211,10 @@ def approval_panel(member, activity: Activity, certificates: list[Certificate]) 
         "url": reverse("activities:certificates_approve_activity", args=[activity.pk]),
         "can_prepare": can_prepare,
         "prepare_url": reverse("activities:certificates_prepare", args=[activity.pk]),
+        # ASSUMPTIONS 437: "Unapprove" for an approver while the activity is approved and nothing is Issued
+        "can_unapprove": (approved and can_approve
+                          and not any(c.status == Status.ISSUED for c in certificates)),
+        "unapprove_url": reverse("activities:certificates_unapprove_activity", args=[activity.pk]),
     }
 
 
@@ -386,7 +392,7 @@ def signatures_panel(member, activity: Activity) -> dict:
     the current version" when a newer active version exists (services.inactive_slots); the image form (with the impact
     of a new version, services.version_impact), "Add a person" and "All signatories" for can_manage_signatories only
     (ASSUMPTIONS 418). Without these flags: view only."""
-    can_choose = services.can_choose_signatories(member)
+    can_choose = services.can_choose_signatories(member, activity)
     can_upload = has_permission(member, Permission.MANAGE_SIGNATORIES)
     rows = services.activity_slots(activity)
     inactive = services.inactive_slots(activity)
@@ -796,7 +802,7 @@ def safe_next(request: HttpRequest, raw: str | None, default: str) -> str:
 def signatories_page(member, errors: dict | None = None, values: dict | None = None, open_form: str = "") -> dict:
     """The defaults (two dropdowns), "Add a person", the active people (name, position, image, default, how many
     activities use them, Edit / Signature with the impact of a new version, Deactivate) and the inactive ones."""
-    active = list(services.active_signatories())
+    active = list(services.active_signatories().select_related("member"))
     usage = dict(ActivitySignatory.objects.filter(signatory__in=active).values("signatory").order_by()
                  .annotate(n=Count("activity", distinct=True)).values_list("signatory", "n"))
     in_use = (set(Certificate.objects.filter(left_signatory__in=active).values_list("left_signatory", flat=True))
@@ -817,6 +823,7 @@ def signatories_page(member, errors: dict | None = None, values: dict | None = N
             "default_label": f"Default {services.SLOT_LABELS[person.default_slot].lower()}" if person.default_slot else "",
             "edit_id": f"edit-person-{person.pk}",
             "image_id": f"person-image-{person.pk}",
+            "account_id": f"person-account-{person.pk}",  # ASSUMPTIONS 437: who stamps this signature
         })
     return {
         "people": people,
@@ -827,4 +834,5 @@ def signatories_page(member, errors: dict | None = None, values: dict | None = N
         "values": values or {},
         "open_form": open_form,
         "max_mb": settings.CERTIFICATE_IMAGE_MAX_MB,
+        "accounts": list(TBIMember.objects.filter(is_active=True).order_by("name")),  # ASSUMPTIONS 437
     }

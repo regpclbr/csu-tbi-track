@@ -1,0 +1,34 @@
+{% comment %}
+The inbox list (approvals.inbox.inbox: oldest first), swapped by the filters. One row per item: its kind, title, who /
+activity, since when, and one Open button (the page where it is approved: the Certificates tab, the submission, the
+document). Nothing is approved from here: the work is checked on its own page first.
+{% endcomment %}
+<p class="mb-3 text-sm text-muted" role="status">{{ items|length }} item{{ items|pluralize }} waiting for you{% if filters.any_set %} (filtered){% endif %}, oldest first</p>
+{% if items %}
+  <ul class="space-y-2" data-inbox-list>
+    {% for item in items %}
+      <li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white px-4 py-3{% if item.overdue %} border-danger-line bg-danger-soft/60{% endif %}" data-inbox-item="{{ item.kind }}">
+        <span class="chip size-10 rounded-xl chip-{% if item.kind == 'certificates' %}amber{% elif item.kind == 'submission' %}blue{% else %}teal{% endif %}" aria-hidden="true">
+          {% if item.kind == "certificates" %}{% include "components/icon.html" with name="award" %}{% elif item.kind == "submission" %}{% include "components/icon.html" with name="send" %}{% elif item.kind == "assignment" %}{% include "components/icon.html" with name="clock" %}{% else %}{% include "components/icon.html" with name="file-check" %}{% endif %}
+        </span>
+        <div class="min-w-0 grow basis-64 [overflow-wrap:anywhere]">
+          <p class="flex flex-wrap items-center gap-2">
+            <span class="badge badge-{% if item.overdue %}danger{% elif item.kind == 'certificates' %}warning{% elif item.kind == 'submission' %}info{% else %}neutral{% endif %}">{{ item.kind_label }}</span>
+            <a href="{{ item.url }}" class="font-semibold text-ink hover:text-primary hover:underline">{{ item.title }}</a>
+          </p>
+          <p class="mt-1 text-sm text-slate-700">
+            {% if item.detail %}{{ item.detail }}{% endif %}{% if item.who %}{% if item.detail %} · {% endif %}{{ item.who }}{% endif %}{% if item.activity_title and item.kind != "certificates" %} · {{ item.activity_title }}{% endif %}
+          </p>
+          <p class="mt-1 text-xs text-muted">Since <time datetime="{{ item.since|date:'c' }}">{{ item.since|date:"M j, Y" }}</time></p>
+        </div>
+        <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <a href="{{ item.url }}" class="btn btn-secondary btn-sm btn-arrow">Open<span class="sr-only"> {{ item.title }}</span>{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+{% elif filters.any_set %}
+  {% include "components/empty_state.html" with icon="search" title="Nothing matches the filters" text="Try another search or clear a filter." action_url=list_url action_label="Clear filters" %}
+{% else %}
+  {% include "components/empty_state.html" with icon="circle-check" title="Nothing is waiting for your approval" text="Certificates to approve, work submitted to you and documents to review appear here." %}
+{% endif %}

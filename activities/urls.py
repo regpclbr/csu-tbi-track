@@ -37,6 +37,8 @@ urlpatterns = [
     # One approval per activity (ASSUMPTIONS 369); the wording of its certificates (ASSUMPTIONS 370).
     path("<int:activity_id>/certificates/approve/", certificate_page_views.approve_activity,
          name="certificates_approve_activity"),
+    path("<int:activity_id>/certificates/unapprove/", certificate_page_views.unapprove_activity,
+         name="certificates_unapprove_activity"),  # ASSUMPTIONS 437
     path("<int:activity_id>/certificates/text/", certificate_page_views.text_save, name="certificates_text"),
     # Before Conducted (ASSUMPTIONS 420): "Prepare the certificates now" and the sample preview.
     path("<int:activity_id>/certificates/prepare/", certificate_page_views.prepare,

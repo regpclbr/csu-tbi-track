@@ -1,0 +1,39 @@
+{% comment %}Inside the Approve dialog (approvals/detail.html). POST approvals:approve: sign=true stamps the approver's OWN
+signature (the signatory list, ASSUMPTIONS 437) on a copy of the PDF at the "Noted:" line or a chosen page and position;
+"Preview the signed copy" opens the stamped copy in a new tab first (never stored). sign.refused = why signing is not
+offered (not a PDF, no linked signature, no image). The service checks everything again.{% endcomment %}
+<form method="post" action="{% url 'approvals:approve' submission.pk %}" class="space-y-4"
+      x-data="{ sign: false, placement: '{% if sign.noted_page %}noted{% else %}bottom-right{% endif %}', page: '{{ sign.noted_page|default:sign.pages }}' }">
+  {% csrf_token %}
+  <p class="text-sm text-slate-700">{{ submission.submitted_by.name }} is told that it was approved.{% if submission.activity %} It can then be saved to the activity's documents.{% endif %}</p>
+  {% if sign.refused %}
+    <p class="notice notice-info text-sm">{% include "components/icon.html" with name="info" class="size-4" %}<span>{{ sign.refused }}</span></p>
+  {% else %}
+    <label class="flex items-start gap-3 text-sm">
+      <input type="checkbox" name="sign" value="true" x-model="sign" class="mt-1 size-4">
+      <span><span class="font-semibold text-ink">Also stamp my signature on a copy of the PDF</span><br>
+        <span class="text-slate-700">The original stays as it was. {{ stamp_note }}</span></span>
+    </label>
+    <div x-show="sign" x-cloak class="grid gap-4 sm:grid-cols-2">
+      <div class="min-w-0">
+        <label for="sign-placement" class="text-sm font-semibold text-ink">Where</label>
+        <select id="sign-placement" name="placement" x-model="placement" class="field-input field-select mt-2">
+          {% if sign.noted_page %}<option value="noted">At the “Noted:” line (page {{ sign.noted_page }})</option>{% endif %}
+          {% for key, label in positions %}<option value="{{ key }}">{{ label }} of a page</option>{% endfor %}
+        </select>
+        {% if not sign.noted_page %}<p class="field-help">No “Noted:” line was found in the PDF's text (a scanned PDF has none), so choose a place.</p>{% endif %}
+      </div>
+      <div class="min-w-0" x-show="placement !== 'noted'">
+        <label for="sign-page" class="text-sm font-semibold text-ink">Page (1 to {{ sign.pages }})</label>
+        <input id="sign-page" name="page" type="number" min="1" max="{{ sign.pages }}" x-model="page" class="field-input mt-2">
+      </div>
+      <a :href="'{% url 'approvals:sign_preview' submission.pk %}?placement=' + encodeURIComponent(placement) + '&page=' + encodeURIComponent(page)"
+         href="{% url 'approvals:sign_preview' submission.pk %}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm justify-self-start sm:col-span-2">
+        {% include "components/icon.html" with name="eye" class="size-4" %}Preview the signed copy (new tab)</a>
+    </div>
+  {% endif %}
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-primary"><span x-text="sign ? 'Approve and sign' : 'Approve'">Approve</span></button>
+  </div>
+</form>

@@ -23,6 +23,7 @@ urlpatterns = [
     path("signatories/<int:signatory_id>/remove-background/", page_views.signatory_remove_background,
          name="signatory_remove_background"),
     path("signatories/<int:signatory_id>/deactivate/", page_views.signatory_deactivate, name="signatory_deactivate"),
+    path("signatories/<int:signatory_id>/account/", page_views.signatory_account, name="signatory_account"),
     # The default certificate wording (can_approve_certificates, ASSUMPTIONS 370)
     path("text/", page_views.certificate_text, name="text"),
     path("text/preview/", page_views.certificate_text_preview, name="text_preview"),

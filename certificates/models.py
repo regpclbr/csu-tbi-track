@@ -77,6 +77,12 @@ class CertificateSignatory(models.Model):
     previous_version = models.ForeignKey(
         "self", on_delete=models.PROTECT, null=True, blank=True, related_name="next_versions"
     )
+    # The staff account this person signs as (ASSUMPTIONS 437): only that member may stamp this signature on a
+    # submission they approve. Set by can_manage_signatories (services.link_signatory_account), copied to new versions;
+    # one account per active person.
+    member = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="signatories"
+    )
 
     class Meta:
         db_table = "certificate_signatory"
@@ -88,6 +94,9 @@ class CertificateSignatory(models.Model):
             models.CheckConstraint(
                 condition=Q(default_slot__isnull=True) | Q(default_slot__in=["left", "right"]),
                 name="signatory_default_slot_valid",
+            ),
+            models.UniqueConstraint(
+                fields=["member"], condition=Q(member__isnull=False, is_active=True), name="one_active_signatory_per_member"
             ),
         ]
 

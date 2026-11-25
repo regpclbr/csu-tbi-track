@@ -1,0 +1,52 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+/approvals/submit/ (approvals.page_views.submit_page, any active staff member; ASSUMPTIONS 437): a file, a title, an
+optional note, and optionally the activity and the document type (needed later to save the approved file to the
+activity's documents). approvals.services.submit checks everything again; errors come back under their fields.
+{% endcomment %}
+{% block content %}
+<section class="card mx-auto max-w-2xl p-6" aria-labelledby="submit-title">
+  <h2 id="submit-title" class="card-title">What do you want the Director to approve?</h2>
+  <p class="card-subtitle mb-6">Every member who approves documents gets a notification. You get one when it is approved or returned. When approving a PDF, the Director can stamp their signature at the “Noted:” line.</p>
+  {% if errors.form %}
+    <div class="notice notice-danger mb-6" role="alert">{% include "components/icon.html" with name="circle-alert" class="size-4" %}<p>{{ errors.form }}</p></div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="space-y-4" novalidate>
+    {% csrf_token %}
+    <div>
+      <label for="submit-title-input" class="text-sm font-semibold text-ink">Title <span class="text-danger" aria-hidden="true">*</span></label>
+      <input id="submit-title-input" name="title" maxlength="255" value="{{ values.title|default:'' }}" required class="field-input mt-2"
+             placeholder="For example: Request letter for the pitching workshop"{% if errors.title %} aria-invalid="true" aria-describedby="submit-title-error" autofocus{% endif %}>
+      {% if errors.title %}<p id="submit-title-error" class="field-error">{{ errors.title }}</p>{% endif %}
+    </div>
+    {% include "components/file_drop.html" with id="submit-file" name="file" limits=limits error=errors.file label="File" %}
+    <div>
+      <label for="submit-note" class="text-sm font-semibold text-ink">Note to the Director (optional)</label>
+      <textarea id="submit-note" name="note" rows="3" maxlength="{{ note_max }}" class="field-input mt-2"{% if errors.note %} aria-invalid="true" aria-describedby="submit-note-error"{% endif %}>{{ values.note|default:'' }}</textarea>
+      {% if errors.note %}<p id="submit-note-error" class="field-error">{{ errors.note }}</p>{% endif %}
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div class="min-w-0">
+        <label for="submit-activity" class="text-sm font-semibold text-ink">Activity (optional)</label>
+        <select id="submit-activity" name="activity" class="field-input field-select mt-2">
+          <option value="">Not for one activity</option>
+          {% for activity in activities %}<option value="{{ activity.pk }}"{% if values.activity == activity.pk %} selected{% endif %}>{{ activity.title|truncatechars:70 }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="min-w-0">
+        <label for="submit-type" class="text-sm font-semibold text-ink">Document type (optional)</label>
+        <select id="submit-type" name="document_type" class="field-input field-select mt-2"{% if errors.document_type %} aria-invalid="true" aria-describedby="submit-type-error"{% endif %}>
+          <option value="">Not chosen</option>
+          {% for type in types %}<option value="{{ type.pk }}"{% if values.document_type == type.pk %} selected{% endif %}>{{ type.name }}</option>{% endfor %}
+        </select>
+        {% if errors.document_type %}<p id="submit-type-error" class="field-error">{{ errors.document_type }}</p>{% endif %}
+      </div>
+    </div>
+    <p class="field-help">With an activity and a type, the approved file can be saved to that activity's documents in one click.</p>
+    <div class="flex justify-end gap-2 pt-2">
+      <a href="{% url 'approvals:mine' %}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="send" class="size-4" %}Submit to the Director</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

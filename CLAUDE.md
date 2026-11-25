@@ -9,6 +9,9 @@ owner is a student, so explain important decisions briefly and keep the code sim
   If anything in the ERD is unclear or contradicts itself, **stop and ask**. Don't guess.
 - `docs/ASSUMPTIONS.md` lists every assumption. If a requirement is missing, state your
   assumption and add it there instead of silently deciding.
+- Questions still waiting for NAVIGATU / the TBI live ONLY in "Open questions for NAVIGATU" at the end of this file (one
+  line each). A change that raises a new question adds a line there (and "(open question, CLAUDE.md)" in its ASSUMPTIONS
+  item); an answered one is removed there and its marker removed in ASSUMPTIONS. Never recreate a separate questions file in `docs/` (the old one was removed on 2026-11-25).
 
 ## Tech stack (fixed, don't change it)
 - PostgreSQL + pgvector in Docker (`docker-compose.yml`)
@@ -24,7 +27,8 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Apps
 `accounts`, `activities`, `registrations`, `documents`, `certificates`, `reports`,
-`startups`, `assistant`, `notifications`. The project package is `config`.
+`startups`, `assistant`, `notifications`, `approvals` (submissions to the Director, the inbox, work assignments;
+ASSUMPTIONS 437). The project package is `config`.
 
 ## Model decisions
 - TBI_MEMBER is the custom user model (`AUTH_USER_MODEL = "accounts.TBIMember"`, email login,
@@ -108,15 +112,20 @@ owner is a student, so explain important decisions briefly and keep the code sim
   data step: the role named "Director" only, skipped if it manages users); seed Director only, on create only; roles
   screen switch `set_role_signatory_management` (audit line, amber note when nobody active has it, no last-member
   guard); NEVER together with can_manage_users (`check_role_flags`).
-- Roles (seed defaults, ASSUMPTIONS 388, 418, 421; flags are switched per role, never checked by name):
+- Roles (seed defaults, ASSUMPTIONS 388, 418, 421, 437; flags are switched per role, never checked by name):
 
-  | Role | can_create_activity | can_manage_users | can_approve_documents | can_approve_certificates | can_delete_activities | can_manage_signatories |
-  |---|---|---|---|---|---|---|
-  | Director | ✓ | – | ✓ | ✓ | – | ✓ |
-  | Incubation Project Head | ✓ | – | – | – | – | – |
-  | Community Development Head | ✓ | – | – | – | – | – |
-  | Admin Staff | ✓ | – | – | – | – | – |
-  | System Administrator | – | ✓ | – | – | ✓ | – (never with can_manage_users) |
+  | Role | can_create_activity | can_manage_users | can_approve_documents | can_approve_certificates | can_delete_activities | can_manage_signatories | can_assign_work |
+  |---|---|---|---|---|---|---|---|
+  | Director | ✓ | – | ✓ | ✓ | – | ✓ | ✓ |
+  | Incubation Project Head | ✓ | – | – | – | – | – | – |
+  | Community Development Head | ✓ | – | – | – | – | – | – |
+  | Admin Staff | ✓ | – | – | – | – | – | – |
+  | System Administrator | – | ✓ | – | – | ✓ | – (never with can_manage_users) | – (never with can_manage_users) |
+
+  ROLE.can_assign_work (ASSUMPTIONS 437): migrations accounts/0011 (column) + 0012 (guarded data step: "Director" only,
+  skipped if it manages users); seed Director only, on create only; roles screen switch `set_role_work_assignment`
+  (amber note when nobody active has it); NEVER together with can_manage_users (`check_role_flags`). Assigning also needs
+  the flag of the work itself. An assignment gives permission for ONE object, never a role change (see Approvals).
 
   `seed_data` sets every flag except can_manage_users only when it creates a role (re-applies can_manage_users).
   Roles screen switches: can_create_activity (`set_role_activity_creation`), can_approve_documents, can_approve_certificates,
@@ -169,6 +178,11 @@ owner is a student, so explain important decisions briefly and keep the code sim
 ## Login and permissions
 - Check permissions only with `accounts/permissions.py`: `permission_required(Permission.X)` /
   `staff_login_required` on views, `require_permission()` in services. Never rely on hiding a button.
+  Work assignments (ASSUMPTIONS 437): where an assignment may stand in for a flag, use the object versions
+  `has_permission_for` / `require_permission_for(member, Permission.X, obj)` / `require_any_permission_for` and
+  `object_permission_required(Permission.X, loader)` on views (`OBJECT_KINDS`: which assignment kind gives which flag on
+  which object; signatory choice = kind `signatory_choice`). They record "on behalf of" (`acting_on_behalf_of`), which
+  History (`ACTIVITY_AUDIT_LOG.on_behalf_of`) and SUBMISSION_EVENT read; never pass it by hand.
 - `Permission.CREATE_ACTIVITY` (create/edit activities), `Permission.MANAGE_USERS` (Admin Console:
   users, roles, master data, certificate design), `Permission.APPROVE_DOCUMENTS` (approve/return documents),
   `Permission.APPROVE_CERTIFICATES` (approve and reissue certificates), `Permission.MANAGE_SIGNATORIES` (the signatory list,
@@ -317,7 +331,7 @@ owner is a student, so explain important decisions briefly and keep the code sim
   `EVALUATION_PHOTO_MAX_SIDE`), PDFs stored as they are; `evaluation-photos/activity-<id>/<random>.<ext>`. A refused file =
   the review step again with the reason (nothing saved). Evaluation tab card "Participant photos"
   (`pages.participant_photos`): the count for everyone, files / larger view / Download / "Use in reports" (HTMX, OOB
-  `#photos-summary`) for can_create_activity. No retention job yet (TBI_QUESTIONS).
+  `#photos-summary`) for can_create_activity. No retention job yet (open question below).
 - Privacy notice (ASSUMPTIONS 394; retention wording 414): `/privacy/` + `public/_privacy_consent.html` (required checkbox `privacy_consent`) on the
   public registration page, the portal registration page and the evaluation review step. The one rule is
   `services.check_privacy_consent`, called by every public entry point (HTML, `/api/register/`, `/api/evaluate/`, portal page
@@ -489,6 +503,32 @@ owner is a student, so explain important decisions briefly and keep the code sim
   no key or a rename keeps the current title; the task never raises or logs text. The page refetches My chats once, 6 s later
   (`assistant:chat_list`).
 - The answer instruction asks for short paragraphs and simple lists, no tables or headings; the `[n]` citation rule is unchanged.
+
+## Approvals: the inbox, submissions, unapprove, assigned work (ASSUMPTIONS 437)
+- App `approvals`: SUBMISSION + SUBMISSION_EVENT (append-only) in `approvals/services.py`, WORK_ASSIGNMENT in
+  `approvals/assignments.py`, the PDF stamp in `approvals/signing.py` (pypdf only), the inbox in `approvals/inbox.py`.
+  43 tables. Pages `/approvals/` (For your approval, All submissions, Assigned to me, My submissions, Submit to the
+  Director), sidebar "Approvals" (badge = `inbox_counts`), Dashboard cards "For your approval" and "Assigned to me".
+- Inbox = one query per kind from the existing rules only: certificate approvals (`needs_approval_q` + prepared before
+  Conducted), submissions waiting (never your own), `review_queue`, the assignments I gave that are overdue. Open goes to
+  the work's own page; nothing is approved from the list.
+- Submissions: any active member; reviewers = can_approve_documents (never your own; refused when nobody else could
+  approve); approve / return (reason) / resubmit / unapprove (reason) / save to the activity's documents
+  (`upload_document(..., approved_by=)`). Signing: PDF ONLY, the approver's OWN linked signature
+  (CERTIFICATE_SIGNATORY.member_id, `certificates.services.link_signatory_account` / `signatory_for`, can_manage_signatories),
+  at the last "Noted:" or a chosen page + position, a NEW file (the original never changes), never delegated, pages say
+  "stamped image, not a cryptographic digital signature". Files only through `approvals:file` (404 for others).
+- Unapprove (reason, notification, History): `certificates.services.unapprove_activity_certificates` (only while nothing
+  is Issued; Approved -> waiting, PDFs removed), `approvals.services.unapprove_submission` (signed copy and saved document
+  removed with the documents' guards, refused = nothing changes), `documents.services.unapprove_document` (needs_review
+  types only; never approved copies, evidence or a cited document; chunks removed).
+- Editing others' work: `documents.services.rename_document` (uploader or can_approve_documents, History), the Director may
+  replace / delete others' waiting documents (`_may_change`), every form field change is a History row
+  (`registrations.services._form_history`).
+- Assignments: `assign_work` (can_assign_work + the work's flag; never to yourself; one open per work; never review your
+  own work; never give a can_manage_users member activities, signatories, documents, submissions or reports),
+  `mark_done` (assignee or assigner), `remove_assignment`, `complete_for` (approve / return closes the review
+  assignments). Assign dialog `approvals/_assign.html` (+ `pages.assign_panel`), notice `approvals/_assigned_notice.html`.
 
 ## Certificates (Step 9)
 - All rules live in `certificates/services.py`; status changes only through `set_certificate_status()`.
@@ -1041,6 +1081,12 @@ owner is a student, so explain important decisions briefly and keep the code sim
 - Browser checks fixed (2026-11-25): budget lines as grid rows / cards (container query, nothing scrolls sideways), Members
   table in three columns (actions always visible), the modal check uploads a needs_review document to test Return (436).
   Layout and tests only.
+- Director approvals (2026-11-25, NAVIGATU UAT): "For your approval" inbox + Dashboard card, unapprove (certificate
+  approval, submissions, reviewed documents), rename documents and form-edit History, Submit to the Director with a
+  stamped PDF signature and save to documents, assign work with permission for that task only and "on behalf of"
+  logging (437). Database: approvals 0001-0002, accounts 0011-0012, activities 0015, certificates 0017, notifications
+  0003-0004; 43 tables. ERD: SUBMISSION, SUBMISSION_EVENT, WORK_ASSIGNMENT, ROLE.can_assign_work,
+  CERTIFICATE_SIGNATORY.member_id, ACTIVITY_AUDIT_LOG.on_behalf_of_id, NOTIFICATION.submission_id / work_assignment_id.
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
@@ -1116,7 +1162,21 @@ $env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_brow
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s certificates/tests/test_signatories_browser.py; Remove-Item Env:BROWSER_TESTS   # Signatories page: names never squeezed
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_checkin_browser.py; Remove-Item Env:BROWSER_TESTS   # drawing a signature, the QR check-in page at 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_evaluation_photos_browser.py; Remove-Item Env:BROWSER_TESTS   # evaluation photos at 390 px, "Use in reports" at 1280 px
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s approvals/tests/test_approvals_browser.py; Remove-Item Env:BROWSER_TESTS   # the inbox and the Assign dialog at 1366 / 390 px
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time
 ```
+
+## Open questions for NAVIGATU
+Still unanswered (the system keeps the current rule until then; details in the ASSUMPTIONS item). One line each.
+- Letterhead (434): the official CSU / TBI letterhead files (logos, header, footer; PNG or SVG) for the generated forms.
+- Digital signatures (434): does the Supply Office accept the generated Attendance / Confirmation of Attendance with signatures given in the system?
+- Participant photos (435): how long may they be kept, and is a photo release needed before photos of people go into reports?
+- Participant mix (424): do DTI staff count as MSMEs, and do MSMEs count with the Incubatees for the 70%?
+- Stamped signature (437): is the Director's stamped image (at "Noted:", PDF only) accepted, and is "Noted:" the right line?
+- Privacy (394, 414, 434): the final notice text, the contact person / Data Protection Officer, retention of UAT data and signatures.
+- Certificates (177, 183, 363): the official design image, the wording, the office name and the two default signatories.
+- Stand-in (344, 421, 431): who approves documents / certificates and chooses signatories when the Director is away?
+- Reports (390/429, 399, 401): the official position titles for "Prepared by", calendar-year quarters, the rating interpretation scale.
+- Gemini (165): may real TBI documents (with participants' names) be sent to the free tier, or is a paid tier required?

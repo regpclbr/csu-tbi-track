@@ -37,6 +37,10 @@ set_role_signatory_management / set_role_activity_deletion, ASSUMPTIONS 344, 357
     <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
       {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can manage certificate signatories. Nobody can add signatories, signature images or the default signatories until a role with active members can manage them.</p>
   {% endif %}
+  {% if no_assigner %}
+    <p class="mb-4 flex items-start gap-2 rounded-xl bg-warning-soft px-3 py-2 text-sm text-amber-900" role="status">
+      {% include "components/icon.html" with name="info" class="mt-1 size-4" %}No active member can assign work. Work can still be done by the members whose roles allow it.</p>
+  {% endif %}
   {% if roles %}
     <div class="relative overflow-x-auto rounded-2xl border border-line">
       <table class="w-full text-left text-sm">
@@ -51,6 +55,7 @@ set_role_signatory_management / set_role_activity_deletion, ASSUMPTIONS 344, 357
             <th scope="col" class="px-4 py-3">Approve certificates</th>
             <th scope="col" class="px-4 py-3">Manage signatories</th>
             <th scope="col" class="px-4 py-3">Delete activities</th>
+            <th scope="col" class="px-4 py-3">Assign work</th>
             <th scope="col" class="px-4 py-3">Active members</th>
           </tr>
         </thead>
@@ -130,6 +135,21 @@ set_role_signatory_management / set_role_activity_deletion, ASSUMPTIONS 344, 357
                     {% else %}
                       <input type="hidden" name="enabled" value="true">
                       <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on deleting activities for {{ role.role_name }}">Turn on</button>
+                    {% endif %}
+                  </form>
+                </div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap items-center gap-2">
+                  {% if role.can_assign_work %}{% include "components/badge.html" with text="Yes" tone="success" %}{% else %}{% include "components/badge.html" with text="No" tone="neutral" %}{% endif %}
+                  <form method="post" action="{% url 'accounts:console_role_work_assignment' role.pk %}">
+                    {% csrf_token %}
+                    {% if role.can_assign_work %}
+                      <input type="hidden" name="enabled" value="false">
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn off assigning work for {{ role.role_name }}">Turn off</button>
+                    {% else %}
+                      <input type="hidden" name="enabled" value="true">
+                      <button type="submit" class="btn btn-secondary btn-sm" aria-label="Turn on assigning work for {{ role.role_name }}">Turn on</button>
                     {% endif %}
                   </form>
                 </div>

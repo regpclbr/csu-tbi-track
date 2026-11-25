@@ -10,7 +10,16 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
-from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from accounts.permissions import (
+    Permission,
+    has_permission,
+    has_permission_for,
+    is_htmx,
+    object_permission_required,
+    permission_required,
+    staff_login_required,
+)
+from approvals import pages as approval_pages
 from config.links import activity_tab_url, post_only_or_tab
 from certificates import pages as certificate_pages
 from documents import pages as document_pages
@@ -28,8 +37,16 @@ from .models import Activity, ActivityStatus, ActivityType, ParticipantCategory,
 # The delete page's one-line description (ASSUMPTIONS 389, 411).
 DELETE_SUBTITLE = "Deleting removes the activity and its records for good; a record of the deletion is kept"
 
-def _can_create(request: HttpRequest) -> bool:
+def _can_create(request: HttpRequest, activity: Activity | None = None) -> bool:
+    """can_create_activity; for one activity also its "Work on the activity" assignment (ASSUMPTIONS 437)."""
+    if activity is not None:
+        return has_permission_for(request.user, Permission.CREATE_ACTIVITY, activity)
     return has_permission(request.user, Permission.CREATE_ACTIVITY)
+
+
+def activity_from_url(activity_id: int, **kwargs) -> Activity:
+    """The activity named in the URL (404 if missing): the object of object_permission_required (ASSUMPTIONS 437)."""
+    return get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)
 
 
 def _detail_url(activity: Activity, tab: str = "") -> str:
@@ -199,7 +216,7 @@ def activity_create(request: HttpRequest) -> HttpResponse:
     return render(request, "activities/form.html", context)
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)
 @require_http_methods(["GET", "POST"])
 def activity_edit(request: HttpRequest, activity_id: int) -> HttpResponse:
     """A Conducted activity is shown read-only (the service refuses edits; a POST gets its message)."""
@@ -254,7 +271,7 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     """The activity page (or, for HTMX, only its tab) showing `tab`. `extra` adds to the tab's context: the
     Documents upload form's errors and the Certificates bulk refusals (phase F4) re-render the page with them."""
     detail = services.get_activity_detail(activity)
-    can_create = _can_create(request)
+    can_create = _can_create(request, activity)
     context = {
         "page_title": activity.title, "activity": activity, "detail": detail, "tab": tab, "tabs": pages.tabs(tab),
         # Every tab link starts with the activity's own address, never "?tab=" alone (ASSUMPTIONS 362).
@@ -267,6 +284,9 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
         "attention_count": attention.warning_count(items),  # informational items not counted (ASSUMPTIONS 364)
         # The public address (SITE_URL), never the Host header of this request.
         "register_url": registration_services.registration_page_url(activity),
+        # ASSUMPTIONS 437: "Assign to" (can_assign_work) and the notice for the member the work is assigned to
+        "assign": approval_pages.assign_panel(request.user, activity=activity),
+        "my_assignments": approval_pages.my_assignments_on(request.user, activity=activity),
     }
     if tab == "overview":
         context["detail_rows"] = pages.detail_rows(detail)
@@ -315,7 +335,7 @@ def qr_code(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
     return response
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)
 @post_only_or_tab("overview")
 def activity_change_status(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST status=<name> (&next=list: back to the Activities list, from a "Needs follow-up" card's "Mark as
@@ -333,7 +353,7 @@ def activity_change_status(request: HttpRequest, activity_id: int) -> HttpRespon
     return redirect(_detail_url(activity))
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)
 @post_only_or_tab("overview")
 def registration_switch(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST action=close|reopen: the Share card's "Close registration" / "Reopen registration" (ASSUMPTIONS 427).
@@ -396,7 +416,7 @@ def activity_delete(request: HttpRequest, activity_id: int) -> HttpResponse:
 # --- Resource persons --------------------------------------------------------------------------------------
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)
 @post_only_or_tab("overview")
 def resource_person_add(request: HttpRequest, activity_id: int) -> HttpResponse:
     """POST mode=existing (resource_person, topic) or mode=new (name, email, contact_number, topic)."""
@@ -423,7 +443,7 @@ def resource_person_add(request: HttpRequest, activity_id: int) -> HttpResponse:
     return redirect(f"{_detail_url(activity)}#resource-persons")
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)
 @post_only_or_tab("overview")
 def resource_person_remove(request: HttpRequest, activity_id: int, resource_person_id: int) -> HttpResponse:
     activity = get_object_or_404(Activity, pk=activity_id)

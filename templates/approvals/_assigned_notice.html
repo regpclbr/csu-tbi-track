@@ -1,0 +1,14 @@
+{% comment %}On the page of a piece of work: the member's own open assignments on it (approvals.pages.my_assignments_on,
+ASSUMPTIONS 437), "Assigned to you by …", the due date, the note and, for work closed by hand, "Mark done".{% endcomment %}
+{% for row in my_assignments %}
+  <div class="notice notice-{% if row.overdue %}danger{% else %}info{% endif %} mt-4 flex flex-wrap items-center gap-3" role="status" data-assigned-notice>
+    {% include "components/icon.html" with name="user-plus" class="size-4" %}
+    <p class="min-w-0 grow basis-64"><span class="font-semibold">{{ row.label }}: assigned to you by {{ row.assignment.assigned_by.name }}</span>{% if row.assignment.due_date %}, due {{ row.assignment.due_date|date:"M j, Y" }}{% if row.overdue %} (overdue){% endif %}{% endif %}.{% if row.assignment.note %} “{{ row.assignment.note }}”{% endif %} What you do here is logged on behalf of {{ row.assignment.assigned_by.name }}.</p>
+    {% if row.manual_done %}
+      <form method="post" action="{% url 'approvals:assignment_done' row.assignment.pk %}" class="ml-auto">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="check" class="size-4" %}Mark done</button>
+      </form>
+    {% endif %}
+  </div>
+{% endfor %}

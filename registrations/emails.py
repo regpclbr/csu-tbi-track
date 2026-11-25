@@ -44,7 +44,7 @@ def send_registration_confirmation(registration: Registration, cancel_link: str 
 
 def send_checkin_notice(registration: Registration, day, checked_in_at) -> None:
     """After every QR check-in (ASSUMPTIONS 434), so a person checked in by someone else who typed their email finds
-    out (the proxy check-in risk, docs/TBI_QUESTIONS.md)."""
+    out (the proxy check-in risk, ASSUMPTIONS 434)."""
     from django.utils import timezone
 
     from activities.formatting import format_time

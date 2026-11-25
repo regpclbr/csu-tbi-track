@@ -1,0 +1,42 @@
+{% comment %}"Assigned to me" (approvals.page_views.assigned, ASSUMPTIONS 437): my assignments, due first; Open goes to the
+work, "Mark done" closes the kinds that do not close themselves (an activity, choosing signatories, a report).{% endcomment %}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <p class="text-sm text-muted" role="status">{{ rows|length }} assignment{{ rows|pluralize }}{% if not show_all %} open{% endif %}</p>
+  <nav class="segmented" aria-label="Which assignments">
+    <a href="{% url 'approvals:assigned' %}" class="segmented-item {% if not show_all %}is-selected{% endif %}"{% if not show_all %} aria-current="page"{% endif %}>Open</a>
+    <a href="{% url 'approvals:assigned' %}?show=all" class="segmented-item {% if show_all %}is-selected{% endif %}"{% if show_all %} aria-current="page"{% endif %}>All</a>
+  </nav>
+</div>
+{% if rows %}
+  <ul class="space-y-2" data-assigned-list>
+    {% for row in rows %}{% with assignment=row.assignment %}
+      <li class="hover-row flex flex-wrap items-center gap-4 rounded-2xl border bg-white px-4 py-3 {% if row.overdue %}border-danger-line bg-danger-soft/60{% else %}border-line{% endif %}">
+        <div class="min-w-0 grow basis-64 [overflow-wrap:anywhere]">
+          <p class="flex flex-wrap items-center gap-2">
+            <span class="badge badge-{% if row.overdue %}danger{% elif assignment.status == 'open' %}info{% elif assignment.status == 'done' %}success{% else %}neutral{% endif %}">{% if row.overdue %}Overdue{% else %}{{ assignment.get_status_display }}{% endif %}</span>
+            <span class="font-semibold text-ink">{{ row.label }}</span><span class="text-slate-700">· {{ row.title }}</span>
+          </p>
+          <p class="mt-1 text-sm text-slate-700">From {{ assignment.assigned_by.name }}{% if assignment.due_date %} · due {{ assignment.due_date|date:"M j, Y" }}{% endif %}{% if assignment.note %} · “{{ assignment.note }}”{% endif %}</p>
+        </div>
+        <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <a href="{{ row.url }}" class="btn btn-secondary btn-sm">Open<span class="sr-only"> {{ row.title }}</span></a>
+          {% if assignment.status == "open" and row.manual_done %}
+            <form method="post" action="{% url 'approvals:assignment_done' assignment.pk %}" class="flex flex-wrap items-center gap-2">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              {% if assignment.kind == "report" and my_reports %}
+                <label for="done-report-{{ assignment.pk }}" class="sr-only">The report you generated</label>
+                <select id="done-report-{{ assignment.pk }}" name="generated_report" class="field-input field-select w-56">
+                  <option value="">No report linked</option>
+                  {% for report in my_reports %}<option value="{{ report.pk }}">{{ report.get_report_type_display|default:report.report_type }} · {{ report.generated_at|date:"M j" }}</option>{% endfor %}
+                </select>
+              {% endif %}
+              <button type="submit" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="check" class="size-4" %}Mark done</button>
+            </form>
+          {% endif %}
+        </div>
+      </li>
+    {% endwith %}{% endfor %}
+  </ul>
+{% else %}
+  {% include "components/empty_state.html" with icon="circle-check" title="Nothing is assigned to you" text="When the Director assigns you work, it appears here with its due date." %}
+{% endif %}

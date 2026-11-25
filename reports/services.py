@@ -22,7 +22,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, require_permission, require_staff_member
+from accounts.permissions import Permission, require_permission, require_permission_for, require_staff_member
 from activities.models import Activity, ActivityType
 from activities.services import PageResult, _paginate, happening_now
 from assistant import gemini
@@ -272,6 +272,13 @@ def queue_build(report_id: int) -> None:
     async_task("reports.tasks.run_build_report", report_id, task_name=task_name(report_id))
 
 
+def can_generate(member) -> bool:
+    """GENERATE_REPORT_PERMISSION, or an open "Prepare a report" assignment (ASSUMPTIONS 437)."""
+    from accounts.permissions import has_permission_for
+
+    return has_permission_for(member, GENERATE_REPORT_PERMISSION)
+
+
 def request_report(member: TBIMember, data: dict, now: datetime | None = None, queue: bool = True) -> GeneratedReport:
     """Save a report request and queue its generation (after the commit). `queue=False` is only for the
     `generate_report` command, which builds the file itself right away.
@@ -280,7 +287,7 @@ def request_report(member: TBIMember, data: dict, now: datetime | None = None, q
     date_range_end (both required, YYYY-MM-DD, end on or after start; a future range is allowed),
     activity_type (ID, optional), format.
     """
-    require_permission(member, GENERATE_REPORT_PERMISSION)
+    require_permission_for(member, GENERATE_REPORT_PERMISSION)  # or a report assignment (ASSUMPTIONS 437)
     report_type, sections, filters, report_format = _clean_request(data, now)
     with transaction.atomic():
         report = GeneratedReport.objects.create(

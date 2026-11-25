@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "startups",
     "assistant",
     "notifications",
+    "approvals",  # work submitted to the Director, the "For your approval" inbox (ASSUMPTIONS 437)
 ]
 
 # TBI_MEMBER is the login model. This must be set before the first `migrate`:
@@ -383,7 +384,7 @@ CSRF_TRUSTED_ORIGINS = [SITE_URL] if SITE_URL.startswith("https://") else []
 REVIEW_VERSION_LABEL = os.environ.get("REVIEW_VERSION_LABEL", "").strip()
 
 # The contact address in the footer of the public pages (phase F3). A PLACEHOLDER until the TBI confirms
-# its address (docs/TBI_QUESTIONS.md); set the real one in .env.
+# its address (open question, CLAUDE.md); set the real one in .env.
 TBI_CONTACT_EMAIL = os.environ.get("TBI_CONTACT_EMAIL", "tbi.contact@example.com")
 
 

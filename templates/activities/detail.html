@@ -34,6 +34,7 @@ from activities.pages.registration_summary (registrations.services.registration_
         {% if can_create and detail.allowed_status_moves %}
           {% include "components/modal.html" with id="status-modal" title="Change status" body="activities/_status_form.html" trigger_label="Change status" trigger_icon="refresh-cw" trigger_class="btn btn-secondary btn-sm" %}
         {% endif %}
+        {% include "approvals/_assign.html" with assign=assign next=request.get_full_path %}
         {% if can_edit %}
           {# Secondary (ASSUMPTIONS 413): each tab's main action (Upload, Mark selected as attended, Approve certificates, ...) is the page's one primary #}
           <a href="{% url 'activities:edit' activity.pk %}" class="btn btn-secondary btn-sm">{% include "components/icon.html" with name="pencil" class="size-4" %}Edit</a>
@@ -56,9 +57,10 @@ from activities.pages.registration_summary (registrations.services.registration_
         {% endif %}
       </div>
     </div>
+    {% include "approvals/_assigned_notice.html" %}
     <div class="mt-4">{% include "activities/_attention.html" %}</div>
     {% if registration.notice %}<div class="mt-3">{% include "activities/_registration_notice.html" %}</div>{% endif %}
-    {% if not can_create %}<p class="mt-4 flex items-center gap-2 text-sm text-muted">{% include "components/icon.html" with name="eye" class="size-4" %}View only: your role cannot change activities.</p>{% endif %}
+    {% if not can_create and not my_assignments %}<p class="mt-4 flex items-center gap-2 text-sm text-muted">{% include "components/icon.html" with name="eye" class="size-4" %}View only: your role cannot change activities.</p>{% endif %}
   </section>
 
   {% if can_delete %}{% include "components/modal.html" with id="delete-dialog" remote=True dialog_class="max-w-xl" %}{% endif %}

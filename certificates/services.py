@@ -65,11 +65,15 @@ from PIL import Image
 
 from accounts.models import TBIMember
 from accounts.permissions import (
+    SIGNATORY_CHOICE,
     Permission,
     has_any_permission,
     has_permission,
+    has_permission_for,
     require_any_permission,
+    require_any_permission_for,
     require_permission,
+    require_permission_for,
     require_staff_member,
 )
 from config.files import write_file_atomically
@@ -450,7 +454,7 @@ def _new_version(member: TBIMember, old: CertificateSignatory, *, name: str, pos
     default_slot = old.default_slot
     CertificateSignatory.objects.filter(pk=old.pk).update(is_active=False, default_slot=None)
     new = CertificateSignatory(name=name, position=position, is_active=old.is_active, default_slot=default_slot,
-                               previous_version=old)
+                               previous_version=old, member_id=old.member_id)  # the account link (ASSUMPTIONS 437)
     if image_name:
         new.signature_image_path.name = image_name
     new.save()
@@ -685,17 +689,24 @@ ONLY_DIRECTOR_CHOOSES = "Only the Director chooses who signs."
 PREPARE_PERMISSIONS = (Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
 
 
-def can_choose_signatories(member: TBIMember) -> bool:
+def can_choose_signatories(member: TBIMember, activity: Activity | None = None) -> bool:
     """Who may change an activity's signatories and titles: can_approve_certificates only (ASSUMPTIONS 431, amends
-    363 / 365 / 421). Everyone else sees them read only ("Only the Director chooses who signs.")."""
-    return has_permission(member, CHOOSE_SIGNATORIES_PERMISSION)
+    363 / 365 / 421), or for `activity` the member it was assigned to ("Choose who signs", ASSUMPTIONS 437). Everyone
+    else sees them read only ("Only the Director chooses who signs.")."""
+    if activity is None:
+        return has_permission(member, CHOOSE_SIGNATORIES_PERMISSION)
+    return has_permission_for(member, CHOOSE_SIGNATORIES_PERMISSION, activity, kind=SIGNATORY_CHOICE)
 
 
-def require_signatory_choice(member: TBIMember) -> None:
-    """Refuse (PermissionDenied, 403) a signatory or title change by a member without can_approve_certificates: the
-    one check of every path (Certificates tab, edit form, New form, any API) (ASSUMPTIONS 431)."""
-    if not can_choose_signatories(member):
-        raise PermissionDenied(ONLY_DIRECTOR_CHOOSES)
+def require_signatory_choice(member: TBIMember, activity: Activity | None = None) -> None:
+    """Refuse (PermissionDenied, 403) a signatory or title change by a member without can_approve_certificates (or, for
+    `activity`, its "Choose who signs" assignment): the one check of every path (Certificates tab, edit form, New form,
+    any API) (ASSUMPTIONS 431, 437)."""
+    try:
+        require_permission_for(member, CHOOSE_SIGNATORIES_PERMISSION, activity,
+                               kind=SIGNATORY_CHOICE if activity is not None else None)
+    except PermissionDenied as error:
+        raise PermissionDenied(ONLY_DIRECTOR_CHOOSES) from error
 
 
 def has_signatory_choice(chosen: dict | None) -> bool:
@@ -838,7 +849,7 @@ def set_activity_signatory(member: TBIMember, activity: Activity, slot: str, sig
     `title`: the "Title on this certificate" text ("" = the person's position); left out = kept for the same person,
     cleared for another person. Refusals (SlotError, a CertificateError): an inactive person, the person already on
     the other side. Returns {"changed", "updated", "outdated"} (_apply_slots)."""
-    require_signatory_choice(member)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
+    require_signatory_choice(member, activity)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
     if slot not in SLOTS:
         raise ValidationError({"slot": ["Choose left or right."]})
     locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
@@ -856,7 +867,7 @@ def set_activity_signatories(member: TBIMember, activity: Activity, choices: dic
     """The activity edit form's "Who signs the certificates": {slot: (person or None, title text)} for both slots,
     saved inside the caller's transaction (activities.services.update_activity). Same rules as
     set_activity_signatory; refusals as ValidationError({"signatory_left": [...]}) for the form's fields."""
-    require_signatory_choice(member)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
+    require_signatory_choice(member, activity)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
     locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
     try:
         wanted = {slot: (person, _clean_title(title, f"title_{slot}")) for slot, (person, title) in choices.items()
@@ -870,7 +881,7 @@ def use_current_version(member: TBIMember, activity: Activity, slot: str, now: d
     """The Signatures section's "Use the current version" (ASSUMPTIONS 367): the slot's inactive person is switched
     to the newest active version of the same person (current_version_of), keeping the title. Same permission and
     refresh rules as set_activity_signatory. Refused when there is no newer active version."""
-    require_signatory_choice(member)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
+    require_signatory_choice(member, activity)  # ASSUMPTIONS 431: only the Director (can_approve_certificates)
     if slot not in SLOTS:
         raise ValidationError({"slot": ["Choose left or right."]})
     row = activity_slots(activity)[slot]
@@ -1088,7 +1099,7 @@ def save_activity_text(member: TBIMember, activity: Activity, texts: dict[str, d
     Returns {"changed", "updated", "cancelled"}."""
     from activities.services import write_certificate_text_history
 
-    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    require_any_permission_for(member, (Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES), activity)
     locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
     cleaned = clean_texts(texts)
     was_custom = uses_custom_text(locked)
@@ -1121,7 +1132,7 @@ def use_default_text(member: TBIMember, activity: Activity, now: datetime | None
     happens when the activity already uses the default. Returns {"changed", "updated", "cancelled"}."""
     from activities.services import write_certificate_text_history
 
-    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    require_any_permission_for(member, (Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES), activity)
     locked = Activity.objects.select_for_update(of=("self",)).get(pk=activity.pk)
     custom = CertificateText.objects.filter(activity=locked, is_current=True)
     kinds = sorted(set(custom.values_list("certificate_type", flat=True)), key=TEXT_TYPES.index)
@@ -1375,7 +1386,7 @@ def _certificate_signatories(certificates) -> list[CertificateSignatory]:
 
 WAITING_FOR_EVALUATION = "Waiting for evaluation"
 WAITING_FOR_SIGNATURES = "Waiting for signatures"
-# Until the TBI answers (TBI_QUESTIONS): no certificate is sent, and it is not a staff task.
+# Until the TBI answers (open question, CLAUDE.md): no certificate is sent, and it is not a staff task.
 EVALUATION_CLOSED = "Evaluation closed without an answer"
 
 
@@ -1588,19 +1599,25 @@ def approve_activity_certificates(member: TBIMember, activity: Activity, now: da
     now."""
     from activities.services import write_certificate_approval_history
 
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    from approvals.assignments import complete_for, own_work_reason
+
+    assignment = require_permission_for(member, Permission.APPROVE_CERTIFICATES, activity)  # or its assignment (437)
     now = now or timezone.now()
     locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     if reason := approval_closed_reason(locked, now):
         raise CertificateError(reason)
+    if assignment is not None and (refused := own_work_reason(member, assignment.kind, locked)):
+        raise CertificateError(refused)  # separation of duties: an assignee never approves their own work
     Activity.objects.filter(pk=locked.pk).update(certificates_approved_by=member, certificates_approved_at=now)
     locked.certificates_approved_by, locked.certificates_approved_at = member, now
     early = before_conducted(locked)  # ASSUMPTIONS 420: approved before the certificates exist
     write_certificate_approval_history(locked, member, PREPARED_TEXT if early else NEEDS_APPROVAL,
                                        f"Approved by {member.name}{' (before Conducted)' if early else ''}")
     approved = approve_ready_certificates(locked, now=now)
-    audit_logger.info("Activity certificates approved: activity_id=%s certificates_approved_now=%s by member_id=%s",
-                      locked.pk, len(approved), member.pk)
+    complete_for("certificate_approval", locked, member, now)
+    audit_logger.info("Activity certificates approved: activity_id=%s certificates_approved_now=%s by member_id=%s%s",
+                      locked.pk, len(approved), member.pk,
+                      f" on behalf of member_id={assignment.assigned_by_id}" if assignment else "")
     return approved
 
 
@@ -1641,7 +1658,8 @@ def approve_pending_certificates(now: datetime | None = None) -> int:
     return sum(len(approve_ready_certificates(activity, now=now)) for activity in activities)
 
 
-def cancel_certificate_approval(activity: Activity, member: TBIMember | None, now: datetime | None, reason: str) -> bool:
+def cancel_certificate_approval(activity: Activity, member: TBIMember | None, now: datetime | None, reason: str,
+                                history_text: str | None = None) -> bool:
     """Something printed on the activity's certificates changed after the approval (a signatory, a title, a new version
     of a person, "Apply the current design", the certificate text): the approval is cancelled (the activity "Needs
     approval" again; one History row by the member who made the change) and its Approved certificates go back to
@@ -1656,13 +1674,98 @@ def cancel_certificate_approval(activity: Activity, member: TBIMember | None, no
     old = f"Approved by {locked.certificates_approved_by.name if locked.certificates_approved_by_id else 'a member'}"
     Activity.objects.filter(pk=locked.pk).update(certificates_approved_by=None, certificates_approved_at=None)
     activity.certificates_approved_by, activity.certificates_approved_at = None, None
-    write_certificate_approval_history(locked, member, old, f"{NEEDS_APPROVAL} (cancelled: {reason})")
+    write_certificate_approval_history(locked, member, old, history_text or f"{NEEDS_APPROVAL} (cancelled: {reason})")
     approved = list(Certificate.objects.select_for_update(of=("self",)).filter(activity=locked, status=Status.APPROVED)
                     .order_by("pk"))
     _refresh_certificates(approved, member, now)
     audit_logger.info("Activity certificate approval cancelled: activity_id=%s certificates_back=%s by member_id=%s",
                       locked.pk, len(approved), member.pk if member else None)
     return True
+
+
+# --- Unapprove (ASSUMPTIONS 437) -----------------------------------------------------------------------------------
+
+NOT_APPROVED_TO_UNAPPROVE = "The certificates of this activity are not approved."
+UNAPPROVE_ISSUED = ("A certificate of this activity is already issued, so the approval cannot be taken back. Change "
+                    "what is printed and reissue instead.")
+UNAPPROVED_TEXT = "{needs} (unapproved by {name}: {reason})"
+
+
+def unapprove_closed_reason(activity: Activity) -> str | None:
+    """Why the approval of an activity's certificates cannot be taken back now, or None (the one rule: the tab's button
+    and the service). Only an approved activity, and only while none of its certificates is Issued (an issued
+    certificate was already sent or handed over)."""
+    if not is_approved(activity):
+        return NOT_APPROVED_TO_UNAPPROVE
+    if Certificate.objects.filter(activity=activity, status=Status.ISSUED).exists():
+        return UNAPPROVE_ISSUED
+    return None
+
+
+@transaction.atomic
+def unapprove_activity_certificates(member: TBIMember, activity: Activity, reason: str,
+                                    now: datetime | None = None) -> int:
+    """"Unapprove" on the Certificates tab (can_approve_certificates, a reason required; ASSUMPTIONS 437). What depends
+    on the approval and how it is undone: the activity's approval (who / when) is cleared, every Approved certificate
+    goes back to "Waiting for approval" and its PDF is removed (cancel_certificate_approval -> _refresh_certificates), so
+    nothing is rendered, issued or emailed (prepare_certificate re-checks Approved under a lock; a queued render does
+    nothing). An approval given before Conducted (item 420) is simply cleared; the certificates are then created
+    waiting. One History row ("Certificate approval": "Approved by …" -> "Needs approval (unapproved by …: reason)"), a
+    certificates.audit line, and a notification to the activity's creator and the member who prepared the certificates
+    (never this member). Refused with unapprove_closed_reason. Returns how many certificates went back to waiting."""
+    from notifications.models import Notification
+
+    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    reason = document_services.clean_reason(reason)
+    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    if refused := unapprove_closed_reason(locked):
+        raise CertificateError(refused)
+    back = Certificate.objects.filter(activity=locked, status=Status.APPROVED).count()
+    cancel_certificate_approval(locked, member, now, f"unapproved by {member.name}",
+                                history_text=UNAPPROVED_TEXT.format(needs=NEEDS_APPROVAL, name=member.name, reason=reason))
+    activity.certificates_approved_by, activity.certificates_approved_at = None, None
+    told = {pk for pk in (locked.created_by_id, locked.certificates_prepared_by_id) if pk and pk != member.pk}
+    message = (f'The approval of the certificates of "{locked.title[:150]}" was taken back by {member.name[:60]}: '
+               f"{reason}")[:500]
+    Notification.objects.bulk_create(
+        Notification(member=person, activity=locked, type=Notification.CERTIFICATES_UNAPPROVED, message=message)
+        for person in TBIMember.objects.filter(pk__in=told, is_active=True).order_by("pk"))
+    audit_logger.info("Activity certificate approval unapproved: activity_id=%s certificates_back=%s by member_id=%s",
+                      locked.pk, back, member.pk)
+    return back
+
+
+# --- Signatory accounts: who may stamp a signature (ASSUMPTIONS 437) -------------------------------------------------
+
+ACCOUNT_TAKEN = "This account is already linked to {name}. Remove that link first."
+
+
+@transaction.atomic
+def link_signatory_account(member: TBIMember, signatory: CertificateSignatory, account: TBIMember | None) -> CertificateSignatory:
+    """Link a person on the signatory list to the staff account they sign as (None removes the link):
+    can_manage_signatories (ASSUMPTIONS 418, 437). Only that member may stamp this signature on a submission they
+    approve; signing is never delegated. One active person per account. The row is changed in place (the account is
+    not printed on certificates, so no new version is needed); new versions keep it. certificates.audit (IDs only)."""
+    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    locked = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
+    if not locked.is_active:
+        raise CertificateError("This person is inactive. Link the current version instead.")
+    if account is not None:
+        if not account.is_active:
+            raise CertificateError("This account is not active.")
+        other = (CertificateSignatory.objects.filter(member=account, is_active=True).exclude(pk=locked.pk).first())
+        if other is not None:
+            raise CertificateError(ACCOUNT_TAKEN.format(name=other.name))
+    CertificateSignatory.objects.filter(pk=locked.pk).update(member=account)
+    locked.member = account
+    audit_logger.info("Signatory account link: signatory_id=%s account_id=%s by member_id=%s", locked.pk,
+                      account.pk if account else None, member.pk)
+    return locked
+
+
+def signatory_for(member: TBIMember) -> CertificateSignatory | None:
+    """The active person on the signatory list linked to `member` (their own signature), or None."""
+    return CertificateSignatory.objects.filter(member=member, is_active=True).order_by("-pk").first()
 
 
 # --- Prepare and preview before Conducted (ASSUMPTIONS 420) ----------------------------------------------------------
@@ -1692,7 +1795,7 @@ def prepare_activity_certificates(member: TBIMember, activity: Activity, now: da
     from activities.services import write_certificate_history
     from notifications.services import notify_certificate_reviewers
 
-    require_any_permission(member, Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES)
+    require_any_permission_for(member, (Permission.CREATE_ACTIVITY, Permission.APPROVE_CERTIFICATES), activity)
     now = now or timezone.now()
     locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
     if reason := prepare_closed_reason(locked):

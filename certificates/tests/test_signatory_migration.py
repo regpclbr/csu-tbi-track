@@ -29,7 +29,7 @@ def migrate(targets) -> None:
 
 def latest() -> list:
     executor = MigrationExecutor(connection)
-    return [key for key in executor.loader.graph.leaf_nodes() if key[0] == "certificates"]
+    return list(executor.loader.graph.leaf_nodes())  # every app: going back also unapplies approvals / notifications (ASSUMPTIONS 437)
 
 
 @pytest.mark.django_db(transaction=True)

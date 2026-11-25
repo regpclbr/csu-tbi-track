@@ -188,6 +188,7 @@ def roles(request: HttpRequest) -> HttpResponse:
         "no_approver": not services.active_document_approvers().exists(),
         "no_certificate_approver": not services.active_certificate_approvers().exists(),
         "no_signatory_manager": not services.active_signatory_managers().exists(),
+        "no_assigner": not services.active_work_assigners().exists(),  # ASSUMPTIONS 437
     }
     return _page(request, "console/roles.html", "accounts:console_roles", context)
 
@@ -249,6 +250,14 @@ def role_signatory_management(request: HttpRequest, role_id: int) -> HttpRespons
     """POST enabled=true|false: turn can_manage_signatories on or off for one role (ASSUMPTIONS 418)."""
     return _switch_role_flag(request, role_id, services.set_role_signatory_management,
                              "can now manage certificate signatories", "can no longer manage certificate signatories")
+
+
+@manage_users
+@require_POST
+def role_work_assignment(request: HttpRequest, role_id: int) -> HttpResponse:
+    """POST enabled=true|false: turn can_assign_work on or off for one role (ASSUMPTIONS 437)."""
+    return _switch_role_flag(request, role_id, services.set_role_work_assignment,
+                             "can now assign work to members", "can no longer assign work to members")
 
 
 # --- Positions (job titles, ASSUMPTIONS 390) ---------------------------------------------------------------

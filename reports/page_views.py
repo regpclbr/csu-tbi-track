@@ -14,6 +14,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from approvals import pages as approval_pages  # the Assign dialog (ASSUMPTIONS 437)
 from accounts.permissions import has_permission, is_htmx, staff_login_required
 from activities.models import Activity
 
@@ -29,7 +30,8 @@ def _page(request: HttpRequest, form: pages.ReportForm, status: int = 200) -> Ht
     context = {
         "page_title": "Reports",
         "page_subtitle": "Accomplishment, participation, evaluation, document compliance and certificate reports",
-        "can_generate": has_permission(request.user, services.GENERATE_REPORT_PERMISSION),
+        "can_generate": services.can_generate(request.user),  # also a report assignment (ASSUMPTIONS 437)
+        "assign": approval_pages.assign_panel(request.user, report=True),
         "poll_seconds": pages.POLL_SECONDS,
         **_form_context(form),
         **pages.history(request.GET.get("page", "1")),

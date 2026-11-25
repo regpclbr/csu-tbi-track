@@ -94,8 +94,13 @@ SYSTEM_NAME = "System"
 
 
 def changed_by_name(entry) -> str:
-    """Who made an audit row's change: the member's name, or "System" (an automatic status change)."""
-    return entry.changed_by.name if entry.changed_by_id else SYSTEM_NAME
+    """Who made an audit row's change: the member's name, or "System" (an automatic status change). Work done through
+    an assignment (ASSUMPTIONS 437) reads "Ana Cruz (on behalf of Dr. Reyes)"."""
+    if not entry.changed_by_id:
+        return SYSTEM_NAME
+    if getattr(entry, "on_behalf_of_id", None):
+        return f"{entry.changed_by.name} (on behalf of {entry.on_behalf_of.name})"
+    return entry.changed_by.name
 
 
 def audit_sentence(entry) -> str:

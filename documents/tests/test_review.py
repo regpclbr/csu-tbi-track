@@ -175,9 +175,10 @@ def test_replace_clears_the_return_and_swaps_the_file(
     services.approve_document(director, document)  # now it can be approved
 
 
-def test_only_the_uploader_can_replace(document, director) -> None:
+def test_only_the_uploader_or_the_director_can_replace(document, director, head) -> None:
     with pytest.raises(PermissionDenied, match="uploaded"):
-        services.replace_document_file(director, document, make_file())
+        services.replace_document_file(head, document, make_file())
+    services.replace_document_file(director, document, make_file())  # ASSUMPTIONS 437: the Director edits others' work
 
 
 def test_an_approved_document_cannot_be_replaced(document, director, view_only) -> None:
@@ -204,10 +205,12 @@ def test_uploader_deletes_a_for_review_document_and_its_file(
     assert not path.exists()
 
 
-def test_only_the_uploader_can_delete(document, director) -> None:
+def test_only_the_uploader_or_the_director_can_delete(document, director, head) -> None:
     with pytest.raises(PermissionDenied):
-        services.delete_document(director, document)
+        services.delete_document(head, document)
     assert Document.objects.exists()
+    services.delete_document(director, document)  # ASSUMPTIONS 437
+    assert not Document.objects.exists()
 
 
 def test_an_approved_document_is_never_deleted(document, director, view_only) -> None:
@@ -246,22 +249,27 @@ def test_review_queue_is_empty_without_can_approve_documents(request, upload, di
 
 
 def test_allowed_actions(document, director, view_only, head) -> None:
-    assert services.allowed_actions(director, document) == {"approve": True, "return": True, "replace": False, "delete": False}
-    assert services.allowed_actions(view_only, document) == {"approve": False, "return": False, "replace": True, "delete": True}
-    assert services.allowed_actions(head, document) == {"approve": False, "return": False, "replace": False, "delete": False}
+    # ASSUMPTIONS 437: the Director may also replace / delete / rename another member's waiting document
+    assert services.allowed_actions(director, document) == {"approve": True, "return": True, "replace": True,
+                                                            "delete": True, "unapprove": False, "rename": True}
+    assert services.allowed_actions(view_only, document) == {"approve": False, "return": False, "replace": True,
+                                                             "delete": True, "unapprove": False, "rename": True}
+    assert services.allowed_actions(head, document) == {"approve": False, "return": False, "replace": False,
+                                                         "delete": False, "unapprove": False, "rename": False}
     # The services return the reloaded (locked) row; use what they return.
     document = services.return_document(director, document, "Fix")
     assert services.allowed_actions(director, document)["approve"] is False
     services.replace_document_file(view_only, document, make_file())
     document = services.approve_document(director, document)
-    nothing = {"approve": False, "return": False, "replace": False, "delete": False}
-    assert services.allowed_actions(view_only, document) == nothing
-    assert services.allowed_actions(director, document) == nothing
+    nothing = {"approve": False, "return": False, "replace": False, "delete": False, "unapprove": False}
+    assert services.allowed_actions(view_only, document) == {**nothing, "rename": True}
+    assert services.allowed_actions(director, document) == {**nothing, "unapprove": True, "rename": True}
 
 
 def test_allowed_actions_on_an_approvers_own_upload(upload, director, scheduled) -> None:
     own = upload(director, scheduled)
-    assert services.allowed_actions(director, own) == {"approve": True, "return": False, "replace": True, "delete": True}
+    assert services.allowed_actions(director, own) == {"approve": True, "return": False, "replace": True, "delete": True,
+                                                       "unapprove": False, "rename": True}
 
 
 def test_approve_queues_indexing_after_commit_step_8() -> None:

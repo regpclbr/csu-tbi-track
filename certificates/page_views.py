@@ -29,6 +29,7 @@ from django.urls import reverse
 
 from accounts.permissions import (
     Permission,
+    object_permission_required,
     has_permission,
     is_htmx,
     permission_required,
@@ -66,6 +67,11 @@ def _keep_background(request: HttpRequest) -> bool:
         return bool(parse_bool(request.POST.get("keep_background"), "keep_background", default=False))
     except ValidationError:
         return False
+
+
+def activity_from_url(activity_id: int, **kwargs) -> Activity:
+    """The activity in the URL (404 if missing), for object_permission_required (ASSUMPTIONS 437)."""
+    return _activity(activity_id)
 
 
 def _activity(activity_id: int) -> Activity:
@@ -116,7 +122,7 @@ def certificate_list(request: HttpRequest) -> HttpResponse:
 # --- Approval per activity (can_approve_certificates, ASSUMPTIONS 369) ------------------------------------------------
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@object_permission_required(Permission.APPROVE_CERTIFICATES, activity_from_url)
 @post_only_or_tab("certificates")
 def approve_activity(request: HttpRequest, activity_id: int) -> HttpResponse:
     """"Approve certificates for this activity" (after the confirm dialog): services.approve_activity_certificates. A
@@ -130,6 +136,47 @@ def approve_activity(request: HttpRequest, activity_id: int) -> HttpResponse:
     else:
         messages.success(request, EARLY_APPROVED_MESSAGE if early else approved_message(approved))
     return redirect(pages.tab_url(activity.pk))
+
+
+@permission_required(Permission.APPROVE_CERTIFICATES)
+@post_only_or_tab("certificates")
+def unapprove_activity(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """POST reason: "Unapprove" (services.unapprove_activity_certificates, ASSUMPTIONS 437): only while no certificate of
+    the activity is Issued. A refusal or a missing reason is one message."""
+    activity = _activity(activity_id)
+    try:
+        back = services.unapprove_activity_certificates(request.user, activity, request.POST.get("reason", ""))
+    except ValidationError as error:
+        messages.error(request, "Not unapproved: " + " ".join(error.messages))
+    except services.CertificateError as error:
+        messages.error(request, f"Not unapproved: {error}")
+    else:
+        messages.success(request, "The approval of this activity's certificates was taken back"
+                         + (f": {back} certificate{'' if back == 1 else 's'} went back to waiting for approval."
+                            if back else "."))
+    return redirect(pages.tab_url(activity.pk))
+
+
+@permission_required(Permission.MANAGE_SIGNATORIES)
+@require_POST
+def signatory_account(request: HttpRequest, signatory_id: int) -> HttpResponse:
+    """POST account (a member ID, empty = no link): services.link_signatory_account (ASSUMPTIONS 437)."""
+    from accounts.models import TBIMember
+
+    person = get_object_or_404(CertificateSignatory, pk=signatory_id)
+    raw = request.POST.get("account", "")
+    account = TBIMember.objects.filter(pk=raw, is_active=True).first() if raw.isdigit() else None
+    if raw and account is None:
+        messages.error(request, "Choose an active member.")
+        return redirect(_back(request))
+    try:
+        services.link_signatory_account(request.user, person, account)
+    except services.CertificateError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, f"{person.name} now signs approved submissions as {account.name}." if account
+                         else f"{person.name} is no longer linked to an account.")
+    return redirect(_back(request))
 
 
 EARLY_APPROVED_MESSAGE = ("Approved the certificates of this activity. They will be created already approved when the "
@@ -294,8 +341,8 @@ def signatory_choose(request: HttpRequest, activity_id: int, slot: str) -> HttpR
     """POST signatory, title: choose who signs on `slot` and the "Title on this certificate"
     (services.set_activity_signatory). can_approve_certificates only (ASSUMPTIONS 431: only the Director chooses who
     signs; 403 otherwise, the service checks again)."""
-    services.require_signatory_choice(request.user)
     activity = _activity(activity_id)
+    services.require_signatory_choice(request.user, activity)  # or its "Choose who signs" assignment (437)
     raw = request.POST.get("signatory", "")
     person = CertificateSignatory.objects.filter(pk=raw).first() if raw.isdigit() else None
     if person is None:
@@ -324,8 +371,8 @@ def signatory_choose(request: HttpRequest, activity_id: int, slot: str) -> HttpR
 def signatory_current_version(request: HttpRequest, activity_id: int, slot: str) -> HttpResponse:
     """"Use the current version" on a slot whose person is inactive (services.use_current_version, ASSUMPTIONS 367).
     can_approve_certificates only (ASSUMPTIONS 431: it changes who signs)."""
-    services.require_signatory_choice(request.user)
     activity = _activity(activity_id)
+    services.require_signatory_choice(request.user, activity)
     try:
         result = services.use_current_version(request.user, activity, slot)
     except ValidationError as error:

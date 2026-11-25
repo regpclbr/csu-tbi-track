@@ -1,0 +1,18 @@
+{% comment %}Inside the Unapprove dialog: POST approvals:unapprove with a required reason (approvals.services.unapprove_submission).
+It says what is undone: the state, the signed copy, the document saved to the activity.{% endcomment %}
+<form method="post" action="{% url 'approvals:unapprove' submission.pk %}" class="space-y-4">
+  {% csrf_token %}
+  <ul class="list-disc space-y-1 pl-6 text-sm text-slate-700">
+    <li>It goes back to Returned; {{ submission.submitted_by.name }} is told the reason and can submit it again.</li>
+    {% if submission.signed_file_path %}<li>The signed copy is deleted. The original file stays.</li>{% endif %}
+    {% if submission.saved_document %}<li>The document saved to the activity from it (“{{ submission.saved_document.title }}”) is deleted. If it cannot be deleted (for example it is the activity's only Activity Design), nothing is changed.</li>{% endif %}
+  </ul>
+  <div>
+    <label for="unapprove-reason" class="text-sm font-semibold text-ink">Reason <span class="text-danger" aria-hidden="true">*</span></label>
+    <textarea id="unapprove-reason" name="reason" rows="3" maxlength="{{ reason_max }}" required class="field-input mt-2"></textarea>
+  </div>
+  <div class="flex justify-end gap-2">
+    <button type="button" class="btn btn-secondary" @click="close()" autofocus>Cancel</button>
+    <button type="submit" class="btn btn-danger btn-danger-solid">Unapprove</button>
+  </div>
+</form>

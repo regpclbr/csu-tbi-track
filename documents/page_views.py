@@ -15,21 +15,36 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
-from accounts.permissions import Permission, has_permission, is_htmx, permission_required, staff_login_required
+from accounts.permissions import (
+    Permission,
+    has_permission,
+    is_htmx,
+    object_permission_required,
+    permission_required,
+    staff_login_required,
+)
 from config.links import post_only_or_tab
 from activities.models import Activity
 from activities.page_views import render_activity_page
+from approvals import pages as approval_pages
 from assistant.indexing import with_searchable
 
 from . import pages, services
 from .models import Document, DocumentType
 
-ACTIONS = ("return", "replace", "delete")  # the actions that ask something first (a reason, a file, "are you sure")
+# the actions that ask something first (a reason, a file, "are you sure", a title); unapprove + rename: ASSUMPTIONS 437
+ACTIONS = ("return", "replace", "delete", "unapprove", "rename")
 
 
 # One-line descriptions of the no-JavaScript action pages (ASSUMPTIONS 411).
 ACTION_SUBTITLES = {"return": "Return this document to its uploader with a reason",
-                    "replace": "Upload a new file for this document", "delete": "Delete this document"}
+                    "replace": "Upload a new file for this document", "delete": "Delete this document",
+                    "unapprove": "Take back the approval of this document", "rename": "Change the title of this document"}
+
+def document_from_url(document_id: int, **kwargs) -> Document:
+    """The document named in the URL (404 if missing), for object_permission_required (ASSUMPTIONS 437)."""
+    return get_object_or_404(Document, pk=document_id)
+
 
 def _document(document_id: int) -> Document:
     """Any document: an activity document or certificate evidence (the services apply the same rules to both)."""
@@ -87,7 +102,10 @@ def review_list(request: HttpRequest) -> HttpResponse:
 def document_detail(request: HttpRequest, document_id: int) -> HttpResponse:
     document = _document(document_id)
     row = pages.document_row(request.user, document)
-    context = {"page_title": document.title, **row, "view_row": row, "back_link": pages.back_link(request, document)}
+    context = {"page_title": document.title, **row, "view_row": row, "back_link": pages.back_link(request, document),
+               # ASSUMPTIONS 437: "Assign to" while it waits for review, and the assignee's notice
+               "assign": approval_pages.assign_panel(request.user, document=document) if document.review_state == Document.WAITING_FOR_REVIEW and services.needs_review(document.document_type, document.related_certificate) else None,
+               "my_assignments": approval_pages.my_assignments_on(request.user, document=document)}
     return render(request, "documents/detail.html", context)
 
 
@@ -181,7 +199,7 @@ def _form_again(request: HttpRequest, document: Document, action: str, errors: d
     return render(request, "documents/action_page.html", context, status=400)
 
 
-@permission_required(Permission.APPROVE_DOCUMENTS)
+@object_permission_required(Permission.APPROVE_DOCUMENTS, document_from_url)
 @require_POST
 def approve(request: HttpRequest, document_id: int) -> HttpResponse:
     document = _document(document_id)
@@ -195,7 +213,7 @@ def approve(request: HttpRequest, document_id: int) -> HttpResponse:
     return _done(request, back)
 
 
-@permission_required(Permission.APPROVE_DOCUMENTS)
+@object_permission_required(Permission.APPROVE_DOCUMENTS, document_from_url)
 @require_POST
 def return_document(request: HttpRequest, document_id: int) -> HttpResponse:
     """POST reason (required, at most services.RETURN_REASON_MAX_LENGTH characters)."""
@@ -210,6 +228,43 @@ def return_document(request: HttpRequest, document_id: int) -> HttpResponse:
         _refused(request, error)
     else:
         messages.success(request, f'"{document.title}" was returned to {document.uploaded_by.name}.')
+    return _done(request, back)
+
+
+@permission_required(Permission.APPROVE_DOCUMENTS)
+@require_POST
+def unapprove(request: HttpRequest, document_id: int) -> HttpResponse:
+    """POST reason (required): services.unapprove_document (ASSUMPTIONS 437; types that need review only)."""
+    document = _document(document_id)
+    back = pages.safe_next(request, reverse("documents:detail", args=[document.pk]))
+    reason = request.POST.get("reason", "")
+    try:
+        services.unapprove_document(request.user, document, reason)
+    except ValidationError as error:
+        return _form_again(request, document, "unapprove", {k: " ".join(v) for k, v in error.message_dict.items()}, reason)
+    except (PermissionDenied, services.DocumentError) as error:
+        _refused(request, error)
+    else:
+        messages.success(request, f'The approval of "{document.title}" was taken back. It is now Returned to '
+                                  f"{document.uploaded_by.name}.")
+    return _done(request, back)
+
+
+@staff_login_required
+@require_POST
+def rename(request: HttpRequest, document_id: int) -> HttpResponse:
+    """POST title: services.rename_document (the uploader or can_approve_documents; ASSUMPTIONS 437)."""
+    document = _document(document_id)
+    back = pages.safe_next(request, reverse("documents:detail", args=[document.pk]))
+    title = request.POST.get("title", "")
+    try:
+        renamed = services.rename_document(request.user, document, title)
+    except ValidationError as error:
+        return _form_again(request, document, "rename", {k: " ".join(v) for k, v in error.message_dict.items()}, title)
+    except (PermissionDenied, services.DocumentError) as error:
+        _refused(request, error)
+    else:
+        messages.success(request, f'The title is now "{renamed.title}".')
     return _done(request, back)
 
 

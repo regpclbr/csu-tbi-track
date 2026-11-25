@@ -120,6 +120,8 @@ class DashboardPage:
     range_options: list = field(default_factory=list)  # (key, label) for the date range select
     spotlight: dict | None = None  # the card beside the banner (services.dashboard_spotlight, ASSUMPTIONS 351)
     can_approve_certificates: bool = False  # only the wording of the certificate card (ASSUMPTIONS 357)
+    assigned: list = field(default_factory=list)  # "Assigned to me" (approvals.assignments, ASSUMPTIONS 437)
+    approvals: dict | None = None  # the "For your approval" card (approvals.inbox, ASSUMPTIONS 437); None = approves nothing
 
     attention_shown: int = ATTENTION_SHOWN
 
@@ -218,7 +220,33 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         first_name=member.name.split()[0] if member.name.split() else "",
         activity_types=list(ActivityType.objects.filter(is_active=True).order_by("name")),
         range_options=_range_options(today),
+        approvals=approvals_card(member),
+        assigned=assigned_card(member),
     )
+
+
+def assigned_card(member: TBIMember) -> list[dict]:
+    """The Dashboard's "Assigned to me" card (ASSUMPTIONS 437): the member's open assignments, due first (one query)."""
+    from approvals import assignments, pages as approval_pages
+
+    return approval_pages.assignment_rows(assignments.assigned_to_me(member)[:APPROVALS_SHOWN + 1])
+
+
+APPROVALS_SHOWN = 4
+
+
+def approvals_card(member: TBIMember) -> dict | None:
+    """The Dashboard's "For your approval" card (ASSUMPTIONS 437): the oldest items of approvals.inbox.inbox and how many
+    of each kind (counted from the same list: one query per kind). None for a member who approves nothing."""
+    from approvals import inbox
+
+    if not inbox.has_inbox(member):
+        return None
+    items = inbox.inbox(member)
+    counts = [{"label": inbox.KIND_LABELS[kind], "count": sum(1 for item in items if item.kind == kind)}
+              for kind in inbox.kinds_for(member)]
+    return {"total": len(items), "items": items[:APPROVALS_SHOWN], "more": max(0, len(items) - APPROVALS_SHOWN),
+            "counts": counts}
 
 
 def greeting(now: datetime | None = None) -> str:

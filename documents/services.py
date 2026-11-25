@@ -16,10 +16,18 @@ Review and Approved; there is no Rejected):
 - Return: a member with can_approve_documents, never for their own upload (they replace or delete it instead).
   It stays For Review, but reviewed_by/reviewed_at are set, which marks it "returned"; the uploader gets a
   notification with the reason and must replace the file.
-- Replace: uploader only, For Review only. Clears reviewed_by/reviewed_at (waiting for a reviewer again) and
-  notifies the approvers again, except the uploader.
-- Delete: uploader only, For Review only (the file is removed too). Approved documents are never deleted. The only
-  Activity Design / Request Letter of a scheduled activity created with them is never deleted (ASSUMPTIONS 405).
+- Replace: the uploader or a member with can_approve_documents (ASSUMPTIONS 437: the Director edits other members'
+  work), For Review only. Clears reviewed_by/reviewed_at (waiting for a reviewer again) and notifies the approvers
+  again, except the member who replaced it.
+- Delete: the uploader or can_approve_documents, For Review only (the file is removed too). Approved documents of a
+  reviewed type are never deleted. The only Activity Design / Request Letter of a scheduled activity created with them
+  is never deleted (ASSUMPTIONS 405).
+- Unapprove (ASSUMPTIONS 437): can_approve_documents takes back an approval with a reason: Approved -> Returned, its
+  AI chunks removed, the uploader notified, History + documents.audit. Approved copies are never "unapproved" (they
+  are replaced or deleted); certificate evidence keeps its own flow.
+- Rename (ASSUMPTIONS 437): the uploader or can_approve_documents changes the title in any state (History +
+  documents.audit; an indexed document is indexed again, its title goes with the embeddings).
+Certificate evidence: replace / delete stay with its uploader (Step 9).
 
 Certificate evidence (related_certificate set, Step 9) uses the same upload, review, replace and
 delete functions, but every listing and the checklist use Document.objects.activity_documents(),
@@ -44,7 +52,14 @@ from django.utils.text import slugify
 
 from accounts.models import TBIMember
 from accounts.services import active_document_approvers
-from accounts.permissions import Permission, has_permission, require_permission, require_staff_member
+from accounts.permissions import (
+    Permission,
+    has_permission,
+    has_permission_for,
+    require_permission,
+    require_permission_for,
+    require_staff_member,
+)
 from activities.models import Activity, ActivityStatus
 from activities.services import PageResult, _paginate
 from assistant.indexing import queue_indexing, with_searchable
@@ -56,6 +71,7 @@ logger = logging.getLogger("documents.reminders")
 audit_log = logging.getLogger("documents.audit")  # who uploaded, replaced, deleted, approved or returned (never contents)
 
 APPROVED_COPY_NOTE = "uploaded as an approved copy"  # History and documents.audit (ASSUMPTIONS 432)
+SAVED_SUBMISSION_NOTE = "saved from an approved submission"  # History (ASSUMPTIONS 437)
 
 
 def needs_review(document_type: DocumentType, related_certificate=None) -> bool:
@@ -266,6 +282,8 @@ def upload_document(
     now: datetime | None = None,
     related_certificate=None,
     auto_schedule: bool = True,
+    approved_by: TBIMember | None = None,
+    approved_at: datetime | None = None,
 ) -> Document:
     """Any active staff member uploads a document for an activity, in any activity status
     (including Conducted: the accomplishment report is due after the end date). An approved copy (ASSUMPTIONS 432: the
@@ -275,7 +293,10 @@ def upload_document(
     `related_certificate` is set only by certificates.services.upload_evidence (Step 9).
     In the same transaction a Draft created with its creation documents moves to Scheduled once both the Activity Design
     and the Request Letter are uploaded (schedule_when_documents_complete, ASSUMPTIONS 431); `document.scheduled_activity`
-    says whether it did. `auto_schedule` False: create_activity_with_documents, which schedules the new activity itself."""
+    says whether it did. `auto_schedule` False: create_activity_with_documents, which schedules the new activity itself.
+    `approved_by` / `approved_at` (ASSUMPTIONS 437, only approvals.services.save_to_documents): the file of a submission
+    the Director already approved; for a type that needs review it is saved Approved in the Director's name (no second
+    review, nobody notified). Types without review are approved copies as usual."""
     require_staff_member(member)
     if not document_type.is_active:
         raise ValidationError({"document_type": ["This document type is not active."]})
@@ -292,7 +313,7 @@ def upload_document(
         raise ValidationError(problems)
     title = (title or "").strip() or document_type.name
 
-    reviewed = needs_review(document_type, related_certificate)
+    reviewed = needs_review(document_type, related_certificate) and approved_by is None
     document = Document(
         activity=activity,
         document_type=document_type,
@@ -303,6 +324,8 @@ def upload_document(
     )
     if not reviewed:  # ASSUMPTIONS 432: an approved copy
         _approve_copy(document, now)
+        if approved_by is not None and document_type.needs_review:  # ASSUMPTIONS 437: approved as a submission
+            document.reviewed_by, document.reviewed_at = approved_by, approved_at or now or timezone.now()
     _save_file(document, file, extension, now)
     try:
         with transaction.atomic():  # the document and its notifications / History are saved together
@@ -312,9 +335,10 @@ def upload_document(
             else:
                 from activities.services import write_document_history  # activities.services imports this module
 
-                write_document_history(activity, member, "", f"{_document_label(document)} {APPROVED_COPY_NOTE}")
-                audit_log.info("Document uploaded as an approved copy: document_id=%s activity_id=%s by member_id=%s",
-                               document.pk, activity.pk, member.pk)
+                note = SAVED_SUBMISSION_NOTE if approved_by is not None else APPROVED_COPY_NOTE
+                write_document_history(activity, member, "", f"{_document_label(document)} {note}")
+                audit_log.info("Document uploaded as an approved copy: document_id=%s activity_id=%s by member_id=%s%s",
+                               document.pk, activity.pk, member.pk, " (approved submission)" if approved_by else "")
                 _queue_index_on_commit(document)
             document.scheduled_activity = (
                 auto_schedule and related_certificate is None and is_creation_type(activity, document_type)
@@ -636,19 +660,24 @@ def is_approved_copy(document: Document) -> bool:
 
 
 def _may_change(member: TBIMember, document: Document) -> bool:
-    """Who may replace / delete: the uploader of a For Review document; for an approved copy also can_approve_documents."""
+    """Who may replace / delete: the uploader; a member with can_approve_documents (the Director) also for any approved
+    copy (ASSUMPTIONS 432) and any activity document still waiting or returned (ASSUMPTIONS 437: the Director edits
+    other members' work). Certificate evidence: its uploader only (its own flow)."""
     if document.uploaded_by_id == member.pk:
         return True
-    return is_approved_copy(document) and has_permission(member, Permission.APPROVE_DOCUMENTS)
+    if not has_permission(member, Permission.APPROVE_DOCUMENTS):
+        return False
+    return is_approved_copy(document) or (document.related_certificate_id is None
+                                          and document.status.status_name == DocumentStatus.FOR_REVIEW)
 
 
 def _ensure_can_change(member: TBIMember, document: Document, action: str) -> None:
     if document.status.status_name != DocumentStatus.FOR_REVIEW and not is_approved_copy(document):
         raise DocumentError(f"An approved document cannot be {action}d. Upload a new document instead.")
     if not _may_change(member, document):
-        if is_approved_copy(document):
-            raise PermissionDenied(f"Only the member who uploaded this document or the Director can {action} it.")
-        raise PermissionDenied(f"Only the member who uploaded this document can {action} it.")
+        if document.related_certificate_id is not None:
+            raise PermissionDenied(f"Only the member who uploaded this document can {action} it.")
+        raise PermissionDenied(f"Only the member who uploaded this document or the Director can {action} it.")
 
 
 CITED_REFUSED = ("This document is cited in an AI Assistant answer, so it cannot be deleted. Replace the file "
@@ -733,29 +762,40 @@ def delete_document(member: TBIMember, document: Document) -> None:
 RETURN_OWN_REFUSED = "You cannot return a document you uploaded. Replace or delete it instead."
 
 
-def _ensure_can_review(member: TBIMember, document: Document) -> None:
-    """Reviewer rule (ASSUMPTIONS 344, pending TBI validation): can_approve_documents. Approving your own upload
-    is allowed (reviewed_by is then the uploader)."""
-    require_permission(member, Permission.APPROVE_DOCUMENTS)
+ASSIGNEE_OWN_UPLOAD = "You cannot review your own upload through an assignment (separation of duties)."
+
+
+def _ensure_can_review(member: TBIMember, document: Document):
+    """Reviewer rule (ASSUMPTIONS 344, pending TBI validation): can_approve_documents, or this document's "Review the
+    document" assignment (ASSUMPTIONS 437). Approving your own upload is allowed with the flag (reviewed_by is then the
+    uploader), never through an assignment. Returns the assignment that allowed it (or None)."""
+    assignment = require_permission_for(member, Permission.APPROVE_DOCUMENTS, document)
+    if assignment is not None and document.uploaded_by_id == member.pk:
+        raise DocumentError(ASSIGNEE_OWN_UPLOAD)
     if document.status.status_name != DocumentStatus.FOR_REVIEW:
         raise DocumentError("This document is already approved.")
     if document.reviewed_at is not None:
         raise DocumentError("This document was returned to the uploader. It can be reviewed after the file is replaced.")
+    return assignment
 
 
 def approve_document(member: TBIMember, document: Document, now: datetime | None = None) -> Document:
     """Approve a document waiting for review. Status, reviewed_by and reviewed_at change together."""
     with transaction.atomic():
         document = _locked(document)
-        _ensure_can_review(member, document)
+        assignment = _ensure_can_review(member, document)
         document.status = DocumentStatus.objects.get(status_name=DocumentStatus.APPROVED)
         document.reviewed_by = member
         document.reviewed_at = now or timezone.now()
         document.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
         audit_log.info(
-            "Document approved: document_id=%s by member_id=%s%s", document.pk, member.pk,
+            "Document approved: document_id=%s by member_id=%s%s%s", document.pk, member.pk,
             " (own upload)" if document.uploaded_by_id == member.pk else "",
+            f" on behalf of member_id={assignment.assigned_by_id}" if assignment else "",
         )
+        from approvals.assignments import complete_for  # approvals imports this module
+
+        complete_for("document_review", document, member, document.reviewed_at)
 
         # Step 8: index it for the assistant once the approval is saved (Django-Q2 task).
         # robust=True: a problem queueing the task never undoes or breaks the approval.
@@ -772,18 +812,21 @@ def return_document(member: TBIMember, document: Document, reason: str, now: dat
     reason = (reason or "").strip()
     if not reason:
         raise ValidationError({"reason": ["Give a reason for returning the document."]})
-    if len(reason) > RETURN_REASON_MAX_LENGTH:
-        raise ValidationError({"reason": [f"The reason can be at most {RETURN_REASON_MAX_LENGTH} characters."]})
+    reason = clean_reason(reason)
 
     with transaction.atomic():
         document = _locked(document)
-        _ensure_can_review(member, document)
+        assignment = _ensure_can_review(member, document)
         if document.uploaded_by_id == member.pk:
             raise DocumentError(RETURN_OWN_REFUSED)
         document.reviewed_by = member
         document.reviewed_at = now or timezone.now()
         document.save(update_fields=["reviewed_by", "reviewed_at", "updated_at"])
-        audit_log.info("Document returned: document_id=%s by member_id=%s", document.pk, member.pk)
+        audit_log.info("Document returned: document_id=%s by member_id=%s%s", document.pk, member.pk,
+                       f" on behalf of member_id={assignment.assigned_by_id}" if assignment else "")
+        from approvals.assignments import complete_for  # approvals imports this module
+
+        complete_for("document_review", document, member, document.reviewed_at)
         Notification.objects.create(
             member=document.uploaded_by,
             activity=document.activity,
@@ -795,6 +838,128 @@ def return_document(member: TBIMember, document: Document, reason: str, now: dat
             )[:500],
         )
     return document
+
+
+# --- Unapprove and rename (ASSUMPTIONS 437) -------------------------------------------------------
+
+UNAPPROVE_COPY_REFUSED = ("This is an approved copy (its type is not reviewed): replace or delete it instead of "
+                          "unapproving it.")
+UNAPPROVE_EVIDENCE_REFUSED = "Certificate evidence keeps its own review flow and cannot be unapproved here."
+UNAPPROVE_NOT_APPROVED = "Only an approved document can be unapproved."
+UNAPPROVE_CITED = ("An AI Assistant answer cites this document, so its approval cannot be taken back. Ask the uploader "
+                   "to upload a corrected document instead.")
+UNAPPROVED_HISTORY = "unapproved (returned to the uploader)"
+
+
+def unapprove_refused_reason(document: Document) -> str | None:
+    """Why the approval of `document` cannot be taken back, or None (the one rule). Only an Approved activity document
+    of a type that needs review; never an approved copy (replace / delete it), never certificate evidence, never a
+    document an AI answer cites (the answer's sources would point at an unapproved file)."""
+    if document.related_certificate_id is not None:
+        return UNAPPROVE_EVIDENCE_REFUSED
+    if document.status.status_name != DocumentStatus.APPROVED:
+        return UNAPPROVE_NOT_APPROVED
+    if not needs_review(document.document_type):
+        return UNAPPROVE_COPY_REFUSED
+    if _cited(document):
+        return UNAPPROVE_CITED
+    return None
+
+
+def clean_reason(reason: str, field: str = "reason") -> str:
+    """A return / unapprove reason: required, at most RETURN_REASON_MAX_LENGTH characters (also for submissions)."""
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError({field: ["Give a reason."]})
+    if len(reason) > RETURN_REASON_MAX_LENGTH:
+        raise ValidationError({field: [f"The reason can be at most {RETURN_REASON_MAX_LENGTH} characters."]})
+    return reason
+
+
+def unapprove_document(member: TBIMember, document: Document, reason: str, now: datetime | None = None) -> Document:
+    """Take back the approval of a document of a type that needs review (can_approve_documents, a reason required):
+    it becomes Returned (For Review, reviewed_by = this member, reviewed_at = now), so it counts as not done in the
+    checklist again (it can become overdue; reminders already sent are not repeated) and the uploader replaces the
+    file. Its AI chunks are removed (only Approved documents are searchable). An activity that was Scheduled
+    automatically stays Scheduled. One History row ("Documents"), a documents.audit line and a notification to the
+    uploader (unless they unapproved it themselves)."""
+    from activities.services import write_document_history  # activities.services imports this module
+
+    require_permission(member, Permission.APPROVE_DOCUMENTS)
+    reason = clean_reason(reason)
+    with transaction.atomic():
+        document = _locked(document)
+        if refused := unapprove_refused_reason(document):
+            raise DocumentError(refused)
+        document.status = DocumentStatus.objects.get(status_name=DocumentStatus.FOR_REVIEW)
+        document.reviewed_by = member
+        document.reviewed_at = now or timezone.now()
+        document.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+        document.embeddings.all().delete()
+        write_document_history(document.activity, member, f"{_document_label(document)} approved",
+                               f"{_document_label(document)} {UNAPPROVED_HISTORY}: {reason}")
+        audit_log.info("Document unapproved: document_id=%s by member_id=%s", document.pk, member.pk)
+        uploader = document.uploaded_by
+        if uploader.pk != member.pk and uploader.is_active:
+            Notification.objects.create(
+                member=uploader, activity=document.activity, document_type=document.document_type,
+                type=Notification.DOCUMENT_UNAPPROVED,
+                message=(f'The approval of your {document.document_type.name} "{document.title[:80]}" for '
+                         f'"{document.activity.title[:80]}" was taken back by {member.name[:60]}: {reason}')[:500],
+            )
+    return document
+
+
+def may_rename(member: TBIMember, document: Document) -> bool:
+    """The uploader, or a member with can_approve_documents (the Director edits other members' work, ASSUMPTIONS 437)."""
+    return document.uploaded_by_id == member.pk or has_permission(member, Permission.APPROVE_DOCUMENTS)
+
+
+def rename_document(member: TBIMember, document: Document, title: str) -> Document:
+    """Change a document's title, in any state (the file and its approval stay). The one title rule (title_error, also
+    "Other" needs a title); an empty title becomes the type's name, like an upload. History ("Documents": old -> new
+    title) for activity documents and a documents.audit line. An indexed document is indexed again (the title goes
+    with its embeddings). Refused for everyone else (PermissionDenied)."""
+    from activities.services import write_document_history  # activities.services imports this module
+
+    require_staff_member(member)
+    with transaction.atomic():
+        document = _locked(document)
+        if not may_rename(member, document):
+            raise PermissionDenied("Only the member who uploaded this document or the Director can rename it.")
+        if message := title_error(document.document_type, title):
+            raise ValidationError({"title": [message]})
+        title = (title or "").strip() or document.document_type.name
+        if title == document.title:
+            return document
+        old_label = _document_label(document)
+        document.title = title
+        document.save(update_fields=["title", "updated_at"])
+        if document.related_certificate_id is None:
+            write_document_history(document.activity, member, old_label, f"{_document_label(document)} (renamed)")
+            if document.status.status_name == DocumentStatus.APPROVED:
+                _queue_index_on_commit(document)
+        audit_log.info("Document renamed: document_id=%s by member_id=%s", document.pk, member.pk)
+    return document
+
+
+def remove_saved_submission_document(member: TBIMember, document: Document, reason: str) -> None:
+    """Delete the activity document that was saved from a submission whose approval is taken back (ASSUMPTIONS 437,
+    approvals.services.unapprove_submission, inside its transaction). The usual guards apply (the only Activity Design /
+    Request Letter of a non-Draft activity, a document an AI answer cites): refused = DocumentError, so the unapprove
+    is refused as a whole. History + documents.audit; the file is removed after the commit."""
+    from activities.services import write_document_history  # activities.services imports this module
+
+    document = _locked(document)
+    if refused := _delete_refused_reason(document) or (CITED_REFUSED if _cited(document) else None):
+        raise DocumentError(f"The document saved to the activity cannot be removed: {refused}")
+    name = document.file_path.name
+    write_document_history(document.activity, member, _document_label(document),
+                           f"{_document_label(document)} deleted (its submission was unapproved: {reason})")
+    audit_log.info("Document deleted with its unapproved submission: document_id=%s by member_id=%s",
+                   document.pk, member.pk)
+    document.delete()
+    transaction.on_commit(lambda: _delete_stored_file(name))
 
 
 # --- Reading: detail, repository, review queue -------------------------------------------------
@@ -815,13 +980,21 @@ def allowed_actions(member: TBIMember, document: Document) -> dict[str, bool]:
     # Approve / Return only for a type that needs review (ASSUMPTIONS 432); older waiting documents of other types are
     # approved by migration documents/0009, a returned one is replaced by its uploader.
     can_review = (for_review and reviewed and document.reviewed_at is None
-                  and has_permission(member, Permission.APPROVE_DOCUMENTS))
+                  and has_permission_for(member, Permission.APPROVE_DOCUMENTS, document))  # or its assignment (437)
+    if can_review and is_uploader and not has_permission(member, Permission.APPROVE_DOCUMENTS):
+        can_review = False  # an assignee never reviews their own upload
     changeable = (for_review or is_approved_copy(document)) and _may_change(member, document)
+    # ASSUMPTIONS 437: Unapprove for an Approved document of a reviewed type (an AI citation is checked on the click,
+    # like Delete, so the lists keep a fixed number of queries); Rename for the uploader or the Director.
+    unapprovable = (document.related_certificate_id is None and not for_review and reviewed
+                    and has_permission(member, Permission.APPROVE_DOCUMENTS))
     return {
         "approve": can_review,  # also the member's own upload (ASSUMPTIONS 344)
         "return": can_review and not is_uploader,
         "replace": changeable,
         "delete": changeable and _delete_refused_reason(document) is None,
+        "unapprove": unapprovable,
+        "rename": may_rename(member, document),
     }
 
 

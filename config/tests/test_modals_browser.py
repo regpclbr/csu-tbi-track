@@ -38,6 +38,11 @@ def _targets(director, admin) -> list[dict]:
     def detail(activity, tab: str = "") -> str:
         return reverse("activities:detail", args=[activity.pk]) + (f"?tab={tab}" if tab else "")
 
+    # The page loads apply the automatic status moves (item 346): apply them first, so an activity that has just ended
+    # (e.g. a demo activity ending at 5 PM today) is not picked as "not final" and then made Conducted by the page load.
+    from activities.services import apply_automatic_statuses
+
+    apply_automatic_statuses()
     not_final = Activity.objects.exclude(status__name="Conducted").order_by("pk").first()
     with_registrations = Activity.objects.filter(registrations__isnull=False).distinct().order_by("pk")
     attendance = next(a for a in with_registrations if registration_services.attendance_closed_reason(a) is None)

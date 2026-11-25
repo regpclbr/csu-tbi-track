@@ -72,7 +72,7 @@ class RoleAdminForm(forms.ModelForm):
     class Meta:
         model = Role
         fields = ("can_create_activity", "can_manage_users", "can_approve_documents", "can_approve_certificates",
-                  "can_delete_activities", "can_manage_signatories")
+                  "can_delete_activities", "can_manage_signatories", "can_assign_work")
 
     def clean(self) -> dict:
         cleaned = super().clean()
@@ -83,6 +83,7 @@ class RoleAdminForm(forms.ModelForm):
                 can_approve_documents=bool(cleaned.get("can_approve_documents")),
                 can_approve_certificates=bool(cleaned.get("can_approve_certificates")),
                 can_manage_signatories=bool(cleaned.get("can_manage_signatories")),
+                can_assign_work=bool(cleaned.get("can_assign_work")),
             )
             if self.instance.can_manage_users and not cleaned.get("can_manage_users"):
                 services.ensure_admins_remain_without_role(self.instance)
@@ -99,9 +100,11 @@ class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
 
     form = RoleAdminForm
     list_display = ("role_name", "can_create_activity", "can_manage_users", "can_approve_documents",
-                    "can_approve_certificates", "can_delete_activities", "can_manage_signatories", "created_at")
+                    "can_approve_certificates", "can_delete_activities", "can_manage_signatories", "can_assign_work",
+                    "created_at")
     fields = ("role_name", "description", "can_create_activity", "can_manage_users", "can_approve_documents",
-              "can_approve_certificates", "can_delete_activities", "can_manage_signatories", "created_at")
+              "can_approve_certificates", "can_delete_activities", "can_manage_signatories", "can_assign_work",
+              "created_at")
     readonly_fields = ("role_name", "description", "created_at")
 
     def has_add_permission(self, request) -> bool:
@@ -118,6 +121,7 @@ class RoleAdmin(NoDeleteAdminMixin, admin.ModelAdmin):
             can_approve_certificates=form.cleaned_data["can_approve_certificates"],
             can_delete_activities=form.cleaned_data["can_delete_activities"],
             can_manage_signatories=form.cleaned_data["can_manage_signatories"],
+            can_assign_work=form.cleaned_data["can_assign_work"],
         )
 
 

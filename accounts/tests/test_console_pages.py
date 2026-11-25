@@ -168,14 +168,15 @@ def test_member_actions_go_back_only_within_this_site(admin, make_member) -> Non
 # --- Roles ------------------------------------------------------------------------------------------------
 
 
-def test_roles_link_to_the_administration_site_and_switch_five_flags(admin, roles) -> None:
+def test_roles_link_to_the_administration_site_and_switch_six_flags(admin, roles) -> None:
     html = admin.get(reverse("accounts:console_roles")).content.decode()
     assert all(name in html for name in roles) and reverse("admin:accounts_role_changelist") in html
     assert "Edit in the administration site" in html
     section = html.split('id="roles-title"')[1].split("</section>")[0]
-    # The only forms are the five switches per role (create activities, ASSUMPTIONS 388; documents, 344; certificates,
-    # 357; signatories, 418; delete activities, 389); "Manage users" stays in the Django admin.
-    assert section.count("<form") == 5 * len(roles) == section.count('name="enabled"')
+    # The only forms are the six switches per role (create activities, ASSUMPTIONS 388; documents, 344; certificates,
+    # 357; signatories, 418; delete activities, 389; assign work, 437); "Manage users" stays in the Django admin.
+    assert section.count("<form") == 6 * len(roles) == section.count('name="enabled"')
+    assert all(reverse("accounts:console_role_work_assignment", args=[role.pk]) in section for role in roles.values())
     assert all(reverse("accounts:console_role_signatory_management", args=[role.pk]) in section for role in roles.values())
     assert all(reverse("accounts:console_role_activity_deletion", args=[role.pk]) in section for role in roles.values())
     assert all(reverse("accounts:console_role_activity_creation", args=[role.pk]) in section for role in roles.values())
