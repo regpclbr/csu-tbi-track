@@ -7,8 +7,8 @@ activity DOCUMENT through documents.services.upload_document (an approved copy, 
 and the payment packet: "Attendance" as the Attendance Sheet type, the other as the Confirmation of Attendance type.
 Generating again adds a new document (the older one can be deleted). Staff can still upload a scanned paper sheet.
 
-"Prepared by": the member who generates it, with their POSITION (item 429). Header: a plain placeholder until NAVIGATU
-gives the letterhead files (open question, CLAUDE.md).
+"Prepared by": the member who generates it, with their POSITION (item 429). Header: the CSU letterhead
+(config/letterhead.py, ASSUMPTIONS 469) on every page.
 """
 
 from dataclasses import dataclass
@@ -22,6 +22,7 @@ from django.utils import timezone
 from accounts.models import TBIMember
 from accounts.permissions import Permission, require_permission_for
 from activities.models import Activity, ActivityStatus
+from config import letterhead
 
 from . import signatures
 from .attendance import checked_in_text
@@ -36,7 +37,6 @@ TITLES = {ATTENDANCE: "Attendance (generated)", CONFIRMATION: "Confirmation of A
 FORM_CODE = "F-PROC-COA-005 Rev.03, 10-10-2023"
 FOOTER_NOTE = ("NOTE: Participants who signified to attend the meeting/activity and fail to be present on the day of the "
                "meeting/activity will shoulder the expenses of the procured meals allotted for them.")
-PLACEHOLDER_HEADER = ("Caraga State University", "CSU Technology Business Incubator")
 
 NO_ATTENDANCE = "Nobody has attended yet: the Attendance form lists the people checked in on each day."
 NO_PRE_REGISTRATION = "Nobody pre-registered: the Confirmation of Attendance lists the online registrations."
@@ -134,7 +134,8 @@ def prepared_by(member: TBIMember) -> dict:
 
 def form_html(activity: Activity, kind: str, member: TBIMember, now: datetime | None = None) -> str:
     context = {
-        "kind": kind, "activity": activity, "header": PLACEHOLDER_HEADER, "form_code": FORM_CODE,
+        "kind": kind, "activity": activity, "form_code": FORM_CODE,
+        "letterhead": letterhead.context(form_code=FORM_CODE),  # the CSU letterhead (ASSUMPTIONS 469)
         "footer_note": FOOTER_NOTE, "prepared_by": prepared_by(member),
         "generated_at": timezone.localtime(now or timezone.now()),
         "dates": date_span(activity.start_date, activity.end_date),

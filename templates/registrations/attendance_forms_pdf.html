@@ -1,22 +1,18 @@
 {% comment %}
 The generated "ATTENDANCE" (one page per activity day) and "CONFIRMATION OF ATTENDANCE" forms (ASSUMPTIONS 434),
-registrations.attendance_forms.form_html. Print only (WeasyPrint, A4 portrait). Images are data: URIs only. The header is
-a plain placeholder until NAVIGATU gives the letterhead files. Everything is escaped (names are typed by participants).
+registrations.attendance_forms.form_html. Print only (WeasyPrint, A4 portrait). Images are data: URIs only. The CSU
+letterhead (ASSUMPTIONS 469, pdf/_letterhead.html) repeats on every page; the form code is in the footer. Everything is
+escaped (names are typed by participants).
 {% endcomment %}<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>{% if kind == "attendance" %}Attendance{% else %}Confirmation of Attendance{% endif %} – {{ activity.title }}</title>
 <style>
-  @page { size: A4 portrait; margin: 14mm 12mm 18mm 12mm;
-          @bottom-left { content: "{{ form_code }}"; font: 7.5pt "DejaVu Sans", sans-serif; color: #444; }
-          @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt "DejaVu Sans", sans-serif; color: #444; } }
+  @page { size: A4 portrait; margin: 43mm 12mm 18mm 12mm; }
   body { font: 9.5pt "DejaVu Sans", Arial, sans-serif; color: #111; margin: 0; }
   .sheet { page-break-after: always; }
   .sheet:last-child { page-break-after: auto; }
-  .letterhead { text-align: center; border-bottom: 1.5pt solid #1A5C38; padding-bottom: 4pt; margin-bottom: 8pt; }
-  .letterhead .university { font-weight: bold; font-size: 11pt; text-transform: uppercase; letter-spacing: .5pt; }
-  .letterhead .office { font-size: 9.5pt; }
   h1 { text-align: center; font-size: 14pt; letter-spacing: 1pt; margin: 6pt 0 8pt; }
   .facts { width: 100%; margin-bottom: 8pt; border-collapse: collapse; }
   .facts td { padding: 1.5pt 0; vertical-align: top; }
@@ -36,13 +32,14 @@ a plain placeholder until NAVIGATU gives the letterhead files. Everything is esc
   .prepared .name { font-weight: bold; text-transform: uppercase; margin-top: 2pt; }
   .footer-note { margin-top: 12pt; font-size: 8pt; font-style: italic; }
   .generated { margin-top: 4pt; font-size: 7pt; color: #555; }
+{% include "pdf/_letterhead_styles.html" with lh=letterhead %}
 </style>
 </head>
 <body>
+{% include "pdf/_letterhead.html" with lh=letterhead %}
 {% if kind == "attendance" %}
   {% for page in pages %}
   <section class="sheet">
-    {% include "registrations/_attendance_forms_header.html" %}
     <h1>ATTENDANCE</h1>
     <table class="facts">
       <tr><td class="label">Title of Event:</td><td>{{ activity.title }}</td></tr>
@@ -70,7 +67,6 @@ a plain placeholder until NAVIGATU gives the letterhead files. Everything is esc
   {% endfor %}
 {% else %}
   <section class="sheet">
-    {% include "registrations/_attendance_forms_header.html" %}
     <h1>CONFIRMATION OF ATTENDANCE</h1>
     <table class="facts">
       <tr><td class="label">Title of Event:</td><td>{{ activity.title }}</td></tr>

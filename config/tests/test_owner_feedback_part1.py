@@ -136,11 +136,13 @@ def test_the_tokens_are_green_and_the_built_css_follows() -> None:
 def test_the_report_pdfs_excel_and_docx_are_green() -> None:
     from reports import excel, pdf
 
-    for path in ("reports/templates/reports/report_pdf.html", "reports/templates/reports/draft_pdf.html",
-                 "reports/templates/reports/individual_evaluation_pdf.html",
-                 "templates/registrations/attendance_forms_pdf.html"):
+    for path in ("reports/templates/reports/report_pdf.html",
+                 "reports/templates/reports/individual_evaluation_pdf.html"):
         text = (BASE / path).read_text(encoding="utf-8")
         assert GREEN in text and "#2A4494" not in text.upper(), path
+    # The office-format documents are black on the CSU letterhead, as NAVIGATU's samples (ASSUMPTIONS 469): no navy.
+    for path in ("reports/templates/reports/draft_pdf.html", "templates/registrations/attendance_forms_pdf.html"):
+        assert "#2A4494" not in (BASE / path).read_text(encoding="utf-8").upper(), path
     assert pdf.BAR_COLOR == GREEN and excel.BRAND_NAVY == GREEN[1:]
     from reports import draft_export
 

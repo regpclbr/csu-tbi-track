@@ -85,6 +85,9 @@ SECTIONS = {
         ("problems", "D. Problems / Constraints Met", "One or two short paragraphs, or \"None reported.\""),
         ("recommendations", "E. Recommendations / Next Steps",
          "Three to six recommendations or next steps, ONE PER LINE, no bullets or numbers."),
+        ("assessment", "F. Overall Assessment",
+         "One to three paragraphs: an overall assessment of the period's implementation (what went well, what the "
+         "activities achieved together, the outlook), using only what CONTEXT, NOTES and FILES say."),
     ],
     Kind.REQUEST_LETTER: [
         ("body", "Body of the letter",

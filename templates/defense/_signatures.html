@@ -1,0 +1,4 @@
+{# Stacked signature blocks of a seed_defense document (ASSUMPTIONS 470): label, room to sign, bold capital name, position. #}
+<div class="signatures">
+  {% for block in signatures %}<div class="sign-block"><div>{{ block.label }}</div><div class="space"></div><div class="name">{{ block.name }}</div><div>{{ block.position }}</div></div>{% endfor %}
+</div>

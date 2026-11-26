@@ -337,7 +337,8 @@ def test_the_docx_opens_and_has_the_activity_report_parts(workshop, staff, direc
     document = Docx(io.BytesIO(data))
     text = "\n".join(p.text for p in document.paragraphs)
     cells = "\n".join(cell.text for table in document.tables for row in table.rows for cell in row.cells)
-    assert "ACTIVITY REPORT" in text and "Office of the VP" in text and "A. Highlights of the Activity" in text
+    header = "\n".join(p.text for p in document.sections[0].header.paragraphs)  # the letterhead lines (469)
+    assert "ACTIVITY REPORT" in text and "OFFICE OF THE VP" in header and "A. Highlights of the Activity" in text
     assert "B. Problems/Constraints Met" in text and "C. Running Budget" in text and "D. Recommendation(s)" in text
     assert "₱9,000.00" in cells and "DR. JUAN DELA CRUZ" in cells and "Project Development Officer I" in cells
     assert "Ana Reyes" in cells and "Will not attend" in cells  # the annex name lists (owner decision)

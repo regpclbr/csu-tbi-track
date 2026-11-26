@@ -5,12 +5,11 @@
 <title>{{ content.title }}</title>
 <style>
   {% comment %}Landscape A4 for the whole report (ASSUMPTIONS 385). The side margins must stay in step with
-  reports.pdf.PAGE_CONTENT_WIDTH_MM, which computes the column widths.{% endcomment %}
+  reports.pdf.PAGE_CONTENT_WIDTH_MM, which computes the column widths. The top margin is set by the compact CSU
+  letterhead (ASSUMPTIONS 469, pdf/_letterhead_styles.html), repeated on every page.{% endcomment %}
   @page {
     size: A4 landscape;
-    margin: 14mm 14mm 16mm 14mm;
-    @bottom-left { content: "CSU-TBI Track"; font-size: 8pt; color: #52514e; }
-    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #52514e; }
+    margin: 31mm 14mm 16mm 14mm;
   }
   body { margin: 0; font-family: "DejaVu Sans", Arial, Helvetica, sans-serif; font-size: 9.5pt; color: #0b0b0b; }
   h1 { font-size: 16pt; margin: 0 0 4pt; color: #1A5C38; }
@@ -36,9 +35,11 @@
   .ai { border: 1pt solid #c9c8c3; background: #f6f5f1; padding: 6pt 8pt; }
   .ai-label { font-weight: bold; color: #8a4b00; margin-bottom: 4pt; }
   .ai-text { white-space: pre-line; overflow-wrap: anywhere; }
+{% include "pdf/_letterhead_styles.html" with lh=letterhead %}
 </style>
 </head>
 <body>
+  {% include "pdf/_letterhead.html" with lh=letterhead %}
   <h1>{{ content.title }}</h1>
   {% if content.meta_lines is not None %}
     <p class="meta">{% for label, value in content.meta_lines %}<strong>{{ label }}:</strong> {{ value }}{% if not forloop.last %} &nbsp;·&nbsp; {% endif %}{% endfor %}</p>

@@ -2336,7 +2336,7 @@ REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and
        ATTENDANCE", one sheet (Date "October 21-22, 2026"; No., Name, Designation/Position, the signature under "Will
        attend" or "Will not attend"; online and portal registrations only: walk-ins never signified). Both: "Prepared
        by:" the member who generates it with their POSITION (item 429), the NOTE about meals, the form code "F-PROC-COA-005
-       Rev.03, 10-10-2023" and a plain placeholder header (no CSU logos until NAVIGATU gives the letterhead). Buttons on
+       Rev.03, 10-10-2023" and a plain placeholder header (the CSU letterhead since item 469). Buttons on
        the Documents tab's payment group (can_create_activity); saved through `upload_document` as approved copies of
        the Attendance Sheet / Confirmation of Attendance types, so they count in the checklist and the payment packet.
        Generating again adds a new document. Staff can still upload a scanned paper sheet instead.
@@ -2759,7 +2759,7 @@ Evaluation Summary (items 441 onwards).
      - Tests: `reports/tests/test_paper_sheets.py`.
 
 444. **The Activity Report (= Narrative Report), per activity, following NAVIGATU's sample.**
-     - Placeholder letterhead (`attendance_forms.PLACEHOLDER_HEADER`, until NAVIGATU gives the files), "ACTIVITY REPORT",
+     - Placeholder letterhead (replaced by the CSU letterhead, item 469), "ACTIVITY REPORT",
        the optional office line, the title; Period Covered (the activity's dates), Venue, Implementing Unit
        (`REPORT_IMPLEMENTING_UNIT` or typed), Project Leader (the activity's creator or typed).
      - A. Highlights of the Activity (AI) with "Major Accomplishments" bullets (AI); B. Problems/Constraints Met (AI);
@@ -2794,7 +2794,7 @@ Evaluation Summary (items 441 onwards).
      - **Period:** a quarter (Q1-Q4), a half (January-June, July-December) or a whole year, plus the year; the dates come
        ONLY from `reports.services.preset_range` (the Reports page's presets, item 399; `generator.accomplishment_dates`).
        A custom range or an activity is refused (`PRESET_REQUIRED`, `PERIOD_ONLY`).
-     - **Header:** the placeholder letterhead (as item 444), "<1ST/2ND/3RD/4TH> QUARTER ACCOMPLISHMENT REPORT" /
+     - **Header:** the letterhead (item 469; was a placeholder), "<1ST/2ND/3RD/4TH> QUARTER ACCOMPLISHMENT REPORT" /
        "SEMI-ANNUAL ACCOMPLISHMENT REPORT" / "ANNUAL ACCOMPLISHMENT REPORT" (`draft_facts.accomplishment_heading`), the
        program or unit name (REQUIRED, typed: CSU has two TBIs, NAVIGATU and TARA; `options.program_name`; the form starts
        with the member's last value, `generator.last_options`, no column), "Period Covered: July–September 2026"
@@ -2850,7 +2850,7 @@ Evaluation Summary (items 441 onwards).
      - **The REPORT_DRAFT rule changed** (migration reports/0003, check constraint `report_draft_activity_period_or_typed`
        replaces `report_draft_activity_or_period`): one activity and no dates, OR no activity and both dates (end ≥ start),
        OR (only for these two kinds) neither.
-     - **Request Letter:** a memorandum: placeholder letterhead, "MEMORANDUM", FOR / THRU / FROM names and titles typed by
+     - **Request Letter:** a memorandum: the letterhead (item 469), "MEMORANDUM", FOR / THRU / FROM names and titles typed by
        the member and remembered from their last letter (FROM defaults to the project leader typed, else the Director's
        linked signatory), SUBJECT "Request for the conduct of <title>", DATE = the day the version was written; the body
        (AI); "Recommending Approval" (the THRU person) and "Approved by" (the FOR person). An empty name prints as a line.
@@ -3177,3 +3177,87 @@ Evaluation Summary (items 441 onwards).
        so it never offers work the service then refuses (e.g. an approved activity's certificate approval).
      - Tests: `approvals/tests/test_assign_general.py`; browser `approvals/tests/test_approvals_browser.py`
        (every kind from the Dashboard's dialog at 1366 and 390 px, the inbox's Assign).
+
+469. **The CSU letterhead on every office-style PDF** (owner, for the final defense; amends 434 and 444's placeholder
+     header). One shared header, `templates/pdf/_letterhead.html` + `pdf/_letterhead_styles.html`, built by
+     `config/letterhead.py` and repeated on EVERY page (a WeasyPrint running element), as in NAVIGATU's sample documents.
+     - **From the CSU logo, never redrawn:** `static/img/letterhead/csu-logo.png` (seal + wordmark, supplied by the owner)
+       is CUT into the seal and the "Caraga State University" wordmark at the first empty column where everything to its
+       right stays in the wordmark's band of rows (`split_column`; a logo without such a gap is kept whole; no file = a
+       text header). Then "Republic of the Philippines" above the wordmark, "Ampayon, Butuan City 8600, Philippines"
+       (`LETTERHEAD_ADDRESS`) and "Competence Service Uprightness" (green initials) below it.
+     - **The official marks** (Bagong Pilipinas, SOCOTEC ISO 9001, PAB) appear in a bordered box only when their files
+       are in that folder (`bagong-pilipinas.png`, `socotec-iso9001.png`, `pab.png`); they are never drawn or imitated
+       (open question, CLAUDE.md).
+     - **Office line** under the letterhead, in capitals: the draft's own, else `LETTERHEAD_OFFICE_LINE` = "NAVIGATU –
+       TECHNOLOGY BUSINESS INCUBATOR" (owner). The generator's Options suggest it and `LETTERHEAD_VP_OFFICE_LINE`
+       ("VICE PRESIDENT FOR RESEARCH AND DEVELOPMENT, INNOVATION, AND EXTENSION": the photos' "EXTENTION" is a typo).
+       The Accomplishment Report adds "ACTIVITY REPORT" under it on every page (NAVIGATU's sample).
+     - **Footer:** the form code bottom left (F-COR-001 for the Activity / Accomplishment Report, F-PROC-COA-005 for the
+       attendance forms; "Generated by CSU-TBI Track" on the figures reports and one participant's evaluation),
+       **"SAMPLE – FOR SYSTEM DEMONSTRATION"** in the centre while `LETTERHEAD_SAMPLE_LINE` is on (DEFAULT ON, owner:
+       turned off only after NAVIGATU approves the use of the CSU seal; env `LETTERHEAD_SAMPLE_LINE=False`), "Page X of
+       Y" bottom right. Footer strings are CSS-escaped (`css_string`).
+     - **Where:** every report-generator PDF (Activity Report, Accomplishment Report, Evaluation Summary, draft Request
+       Letter / Activity Design, other), the generated Attendance / Confirmation of Attendance forms, one participant's
+       evaluation (portrait), and the landscape figures reports with a COMPACT header (owner; still landscape, the side
+       margins and `PAGE_CONTENT_WIDTH_MM` unchanged). The DOCX gets the logo and the same lines in its page header.
+       **Not:** certificates (their own uploaded design), the stamped copy of a submission (the uploaded PDF), the
+       Excel files (unchanged). Images as data: URIs only.
+     - **Office format** (NAVIGATU's photos): A4 portrait, 25 mm side margins, 11 pt justified text, bold capital section
+       headings, bordered tables with bold centred headers, STACKED signature blocks (label, room to sign, bold capital
+       name, position). Activity Report: the title left in the header block; C. Running Budget opens with "The approved
+       budget for the conduct of the … amounted to Twenty-Seven Thousand Pesos (₱27,000.00) …" (`reports/money_words.py`,
+       Decimal, half-up; `facts["budget"]["total_words"]`, printed by the template, never written by the AI) and ends
+       with the italic note about reconciling with the liquidation records. Accomplishment Report: C. opens with "The
+       major outputs and deliverables accomplished during the third quarter include:" (`period_phrase`) and the numbered
+       outputs end in ";" / "; and" / "." (`draft_export.listed_outputs`); NEW section **F. Overall Assessment**
+       (`generator.SECTIONS`; versions written before it simply have no F).
+     - No database, URL or permission change. Tests: `config/tests/test_letterhead.py`,
+       `reports/tests/test_office_format.py`; the opt-in real-WeasyPrint layout check passes.
+
+470. **`seed_defense`: the final-defense / testing-site mock data** (owner). `python manage.py seed_defense
+     --yes-this-is-a-test-database [--today YYYY-MM-DD] [--index]` EMPTIES the connected database and uploads folder and
+     fills them with a realistic year (January–December) of the Navigatu TBI. `seed_testing` (464) is unchanged; this
+     command reuses its helpers (moved clock, in-memory mailbox, registrations, check-ins, evaluations) by subclassing it.
+     - **Safety:** only with the flag AND a database whose name contains "test" or "demo" (never `csu_tbi_track`); it
+       refuses a MEDIA_ROOT that is the project folder, a folder above it or a drive. Works with DEBUG off (the Docker
+       testing site, item 471). Running it again rebuilds the same data: never duplicated.
+     - **People:** all INVENTED (no real CSU / NAVIGATU official's name; a test checks the names from the sample
+       documents), emails `@demo.example.com` (never emailed: `EMAIL_BLOCKED_DOMAINS`, 464), one account per role +
+       a second Incubation Project Head and Admin Staff, unusable passwords (`changepassword`), no forced change; an
+       invented University President and Vice President on the letters; drawn signature images
+       (`make_sample_certificate_images`).
+     - **Data:** 22 activities: 17 Conducted in every quarter (one ended four days before `--today`, evaluation closed by
+       hand), one Ongoing (yesterday–tomorrow), two Scheduled (registration open with prepared certificates; one whose
+       registration form is not opened yet), two Drafts (no documents; Activity Design only). Registrations, per-day
+       attendance with signatures, walk-ins, "Will not attend", evaluations with photos, certificates waiting / approved /
+       issued / handed over, budgets, resource persons, objectives. Story per activity (`DSpec.variant`): complete, an
+       Invitation Letter returned, certificates waiting, Attendance Sheet missing (For payment: Generate), an Invitation
+       Letter waiting for review, a scanned attendance sheet not read yet, evaluation closed by hand with the Activity
+       Report and Event Photos missing.
+     - **Documents on the letterhead** (`accounts/defense_documents.py`, `templates/defense/`): Activity Design
+       (rationale, objectives, participants, program of activities, resource persons, budget table, Prepared by /
+       Recommending Approval / Approved by), Request Letter (memorandum FOR / THRU / FROM / SUBJECT / DATE, tracking
+       number "TBI-<year>-<00101…>" + its QR code bottom right), Invitation Letter (to a resource person), Pre-registration
+       Form, Evaluation Form, Program of Activities ("Other") and plain memos for the submissions. The Attendance Sheet /
+       Confirmation of Attendance are the system's generated forms and the Activity Reports come from the report
+       generator (saved as approved copies), so they are the real outputs. All text PDFs (the AI assistant can read
+       them); every one prints "SAMPLE – FOR SYSTEM DEMONSTRATION" whatever `LETTERHEAD_SAMPLE_LINE` says. Event photos
+       are JPGs. The "Accomplishment Report" document type stays inactive (430): the quarterly reports are generator
+       drafts (Q1–Q3; the last one submitted to the Director) and figures reports.
+     - **No AI while seeding:** the report generator's narrative comes from a stand-in (`NarrativeGateway`: the seed's
+       own text without numbers; every figure from the system through `[[placeholders]]`, so the numbers rule passes).
+       Nothing is indexed unless `--index`; the summary reminds to run `index_documents` once GEMINI_API_KEY is set.
+     - Tests: `accounts/tests/test_seed_defense.py` (safety, no real names, documents, the stand-in). The full seed is
+       run by hand on a test database (it empties it).
+
+471. **The testing site on the shared database server** (owner; amends 415's "no Cloudflare tunnel": the testing site
+     runs on the researchers' laptop behind a Cloudflare quick tunnel). `deploy/docker-compose.shared-db.yml` on top of
+     `docker-compose.prod.yml` + `docker-compose.laptop.yml` (project `csu_tbi_uat`): the prod file's own db container is
+     off (profile "not-used"); release, web and worker connect to the DEVELOPMENT Postgres container (`csu_tbi_db`,
+     127.0.0.1:5433) through `host.docker.internal`, to their own database `POSTGRES_DB=csu_tbi_testing` (uat.env);
+     uploads in the separate volume `testing_media`. Needs Docker Compose 2.24+ (`!reset` / `!override`). While it is up,
+     no `qcluster` (or `runserver`) on Windows against `csu_tbi_testing` (two workers would take the same tasks and write
+     files to two places). Mock data: `uat exec web python manage.py seed_defense --yes-this-is-a-test-database`.
+     docs/DEPLOY.md "Testing site (shared database server)"; tests in `config/tests/test_deploy_files.py`.

@@ -23,6 +23,7 @@ from registrations.evaluation_photos import photos_for_reports
 
 from . import metrics
 from .content import range_in_words
+from .money_words import pesos_in_words
 from .models import PaperSheetRead, ReportAttachment, ReportDraft
 
 IMAGE_EXTENSIONS = ("jpg", "png")
@@ -127,6 +128,10 @@ def _annex(activity: Activity) -> dict:
     }
 
 
+BUDGET_NOTE = ("The amounts presented reflect the budget allocation indicated in the approved activity design. Actual "
+               "expenditures should be reconciled with the corresponding financial documents and liquidation records.")
+
+
 def _budget(activity: Activity) -> dict:
     summary = activity_budget.budget_summary(activity)
     return {
@@ -135,7 +140,10 @@ def _budget(activity: Activity) -> dict:
                   "unit_cost": format_money(row["unit_cost"]), "total": format_money(row["total_amount"])}
                  for row in summary["rows"]],
         "total": format_money(summary["total"]),
-        "note": "Actual spending is reconciled with the liquidation.",
+        # "Twenty-Seven Thousand Pesos" (ASSUMPTIONS 469), only when there is a budget; the sentence is printed by the
+        # template, never written by the AI.
+        "total_words": pesos_in_words(summary["total"]) if summary["rows"] and summary["total"] else "",
+        "note": BUDGET_NOTE,
     }
 
 
@@ -301,6 +309,21 @@ def accomplishment_heading(start: date, end: date) -> str:
     return "ANNUAL ACCOMPLISHMENT REPORT"
 
 
+ORDINAL_WORDS = {1: "first", 2: "second", 3: "third", 4: "fourth"}
+
+
+def accomplishment_period_phrase(start: date, end: date) -> str:
+    """How section C names the period: "the third quarter", "the first half of the year", "the year" (ASSUMPTIONS 469)."""
+    from .content import HALF, QUARTER, period_name
+
+    name = period_name(start, end)
+    if name is not None and name.kind == QUARTER:
+        return f"the {ORDINAL_WORDS[(start.month - 1) // 3 + 1]} quarter"
+    if name is not None and name.kind == HALF:
+        return f"the {'first' if start.month == 1 else 'second'} half of the year"
+    return "the year"
+
+
 def months_covered(start: date, end: date) -> str:
     """"July–September 2026" (a preset always covers whole months of one year)."""
     if (start.year, start.month) == (end.year, end.month):
@@ -371,6 +394,7 @@ def accomplishment_facts(draft: ReportDraft, member: TBIMember) -> dict:
     start, end = filters.start, filters.end
     header = {
         "heading": accomplishment_heading(start, end),
+        "period_phrase": accomplishment_period_phrase(start, end),
         "program_name": draft.options.get("program_name", ""),
         "office_line": draft.options.get("office_line", ""),
         "period_covered": months_covered(start, end),

@@ -96,6 +96,9 @@ def new_form(data=None, errors: dict | None = None, member=None, now=None) -> di
         "message": data.get("message", ""), "errors": errors or {},
         "message_max": settings.REPORT_GENERATOR_MESSAGE_MAX, "max_files": settings.REPORT_GENERATOR_MAX_ATTACHMENTS,
         "default_unit": settings.REPORT_IMPLEMENTING_UNIT, "ai_off": not gemini.is_configured(),
+        # The office line under the letterhead: empty = the default; the VP line stays one click away (ASSUMPTIONS 469).
+        "default_office_line": settings.LETTERHEAD_OFFICE_LINE,
+        "office_line_choices": [settings.LETTERHEAD_OFFICE_LINE, settings.LETTERHEAD_VP_OFFICE_LINE],
     }
 
 

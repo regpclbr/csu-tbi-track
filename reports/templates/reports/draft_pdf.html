@@ -11,6 +11,9 @@ Prompt 7 (ASSUMPTIONS 446-447): the Accomplishment Report ("3RD QUARTER ACCOMPLI
 Covered, A. intro + figures + one subsection per activity, B. Objectives / Accomplishments table, C-E), the draft Request
 Letter (memorandum: FOR / THRU / FROM / SUBJECT / DATE, body, Recommending Approval / Approved by) and the draft Activity
 Design (top table, I-IV, budget table, three signature blocks). Signature blocks come from draft_export.signature_blocks.
+ASSUMPTIONS 469: the CSU letterhead (pdf/_letterhead.html, repeated on every page; "ACTIVITY REPORT" under it on the
+Accomplishment Report), 11 pt justified text, 25 mm margins, stacked signature blocks, the approved budget in words, the
+Accomplishment Report's "F. Overall Assessment" and its numbered outputs ending in ";" / "; and".
 {% endcomment %}
 <html lang="en">
 <head>
@@ -19,38 +22,36 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
 <style>
   @page {
     size: A4 portrait;
-    margin: 16mm 16mm 18mm 16mm;
-    {% if form_code %}@bottom-left { content: "{{ form_code }}"; font: 7.5pt "DejaVu Sans", sans-serif; color: #444; }{% endif %}
-    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt "DejaVu Sans", sans-serif; color: #444; }
+    margin: 43mm 25mm 22mm 25mm;
   }
-  body { margin: 0; font: 10pt "DejaVu Sans", Arial, sans-serif; color: #111; line-height: 1.4; }
-  .letterhead { text-align: center; border-bottom: 1.5pt solid #1A5C38; padding-bottom: 4pt; margin-bottom: 8pt; }
-  .letterhead .university { font-weight: bold; font-size: 11pt; text-transform: uppercase; letter-spacing: .5pt; }
-  .office-line { text-align: center; font-size: 9pt; margin: 2pt 0 0; }
+  body { margin: 0; font: 11pt "DejaVu Sans", Arial, sans-serif; color: #111; line-height: 1.35; }
   h1 { text-align: center; font-size: 14pt; letter-spacing: 1pt; margin: 8pt 0 2pt; }
   .title { text-align: center; font-weight: bold; font-size: 12pt; margin: 0 0 10pt; overflow-wrap: anywhere; }
+  .title-left { text-align: left; margin: 0 0 1pt; }
+  .intro { margin: 0 0 4pt; }
   table.facts { width: 100%; border-collapse: collapse; margin-bottom: 8pt; }
   table.facts td { padding: 2pt 0; vertical-align: top; overflow-wrap: anywhere; }
   table.facts td.label { width: 42mm; font-weight: bold; }
-  h2 { font-size: 11pt; margin: 12pt 0 4pt; break-after: avoid; }
-  h3 { font-size: 10pt; margin: 8pt 0 3pt; break-after: avoid; }
+  h2 { font-size: 11pt; margin: 12pt 0 4pt; break-after: avoid; text-transform: uppercase; }
+  h3 { font-size: 11pt; margin: 8pt 0 3pt; break-after: avoid; font-style: italic; }
   p { margin: 0 0 6pt; text-align: justify; overflow-wrap: anywhere; }
   ul { margin: 0 0 6pt; padding-left: 16pt; }
   li { margin: 0 0 2pt; }
   table.list { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 2pt 0 6pt; font-size: 9pt; }
   table.list th, table.list td { border: .6pt solid #333; padding: 2.5pt 4pt; vertical-align: top; overflow-wrap: anywhere; }
-  table.list th { background: #eef1f8; text-align: left; }
+  table.list th { background: #eef1f8; text-align: center; font-weight: bold; }
   table.list td.num, table.list th.num { text-align: right; }
   table.list td.num { white-space: nowrap; }  /* amounts never wrap; headers may ("Total Amount") */
   tr { break-inside: avoid; }
   thead { display: table-header-group; }
   .note { font-size: 8.5pt; color: #444; font-style: italic; }
   .blank { color: #777; font-style: italic; }
-  table.sign { width: 100%; margin-top: 18pt; break-inside: avoid; }
-  table.sign { table-layout: fixed; }  /* equal columns; a long name wraps instead of widening the table */
-  table.sign td { vertical-align: top; padding-right: 6mm; overflow-wrap: anywhere; }
-  .sign .line { border-bottom: .6pt solid #111; height: 10mm; width: 90%; }
-  .sign .name { font-weight: bold; text-transform: uppercase; margin-top: 2pt; }
+  /* Stacked signature blocks (the office's documents): the label, room for a handwritten signature, the bold capital
+     name and the position under it. */
+  .signatures { margin-top: 16pt; }
+  .sign-block { width: 95mm; margin: 0 0 12pt; break-inside: avoid; overflow-wrap: anywhere; }
+  .sign-block .space { height: 12mm; }
+  .sign-block .name { font-weight: bold; text-transform: uppercase; }
   .page-break { break-before: page; }
   .period { text-align: center; margin: 0 0 10pt; }
   ol { margin: 0 0 6pt; padding-left: 18pt; }
@@ -64,15 +65,13 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
   .photos img { max-width: 100%; max-height: 70mm; }
   .caption { font-size: 8pt; color: #444; margin-top: 2pt; }
   .chart svg { max-width: 100%; height: auto; }
-  .annex-image img { max-width: 100%; max-height: 240mm; }
+  .annex-image img { max-width: 100%; max-height: 220mm; }
+  .budget-note { font-size: 9.5pt; font-style: italic; text-align: justify; }
+{% include "pdf/_letterhead_styles.html" with lh=letterhead %}
 </style>
 </head>
 <body>
-  <div class="letterhead">
-    <div class="university">{{ letterhead.0 }}</div>
-    <div>{{ letterhead.1 }}</div>
-    {% if header.office_line %}<p class="office-line">{{ header.office_line }}</p>{% endif %}
-  </div>
+  {% include "pdf/_letterhead.html" with lh=letterhead %}
   <h1>{{ heading }}</h1>
   {% if kind == "accomplishment_report" %}
     <p class="title">{{ header.program_name }}</p>
@@ -80,7 +79,7 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
   {% elif kind == "activity_design" %}
     <p class="title">{{ facts.proposal.title }}</p>
   {% elif kind != "request_letter" %}
-  <p class="title">{{ header.title|default:draft.title }}</p>
+  <p class="title{% if kind == "activity_report" %} title-left{% endif %}">{{ header.title|default:draft.title }}</p>
 
   <table class="facts">
     {% if header.period_covered %}<tr><td class="label">Period Covered:</td><td>{{ header.period_covered }}</td></tr>{% endif %}
@@ -136,11 +135,16 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
       </tbody>
     </table>
     <h2>{{ sections.outputs.label }}</h2>
-    {% if sections.outputs.items %}<ol>{% for item in sections.outputs.items %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+    {% if outputs_listed %}<p class="intro">The major outputs and deliverables accomplished during {{ header.period_phrase|default:"the period" }} include:</p>
+    <ol>{% for item in outputs_listed %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
     <h2>{{ sections.problems.label }}</h2>
     {% for p in sections.problems.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
     <h2>{{ sections.recommendations.label }}</h2>
     {% if sections.recommendations.items %}<ol>{% for item in sections.recommendations.items %}<li>{{ item }}</li>{% endfor %}</ol>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
+    {% if sections.assessment %}
+      <h2>{{ sections.assessment.label }}</h2>
+      {% for p in sections.assessment.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
+    {% endif %}
 
   {% elif kind == "request_letter" %}
     <table class="memo">
@@ -180,6 +184,10 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
     <h2>{{ sections.problems.label }}</h2>
     {% for p in sections.problems.paragraphs %}<p>{{ p }}</p>{% empty %}<p class="blank">(Not written yet.)</p>{% endfor %}
     <h2>C. Running Budget</h2>
+    {% if facts.budget.total_words %}
+      <p>The approved budget for the conduct of the {{ header.title|default:draft.title }} amounted to {{ facts.budget.total_words }} ({{ facts.budget.total }}){% if facts.budget.fund_source %}, charged to the {{ facts.budget.fund_source }}{% if facts.budget.fund_account %} ({{ facts.budget.fund_account }}){% endif %}{% endif %}.</p>
+      <p class="intro">The budget allocation was as follows:</p>
+    {% endif %}
     <table class="list">
       <thead><tr><th style="width:44%">Particulars</th><th>Quantity</th><th class="num">Unit Cost</th><th class="num">Total Amount</th></tr></thead>
       <tbody>
@@ -188,7 +196,7 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
         <tr><td colspan="3"><strong>Total</strong></td><td class="num"><strong>{{ facts.budget.total }}</strong></td></tr>
       </tbody>
     </table>
-    <p class="note">Fund source: {{ facts.budget.fund_source }}{% if facts.budget.fund_account %} ({{ facts.budget.fund_account }}){% endif %}. {{ facts.budget.note }}</p>
+    {% if facts.budget.total_words %}<p class="budget-note">Note: {{ facts.budget.note }}</p>{% else %}<p class="note">Fund source: {{ facts.budget.fund_source }}{% if facts.budget.fund_account %} ({{ facts.budget.fund_account }}){% endif %}. {{ facts.budget.note }}</p>{% endif %}
     <h2>{{ sections.recommendations.label }}</h2>
     {% if sections.recommendations.items %}<ul>{% for item in sections.recommendations.items %}<li>{{ item }}</li>{% endfor %}</ul>{% else %}<p class="blank">(Not written yet.)</p>{% endif %}
 
@@ -236,11 +244,9 @@ Design (top table, I-IV, budget table, three signature blocks). Signature blocks
     {% endif %}
   {% endif %}
 
-  <table class="sign">
-    <tr>
-      {% for block in signatures %}<td>{{ block.label }}<div class="line"></div><div class="name">{% if block.name %}{{ block.name }}{% else %}&nbsp;{% endif %}</div><div>{{ block.position }}</div></td>{% endfor %}
-    </tr>
-  </table>
+  <div class="signatures">
+    {% for block in signatures %}<div class="sign-block"><div>{{ block.label }}</div><div class="space"></div><div class="name">{% if block.name %}{{ block.name }}{% else %}______________________________{% endif %}</div>{% if block.position %}<div>{{ block.position }}</div>{% endif %}</div>{% endfor %}
+  </div>
 
   {% for page in photo_pages %}
     <div class="page-break">

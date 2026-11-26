@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+{% comment %}
+The office documents of the seed_defense mock data (ASSUMPTIONS 470, accounts/defense_documents.py): Activity Design,
+Request Letter (memorandum with a tracking number + QR code), Invitation Letter, Pre-registration Form, Evaluation Form,
+"Other" (Program of Activities) and a plain memo (the files submitted to the Director). A4 portrait on the CSU letterhead, with "SAMPLE – FOR SYSTEM DEMONSTRATION" in the
+footer of every page. Text PDFs (the AI assistant can read them). Every person and organization is invented. Everything
+is escaped; images are data: URIs only.
+{% endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ doc_title }}</title>
+<style>
+  @page { size: A4 portrait; margin: 43mm 25mm 22mm 25mm; }
+  body { margin: 0; font: 11pt "DejaVu Sans", Arial, sans-serif; color: #111; line-height: 1.35; }
+  h1 { text-align: center; font-size: 14pt; letter-spacing: 1pt; margin: 4pt 0 8pt; }
+  h2 { font-size: 11pt; margin: 12pt 0 4pt; text-transform: uppercase; break-after: avoid; }
+  p { margin: 0 0 6pt; text-align: justify; }
+  ol, ul { margin: 0 0 6pt; padding-left: 18pt; }
+  li { margin: 0 0 2pt; text-align: justify; }
+  table.grid { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 2pt 0 8pt; font-size: 10pt; }
+  table.grid th, table.grid td { border: .6pt solid #333; padding: 3pt 4pt; vertical-align: top; overflow-wrap: anywhere; }
+  table.grid th { background: #eef1f8; text-align: center; font-weight: bold; }
+  table.grid td.num { text-align: right; white-space: nowrap; }
+  table.grid td.label { font-weight: bold; width: 32%; }
+  table.grid td.blank { height: 9mm; }
+  table.grid td.time { white-space: nowrap; }
+  table.grid tr { break-inside: avoid; }
+  table.memo { width: 100%; border-collapse: collapse; margin: 0 0 4pt; }
+  table.memo td { padding: 3pt 0; vertical-align: top; }
+  table.memo td.label { width: 26mm; font-weight: bold; }
+  .name { font-weight: bold; text-transform: uppercase; }
+  hr.rule { border: 0; border-top: 1pt solid #111; margin: 4pt 0 10pt; }
+  .date-line { margin: 0 0 10pt; }
+  .addressee { margin: 0 0 10pt; }
+  .signatures { margin-top: 14pt; }
+  .sign-block { width: 95mm; margin: 0 0 12pt; break-inside: avoid; }
+  .sign-block .space { height: 12mm; }
+  .tracking { position: absolute; right: 0; bottom: 0; text-align: center; font-size: 8pt; }
+  .tracking img { width: 22mm; height: 22mm; display: block; margin: 0 auto 1mm; }
+  .note { font-size: 9pt; color: #444; font-style: italic; }
+  .scale { font-size: 9pt; margin: 0 0 4pt; }
+  .box { display: inline-block; width: 3mm; height: 3mm; border: .6pt solid #333; margin-right: 1.5mm; vertical-align: middle; }
+  .choice { margin-right: 8mm; white-space: nowrap; }
+{% include "pdf/_letterhead_styles.html" with lh=letterhead %}
+</style>
+</head>
+<body>
+{% include "pdf/_letterhead.html" with lh=letterhead %}
+
+{% if kind == "activity_design" %}
+  <h1>ACTIVITY DESIGN</h1>
+  <table class="grid">
+    {% for label, value in summary_rows %}<tr><td class="label">{{ label }}</td><td>{{ value }}</td></tr>{% endfor %}
+  </table>
+  <h2>I. Rationale</h2>
+  {% for paragraph in rationale %}<p>{{ paragraph }}</p>{% endfor %}
+  <h2>II. Objectives</h2>
+  <p>At the end of the activity, the participants are expected to:</p>
+  <ol>{% for item in objectives %}<li>{{ item }}</li>{% endfor %}</ol>
+  <h2>III. Target Participants</h2>
+  <p>{{ participants_text }}</p>
+  <h2>IV. Program of Activities</h2>
+  {% include "defense/_program.html" %}
+  <h2>V. Resource Persons</h2>
+  {% if resource_persons %}<table class="grid"><thead><tr><th style="width:45%">Name</th><th>Topic</th></tr></thead><tbody>{% for person in resource_persons %}<tr><td>{{ person.name }}</td><td>{{ person.topic }}</td></tr>{% endfor %}</tbody></table>
+  {% else %}<p>The sessions are facilitated by the TBI staff.</p>{% endif %}
+  <h2>VI. Budgetary Requirements</h2>
+  <table class="grid">
+    <thead><tr><th style="width:44%">Particulars</th><th>Quantity</th><th>Unit Cost</th><th>Total Amount</th></tr></thead>
+    <tbody>
+      {% for row in budget_rows %}<tr><td>{{ row.particulars }}</td><td>{{ row.quantity }}</td><td class="num">{{ row.unit_cost }}</td><td class="num">{{ row.total }}</td></tr>{% endfor %}
+      <tr><td colspan="3"><strong>TOTAL</strong></td><td class="num"><strong>{{ budget_total }}</strong></td></tr>
+    </tbody>
+  </table>
+  <p class="note">Charged to the {{ fund_source }}{% if fund_account %} ({{ fund_account }}){% endif %}, subject to the usual accounting and auditing rules.</p>
+  <h2>VII. Expected Outputs</h2>
+  <ol>{% for item in expected_outputs %}<li>{{ item }}</li>{% endfor %}</ol>
+  {% include "defense/_signatures.html" %}
+
+{% elif kind == "request_letter" %}
+  <table class="memo">
+    {% for label, person in memo %}<tr><td class="label">{{ label }}:</td><td><span class="name">{{ person.name }}</span><br>{{ person.position }}</td></tr>{% endfor %}
+    <tr><td class="label">SUBJECT:</td><td><strong>{{ subject }}</strong></td></tr>
+    <tr><td class="label">DATE:</td><td>{{ letter_date }}</td></tr>
+  </table>
+  <hr class="rule">
+  {% for paragraph in body %}<p>{{ paragraph }}</p>{% endfor %}
+  <p>Thank you very much for your continued support.</p>
+  {% include "defense/_signatures.html" %}
+  <div class="tracking">{% if qr %}<img src="{{ qr }}" alt="QR code of {{ tracking_number }}">{% endif %}{{ tracking_number }}</div>
+
+{% elif kind == "invitation_letter" %}
+  <p class="date-line">{{ letter_date }}</p>
+  <div class="addressee"><span class="name">{{ addressee.name }}</span><br>{{ addressee.title }}<br>{{ addressee.organization }}</div>
+  <p>Dear {{ addressee.salutation }}:</p>
+  {% for paragraph in body %}<p>{{ paragraph }}</p>{% endfor %}
+  <p>Very truly yours,</p>
+  {% include "defense/_signatures.html" %}
+  <div class="tracking">{% if qr %}<img src="{{ qr }}" alt="QR code of {{ tracking_number }}">{% endif %}{{ tracking_number }}</div>
+
+{% elif kind == "pre_registration_form" %}
+  <h1>PRE-REGISTRATION FORM</h1>
+  <table class="grid">{% for label, value in event_rows %}<tr><td class="label">{{ label }}</td><td>{{ value }}</td></tr>{% endfor %}</table>
+  <p class="note">Please fill in every item in print. The information is used only for this activity, its attendance and its certificates (Data Privacy Act of 2012).</p>
+  <table class="grid">
+    {% for label in fields %}<tr><td class="label">{{ label }}</td><td class="blank"></td></tr>{% endfor %}
+    <tr><td class="label">Participant category</td><td>{% for category in categories %}<span class="choice"><span class="box"></span>{{ category }}</span>{% endfor %}</td></tr>
+    <tr><td class="label">Signature</td><td class="blank"></td></tr>
+  </table>
+
+{% elif kind == "evaluation_form" %}
+  <h1>ACTIVITY EVALUATION FORM</h1>
+  <table class="grid">{% for label, value in event_rows %}<tr><td class="label">{{ label }}</td><td>{{ value }}</td></tr>{% endfor %}</table>
+  <p class="scale">Rate each item: 5 – Excellent, 4 – Very Good, 3 – Good, 2 – Fair, 1 – Poor.</p>
+  <table class="grid">
+    <thead><tr><th style="width:60%">Item</th>{% for score in "54321" %}<th>{{ score }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for question in ratings %}<tr><td>{{ question }}</td>{% for score in "54321" %}<td></td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table>
+  {% for question in open_questions %}<p><strong>{{ question }}</strong></p><table class="grid"><tr><td class="blank"></td></tr><tr><td class="blank"></td></tr></table>{% endfor %}
+
+{% elif kind == "memo" %}
+  <h1>{{ heading }}</h1>
+  {% for paragraph in body %}<p>{{ paragraph }}</p>{% endfor %}
+  {% include "defense/_signatures.html" %}
+
+{% else %}
+  <h1>{{ heading }}</h1>
+  <table class="grid">{% for label, value in event_rows %}<tr><td class="label">{{ label }}</td><td>{{ value }}</td></tr>{% endfor %}</table>
+  {% include "defense/_program.html" %}
+  {% include "defense/_signatures.html" %}
+{% endif %}
+</body>
+</html>

@@ -1,0 +1,37 @@
+{% comment %}
+CSS of the CSU letterhead (ASSUMPTIONS 469), included INSIDE <style> AFTER the template's own @page rule (its margin-top
+wins): the running header on every page and the footer (form code left, the sample line centre, "Page X of Y" right).
+`lh` = config.letterhead.context(); the footer strings are CSS-escaped by config.letterhead.css_string.
+{% endcomment %}
+  @page {
+    margin-top: {% if lh.compact %}31mm{% elif lh.label %}49mm{% else %}43mm{% endif %};
+    @top-center { content: element(letterhead); width: 100%; vertical-align: bottom; padding-bottom: 3mm; }
+    @bottom-left { content: "{{ lh.footer_left }}"; font: 7.5pt "DejaVu Sans", Arial, sans-serif; color: #444; }
+    @bottom-center { content: "{{ lh.sample }}"; font: bold 7.5pt "DejaVu Sans", Arial, sans-serif; color: #8a8a8a; letter-spacing: .4pt; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt "DejaVu Sans", Arial, sans-serif; color: #444; }
+  }
+  .lh { position: running(letterhead); width: 100%; color: #111; font-family: "DejaVu Sans", Arial, sans-serif; line-height: 1.15; text-align: left; }
+  .lh .lh-row { display: table; width: 100%; border-collapse: collapse; margin: 0; }
+  .lh .lh-cells { display: table-row; }
+  .lh .lh-seal, .lh .lh-text, .lh .lh-marks { display: table-cell; border: 0; padding: 0; vertical-align: middle; }
+  .lh .lh-seal { width: 17mm; padding-right: 2.5mm !important; }
+  .lh .lh-seal img { height: 27mm; display: block; }
+  .lh .lh-republic { font-size: 9pt; margin: 0 0 .6mm; }
+  .lh .lh-wordmark { width: 82mm; display: block; margin: 0 0 1mm; }
+  .lh .lh-university { font-family: "Gelasio", "DejaVu Serif", Georgia, serif; font-size: 19pt; font-variant: small-caps; letter-spacing: .3pt; margin: 0 0 .6mm; }
+  .lh .lh-address { font-size: 9pt; margin: 0 0 1mm; }
+  .lh .lh-motto { font-family: "Gelasio", "DejaVu Serif", Georgia, serif; font-size: 8.5pt; color: #222; }
+  .lh .lh-initial { color: #2E7D32; font-weight: bold; }
+  .lh .lh-marks { text-align: right; }
+  .lh .lh-mark-box { display: inline-block; border: .8pt solid #6f8fb3; padding: 1.5mm; }
+  .lh .lh-mark-box img { height: 15mm; margin-left: 1.5mm; vertical-align: middle; }
+  .lh .lh-office { font-family: "Gelasio", "DejaVu Serif", Georgia, serif; font-size: 9.5pt; letter-spacing: .2pt; margin: 1.2mm 0 0 19.5mm; }
+  .lh .lh-label { font-weight: bold; font-size: 12pt; margin: 1mm 0 0 19.5mm; }
+  .lh-compact .lh-seal { width: 12mm; padding-right: 2mm !important; }
+  .lh-compact .lh-seal img { height: 16mm; }
+  .lh-compact .lh-republic, .lh-compact .lh-address { font-size: 7.5pt; margin-bottom: .3mm; }
+  .lh-compact .lh-wordmark { width: 58mm; margin-bottom: .5mm; }
+  .lh-compact .lh-university { font-size: 13pt; }
+  .lh-compact .lh-motto { font-size: 7pt; }
+  .lh-compact .lh-mark-box img { height: 10mm; }
+  .lh-compact .lh-office { font-size: 8pt; margin: .6mm 0 0 14mm; }

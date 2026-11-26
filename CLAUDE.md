@@ -627,6 +627,17 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   (`generator.save_refused_reason` = `DRAFT_NOT_SAVED`; Approvals: `allowed_actions()["save"]` False and
   `SAVE_DRAFT_ONLY`, `generator.is_draft_only_submission`); Submit allowed (no document type). Signature blocks from
   `facts["signatures"]` (`draft_export.signature_blocks`). Neutral templates until NAVIGATU gives theirs.
+- The CSU letterhead (ASSUMPTIONS 469): every office-style PDF (all generator PDFs, the generated attendance forms, one
+  participant's evaluation; the landscape figures reports with the COMPACT header) includes `pdf/_letterhead_styles.html`
+  in its <style> and `pdf/_letterhead.html` first in its <body>, with `config.letterhead.context()` (a running element:
+  every page). Seal + wordmark are CUT from `static/img/letterhead/csu-logo.png` (`split_column`), never redrawn; the
+  Bagong Pilipinas / SOCOTEC / PAB marks only when their files exist (never drawn). Office line: the draft's, else
+  `LETTERHEAD_OFFICE_LINE` (`draft_export.office_line`; the VP line `LETTERHEAD_VP_OFFICE_LINE` is a suggestion on the
+  Options). Footer: form code, "SAMPLE – FOR SYSTEM DEMONSTRATION" while `LETTERHEAD_SAMPLE_LINE` (default ON until
+  NAVIGATU approves the seal), Page X of Y; footer strings only through `letterhead.css_string`. Never on certificates,
+  stamped submissions or Excel. Office format: 25 mm margins, 11 pt justified, stacked signature blocks, the budget in
+  words (`reports/money_words.py`, `facts["budget"]["total_words"]`, printed by the template, never by the AI), the
+  Accomplishment Report's "F. Overall Assessment" and outputs ending ";" / "; and" (`draft_export.listed_outputs`).
 - Tables (48 since the STARTUP drop, ASSUMPTIONS 458): REPORT_DRAFT, REPORT_DRAFT_VERSION, REPORT_CHAT_MESSAGE, REPORT_ATTACHMENT, PAPER_SHEET_READ,
   PAPER_SHEET_ROW (migration reports/0002). Drafts / sheets CASCADE with the activity (counted in item 389's dialog);
   attachment files removed after the commit (`generator.remove_file_after_delete`).
@@ -1226,8 +1237,17 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
+- Letterhead and defense data (2026-11-26, owner): the CSU letterhead on every office-style PDF, sample line on by
+  default, F. Overall Assessment, budget in words (469); `seed_defense` (invented year of data, letterhead documents,
+  `@demo.example.com`, only with the flag on a "test" / "demo" database) (470); the testing site on the shared database
+  server (471). No database change, no migration.
 
-## Client review version: deployment files (ASSUMPTIONS 391–398, 415, `docs/DEPLOY.md`; NOT USED)
+## Client review version: deployment files (ASSUMPTIONS 391–398, 415, 471, `docs/DEPLOY.md`)
+- THE TESTING SITE (ASSUMPTIONS 471, amends 415): the laptop version + `deploy/docker-compose.shared-db.yml` (`uat`
+  function with three -f files, behind a Cloudflare quick tunnel): no db container of its own; release / web / worker use
+  the development Postgres container (`csu_tbi_db`) through `host.docker.internal`, database `POSTGRES_DB=csu_tbi_testing`
+  (uat.env), uploads in the volume `testing_media`. No Windows `qcluster` / `runserver` on `csu_tbi_testing` while it is
+  up. Mock data: `uat exec web python manage.py seed_defense --yes-this-is-a-test-database`. Still never suggest Azure.
 - NO deployment (team decision 2026-11-21, ASSUMPTIONS 415): all further testing and the defense demo run ONLY on the
   researchers' laptop; no Azure, no Cloudflare tunnel, no public address. The Nov 17 UAT ran once on the laptop (Docker
   project `csu_tbi_uat`, `deploy/docker-compose.laptop.yml`, `Caddyfile.laptop`) behind a Cloudflare quick tunnel; its
@@ -1281,6 +1301,9 @@ python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe t
 # USER TESTING ONLY (ASSUMPTIONS 464): in .env DATABASE_NAME=csu_tbi_testing and MEDIA_DIR=media_testing first, never on
 # the development database. EMPTIES the connected database and uploads folder, prints the accounts and passwords:
 python manage.py seed_testing --reset --checkin-start 13:00 [--testing-date 2026-11-26] [--skip-ai-index]
+# FINAL DEFENSE / TESTING SITE ONLY (ASSUMPTIONS 470): EMPTIES the connected database (name must contain "test" or "demo")
+# and uploads folder, then a year of INVENTED data on the CSU letterhead (@demo.example.com, no passwords: changepassword):
+python manage.py seed_defense --yes-this-is-a-test-database [--today 2026-12-09] [--index]
 python manage.py changepassword director@demo.example.com   # give a demo account a password (typed, never stored)
 python manage.py setup_schedules          # once (safe to rerun): 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links (also 3 h before the end)
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
@@ -1316,7 +1339,7 @@ $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW  
 
 ## Open questions for NAVIGATU
 Still unanswered (the system keeps the current rule until then; details in the ASSUMPTIONS item). One line each.
-- Letterhead (434, 444): the official CSU / TBI letterhead files (logos, header, footer; PNG or SVG) for the generated forms and the Activity Report.
+- Letterhead (469): the official Bagong Pilipinas, SOCOTEC ISO 9001 and PAB mark files, and approval to use the CSU seal and letterhead on the system's documents (until then the sample line stays on).
 - Digital signatures (434): does the Supply Office accept the generated Attendance / Confirmation of Attendance with signatures given in the system?
 - Participant photos (435): how long may they be kept, and is a photo release needed before photos of people go into reports?
 - Participant mix (424): do MSMEs count with the Incubatees for the 70%?

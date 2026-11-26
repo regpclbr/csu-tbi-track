@@ -52,7 +52,8 @@ def test_dockerignore_keeps_secrets_and_local_data_out_of_the_image() -> None:
 @pytest.mark.parametrize("path", sorted(DEPLOY.glob("*.sh")) + [BASE_DIR / "Dockerfile", DEPLOY / "Caddyfile",
                                                                DEPLOY / "docker-compose.prod.yml",
                                                                DEPLOY / "Caddyfile.laptop",
-                                                               DEPLOY / "docker-compose.laptop.yml"])
+                                                               DEPLOY / "docker-compose.laptop.yml",
+                                                               DEPLOY / "docker-compose.shared-db.yml"])
 def test_server_files_have_unix_line_endings(path) -> None:
     assert b"\r\n" not in path.read_bytes(), f"{path.name} has Windows line endings (see .gitattributes)"
 
@@ -124,6 +125,20 @@ def test_laptop_caddy_trusts_cloudflare_for_https_and_the_visitor_ip(settings) -
     assert not re.search(r"^\s*log\b", caddy, re.MULTILINE)
     assert int(re.search(r"max_size (\d+)MB", caddy).group(1)) > settings.DOCUMENT_MAX_UPLOAD_MB
     assert "handle_path /static/*" in caddy and "reverse_proxy web:8000" in caddy
+
+
+def test_testing_site_uses_the_shared_database_server_and_its_own_upload_volume() -> None:
+    """ASSUMPTIONS 471: no db container of its own; release, web and worker reach the development Postgres through
+    host.docker.internal and keep their uploads in the testing_media volume (never the project's media folder)."""
+    shared = text(DEPLOY / "docker-compose.shared-db.yml")
+    assert re.search(r'^  db:\n    profiles: \["not-used"\]', shared, re.MULTILINE)
+    assert "POSTGRES_HOST: host.docker.internal" in shared and '"host.docker.internal:host-gateway"' in shared
+    for name in ("release", "web", "worker"):
+        block = service_block(shared, name)
+        assert "environment: *shared-db" in block and "- testing_media:/app/media" in block, name
+        assert "volumes: !override" in block and "      - media:/app/media" not in block, name
+    assert re.search(r"^volumes:\n  testing_media:", shared, re.MULTILINE)
+    assert "csu_tbi_track" not in shared.split("\nx-shared-db", 1)[1]  # never names the development database
 
 
 def test_laptop_files_have_lf_in_gitattributes() -> None:

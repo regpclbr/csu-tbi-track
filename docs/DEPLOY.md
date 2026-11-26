@@ -321,8 +321,9 @@ worker, the schedules, email and the PDF check.
 
 ## Laptop review version with a Cloudflare tunnel (not used)
 
-**Not used any more** (team decision, 2026-11-21: further testing and the defense demo run only on the laptop, without
-a tunnel or any public address). It was used once, for the November 17, 2026 UAT (no Azure server was used). The UAT
+**Not used any more on its own** (team decision, 2026-11-21: further testing and the defense demo run only on the
+laptop). Its tunnel, `uat.env` and backup steps are reused by the **Testing site (shared database server)** below,
+which is the setup in use (ASSUMPTIONS 471). It was used once, for the November 17, 2026 UAT (no Azure server was used). The UAT
 database (`csu_tbi_uat`) and the backups stay on the laptop: **Back up**, the deletion rule and **Remove everything**
 below still apply to them.
 
@@ -418,6 +419,58 @@ winget uninstall --id Cloudflare.cloudflared
 ```
 The `pgvector/pgvector:pg17` image stays (the development database uses it).
 
+## Testing site (shared database server)
+
+**Used for the UAT / TAM testing and the final defense** (ASSUMPTIONS 471). The laptop review version above, with one
+more file: `deploy/docker-compose.shared-db.yml`. It switches off the review version's own database container and
+connects release, web and worker to the **development Postgres container** (`csu_tbi_db`, started with
+`docker compose up -d` in the project folder) through `host.docker.internal`, but to a **separate database**,
+`csu_tbi_testing`. Uploads go to their own Docker volume, `testing_media` (`csu_tbi_uat_testing_media`), never the
+project's `media\` folder. It still runs behind the Cloudflare quick tunnel (`cloudflared`, steps above).
+
+```
+phone/laptop --https--> Cloudflare --> cloudflared --> 127.0.0.1:8080 Caddy --> web --> host.docker.internal:5433
+                                                                                        (csu_tbi_db, database csu_tbi_testing)
+```
+
+**Once:** Docker Compose 2.24 or newer (`docker compose version`; the file uses `!reset` / `!override`). The database
+`csu_tbi_testing` must exist on the development server (`seed_testing` made it, ASSUMPTIONS 464; otherwise
+`docker exec csu_tbi_db sh -c 'createdb -U "$POSTGRES_USER" csu_tbi_testing'`). The release step migrates it.
+
+**`uat.env`** (`C:\Users\Admin\tbi-uat\uat.env`): the same values as the review version, plus
+```
+POSTGRES_DB=csu_tbi_testing
+POSTGRES_USER=<the same user as the development .env>
+POSTGRES_PASSWORD=<the same password as the development .env>
+```
+Leave `DATABASE_NAME` and `MEDIA_DIR` out of `uat.env` (the container's uploads must stay in `/app/media`, the volume).
+
+**Every PowerShell window**, in the project folder, first:
+```powershell
+$env:ENV_FILE = "C:\Users\Admin\tbi-uat\uat.env"
+function uat { docker compose --project-name csu_tbi_uat -f deploy/docker-compose.prod.yml -f deploy/docker-compose.laptop.yml -f deploy/docker-compose.shared-db.yml --env-file $env:ENV_FILE @args }
+```
+Then `uat up -d --build`, `uat ps` (web, worker, caddy running; release exited 0; **no db**), `uat logs release`.
+
+**While it is up, do not run `qcluster` on Windows** (nor `runserver` with `DATABASE_NAME=csu_tbi_testing` in `.env`):
+two background workers on the same database take the same tasks, and the Windows one writes the PDFs to the Windows
+`media_testing\` folder, which the site cannot see. Stop the Windows `qcluster` (Ctrl+C) before `uat up`.
+
+**Mock data for the defense** (ASSUMPTIONS 470; EMPTIES `csu_tbi_testing` and the `testing_media` volume, then fills a
+year of invented data on the CSU letterhead; about 15 minutes; run it again any time to start over):
+```powershell
+uat exec web python manage.py seed_defense --yes-this-is-a-test-database
+uat exec web python manage.py changepassword elena.marquez@demo.example.com   # the invented Director; repeat per account you need
+uat exec web python manage.py index_documents                                # only when GEMINI_API_KEY is in uat.env
+```
+`--today 2026-12-09` builds the data around the defense day (the Ongoing activity runs the day before, that day and
+the day after). The accounts and activities are printed at the end. Nothing is emailed (`@demo.example.com`).
+
+**Back up / stop / remove:** as above (the database is on the development server: back it up with
+`docker exec csu_tbi_db sh -c 'pg_dump -Fc -U "$POSTGRES_USER" csu_tbi_testing > /tmp/testing.dump'` and
+`docker cp csu_tbi_db:/tmp/testing.dump C:\Users\Admin\tbi-backups\`). `uat down -v` removes the `testing_media`
+volume but never the database (it lives in the development container's `pgdata`).
+
 ## Files
 
 | File | What it is |
@@ -431,4 +484,5 @@ The `pgvector/pgvector:pg17` image stays (the development database uses it).
 | `deploy/update.sh` | Update after a commit. |
 | `deploy/backup.sh` / `restore.sh` | Daily backup and restore. |
 | `deploy/docker-compose.laptop.yml` / `Caddyfile.laptop` | The laptop review version behind a Cloudflare quick tunnel (November 17 UAT only; not used). |
+| `deploy/docker-compose.shared-db.yml` | The testing site: the laptop version on the development Postgres server, database `csu_tbi_testing`, volume `testing_media`. |
 | `deploy/fonts/gelasio/` | The certificate font for Linux (SIL Open Font License). |

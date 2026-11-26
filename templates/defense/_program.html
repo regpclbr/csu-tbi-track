@@ -1,0 +1,8 @@
+{# The program of activities (time table per day) of a seed_defense document (ASSUMPTIONS 470). #}
+{% for day in program %}
+  <table class="grid">
+    <colgroup><col style="width:32%"><col></colgroup>
+    <thead><tr><th colspan="2" style="text-align:left">{{ day.heading }}</th></tr></thead>
+    <tbody>{% for slot in day.slots %}<tr><td class="time">{{ slot.0 }}</td><td>{{ slot.1 }}</td></tr>{% endfor %}</tbody>
+  </table>
+{% endfor %}

@@ -143,7 +143,7 @@ def test_numbers_come_from_the_database_and_cancelled_are_not_registered(staff, 
                     "October 20–21, 2026.")
     assert version.sections["introduction"]["unverified"] == [] and facts["attendance_note"] == ""
     assert facts["header"] == {"heading": "4TH QUARTER ACCOMPLISHMENT REPORT", "program_name": "NAVIGATU",
-                               "office_line": "", "period_covered": "October–December 2026",
+                               "office_line": "", "period_covered": "October–December 2026", "period_phrase": "the fourth quarter",
                                "implementing_unit": facts["header"]["implementing_unit"]}
     assert facts["form_code"].startswith("F-COR-001 Rev. 3")
 
@@ -239,7 +239,7 @@ def test_objectives_from_the_field_or_read_from_the_activity_design(staff, works
     keys = [key for key, _, _ in generator.section_specs(Kind.ACCOMPLISHMENT_REPORT, facts)]
     assert f"activity_{workshop.pk}_objectives" in keys  # no Objectives field: the AI reads its Activity Design
     assert f"activity_{clinic.pk}_objectives" not in keys  # item 428's field is used as it is
-    assert keys[0] == "introduction" and keys[-3:] == ["outputs", "problems", "recommendations"]
+    assert keys[0] == "introduction" and keys[-4:] == ["outputs", "problems", "recommendations", "assessment"]  # F (ASSUMPTIONS 469)
     version = write_with(draft, fake_gemini, **{f"activity_{workshop.pk}_objectives": "Teach pitching\nPractice"})
     generator.export_pdf(staff, version)
     html = renderer.rendered[-1]
@@ -291,7 +291,7 @@ def test_the_docx_and_the_pdf_open(staff, director, workshop, clinic, fake_gemin
     html = renderer.rendered[-1]
     for part in ("4TH QUARTER ACCOMPLISHMENT REPORT", "Period Covered: October–December 2026", "A.1 Pitching Workshop",
                  "C. Major Outputs / Deliverables", "D. Problems / Constraints Met", "F-COR-001 Rev. 3",
-                 "Office of the VP for RDIE"):
+                 "OFFICE OF THE VP FOR RDIE"):  # the office line in capitals under the letterhead (469)
         assert part in html
     assert generator.AI_LABEL not in html
 

@@ -19,6 +19,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.safestring import mark_safe
 
+from config import letterhead
 from documents.models import Document
 from registrations import attendance_forms
 
@@ -35,6 +36,8 @@ KIND_HEADINGS = {ReportDraft.Kind.ACTIVITY_REPORT: "ACTIVITY REPORT",
                  ReportDraft.Kind.ACTIVITY_DESIGN: "ACTIVITY DESIGN",
                  ReportDraft.Kind.OTHER: "REPORT"}
 BLANK_LINE = "______________________________"
+# The line under the letterhead on every page (ASSUMPTIONS 469): NAVIGATU's Accomplishment Report sample prints it.
+LETTERHEAD_LABELS = {ReportDraft.Kind.ACCOMPLISHMENT_REPORT: "ACTIVITY REPORT"}
 DOCX_HEADING_COLOR = "1A5C38"  # the primary green, like the PDF headings (ASSUMPTIONS 459, 465)
 
 
@@ -76,6 +79,26 @@ def accomplishment_rows(version: ReportDraftVersion, blocks: dict) -> list[dict]
                      "highlights": blocks.get(f"{key}_highlights") or {"label": item["title"], "paragraphs": []}})
     return rows
 BULLET = re.compile(r"^\s*(?:[-•*]|\d{1,2}[.)])\s+")
+
+
+def office_line(header: dict) -> str:
+    """The draft's office line, else the default under the letterhead (LETTERHEAD_OFFICE_LINE, ASSUMPTIONS 469)."""
+    return (header.get("office_line") or "").strip() or settings.LETTERHEAD_OFFICE_LINE
+
+
+def listed_outputs(items: list[str]) -> list[str]:
+    """A numbered list as the office writes it: each item ends with ";", the one before the last with "; and", the
+    last with "." (NAVIGATU's Accomplishment Report sample)."""
+    cleaned = [item.rstrip(" .;,") for item in items if item.strip(" .;,")]
+    listed = []
+    for index, item in enumerate(cleaned):
+        if index == len(cleaned) - 1:
+            listed.append(f"{item}.")
+        elif index == len(cleaned) - 2:
+            listed.append(f"{item}; and")
+        else:
+            listed.append(f"{item};")
+    return listed
 
 
 class NotAPdf(Exception):
@@ -168,7 +191,10 @@ def pdf_html(version: ReportDraftVersion, annex_follows: bool = False) -> str:
     blocks = section_blocks(version)
     context = {
         "kind": draft.kind, "heading": heading(version), "draft": draft, "facts": facts,
-        "header": facts.get("header", {}), "letterhead": attendance_forms.PLACEHOLDER_HEADER,
+        "header": facts.get("header", {}),
+        "letterhead": letterhead.context(office_line=office_line(facts.get("header", {})),
+                                         label=LETTERHEAD_LABELS.get(draft.kind, ""), form_code=facts.get("form_code", "")),
+        "outputs_listed": listed_outputs(blocks.get("outputs", {}).get("items", [])),
         "sections": blocks, "activity_rows": accomplishment_rows(version, blocks) if facts.get("activities") and
         draft.kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT else [],
         "objectives": facts.get("proposal", {}).get("objectives") or blocks.get("objectives", {}).get("items", []),
@@ -306,10 +332,24 @@ def render_docx(version: ReportDraftVersion) -> bytes:
         for item in block["items"]:
             doc.add_paragraph(item, style="List Bullet")
 
-    for line in attendance_forms.PLACEHOLDER_HEADER:
-        centered(line, bold=True)
-    if header.get("office_line"):
-        centered(header["office_line"])
+    logo = letterhead.logo_png()
+    top = section.header.paragraphs[0]
+    if logo:
+        try:
+            top.add_run().add_picture(io.BytesIO(logo), width=Cm(9))
+        except Exception:  # noqa: BLE001 - an unreadable logo file: the text lines below still identify the office
+            logger.warning("Report draft %s: the letterhead logo could not be added to the DOCX.", draft.pk)
+    else:
+        top.add_run(letterhead.UNIVERSITY.upper()).bold = True
+    for text in (letterhead.REPUBLIC, settings.LETTERHEAD_ADDRESS, " ".join(letterhead.MOTTO), office_line(header).upper()):
+        line = section.header.add_paragraph(text)
+        line.runs[0].font.size = Pt(8.5)
+    if label := LETTERHEAD_LABELS.get(draft.kind):
+        section.header.add_paragraph(label).runs[0].bold = True
+    if settings.LETTERHEAD_SAMPLE_LINE:
+        line = section.footer.add_paragraph(settings.LETTERHEAD_SAMPLE_TEXT)
+        line.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        line.runs[0].font.size = Pt(8)
     centered(heading(version), bold=True, size=14)
     if draft.kind == ReportDraft.Kind.ACCOMPLISHMENT_REPORT:
         centered(header.get("program_name", ""), bold=True, size=12)
@@ -358,10 +398,18 @@ def render_docx(version: ReportDraftVersion) -> bytes:
         table(["Objectives", "Accomplishments"],
               [[f"{row['item']['title']}\n" + "\n".join(f"• {o}" for o in row["objectives"]),
                 "\n".join(f"• {a}" for a in row["accomplishments"])] for row in rows], [8.5, 8.5])
-        for key in ("outputs", "problems", "recommendations"):
+        for key in ("outputs", "problems", "recommendations", "assessment"):
+            if key not in blocks:
+                continue  # a version written before "F. Overall Assessment" existed (ASSUMPTIONS 469)
             heading_(blocks[key]["label"])
-            if key == "problems":
+            if key in ("problems", "assessment"):
                 text_block(key)
+            elif key == "outputs":
+                if blocks[key]["items"]:
+                    doc.add_paragraph(f"The major outputs and deliverables accomplished during "
+                                      f"{header.get('period_phrase') or 'the period'} include:")
+                for item in listed_outputs(blocks[key]["items"]):
+                    doc.add_paragraph(item, style="List Number")
             else:
                 for item in blocks[key]["items"]:
                     doc.add_paragraph(item, style="List Number")
@@ -397,8 +445,14 @@ def render_docx(version: ReportDraftVersion) -> bytes:
         text_block("problems")
         heading_("C. Running Budget")
         budget = facts.get("budget", {})
+        if budget.get("total_words"):
+            doc.add_paragraph(f"The approved budget for the conduct of the {header.get('title') or draft.title} amounted "
+                              f"to {budget['total_words']} ({budget.get('total', '')}), charged to the "
+                              f"{budget.get('fund_source', '')}.")
+            doc.add_paragraph("The budget allocation was as follows:")
         budget_table(budget)
-        doc.add_paragraph(f"Fund source: {budget.get('fund_source', '')}. {budget.get('note', '')}")
+        doc.add_paragraph(f"Note: {budget.get('note', '')}" if budget.get("total_words")
+                          else f"Fund source: {budget.get('fund_source', '')}. {budget.get('note', '')}")
         heading_(blocks["recommendations"]["label"])
         text_block("recommendations")
     elif draft.kind == ReportDraft.Kind.EVALUATION_SUMMARY:

@@ -1,0 +1,43 @@
+# CSU-TBI Track: the TESTING SITE on the researchers' laptop (docs/DEPLOY.md "Testing site (shared database server)",
+# ASSUMPTIONS 470). Used ON TOP of docker-compose.prod.yml + docker-compose.laptop.yml, never alone:
+#   docker compose --project-name csu_tbi_uat -f deploy/docker-compose.prod.yml -f deploy/docker-compose.laptop.yml \
+#     -f deploy/docker-compose.shared-db.yml --env-file <uat.env> ...
+# The prod file's own db container is switched off (profile "not-used"): release, web and worker connect to the
+# DEVELOPMENT Postgres container (csu_tbi_db, published on 127.0.0.1:5433) through host.docker.internal, but to their
+# own database, POSTGRES_DB=csu_tbi_testing in uat.env (never csu_tbi_track). Uploads go to the separate volume
+# testing_media (csu_tbi_uat_testing_media), never the project's media folder. Needs Docker Compose 2.24+ (!reset /
+# !override). While it is up, do not run qcluster (or runserver) on Windows against csu_tbi_testing.
+x-shared-db: &shared-db
+  POSTGRES_HOST: host.docker.internal
+  POSTGRES_PORT: "${POSTGRES_PORT:-5433}"
+
+services:
+  db:
+    profiles: ["not-used"]
+
+  release:
+    environment: *shared-db
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: !reset {}
+    volumes: !override
+      - testing_media:/app/media
+      - static:/app/staticfiles
+
+  web:
+    environment: *shared-db
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: !override
+      release: { condition: service_completed_successfully }
+    volumes: !override
+      - testing_media:/app/media
+
+  worker:
+    environment: *shared-db
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on: !override
+      release: { condition: service_completed_successfully }
+    volumes: !override
+      - testing_media:/app/media
+
+volumes:
+  testing_media:

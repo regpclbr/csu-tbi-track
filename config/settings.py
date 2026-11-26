@@ -456,6 +456,15 @@ REPORT_GENERATOR_TOTAL_FILE_CHARS = 60000  # characters of all files together (t
 REPORT_GENERATOR_TIMEOUT_SECONDS = 180  # writing one version (a background task, never a page)
 REPORT_GENERATOR_PHOTOS_PER_PAGE = 6
 REPORT_GENERATOR_PHOTO_MAX_SIDE = 1600  # photos are shrunk to this before they go into a PDF / DOCX
+# The CSU letterhead on every office-style PDF (ASSUMPTIONS 469, config/letterhead.py). The seal and wordmark are cut
+# from static/img/letterhead/csu-logo.png; the Bagong Pilipinas / SOCOTEC ISO 9001 / PAB marks appear only when their
+# official files are in that folder (never drawn). The sample line stays ON until NAVIGATU approves the CSU seal.
+LETTERHEAD_DIR = BASE_DIR / "static" / "img" / "letterhead"
+LETTERHEAD_ADDRESS = "Ampayon, Butuan City 8600, Philippines"
+LETTERHEAD_OFFICE_LINE = "NAVIGATU – TECHNOLOGY BUSINESS INCUBATOR"  # when a draft leaves its office line empty
+LETTERHEAD_VP_OFFICE_LINE = "VICE PRESIDENT FOR RESEARCH AND DEVELOPMENT, INNOVATION, AND EXTENSION"
+LETTERHEAD_SAMPLE_LINE = env_bool("LETTERHEAD_SAMPLE_LINE", True)
+LETTERHEAD_SAMPLE_TEXT = "SAMPLE – FOR SYSTEM DEMONSTRATION"
 # Placeholders until NAVIGATU gives the letterhead (open question, CLAUDE.md).
 REPORT_IMPLEMENTING_UNIT = "CSU Technology Business Incubator"
 ACTIVITY_REPORT_FORM_CODE = "F-COR-001 Rev. 3 10/06/2023"

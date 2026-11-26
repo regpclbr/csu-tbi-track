@@ -1,0 +1,21 @@
+{% comment %}
+The CSU letterhead (ASSUMPTIONS 469, config/letterhead.py), placed FIRST in the <body>: a running element that WeasyPrint
+repeats at the top of every page (pdf/_letterhead_styles.html). `lh` = config.letterhead.context(). The seal and the
+wordmark are cut from the CSU logo file; the official marks appear only when their files exist. Everything is escaped.
+{% endcomment %}
+<div class="lh{% if lh.compact %} lh-compact{% endif %}">
+  <div class="lh-row">
+    <div class="lh-cells">
+      <div class="lh-seal">{% if lh.seal %}<img src="{{ lh.seal }}" alt="Caraga State University seal">{% endif %}</div>
+      <div class="lh-text">
+        <div class="lh-republic">{{ lh.republic }}</div>
+        {% if lh.wordmark %}<img class="lh-wordmark" src="{{ lh.wordmark }}" alt="{{ lh.university }}">{% elif not lh.seal %}<div class="lh-university">{{ lh.university }}</div>{% endif %}
+        <div class="lh-address">{{ lh.address }}</div>
+        <div class="lh-motto">{% for initial, rest in lh.motto %}<span class="lh-initial">{{ initial }}</span>{{ rest }}{% if not forloop.last %} {% endif %}{% endfor %}</div>
+      </div>
+      <div class="lh-marks">{% if lh.marks %}<div class="lh-mark-box">{% for mark in lh.marks %}<img src="{{ mark.uri }}" alt="{{ mark.alt }}">{% endfor %}</div>{% endif %}</div>
+    </div>
+  </div>
+  <div class="lh-office">{{ lh.office_line }}</div>
+  {% if lh.label %}<div class="lh-label">{{ lh.label }}</div>{% endif %}
+</div>
