@@ -99,15 +99,14 @@ class FormField(models.Model):
 
 
 class Registration(models.Model):
-    """A person registered for an activity (online, through the startup portal, or as a walk-in at the QR check-in,
-    ASSUMPTIONS 434). No approval step."""
+    """A person registered for an activity (online, or as a walk-in at the QR check-in or added by staff, ASSUMPTIONS
+    434, 455). No approval step. (The startup portal was removed, ASSUMPTIONS 458: its registrations became online.)"""
 
     class Source(models.TextChoices):
         """How the person registered (ASSUMPTIONS 434). Walk-ins never signified beforehand, so they are not on the
         Confirmation of Attendance."""
 
         ONLINE = "online", "Online"
-        PORTAL = "portal", "Startup portal"
         WALK_IN = "walk_in", "Walk-in"
 
     registration_id = models.BigAutoField(primary_key=True)
@@ -117,14 +116,6 @@ class Registration(models.Model):
     # registrations.services.register). Required (NOT NULL), as in the ERD.
     participant_category = models.ForeignKey(
         "activities.ParticipantCategory", on_delete=models.PROTECT, related_name="registrations"
-    )
-    startup = models.ForeignKey(
-        "startups.Startup",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="registrations",
-        help_text="Set only if the registrant was logged in as a startup.",
     )
     name = models.CharField(max_length=255)
     email = models.EmailField()

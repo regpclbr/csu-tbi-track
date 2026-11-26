@@ -7,10 +7,12 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.http import QueryDict
+from django.urls import reverse
 
-from accounts.permissions import Permission, has_permission
+from accounts.permissions import Permission, has_permission, has_permission_for
 from activities.formatting import format_datetime
 from activities.models import Activity, ActivityStatus
+from activities import services as activity_services
 from activities.services import registered_count
 from config.mail import prints_emails
 from reports import services as report_services
@@ -221,7 +223,21 @@ def registrations_tab(member, activity: Activity, params, now=None) -> dict:
                         for day in day_choices],
         "selected_day": selected.isoformat() if selected else "",
         "selected_day_label": _day_label(selected, activity) if selected else "",
+        "walk_in": walk_in_offer(member, activity, now),
     }
+
+
+def walk_in_offer(member, activity: Activity, now=None) -> dict | None:
+    """The Registrations tab's "Add a walk-in" (ASSUMPTIONS 455): None without the permission; else the URL, or the
+    reason it is not possible right now (the rule is attendance.add_walk_in_by_staff)."""
+    if not has_permission_for(member, Permission.CREATE_ACTIVITY, activity):
+        return None
+    reason = None
+    if activity.status.name != ActivityStatus.ONGOING:
+        reason = attendance.STAFF_WALK_IN_STATUS
+    elif attendance.today(now) not in attendance.activity_days(activity):
+        reason = attendance.STAFF_WALK_IN_DAY
+    return {"url": reverse("registrations:walk_in", args=[activity.pk]), "reason": reason}
 
 
 def answer_rows(registration: Registration) -> list[tuple[str, str]]:
@@ -383,6 +399,10 @@ def evaluation_links(member, activity: Activity, params) -> dict:
         "can_resend": has_permission(member, Permission.CREATE_ACTIVITY),
         "resend_reason": services.evaluation_links_closed_reason(activity),
         "is_conducted": activity.status.name == ActivityStatus.CONDUCTED,
+        # ASSUMPTIONS 452: "Close the evaluation" / "Open the evaluation again" (activities.services).
+        "evaluation_switch": (activity_services.evaluation_switch(activity)
+                              if has_permission_for(member, Permission.CREATE_ACTIVITY, activity) else None),
+        "evaluation_closed_by_hand": activity.evaluation_closed_by_hand,
     }
 
 

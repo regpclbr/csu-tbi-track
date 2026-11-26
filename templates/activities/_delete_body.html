@@ -21,7 +21,7 @@ goes with it) and a form that needs the activity's title typed exactly. A normal
   {% else %}
     <p class="mt-3 text-sm text-slate-700">Nothing else is attached to this activity.</p>
   {% endif %}
-  <p class="mt-3 text-xs text-muted">Kept: resource persons, signatories, startups and staff accounts. A record of the deletion (who, when, the counts above and the certificate numbers) stays in the Admin Console. Deleted certificate numbers are never given again.</p>
+  <p class="mt-3 text-xs text-muted">Kept: resource persons, signatories and staff accounts. A record of the deletion (who, when, the counts above and the certificate numbers) stays in the Admin Console. Deleted certificate numbers are never given again.</p>
   <form method="post" action="{% url 'activities:delete' activity.pk %}" class="mt-6 space-y-3" novalidate>
     {% csrf_token %}
     <div>

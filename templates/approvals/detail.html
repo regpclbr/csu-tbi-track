@@ -15,7 +15,7 @@ the service checks everything again and refusals come back as toasts.
     <h1 id="submission-title" class="page-title mt-1 [overflow-wrap:anywhere]">{{ submission.title }}</h1>
     <div class="mt-2 flex flex-wrap items-center gap-2">
       {% include "components/badge.html" with text=state.label tone=state.tone %}
-      {% if submission.signed_file_path %}<span class="badge badge-success">{% include "components/icon.html" with name="pen-line" class="size-3.5" %}Signed by {{ submission.signed_by.name }}</span>{% endif %}
+      {% if submission.signed_file_path %}<span class="badge badge-success">{% include "components/icon.html" with name="pen-line" class="size-3.5" %}Signed by {{ submission.signed_by.name }}{% if submission.signatory.member_id and submission.signatory.member_id != submission.signed_by_id %} on behalf of {{ submission.signatory.name }}{% endif %}</span>{% endif %}
       {% if submission.saved_document %}<a href="{% url 'documents:detail' submission.saved_document.pk %}" class="badge badge-info hover:underline">Saved to the activity's documents</a>{% endif %}
     </div>
     {% include "approvals/_assigned_notice.html" %}
@@ -60,7 +60,7 @@ the service checks everything again and refusals come back as toasts.
       <div><dt class="font-semibold text-ink">Activity</dt><dd class="mt-1 text-slate-700">{% if submission.activity %}<a href="{% url 'activities:detail' submission.activity_id %}" class="link">{{ submission.activity.title }}</a>{% else %}Not for one activity{% endif %}</dd></div>
       <div><dt class="font-semibold text-ink">Document type</dt><dd class="mt-1 text-slate-700">{{ submission.document_type.name|default:"Not chosen" }}</dd></div>
       {% if submission.note %}<div class="sm:col-span-2"><dt class="font-semibold text-ink">Note</dt><dd class="mt-1 whitespace-pre-line text-slate-700">{{ submission.note }}</dd></div>{% endif %}
-      {% if submission.signed_file_path %}<div class="sm:col-span-2"><dt class="font-semibold text-ink">Signature</dt><dd class="mt-1 text-slate-700">Stamped by {{ submission.signed_by.name }} on <time datetime="{{ submission.signed_at|date:'c' }}">{{ submission.signed_at|date:"M j, Y g:i A" }}</time>. {{ stamp_note }} The original file is kept unchanged.</dd></div>{% endif %}
+      {% if submission.signed_file_path %}<div class="sm:col-span-2"><dt class="font-semibold text-ink">Signature</dt><dd class="mt-1 text-slate-700">Stamped by {{ submission.signed_by.name }}{% if submission.signatory.member_id and submission.signatory.member_id != submission.signed_by_id %} on behalf of {{ submission.signatory.name }} (their signature, allowed in the assignment){% endif %} on <time datetime="{{ submission.signed_at|date:'c' }}">{{ submission.signed_at|date:"M j, Y g:i A" }}</time>. {{ stamp_note }} The original file is kept unchanged.</dd></div>{% endif %}
     </dl>
   </section>
 

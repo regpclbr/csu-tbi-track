@@ -10,8 +10,7 @@ from .models import Notification
 def target_url(notification: Notification) -> str:
     """The page a notification is about: a document reminder or a returned document opens the activity's Documents tab
     with that type preselected; prepared certificates open the Certificates tab (ASSUMPTIONS 420); another notification
-    about an activity opens the activity; anything else the dashboard (startup notifications without an activity,
-    item 223); a notification about a submission opens it (ASSUMPTIONS 437)."""
+    about an activity opens the activity; anything else the dashboard (a notification without an activity); a notification about a submission opens it (ASSUMPTIONS 437)."""
     if notification.submission_id is not None:  # ASSUMPTIONS 437
         return reverse("approvals:detail", args=[notification.submission_id])
     if notification.activity_id is None:

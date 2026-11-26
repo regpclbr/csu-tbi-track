@@ -50,6 +50,11 @@ WALK_IN_NO_FORM = ("Walk-in registration is not available for this activity yet.
                    "registration desk.")
 STAFF_METHOD_ONLY = "Attendance marked by staff is recorded with the method “staff”."
 STAFF_DAY_REFUSED = "Choose a day of this activity, up to today."
+CHECKIN_CLOSED_TODAY = ("Check-in for today closed at {time}. Please ask the TBI staff at the registration desk to mark "
+                        "your attendance.")
+STAFF_WALK_IN_STATUS = "A walk-in can be added only while the activity is Ongoing."
+STAFF_WALK_IN_DAY = "Today is not one of this activity's days: a walk-in is added on an activity day."
+WALK_IN_HISTORY_LABEL = "Walk-in"  # ASSUMPTIONS 455: the staff "Add a walk-in" History row
 
 
 class AttendanceError(Exception):
@@ -67,13 +72,14 @@ def activity_days(activity: Activity) -> list[date]:
 
 def day_window(activity: Activity, day: date) -> tuple[datetime, datetime]:
     """When the QR check-in is open on one day (Manila): from PARTICIPANT_CHECKIN_EARLY_MINUTES before start_time until
-    end_time. No times (older activities): the whole day."""
+    PARTICIPANT_CHECKIN_LATE_MINUTES after start_time (ASSUMPTIONS 454; it was until end_time). No times (older
+    activities): the whole day."""
     if activity.start_time is None or activity.end_time is None:
         opens = timezone.make_aware(datetime.combine(day, time(0, 0)))
         return opens, opens + timedelta(days=1)
-    opens = timezone.make_aware(datetime.combine(day, activity.start_time))
-    closes = timezone.make_aware(datetime.combine(day, activity.end_time))
-    return opens - timedelta(minutes=settings.PARTICIPANT_CHECKIN_EARLY_MINUTES), closes
+    start = timezone.make_aware(datetime.combine(day, activity.start_time))
+    return (start - timedelta(minutes=settings.PARTICIPANT_CHECKIN_EARLY_MINUTES),
+            start + timedelta(minutes=settings.PARTICIPANT_CHECKIN_LATE_MINUTES))
 
 
 def today(now: datetime | None = None) -> date:
@@ -98,10 +104,14 @@ def checkin_state(activity: Activity, now: datetime | None = None) -> CheckinSta
         return CheckinState("not_available", CHECKIN_NOT_AVAILABLE)
     if status not in CHECKIN_STATUSES:
         return CheckinState("closed", CHECKIN_CLOSED)
+    current = today(now)
     for day in activity_days(activity):
         opens, closes = day_window(activity, day)
         if opens <= now < closes:
             return CheckinState("open", None, day)
+        if day == current and now >= closes:  # today's window is over (ASSUMPTIONS 454): ask the staff
+            return CheckinState("closed", CHECKIN_CLOSED_TODAY.format(time=format_time(timezone.localtime(closes).time())),
+                                day)
         if now < opens:
             return CheckinState("not_yet_open", f"Check-in opens on {format_datetime(opens)}.", day)
     return CheckinState("closed", CHECKIN_CLOSED)
@@ -285,6 +295,71 @@ def register_walk_in(
     return CheckinResult("checked_in", registration, row)
 
 
+@transaction.atomic
+def add_walk_in_by_staff(
+    member: TBIMember,
+    activity: Activity,
+    *,
+    name: str,
+    email: str,
+    contact_number: str = "",
+    designation: str = "",
+    office_agency: str = "",
+    participant_category=None,
+    signature: dict | None = None,
+    now: datetime | None = None,
+) -> Registration:
+    """The staff "Add a walk-in" on the Registrations tab (ASSUMPTIONS 455): the same rules as the QR walk-in
+    (register_walk_in: clean_registrant, the signature required in any of its three ways, the same email refused, no
+    slot limit, also when registration is closed) but on the staff device, outside the QR window: on any day of the
+    activity while it is Ongoing. It marks TODAY's attendance with method "staff" (marked_by = the member) and writes a
+    History row "Walk-in". can_create_activity or the activity's assignment. The privacy consent is checked by the page
+    before this call (services.check_privacy_consent), as everywhere."""
+    from activities.services import _write_audit
+
+    from .services import RegistrationError, clean_registrant, get_form
+
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)  # or its assignment (437)
+    now = now or timezone.now()
+    locked = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    if locked.status.name != ActivityStatus.ONGOING:
+        raise AttendanceError(STAFF_WALK_IN_STATUS)
+    day = today(now)
+    if day not in activity_days(locked):
+        raise AttendanceError(STAFF_WALK_IN_DAY)
+    errors: dict[str, str] = {}
+    values = {}
+    try:
+        values = clean_registrant(locked, name=name, email=email, contact_number=contact_number,
+                                  designation=designation, office_agency=office_agency,
+                                  participant_category=participant_category)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    clean = None
+    try:
+        clean = signatures.clean_signature(signature)
+    except ValidationError as error:
+        errors.update({key: messages[0] for key, messages in error.message_dict.items()})
+    if errors:
+        raise ValidationError(errors)
+    if locked.registrations.filter(email__iexact=values["email"]).exists():
+        raise RegistrationError("This email is already registered for this activity: mark that person attended instead.")
+    form = get_form(locked, FormType.REGISTRATION)
+    if form is None:
+        raise AttendanceError("This activity has no registration form yet: create it on the Forms tab first.")
+    registration = Registration.objects.create(
+        activity=locked, template=form, registration_source=Registration.Source.WALK_IN, **values)
+    row = _record_day(registration, day, AttendanceDay.Method.STAFF, now, member)
+    signatures.save_signature(registration, clean, now)
+    _write_audit(locked, member, [(WALK_IN_HISTORY_LABEL, "",
+                                   f"{registration.name} added by staff, attended {format_date(day)}")])
+    audit_log.info("Walk-in added by staff: activity %s, registration %s, day %s, by member %s.",
+                   locked.pk, registration.pk, day, member.pk)
+    row_id = row.pk
+    transaction.on_commit(lambda: _queue_checkin_email(row_id), robust=True)
+    return registration
+
+
 # --- Staff marking ---------------------------------------------------------------------------------------------------
 
 
@@ -399,7 +474,7 @@ def checkins_by_day(activity: Activity) -> list[dict]:
 
 
 def pre_registration_counts(activity: Activity) -> dict[str, int]:
-    """For the meal estimate (ASSUMPTIONS 434): pre-registered "Will attend" / "Will not attend" (online and portal), and
+    """For the meal estimate (ASSUMPTIONS 434): pre-registered "Will attend" / "Will not attend" (online), and
     walk-ins."""
     registrations = activity.registrations
     pre = registrations.exclude(registration_source=Registration.Source.WALK_IN)

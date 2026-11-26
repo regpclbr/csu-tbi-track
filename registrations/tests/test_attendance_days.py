@@ -47,15 +47,17 @@ def at(day, hour, minute=0) -> datetime:
 # --- The check-in window, per day ---------------------------------------------------------------------------------
 
 
-def test_window_opens_an_hour_early_on_every_day_and_closes_at_the_end(scheduled, settings) -> None:
+def test_window_opens_an_hour_early_on_every_day(scheduled, settings) -> None:
+    """ASSUMPTIONS 454 replaced "until the end time" by "until 60 minutes after the start" (the full rule:
+    test_checkin_window_and_staff_walk_in.py)."""
     settings.PARTICIPANT_CHECKIN_EARLY_MINUTES = 60
     first, second = scheduled.start_date, scheduled.end_date
     assert attendance.checkin_state(scheduled, at(first, 6, 59)).kind == "not_yet_open"
     assert "Check-in opens on" in attendance.checkin_state(scheduled, at(first, 6, 59)).reason
     state = attendance.checkin_state(scheduled, at(first, 7, 0))  # day 1, still Scheduled
     assert (state.kind, state.day) == ("open", first)
-    assert attendance.checkin_state(scheduled, at(first, 16, 59)).kind == "open"
-    between = attendance.checkin_state(scheduled, at(first, 17, 0))  # after day 1, before day 2
+    assert attendance.checkin_state(scheduled, at(first, 8, 59)).kind == "open"
+    between = attendance.checkin_state(scheduled, at(second - timedelta(days=0), 6, 30))  # day 2, before it opens
     assert between.kind == "not_yet_open" and between.day == second
     assert attendance.checkin_state(scheduled, at(second, 7, 30)).day == second
     assert attendance.checkin_state(scheduled, at(second, 17, 0)).kind == "closed"
@@ -89,7 +91,7 @@ def test_check_in_records_today_once_per_day(scheduled, signup) -> None:
     person = signup(scheduled, "ana@example.com", signature=TYPED)
     first = attendance.check_in(scheduled, " ANA@example.com ", now=at(scheduled.start_date, 8, 42))
     assert first.kind == "checked_in" and first.row.method == "qr" and first.row.day == scheduled.start_date
-    again = attendance.check_in(scheduled, "ana@example.com", now=at(scheduled.start_date, 9, 15))
+    again = attendance.check_in(scheduled, "ana@example.com", now=at(scheduled.start_date, 8, 55))
     assert again.kind == "already" and again.message == "Already checked in today at 8:42 AM."
     second_day = attendance.check_in(scheduled, "ana@example.com", now=at(scheduled.end_date, 8))
     assert second_day.kind == "checked_in"
@@ -150,7 +152,7 @@ def test_a_cancelled_registration_can_still_check_in(scheduled, signup) -> None:
 
 def walk_in(activity, email="walk@example.com", now=None, **extra):
     values = {"name": "Walter In", "email": email, "contact_number": "0917", **FIXED, "signature": TYPED, **extra}
-    return attendance.register_walk_in(activity, now=now or at(activity.start_date, 9), **values)
+    return attendance.register_walk_in(activity, now=now or at(activity.start_date, 8, 30), **values)
 
 
 def test_walk_in_registers_and_checks_in_even_when_registration_is_closed(scheduled, director) -> None:

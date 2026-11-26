@@ -109,7 +109,7 @@ def test_the_generator_page_at_1366_and_390(live_server, make_member, make_activ
 FORM_MEASURE = """() => {
   const panel = document.getElementById('content-panel');
   const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 };
-  const wide = [...document.querySelectorAll('#new-draft-title ~ form *')].filter(visible)
+  const wide = [...document.querySelectorAll('#new-report form *')].filter(visible)
     .filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => el.tagName + '#' + el.id).slice(0, 5);
   return { sideways: document.documentElement.scrollWidth > innerWidth + 1 || panel.scrollWidth > panel.clientWidth + 1,
            wide };
@@ -130,7 +130,7 @@ def test_the_new_draft_form_for_every_kind_at_1366_and_390(live_server, make_mem
     client.force_login(member)
     cookie = client.cookies[django_settings.SESSION_COOKIE_NAME].value
     monkeypatch.setenv("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
-    url = live_server.url + reverse("reports:generator")
+    url = live_server.url + reverse("reports:list")  # the one Reports page (ASSUMPTIONS 461): ?kind= chooses the form
     problems = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -141,22 +141,21 @@ def test_the_new_draft_form_for_every_kind_at_1366_and_390(live_server, make_mem
             context = browser.new_context(**options)
             context.add_cookies([{"name": django_settings.SESSION_COOKIE_NAME, "value": cookie, "url": live_server.url}])
             page = context.new_page()
-            page.goto(url)
             label = f"{width}x{height}"
             for kind, shown, hidden in [
-                ("Accomplishment Report", "#gen-program", "#gen-proposal-activity"),
-                ("Request Letter (draft)", "#gen-proposal-activity", "#gen-program"),
-                ("Activity Design (draft)", "#d-appr", "#m-for"),
-                ("Activity Report", "#gen-activity", "#gen-program"),
+                ("accomplishment_report", "#gen-program", "#gen-proposal-activity"),
+                ("request_letter", "#gen-proposal-activity", "#gen-program"),
+                ("activity_design", "#d-appr", "#m-for"),
+                ("activity_report", "#gen-activity", "#gen-program"),
             ]:
-                page.locator("label", has_text=kind).first.click()
+                page.goto(f"{url}?kind={kind}")
                 page.wait_for_timeout(150)
                 if not page.locator(shown).is_visible() or page.locator(hidden).is_visible():
                     problems.append(f"{label} {kind}: {shown} should show and {hidden} hide")
                 fit = page.evaluate(FORM_MEASURE)
                 if fit["sideways"] or fit["wide"]:
                     problems.append(f"{label} {kind}: something scrolls sideways ({fit})")
-            page.locator("label", has_text="Activity Design (draft)").first.click()
+            page.goto(f"{url}?kind=activity_design")
             page.get_by_text("Type the details (no activity yet)").click()
             page.get_by_text("Budget lines").first.click()
             page.wait_for_timeout(150)

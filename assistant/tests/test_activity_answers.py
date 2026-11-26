@@ -163,7 +163,7 @@ def test_the_activities_list_marker_builds_a_safe_internal_link() -> None:
     assert f'href="{reverse("activities:list")}?date_from=2026-09-01&amp;date_to=2026-09-30&amp;status=2&amp;activity_type=3&amp;sort=start_date"' in html
 
 
-def test_startups_never_reach_the_assistant(client) -> None:
+def test_anonymous_visitors_never_reach_the_assistant(client) -> None:
     assert client.get(reverse("assistant:chat")).status_code == 302
     assert client.post(reverse("assistant:ask"), {"question": "activities this month"}).status_code == 302
     assert AIChatMessage.objects.count() == 0

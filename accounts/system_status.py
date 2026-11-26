@@ -59,7 +59,7 @@ def schedule_status() -> StatusItem:
     last_tasks = {task.id: task for task in Task.objects.filter(id__in=[s.task for s in saved.values() if s.task])}
     planned = [s for s in SCHEDULES if s.enabled]
     for daily in SCHEDULES:
-        if not daily.enabled:  # turned off on purpose (STARTUP_SYNC_ENABLED=False, ASSUMPTIONS 393): never "missing"
+        if not daily.enabled:  # turned off on purpose by its setting: never "missing"
             rows.append({"name": daily.name, "time": daily.when, "next_run": None,
                          "last_result": f"Turned off ({daily.enabled_setting}=False)", "last_run": None})
             continue

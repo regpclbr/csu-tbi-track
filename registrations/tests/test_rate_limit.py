@@ -113,8 +113,3 @@ def test_the_limit_uses_the_trusted_proxy_header(client, scheduled, settings) ->
     assert post(client, scheduled, "y@example.com", ip=proxy, forwarded_for="198.51.100.7").status_code == 201
 
 
-def test_the_startup_portal_is_not_limited_by_the_public_counter(scheduled, signup) -> None:
-    """The limit guards the public API view only; the service itself (portal, seed) never counts."""
-    for number in range(5):
-        signup(scheduled, f"person{number}@example.com")
-    assert Registration.objects.count() == 5

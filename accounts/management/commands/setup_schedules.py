@@ -12,7 +12,7 @@ from config.schedules import SCHEDULES, DailySchedule, MinutesSchedule, next_dai
 
 class Command(BaseCommand):
     help = (
-        "Create the schedules (startup sync, document indexing, reminders, certificate retry, activity statuses and "
+        "Create the schedules (document indexing, reminders, certificate retry, activity statuses and "
         "evaluation links every few minutes). Running it again never adds a second one."
     )
 
@@ -22,7 +22,7 @@ class Command(BaseCommand):
             self.setup(planned)
 
     def setup(self, planned: DailySchedule | MinutesSchedule) -> None:
-        if not planned.enabled:  # turned off by its setting (e.g. STARTUP_SYNC_ENABLED=False): no schedule row at all
+        if not planned.enabled:  # turned off by its setting: no schedule row at all
             removed, _ = Schedule.objects.filter(name=planned.name).delete()
             note = " (removed the existing schedule)" if removed else ""
             self.stdout.write(f'Turned off: "{planned.name}" ({planned.enabled_setting}=False){note}.')

@@ -64,10 +64,13 @@ def position_choices() -> list[tuple[str, str]]:
 # --- Assignments (ASSUMPTIONS 437) -------------------------------------------------------------------------------------
 
 
-def assign_panel(member, *, activity=None, document=None, submission=None, report: bool = False) -> dict | None:
+def assign_panel(member, *, activity=None, document=None, submission=None, report: bool = False,
+                 task: str | None = None) -> dict | None:
     """The "Assign to" dialog for one piece of work: the kinds this member may assign here (approvals.assignments
     .can_assign), the members to choose from, and the open assignments of this work (with Remove). None when the
-    member may assign none of them. Display only: assign_work checks everything again."""
+    member may assign none of them. Display only: assign_work checks everything again. `task`: a work without an
+    object (ASSUMPTIONS 460: "certificate_text" or "signatories"). A submission also offers "May stamp my signature"
+    when the member has a linked signature with an image."""
     from . import assignments
     from .models import WorkAssignment
 
@@ -83,6 +86,8 @@ def assign_panel(member, *, activity=None, document=None, submission=None, repor
         current = WorkAssignment.objects.filter(submission=submission, status="open")
     elif report:
         candidates, current = [Kind.REPORT], WorkAssignment.objects.filter(kind=Kind.REPORT, status="open", assigned_by=member)
+    elif task in WorkAssignment.GLOBAL_KINDS:
+        candidates, current = [task], WorkAssignment.objects.filter(kind=task, status="open")
     else:
         return None
     kinds = assignments.assignable_kinds(member, candidates)
@@ -96,8 +101,15 @@ def assign_panel(member, *, activity=None, document=None, submission=None, repor
                     for row in current.select_related("assigned_to").order_by("pk")],
         "members": assignments.assignee_choices(member),
         "activity": activity, "document": document, "submission": submission, "report": report,
-        "note_max": assignments.NOTE_MAX,
+        "note_max": assignments.NOTE_MAX, "offers_signing": submission is not None and _has_stamp(member),
     }
+
+
+def _has_stamp(member) -> bool:
+    from certificates.services import signatory_for
+
+    own = signatory_for(member)
+    return own is not None and bool(own.signature_image_path)
 
 
 def my_assignments_on(member, *, activity=None, document=None, submission=None) -> list[dict]:

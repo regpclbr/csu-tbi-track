@@ -368,7 +368,7 @@ def test_the_page_has_no_create_as_and_one_primary_button(browser) -> None:
     assert "Create as" not in html and 'name="create_as"' not in html
     assert ("Upload the approved copies. With the Activity Design and the Request Letter, the activity is Scheduled when "
             "you create it. Without them it stays Draft until both are uploaded.") in html
-    form = html.split('<form method="post" novalidate')[1].split("</form>")[0]  # the "Add a person" dialog has its own
+    form = html.split('<form data-enter-submit="off" method="post" novalidate')[1].split("</form>")[0]  # ASSUMPTIONS 450  # the "Add a person" dialog has its own
     assert form.count("btn btn-primary") == 1  # one primary button on the form: Create activity (ASSUMPTIONS 413)
 
 

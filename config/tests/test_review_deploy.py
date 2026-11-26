@@ -28,7 +28,7 @@ def settings_with_env(**env: str) -> dict:
         "print(json.dumps({'proxy': getattr(settings, 'SECURE_PROXY_SSL_HEADER', None), "
         "'hsts': getattr(settings, 'SECURE_HSTS_SECONDS', 0), "
         "'csrf': settings.CSRF_TRUSTED_ORIGINS, 'workers': settings.Q_CLUSTER['workers'], "
-        "'recycle': settings.Q_CLUSTER['recycle'], 'sync': settings.STARTUP_SYNC_ENABLED, "
+        "'recycle': settings.Q_CLUSTER['recycle'], "
         "'label': settings.REVIEW_VERSION_LABEL, 'nosniff': settings.SECURE_CONTENT_TYPE_NOSNIFF}))"
     )
     full_env = {**os.environ, "DJANGO_SETTINGS_MODULE": "config.settings", "DJANGO_SECRET_KEY": GOOD_SECRET, **env}
@@ -43,24 +43,22 @@ def settings_with_env(**env: str) -> dict:
 def test_server_environment_turns_on_the_proxy_settings() -> None:
     values = settings_with_env(
         BEHIND_HTTPS_PROXY="True", SITE_URL="https://tbi-review.southeastasia.cloudapp.azure.com",
-        Q_CLUSTER_WORKERS="1", STARTUP_SYNC_ENABLED="False", REVIEW_VERSION_LABEL="Review version",
+        Q_CLUSTER_WORKERS="1", REVIEW_VERSION_LABEL="Review version",
     )
     assert values["proxy"] == ["HTTP_X_FORWARDED_PROTO", "https"]
     assert values["hsts"] == 3600  # short, no includeSubDomains (shared Azure domain)
     assert values["csrf"] == ["https://tbi-review.southeastasia.cloudapp.azure.com"]
     assert values["workers"] == 1 and values["recycle"] == 50
-    assert values["sync"] is False
     assert values["label"] == "Review version"
     assert values["nosniff"] is True
 
 
 def test_development_defaults_trust_no_proxy_header() -> None:
     values = settings_with_env(BEHIND_HTTPS_PROXY="False", SITE_URL="http://127.0.0.1:8000", Q_CLUSTER_WORKERS="",
-                               STARTUP_SYNC_ENABLED="", REVIEW_VERSION_LABEL="")
+                               REVIEW_VERSION_LABEL="")
     assert values["proxy"] is None and values["hsts"] == 0
     assert values["csrf"] == []
     assert values["workers"] == 2
-    assert values["sync"] is True
     assert values["label"] == ""
 
 

@@ -137,7 +137,7 @@ def test_an_older_activity_without_a_fund_source_stays_editable_but_never_cleare
     assert (new_activity.fund_source.code, new_activity.fund_account) == ("TRF", "Research")
     with pytest.raises(ValidationError, match="Choose the fund source"):
         services.update_activity(director, new_activity, {"fund_source": None})
-    assert history(new_activity, "Fund Source") == [("", "TRF – Thrust Fund")]
+    assert history(new_activity, "Fund Source") == [("", "TRF – Trust Fund")]
 
 
 def test_an_inactive_fund_source_is_refused_unless_kept(roles, director, new_activity, valid_data) -> None:

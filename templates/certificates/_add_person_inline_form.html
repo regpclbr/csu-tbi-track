@@ -4,7 +4,7 @@ certificates:signatory_add_inline, which adds the person (services.add_signatory
 "signatory-added": the activity form adds the option to both dropdowns and selects it in `values.slot`; the dialog
 closes. Errors come back here. The activity itself is saved only with the activity form.
 {% endcomment %}
-<form id="add-signatory-form" hx-post="{{ add_url }}" hx-encoding="multipart/form-data" hx-target="this" hx-swap="outerHTML"
+<form data-enter-submit="off" id="add-signatory-form" hx-post="{{ add_url }}" hx-encoding="multipart/form-data" hx-target="this" hx-swap="outerHTML"
       method="post" action="{{ add_url }}" enctype="multipart/form-data" novalidate class="space-y-4">
   {% csrf_token %}
   <input type="hidden" id="add-signatory-slot" name="slot" value="{{ values.slot|default:'left' }}">

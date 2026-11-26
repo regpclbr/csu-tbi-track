@@ -1,0 +1,32 @@
+{% extends "layouts/app.html" %}
+{% comment %}
+The staff "Add a walk-in" page (registrations.page_views.walk_in, ASSUMPTIONS 455): the participant fills it in on the
+staff device (the same fixed fields, category, signature and privacy consent as the QR walk-in). The rule is
+registrations.attendance.add_walk_in_by_staff: Ongoing, on an activity day; today's attendance is marked (method
+"staff") and a History row "Walk-in" is written. Enter in a field never submits (data-enter-submit="off", ASSUMPTIONS 450).
+{% endcomment %}
+{% block page_actions %}<a href="{{ back_url }}" class="btn btn-secondary">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to Registrations</a>{% endblock %}
+{% block content %}
+<section class="card mx-auto max-w-2xl p-6" aria-labelledby="walk-in-title">
+  {% include "components/section_header.html" with id="walk-in-title" title="Walk-in participant" subtitle="Hand the device to the participant: they fill in their details and sign." %}
+  {% if offer.reason %}
+    <p class="notice notice-warning text-sm" role="alert">{{ offer.reason }}</p>
+  {% else %}
+    {% if message %}<p class="notice notice-danger mb-4 text-sm" role="alert">{{ message }}</p>{% endif %}
+    <form method="post" enctype="multipart/form-data" novalidate class="space-y-4" data-enter-submit="off">
+      {% csrf_token %}
+      {% include "public/_input.html" with name="name" label="Full name" value=values.name error=errors.name autocomplete="off" required=True focus=focus %}
+      {% include "public/_input.html" with name="email" label="Email address" type="email" inputmode="email" value=values.email error=errors.email autocomplete="off" required=True focus=focus %}
+      {% include "public/_input.html" with name="contact_number" label="Contact number" type="tel" inputmode="tel" value=values.contact_number error=errors.contact_number autocomplete="off" optional=True focus=focus %}
+      {% include "public/_input.html" with name="designation" label="Designation / Position" value=values.designation error=errors.designation autocomplete="off" maxlength="255" required=True focus=focus help="For example Owner, Faculty member, Student." %}
+      {% include "public/_input.html" with name="office_agency" label="Office / Agency" value=values.office_agency error=errors.office_agency autocomplete="off" maxlength="255" required=True focus=focus help="Their office, company, school or agency." %}
+      {% include "components/category_choice.html" %}
+      {% include "public/_signature_field.html" with values=values error=errors.signature focus=focus %}
+      {% include "public/_privacy_consent.html" with field=consent_field checked=values.privacy_consent error=errors.privacy_consent %}
+      <div class="flex justify-end">
+        <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="user-plus" class="size-4" %}Add and mark attended today</button>
+      </div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

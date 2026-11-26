@@ -42,7 +42,7 @@ def people(scheduled, signup):
     attendance.check_in(scheduled, "ana@example.com", now=at(scheduled.start_date, 8, 5))
     attendance.check_in(scheduled, "ana@example.com", now=at(scheduled.end_date, 8, 10))
     walter = attendance.register_walk_in(scheduled, name="Walter In", email="walter@example.com", **FIXED,
-                                         signature=TYPED, now=at(scheduled.end_date, 9, 30)).registration
+                                         signature=TYPED, now=at(scheduled.end_date, 8, 30)).registration
     return ana, ben, walter
 
 

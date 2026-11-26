@@ -46,7 +46,6 @@ from certificates.models import Certificate
 from documents.models import Document, DocumentStatus, DocumentType
 from documents.services import due_date, today_in_manila, type_applies
 from registrations.models import EvaluationSubmission, FieldType, FormAnswer, FormField, FormType, Registration
-from startups.models import Startup
 
 PERIOD = "period"  # depends on the date range
 NOW = "now"  # snapshot of today; ignores the date range
@@ -230,8 +229,8 @@ def _months(start: date, end: date) -> list[date]:
 
 
 def period_summary(filters: ReportFilters, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
-    """The headline period numbers (N1, N5-N8, N10, N11, N13, N15-N18), used by the dashboard cards
-    and the report's Summary section."""
+    """The headline period numbers (N1, N5-N8, N10, N11, N13, N15-N17; N18 "Startups engaged" was removed with the
+    startup portal, ASSUMPTIONS 458), used by the dashboard cards and the report's Summary section."""
     activities = period_activities(filters)
     activities_conducted = activities.count()
     registrations = Registration.objects.filter(in_period(filters)).aggregate(
@@ -261,7 +260,6 @@ def period_summary(filters: ReportFilters, now: datetime | None = None, types: l
         "certificates_issued_participation": certificates["issued_participation"],
         "certificates_issued_appreciation": certificates["issued_appreciation"],
         "certificates_emailed": certificates["emailed"],
-        "startups_engaged": engaged_startups(filters).count(),
     }
 
 
@@ -908,19 +906,6 @@ def certificates_in_period(filters: ReportFilters) -> dict:
     )
 
 
-def engaged_startups(filters: ReportFilters) -> QuerySet:
-    """N18: startups with an attended registration in a period activity: linked to the startup, or an
-    older public registration with the startup's email (ignoring case), the same rule as
-    startups.services.registrations_for. Inactive startups count too (this is history)."""
-    matching = Registration.objects.filter(in_period(filters), attendance_confirmed=True).filter(
-        Q(startup=OuterRef("pk")) | Q(startup__isnull=True, email__iexact=OuterRef("email"))
-    )
-    activities_attended = matching.order_by().annotate(one=Value(1)).values("one").annotate(n=Count("activity", distinct=True)).values("n")
-    return Startup.objects.filter(Exists(matching)).annotate(
-        activities_attended=Subquery(activities_attended, output_field=IntegerField())
-    )
-
-
 # --- Document compliance (same rules as documents.services.document_checklist) -------------------
 
 
@@ -1180,7 +1165,6 @@ def dashboard(filters: ReportFilters, now: datetime | None = None) -> dict:
         _card("certificates_issued", "Certificates issued", PERIOD, summary["certificates_issued"],
               participation=summary["certificates_issued_participation"],
               appreciation=summary["certificates_issued_appreciation"], emailed=summary["certificates_emailed"]),
-        _card("startups_engaged", "Startups engaged (attended at least one activity)", PERIOD, summary["startups_engaged"]),
     ]
     return {
         "today": today_in_manila(now),

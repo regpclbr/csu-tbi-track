@@ -1,4 +1,4 @@
-"""Staff login, logout, lockout, first-sign-in password change, and startup separation."""
+"""Staff login, logout, lockout and the first-sign-in password change."""
 
 import logging
 
@@ -8,8 +8,6 @@ from django.urls import reverse
 
 from accounts.services import INVALID_LOGIN_MESSAGE
 from conftest import STRONG_PASSWORD
-from startups.models import Startup
-from startups.services import STARTUP_SESSION_KEY
 
 LOGIN = reverse("accounts:login")
 LOGOUT = reverse("accounts:logout")
@@ -207,28 +205,5 @@ def test_password_change_rules(client, new_member, old, new, message) -> None:
     assert new_member.must_change_password is True
 
 
-# --- Startups are never staff ------------------------------------------------------
 
 
-@pytest.mark.django_db
-def test_startup_credentials_cannot_log_in_as_staff(client) -> None:
-    startup = Startup.objects.create(name="Acme", email="acme@example.com")
-    startup.set_password(STRONG_PASSWORD)
-    startup.save()
-    response = post_login(client, "acme@example.com", STRONG_PASSWORD)
-    assert INVALID_LOGIN_MESSAGE in response.content.decode()
-    assert not is_logged_in(client)
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("path", ["/", "/accounts/api/members/", "/accounts/password/change/"])
-def test_startup_session_never_reaches_staff_views(client, path) -> None:
-    startup = Startup.objects.create(name="Acme", email="acme@example.com")
-    session = client.session
-    session[STARTUP_SESSION_KEY] = startup.pk
-    session.save()
-    response = client.get(path)
-    if "/api/" in path:  # the JSON API answers 401 instead of redirecting
-        assert response.status_code == 401 and response.json() == {"error": "Login required."}
-    else:
-        assert response.status_code == 302 and response.url.startswith(LOGIN)

@@ -139,7 +139,7 @@ def test_preview_starts_at_the_first_row_in_the_same_order(generated, director, 
     items = preview_items(html)
     numbers = list(Certificate.objects.filter(activity=activity).order_by("certificate_number").values_list("certificate_number", flat=True))
     assert [item["number"] for item in items] == numbers
-    rows = re.findall(r'<th scope="row"[^>]*>(TBI-[^<]+)</th>', html)
+    rows = re.findall(r'<th scope="row"[^>]*><a [^>]*>(TBI-[^<]+)</a></th>', html)  # the number opens the preview (457)
     assert rows == numbers  # the list below uses exactly the same order
     assert 'x-data="{ i: 0,' in html and f'src="{items[0]["url"]}"' in html
     renamed = next(item for item in items if item["pk"] == certificate_of(people[1]).pk)

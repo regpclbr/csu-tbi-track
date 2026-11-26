@@ -307,7 +307,8 @@ def assign(request: HttpRequest) -> HttpResponse:
             request.user, request.POST.get("kind", ""), pick(TBIMember, "assigned_to"),
             activity=pick(Activity, "activity"), document=pick(Document, "document"),
             submission=pick(Submission, "submission"), report_title=request.POST.get("report_title", ""),
-            note=request.POST.get("note", ""), due_date=due)
+            note=request.POST.get("note", ""), due_date=due,
+            allow_signing=request.POST.get("allow_signing") == "yes")  # ASSUMPTIONS 460
     except ValidationError as error:
         messages.error(request, "Not assigned: " + _flat(error))
     except (assignments.AssignmentError, PermissionDenied) as error:

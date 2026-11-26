@@ -311,6 +311,13 @@ def render_activity_page(request: HttpRequest, activity: Activity, tab: str, ext
     elif tab == "certificates":
         context.update(certificate_pages.certificates_tab(request, activity, (extra or {}).get("problems"),
                                                           (extra or {}).get("text_form")))
+    elif tab == "reports":  # ASSUMPTIONS 462
+        from reports import hub
+
+        context["report_kinds"] = [{"choice": choice, "url": hub.kind_url(choice.key, activity)}
+                                   for choice in hub.kind_choices(activity)]
+        context.update(hub.past(request.user, activity, request.GET.get("page", "1")),
+                       poll_seconds=0, can_generate=report_services.can_generate(request.user))
     if is_htmx(request):
         return render(request, "activities/_tab.html", context, status=status)
     if request.path != context["activity_url"]:  # re-shown after a POST (form errors): fix the address bar
@@ -374,6 +381,27 @@ def registration_switch(request: HttpRequest, activity_id: int) -> HttpResponse:
             reason = registration_services.registration_closed_reason(activity)
             messages.success(request, "Registration reopened." + (" It is open again." if reason is None else f" {reason}"))
     return redirect(_detail_url(activity))
+
+
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)
+@post_only_or_tab("evaluation")
+def evaluation_switch(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """POST action=close|reopen: the Evaluation tab's "Close the evaluation" / "Open the evaluation again" (ASSUMPTIONS
+    452). The rule is services.set_evaluation_closed_by_hand."""
+    activity = get_object_or_404(Activity.objects.select_related("status"), pk=activity_id)
+    action = request.POST.get("action", "")
+    back = activity_tab_url(activity.pk, "evaluation")
+    if action not in ("close", "reopen"):
+        messages.error(request, "Choose Close the evaluation or Open the evaluation again.")
+        return redirect(back)
+    try:
+        services.set_evaluation_closed_by_hand(request.user, activity, closed=action == "close")
+    except services.ActivityError as error:
+        messages.error(request, str(error))
+    else:
+        messages.success(request, "The evaluation is closed: no new answers." if action == "close"
+                         else "The evaluation is open again (the deadline still applies).")
+    return redirect(back)
 
 
 # --- Deleting (ASSUMPTIONS 389) ----------------------------------------------------------------------------

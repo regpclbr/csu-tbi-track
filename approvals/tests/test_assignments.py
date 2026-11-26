@@ -178,7 +178,7 @@ def test_an_assignee_never_signs(submit, staff, director, head, director_signatu
     submission = submit(staff)
     assignments.assign_work(director, K.SUBMISSION_REVIEW, head, submission=submission)
     assert services.sign_refused_reason(head, submission) == services.SIGN_NOT_DELEGATED
-    with pytest.raises(services.SubmissionError, match="never delegated"):
+    with pytest.raises(services.SubmissionError, match="did not allow"):  # unless allowed (ASSUMPTIONS 460)
         services.approve_submission(head, submission, sign=True)
 
 

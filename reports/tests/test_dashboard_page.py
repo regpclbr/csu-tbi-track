@@ -262,7 +262,9 @@ def test_needs_attention_links_go_to_the_right_place(make_member, login, data, a
     request_letter = DocumentType.objects.get(name="Request Letter")
     assert soon == f"{reverse('activities:detail', args=[seminar.pk])}?tab=documents&type={request_letter.pk}"
     overdue = [item.action_url for item in page.attention if item.tone == "danger"]
-    assert overdue and all(f"/activities/{data['conducted'].pk}/?tab=documents&type=" in url for url in overdue)
+    payment = f"{reverse('documents:list')}?view=payment"  # payment documents: ONE line, per activity there (463)
+    assert overdue and all(f"/activities/{data['conducted'].pk}/?tab=documents&type=" in url
+                           for url in overdue if url != payment)
     assert by_title["1 document is waiting for your review"] == reverse("documents:review")
     assert (by_title["1 activity needs certificate approval"]
             == f"{reverse('activities:detail', args=[data['conducted'].pk])}?tab=certificates")

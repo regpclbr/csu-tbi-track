@@ -139,7 +139,6 @@ DJANGO_DEBUG=False
 DJANGO_ALLOWED_HOSTS=csu-tbi-review.southeastasia.cloudapp.azure.com
 TRUSTED_PROXY_HEADER=X-Forwarded-For
 BEHIND_HTTPS_PROXY=True
-STARTUP_SYNC_ENABLED=False
 POSTGRES_PASSWORD=<the second random value>
 GEMINI_API_KEY=
 SITE_URL=https://csu-tbi-review.southeastasia.cloudapp.azure.com
@@ -202,11 +201,6 @@ people are invited from the Admin Console.
    password and must choose their own at the first sign-in. If the email cannot be sent, the member is not added.
 4. **Signatories** (a member with certificate approval, for example the Director): Certificates → Signatories → add
    the two people, upload their signatures, set the left and right defaults.
-5. **TEST startup** (only if the review includes the startup portal; on the **server**):
-   ```sh
-   sudo sh deploy/compose.sh exec web python manage.py create_review_startup --email your.address@gmail.com
-   ```
-   The set-password link goes to that email.
 
 ## 11. The full test (with your own email)
 
@@ -321,7 +315,7 @@ line names the setting to fix in `.env` (for example SITE_URL not https).
 - Addresses `@demo.example.com` are never sent (on purpose).
 
 **PDFs:** `sudo sh deploy/compose.sh exec web python manage.py check_pdf`. Admin Console → System status shows the
-worker, the schedules (the startup sync shows "Turned off"), email and the PDF check.
+worker, the schedules, email and the PDF check.
 
 **Logs:** `sudo sh deploy/compose.sh logs -f web worker` (Ctrl+C stops). Personal link tokens are shown as `<hidden>`.
 

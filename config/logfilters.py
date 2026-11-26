@@ -1,7 +1,7 @@
 """Logging filter that keeps personal tokens out of the logs (ASSUMPTIONS 391).
 
-Personal links carry a secret token in the URL: the evaluation page (/evaluate/<token>/), the startup set-password page
-(/startups/set-password/<token>/), the JSON versions under /api/ and Django's password reset
+Personal links carry a secret token in the URL: the evaluation page (/evaluate/<token>/), the JSON version under /api/
+and Django's password reset
 (/accounts/password/reset/<uidb64>/<token>/). Django logs the path of every refused request ("Not Found: /evaluate/…"),
 and on the server the logs are kept by Docker, so whoever can read them could open someone's link. The filter replaces
 each token with "<hidden>" in the final message; nothing else changes.

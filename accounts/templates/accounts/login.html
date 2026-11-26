@@ -12,7 +12,4 @@
     <button type="submit" class="btn btn-primary btn-arrow w-full py-3 text-sm">Sign in {% include "components/icon.html" with name="arrow-right" class="size-4.5" %}</button>
   </form>
 {% endblock %}
-{% block below_card %}
-  {# ASSUMPTIONS 253: the way to the startup portal sits under the staff card. #}
-  <a href="{% url 'startups:portal_login_page' %}" class="auth-footnote mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-primary-hover hover:underline">Are you a startup? Sign in to the startup portal{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
-{% endblock %}
+{# The startup portal link under the card was removed with the portal (ASSUMPTIONS 458). #}

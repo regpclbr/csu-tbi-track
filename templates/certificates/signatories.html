@@ -9,6 +9,7 @@ deactivate_signatory (refused for an active default),
 set_default_signatories. The Edit and Signature dialogs show the impact of a new version (services.version_impact_text).
 Nobody is ever deleted (there is no delete URL). Signature thumbnails come from certificates:signature_image.
 {% endcomment %}
+{% block page_actions %}{% include "approvals/_assign.html" with assign=assign next=request.get_full_path %}{% endblock %}
 {% block content %}
 <div class="mb-6 flex flex-wrap items-start justify-between gap-3">
   <p class="max-w-3xl text-sm text-slate-700">The people whose name, position and signature are printed on certificates. Each activity chooses two of them (left and right) on its Certificates tab. A person already printed on a certificate is never changed: a new signature image or a new name or position becomes a new version that every activity uses from then on, and issued certificates keep the old one until they are reissued.</p>

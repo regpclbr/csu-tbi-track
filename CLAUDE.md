@@ -27,15 +27,17 @@ owner is a student, so explain important decisions briefly and keep the code sim
 
 ## Apps
 `accounts`, `activities`, `registrations`, `documents`, `certificates`, `reports`,
-`startups`, `assistant`, `notifications`, `approvals` (submissions to the Director, the inbox, work assignments;
+`assistant`, `notifications`, `approvals` (submissions to the Director, the inbox, work assignments;
 ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUMPTIONS 442-445). The project package is `config`.
+`startups` is an EMPTY shell kept only for its migrations (the last drops STARTUP): the startup portal, the Navigatu sync
+and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation only). Never add code there.
 
 ## Model decisions
 - TBI_MEMBER is the custom user model (`AUTH_USER_MODEL = "accounts.TBIMember"`, email login,
-  unique). STARTUP is a separate model with its own login and is NOT a Django staff user.
+  unique). There is no STARTUP model any more (ASSUMPTIONS 458).
 - `AUTH_USER_MODEL` must be set before the first full `migrate`.
 - TBI_MEMBER has no PermissionsMixin. `is_staff` is a property: True only when
-  `role.can_manage_users` (System Administrator). Passwords use Django's `password` field (also on STARTUP).
+  `role.can_manage_users` (System Administrator). Passwords use Django's `password` field.
 - `assistant/migrations/0001_enable_pgvector.py` enables the `vector` extension. Don't move it
   to `accounts`: accounts/0001 must create TBI_MEMBER (admin/auth depend on it).
 - Embedding size lives only in `settings.EMBEDDING_DIMENSIONS` (768).
@@ -72,8 +74,10 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   The audit log stays append-only except `ActivityAuditLog.objects.delete_for_deleted_activity` (only there).
   Certificate numbers come from CERTIFICATE_NUMBER_SEQUENCE (never reused, also after undo attendance).
 - ACTIVITY.evaluation_deadline is OPTIONAL (ASSUMPTIONS 423, migration activities/0011): empty = the evaluation stays open.
-  Every "closed" check goes through `registrations.services.evaluation_has_closed()` / `evaluation_open_q()` (never compare
-  the column yourself); "No evaluation = no certificate" is unchanged ("Waiting for evaluation" forever).
+  ACTIVITY.evaluation_closed_by_hand (ASSUMPTIONS 452, activities/0016): changed ONLY by
+  `activities.services.set_evaluation_closed_by_hand` (Ongoing / Conducted, History "Evaluation"; Evaluation tab switch).
+  Every "closed" check goes through `registrations.services.evaluation_has_closed()` / `evaluation_open_q()` (the deadline
+  OR closed by hand; never compare the columns yourself); "No evaluation = no certificate" is unchanged ("Waiting for evaluation" forever).
 - ACTIVITY has `start_time` / `end_time` (Manila, nullable only for old rows the migration could not read; both or
   neither; one-day: end after start), no `time_schedule` (ASSUMPTIONS 345). Display only through
   `activities.formatting.format_time_range()` (filter `time_range`): "8:00 AM – 5:00 PM" or "Time not set".
@@ -152,7 +156,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   Approval is refused until both images are there.
 - File path columns use `max_length=255`.
 - Activity budget (ASSUMPTIONS 433; already approved on paper in the Activity Design, NO approval in the system):
-  FUND_SOURCE (RAF/IGF/TRF/BRF) and BUDGET_CATEGORY are Django-admin lists (never deleted); BUDGET_LINE rows and
+  FUND_SOURCE (RAF/IGF/TRF/BRF; TRF = "Trust Fund", ASSUMPTIONS 451) and BUDGET_CATEGORY are Django-admin lists (never deleted); BUDGET_LINE rows and
   ACTIVITY.fund_source (required when creating, never cleared; old rows "Not set") / fund_account. All rules in
   `activities/budget.py` (`clean_lines`, `line_total` = quantity × days × unit price half-up, Decimal only, at most 2
   decimal places for quantity and price, `save_lines`). ACTIVITY.budget_amount = the grand total, written ONLY by
@@ -166,7 +170,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   day)) is written ONLY by `registrations/attendance.py`. `REGISTRATION.attendance_confirmed` = attended at least one day,
   kept in step there (`_sync_attended`, parity test); every other module reads the flag. PARTICIPANT_SIGNATURE (one per
   registration: draw / upload / typed, `deleted_at`) only through `registrations/signatures.py`. REGISTRATION
-  `registration_source` (online / portal / walk_in) and `cancelled_at` ("Will not attend"). No confirmation_method,
+  `registration_source` (online / walk_in; "portal" became "online" in registrations/0015, ASSUMPTIONS 458) and `cancelled_at` ("Will not attend"). No confirmation_method,
   attendance_marked_at / _by columns any more.
 - Participant photos (ASSUMPTIONS 435): EVALUATION_ATTACHMENT (submission FK CASCADE, file_path, file_name = display only,
   file_size_kb, content_type jpeg / png / pdf, use_in_reports default False, marked_by / marked_at = the latest tick or
@@ -197,7 +201,6 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Member changes go through `accounts/services.py` (guardrails: no self-deactivation, at least one
   active Admin, never delete). Never log passwords; temporary passwords live only in the email. The invitation links to
   `SITE_URL` + `/accounts/login/`; if it cannot be emailed the member is not created (`INVITATION_NOT_SENT`, ASSUMPTIONS 371).
-- A STARTUP is never `request.user`; startup login uses `STARTUP_SESSION_KEY`.
 - `/api/` URLs (`config.json.is_api_path`) answer in JSON: 401 `{"error": "Login required."}` (never a
   redirect), 403 during the first-sign-in password change, 404/500 via `config.views` handlers.
   HTML URLs keep redirecting to the login page.
@@ -207,8 +210,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Sessions: 8 hours, end when the browser closes; secure cookies when DEBUG is off (HTTPS needed).
 - Uploaded files are never served from `/media/` (not even in DEBUG). Documents are downloaded only
   through `documents.views.download_document` (active staff login, always an attachment); certificate PDFs,
-  evidence and template/signature images only through the views in `certificates/views.py` (and the
-  startup portal's own-certificate download); participant photos only through `registrations:evaluation_photo` /
+  evidence and template/signature images only through the views in `certificates/views.py`; participant photos only through `registrations:evaluation_photo` /
   `evaluation_photo_download` (can_create_activity, ASSUMPTIONS 435).
 
 ## Activities
@@ -253,7 +255,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Registration state is calculated, never stored: `registered_count()`, `slots_remaining()`,
   `is_registration_open()` in activities/services.py (Step 5 must reuse them).
 - "Open for registration" = `open_for_registration()` (Scheduled, deadline, slots AND a registration form): the one query
-  behind the Activities card/preset, the dashboard KPI, `/register/` and the portal (`open_activities()`) (ASSUMPTIONS 77).
+  behind the Activities card/preset, the dashboard KPI and `/register/` (`open_activities()`) (ASSUMPTIONS 77).
 - Close / reopen registration by hand (ASSUMPTIONS 427): `ACTIVITY.registration_closed_by_hand`, changed ONLY by
   `activities.services.set_registration_closed_by_hand` (can_create_activity, Scheduled only, History row "Registration");
   read by `is_registration_open`, `open_for_registration` and `registration_closed_reason` ("Registration was closed by the
@@ -273,8 +275,9 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   someone's LAST day keeps the old undo rules; logged on `registrations.audit` with IDs only; `attendance_closed_reason` =
   "Attendance opens when …"), evaluation links and `submit_evaluation`.
 - QR check-in (ASSUMPTIONS 434): `/checkin/<id>/` (`registrations/checkin_views.py`), `attendance.checkin_state()` is the
-  one rule (each activity day, `PARTICIPANT_CHECKIN_EARLY_MINUTES` (60) before start_time to end_time, Manila; Scheduled or
-  Ongoing), `check_in` (one per person per day, "Already checked in today at …", signature step when none), walk-ins
+  one rule (each activity day, `PARTICIPANT_CHECKIN_EARLY_MINUTES` (60) before start_time to `PARTICIPANT_CHECKIN_LATE_MINUTES`
+  (60) AFTER start_time (ASSUMPTIONS 454; then "Check-in for today closed at …, ask the TBI staff", `CHECKIN_CLOSED_TODAY`),
+  Manila; Scheduled or Ongoing), `check_in` (one per person per day, "Already checked in today at …", signature step when none), walk-ins
   `register_walk_in` (even when registration is closed, no slot limit, same email refused), `guard_checkin` on every POST
   (rate limits per IP / email, honeypot), the check-in email task `run_send_checkin_email` (never blocks). Share card
   "Attendance check-in" + `registrations:checkin_poster`.
@@ -308,8 +311,8 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   `write_evaluation_link_history`); the Evaluation tab's green note reads only those (`automatic_link_sends`,
   `pages.automatic_send_notice`): staff resends are never counted as automatic.
 - REGISTRATION.designation (Designation / Position) and office_agency (Office / Agency) (ASSUMPTIONS 426): fixed columns,
-  required for every NEW registration by `register()` (max 255; public page + API, portal, later walk-ins); their labels are
-  RESERVED for form fields. Portal: office_agency pre-filled with the startup's name (API: the name when not sent). Older
+  required for every NEW registration by `register()` (max 255; public page + API, walk-ins); their labels are
+  RESERVED for form fields. Older
   rows: office_agency copied from "Affiliation / Organization" (migration registrations/0010), designation empty. Shown on
   the Registrations tab, the detail, the attendance sheet and the form preview. No "Affiliation / Organization" default
   field any more (seed); tests' `defaults` fixture adds a test-only one (`registrations/tests/conftest.OLD_FIELD`) and
@@ -319,9 +322,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Options and checkbox answers are JSON lists. Evaluation links are signed (django.core.signing),
   never "type your email". Public pages never show who registered.
 - Default form fields are placeholders (validate with the TBI); `seed_data` creates them once.
-- Public JSON lives under `/api/` (`/api/register/<id>/`, `/api/evaluate/<token>/`,
-  `/api/startups/set-password/<token>/`). The page URLs `/register/<id>/`, `/evaluate/<token>/`,
-  `/startups/set-password/<token>/` are the HTML pages (phase F3); emails always link to the page URLs.
+- Public JSON lives under `/api/` (`/api/register/<id>/`, `/api/evaluate/<token>/`). The page URLs `/register/<id>/`, `/evaluate/<token>/` are the HTML pages (phase F3); emails always link to the page URLs.
 - Registration emails (confirmation, evaluation links) are Django-Q2 tasks (`registrations/tasks.py`,
   queued via `queue_confirmation` / `queue_evaluation_link`) or run inside the 5-minute job; never send them inside the request.
 - The public registration view calls `guard_public_registration()` (rate limit per IP and per email,
@@ -335,11 +336,11 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   (`pages.participant_photos`): the count for everyone, files / larger view / Download / "Use in reports" (HTMX, OOB
   `#photos-summary`) for can_create_activity. No retention job yet (open question below).
 - Privacy notice (ASSUMPTIONS 394; retention wording 414): `/privacy/` + `public/_privacy_consent.html` (required checkbox `privacy_consent`) on the
-  public registration page, the portal registration page and the evaluation review step. The one rule is
-  `services.check_privacy_consent`, called by every public entry point (HTML, `/api/register/`, `/api/evaluate/`, portal page
-  and API) before `register()` / `submit_evaluation()`; the services themselves never ask. Nothing is stored (no column).
+  public registration page, the QR walk-in, the staff "Add a walk-in" and the evaluation review step. The one rule is
+  `services.check_privacy_consent`, called by every public entry point (HTML, `/api/register/`, `/api/evaluate/`, the walk-in
+  pages) before `register()` / `submit_evaluation()`; the services themselves never ask. Nothing is stored (no column).
 - "Open for registration" lists use `open_activities()` + `public_activity_summary()` (public
-  `/api/activities/open/`, portal `/startups/portal/api/activities/`); never a second rule.
+  `/api/activities/open/`); never a second rule.
 - Shared links start with `SITE_URL`, never the request's Host: `registration_page_url()`, `evaluation_request_url()`,
   `evaluation_link()`. The Share card (`activities/share.py`: Scheduled = registration link, Open/Closed; Ongoing/Conducted =
   evaluation link while open; Draft = none) and its QR codes (`activities:qr_code`, segno PNG, staff login, 404 for any link
@@ -432,30 +433,27 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   (`type_applies`, SQL `metrics._applies`); payment types count (overdue, due soon, reminders, Needs attention) only once Conducted (`counts_now`,
   SQL `metrics._counts_now`). Event Photos: JPG/PNG only (`file_type_error`). Documents tab group "For payment (Supply
   Office)"; `build_payment_packet` (`activities:payment_packet`) zips APPROVED files only + `contents.txt`, never stored.
+- For payment per activity (ASSUMPTIONS 463): `documents.services.payment_missing` (Conducted, document_checklist's items via
+  `activity_document_overview`, payment + counts_now + not Approved; ONE entry per activity, never by type) →
+  `reports.hub.payment_cards` / `payment_action`: "Generate" (Attendance Sheet, Confirmation of Attendance, Activity Report:
+  `PAYMENT_GENERATE_KINDS`; only opens the Reports page with activity + kind) else "Upload". The Evaluation Summary is NOT a
+  payment document. Shown: Dashboard card (`dashboard_page.payment_card`, `PAYMENT_SHOWN` 4), Documents `?view=payment`,
+  Generate buttons in the activity's payment group. The Dashboard's Needs attention has ONE payment line → that view.
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
 - Notifications: `notifications/services.py`; a member only sees/changes their own. Creating an activity
   (`save_new_activity`) notifies every active Director in the same transaction ("activity_created"), except when a
   Director creates it; no email (ASSUMPTIONS 361).
-  NOTIFICATION.activity stays nullable (future startup notifications may have no activity).
+  NOTIFICATION.member is required (the startup recipients went with the portal, ASSUMPTIONS 458); NOTIFICATION.activity
+  stays nullable.
 
-## Startups and Navigatu
-- `startups/providers.py` is the ONLY Navigatu access point: `get_provider()` returns the class named
-  in `settings.STARTUP_PROVIDER` (mock now; `NavigatuStartupProvider` is a stub). Other code uses
-  plain `StartupRecord`s and never reads the mock JSON.
-- `sync_startups()` matches navigatu_id, then email (ignoring case); copies only Navigatu fields,
-  never `password`; skips email conflicts; never deletes (deactivates). Deactivation safety guard:
-  zero records or > `STARTUP_SYNC_MAX_DEACTIVATE_RATIO` → nobody deactivated; only the manual
-  command's `--force` overrides it. A second run saves no row (`last_synced_at` is a bulk update).
-- Startup login: `startups.services.authenticate_startup` / `login_startup` / `current_startup`,
-  session key `STARTUP_SESSION_KEY`, lockout via `accounts.services` with `STARTUP_SCOPE`.
-  Portal views use `startups.decorators.startup_login_required` (refuses staff sessions).
-- Set-password links: signed, expiring (`STARTUP_PASSWORD_LINK_HOURS`), single use through the
-  password-hash fingerprint; sent only by `can_manage_users`, never returned by the API.
-- A logged-in startup registers through `registrations.services.register(..., startup=...)`
-  (same rules); "my registrations" = `registrations_for()` (linked + older email matches, read only).
-- Notifications services take a member or a startup as the recipient.
+## Startups and Navigatu: removed (ASSUMPTIONS 458)
+- The startup portal (login, pages, set-password links, "My certificates"), the Navigatu sync (StartupProvider + mock),
+  the staff Startups pages, the N18 "Startups engaged" number and the report section are GONE: a Chapter 5
+  recommendation only. Migrations registrations/0015 (portal registrations became online, nothing deleted),
+  notifications/0005 (startup notifications deleted, member required) and startups/0003 (STARTUP dropped). Never bring
+  any of it back without the owner.
 
 ## AI assistant (RAG)
 - Gemini is reached ONLY through `assistant/gemini.py` (`get_gateway()`). Key: `GEMINI_API_KEY` in `.env`
@@ -545,15 +543,39 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Editing others' work: `documents.services.rename_document` (uploader or can_approve_documents, History), the Director may
   replace / delete others' waiting documents (`_may_change`), every form field change is a History row
   (`registrations.services._form_history`).
+- Director-to-self (ASSUMPTIONS 456): "Submit to the Director" only when somebody ELSE could approve
+  (`approvals.services.offers_submit`, `layout.offers_submit`; the service refuses the same case); "Assigned to me" hidden
+  for a can_assign_work member never given work (`assignments.shows_assigned_to_me`, `layout.shows_assigned`).
+- All the Director's work is assignable (ASSUMPTIONS 460): `assignments.ASSIGNABLE_ACTIONS` lists every Director-only
+  action and its kind (None = never: unapprove anything, link / change a linked signature, assign work; test keeps it in
+  step with `KIND_PERMISSIONS`). Kinds without an object: `certificate_text` (the default text) and `signatories` (the
+  list; never a signature linked to an account: `LINKED_SIGNATURE_DIRECTOR_ONLY`), one open each
+  (`one_open_assignment_per_global_task`), views `task_permission_required(permission, kind)`. Per-activity actions
+  (evaluation answers / PDF, links, photos, attendance forms, certificate row actions, reissue) take the activity's
+  assignment. "May stamp my signature" = WORK_ASSIGNMENT.allow_signing (submission review only, check constraint; the
+  assigner needs a linked signature image): the assignee signs with the ASSIGNER's signature (`services.stamp_owner`),
+  SUBMISSION_EVENT on_behalf_of + History "Submission … on behalf of …" + a notification to the Director; without it
+  `SIGN_NOT_DELEGATED`.
 - Assignments: `assign_work` (can_assign_work + the work's flag; never to yourself; one open per work; never review your
   own work; never give a can_manage_users member activities, signatories, documents, submissions or reports),
   `mark_done` (assignee or assigner), `remove_assignment`, `complete_for` (approve / return closes the review
   assignments). Assign dialog `approvals/_assign.html` (+ `pages.assign_panel`), notice `approvals/_assigned_notice.html`.
 
 ## Report generator and paper sheets (ASSUMPTIONS 441-445)
-- Pages `/reports/generator/` (sidebar "Report generator", own section `report_generator` in `config.frontend`) and
-  `/reports/paper-sheets/<id>/`; views `reports/generator_views.py`, display `reports/generator_pages.py`. Open anytime;
-  can_create_activity or an open report assignment (`generator.require_use`). A draft is its maker's only (404).
+- ONE Reports page (ASSUMPTIONS 461): `/reports/?kind=<kind>&activity=<id>` (`reports.page_views.report_list`, display
+  `reports/hub.py`): "What do you want to make?" = Figures (`figures-<type>`, GENERATED_REPORT) + Written with AI (the
+  REPORT_DRAFT kinds) + for one activity the attendance forms (`hub.kind_choices`, `hub.PER_ACTIVITY`); one "Past reports"
+  list (`services.past_reports`: every figures report + the member's own drafts; for one activity its drafts + its Activity
+  Report / Attendance Sheet / Confirmation documents). The two tables stay. One sidebar item "Reports" (no "Report
+  generator"). `/reports/generator/` GET redirects there (its POST creates a draft; a refusal re-renders the one page via
+  `render_hub`, 400). Figures reports take notes (GENERATED_REPORT.notes, max 2000) and files (REPORT_ATTACHMENT belongs to
+  exactly ONE of draft / generated_report) as data for the AI summary (`narrative.GUIDANCE_RULE`, then
+  `generator.check_numbers`: an unknown number leaves the summary out). The prompt box + summary card still fit 1366x768.
+- Activity page tab "Reports" (ASSUMPTIONS 462): `activities/_tab_reports.html`, the per-activity kinds only (links via
+  `hub.kind_url`), the activity's past reports.
+- Pages `/reports/generator/<id>/` (a draft) and `/reports/paper-sheets/<id>/`; views `reports/generator_views.py`, display
+  `reports/generator_pages.py`. Open anytime; can_create_activity or an open report assignment (`generator.require_use`).
+  A draft is its maker's only (404).
 - Rules: `reports/generator.py` (drafts, files, versions, the numbers rule, exports, save, submit), facts
   `reports/draft_facts.py` (EVERY number, date, name list and amount, stored on the version), exports
   `reports/draft_export.py` (PDF `reports/templates/reports/draft_pdf.html`, A4 portrait; DOCX python-docx), paper sheets
@@ -590,7 +612,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   (`generator.save_refused_reason` = `DRAFT_NOT_SAVED`; Approvals: `allowed_actions()["save"]` False and
   `SAVE_DRAFT_ONLY`, `generator.is_draft_only_submission`); Submit allowed (no document type). Signature blocks from
   `facts["signatures"]` (`draft_export.signature_blocks`). Neutral templates until NAVIGATU gives theirs.
-- Tables (49): REPORT_DRAFT, REPORT_DRAFT_VERSION, REPORT_CHAT_MESSAGE, REPORT_ATTACHMENT, PAPER_SHEET_READ,
+- Tables (48 since the STARTUP drop, ASSUMPTIONS 458): REPORT_DRAFT, REPORT_DRAFT_VERSION, REPORT_CHAT_MESSAGE, REPORT_ATTACHMENT, PAPER_SHEET_READ,
   PAPER_SHEET_ROW (migration reports/0002). Drafts / sheets CASCADE with the activity (counted in item 389's dialog);
   attachment files removed after the commit (`generator.remove_file_after_delete`).
 
@@ -689,7 +711,6 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - "… was emailed" success messages go through `config.mail.email_sent_message()` (console mode: "Email printed in the
   terminal …"; the mode check `prints_emails()` is also System status's) (ASSUMPTIONS 342).
 - Evidence = DOCUMENT with `related_certificate` (`upload_evidence`), Step 6 rules, never listed/indexed.
-- Startup "My certificates" = Issued certificates of `registrations_for(startup)`; anything else is 404.
 
 ## Reports and dashboard (Step 10)
 - Every number comes from `reports/metrics.py` (definitions N1–N18, S1–S6: ASSUMPTIONS 196). The dashboard,
@@ -728,7 +749,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   (`metrics.participant_average`) / `answers` (non-empty, Comments last); the dialog top has no email or contact number
   (they and the registration answers are in "Show contact details and registration answers", closed when the evaluation
   shows); the PDF is its own PORTRAIT template (`reports.pdf.individual_evaluation_html`), the only portrait report PDF.
-- `request_report` (can_create_activity) saves the row with an empty `file_path` and queues task `report-<id>`;
+- `request_report` (can_create_activity or a report assignment; optional `notes` + `files`, ASSUMPTIONS 461) saves the row with an empty `file_path` and queues task `report-<id>`;
   `build_report` writes `reports/<year>/report-<id>-<type>.<ext>`. State is calculated (ready/failed/pending).
   Reports are never deleted; generating again = new row. Download only via `reports.views.download_report`.
 - PDF via `certificates.pdf.get_renderer()` (fake in tests); Excel cells only through `excel.safe_cell`
@@ -764,13 +785,14 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   the ORIGINAL identity (`docs/design/dashboard.png`, `login.png`, `logo.png`: navy -> blue gradient frame around a rounded
   light panel, frosted glass sign-in / public cards, pill buttons, Inter, the navy logo tile, the Dashboard's filled
   banner + "Next activity" card) made calmer. The teal / cream palette of 412 was rejected: never bring it back.
-  Colours: **option B** (`docs/design/options/`), only between `OPTION START` / `OPTION END` in the `@theme` block of
-  `frontend/tailwind/app.css`: frame `#1E2F73` -> `#3B8AA6`, primary `#2A4494`, link `#2C5AA8`, light text on the gradient
-  `on-dark-muted` `#D3E8F0`, headline accent `on-dark-accent`. Everything else refers to them (sidebar, focus ring,
+  Colours: **GREEN since ASSUMPTIONS 459** (owner: close to CSU's green; same layout and gradients as option B, 413),
+  only between `OPTION START` / `OPTION END` in the `@theme` block of `frontend/tailwind/app.css`: frame `#0F4A2C` ->
+  `#3F9A6B`, primary `#1F6B3E`, link `#1E7244`, light text on the gradient `on-dark-muted` `#D4EEDD`, headline accent
+  `on-dark-accent` `#9FDDB8`. Everything else refers to them (sidebar, focus ring,
   shadows, `.app-bg`, `.auth-bg`, `.welcome-banner`, `.spotlight`, `.date-tile-gradient`). Panel `#F4F6F9` (neutral light
   grey) with white cards; Tailwind's own slate scale. Status tokens `info` / `warning` / `success` / `danger` / `neutral`
-  (+ `-soft`, `-line`); use them, not Tailwind `amber-50/200`, `red-50/200`, `blue-*`, `green-*`. Report PDFs and the Excel
-  header use `#2A4494`; logo tiles (`static/img/`) = `docs/design/logo.png` on `#1E2F73` (originals: `*-navy-old.png`).
+  (+ `-soft`, `-line`); use them, not Tailwind `amber-50/200`, `red-50/200`, `blue-*`, `green-*`. Report / draft / form PDFs, the Excel
+  header and the DOCX headings use `#1F6B3E`; logo tiles (`static/img/`) = `docs/design/logo.png` on `#0F4A2C` (459).
   Chart colours (status bar, `reports.dashboard_page.CATEGORY_COLORS`) are checked for colour blindness (dE >= 15).
   Measure every new colour pair (text 4.5:1, large text / icons / input borders / accent bars 3:1);
   `accounts/tests/test_staff_layout.py` recomputes them from the tokens. Desktop-first staff pages (1280 px+, usable at
@@ -797,7 +819,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   White text only on the dark frame and the Dashboard's gradient blocks; buttons on those blocks are `btn-on-dark`.
 - Type scale (413): page title 24 px bold (`.page-title`, one h1), section / card heading 18 px semibold (`.card-title` =
   `.section-title`), body 14 px (`text-sm`), caption 12 px (`.caption` / `text-xs`). No `text-[11px]` / `[13px]` / `[15px]`
-  on staff pages (test). Big numbers are data; sign-in / public hero headlines are display text; public and portal body 16 px.
+  on staff pages (test). Big numbers are data; sign-in / public hero headlines are display text; public body 16 px.
 - Spacing scale (413, enforced by `test_spacing_scale_in_every_template` / `_in_the_component_classes`): padding, margins,
   gaps and `space-*` only 4 · 8 · 12 · 16 · 24 · 32 px (steps 1 2 3 4 6 8; 48 / 64 px only as page gutters); never half
   steps (`-0.5`, `-1.5`, `-2.5`, `-3.5`), 20 / 28 / 36 / 40 px or `[..px]`. Page padding 16/24/32 px, card padding 24 px
@@ -861,7 +883,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   the `attendance_closed_reason()` text. Evaluation tab = `registrations/_evaluation_links.html` (explanation from the rules,
   counts, attendees who have not answered, resend). Activity page: `activities/_attention.html` below the title.
 - Public pages (F3, ASSUMPTIONS 278–288, no login, phones first): `registrations/public_views.py` + `public_pages.py`
-  (display/parsing only), `startups/page_views.py`, templates in `templates/public/` on `layouts/public.html` (`.public-card`
+  (display/parsing only), templates in `templates/public/` on `layouts/public.html` (`.public-card`
   glass without hover lift, `.public-shell`: pill buttons, 44 px targets). Plain forms with CSRF + `novalidate`, no JS needed.
   Every public registration POST (HTML and JSON) goes through `registrations.public.guard_registration_request()`.
   Evaluation links: `services.evaluation_state()` is the one rule; the review step uses `services.check_evaluation()`
@@ -885,6 +907,8 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   group), "All certificates (newest first)" (`?view=all`) = `list_certificates_newest`; search `?q=` = `search_q` (number,
   names, evaluation email, activity title). The API keeps `list_certificates`. View only. Rows built once per page
   (`pages._rows`): the query count must not grow with the number of activities (tested).
+- The certificate number and the recipient's name open its preview (ASSUMPTIONS 457: `certificates:preview` on the
+  Certificates page, the tab's large preview on the tab); the buttons stay.
 - Certificates tab (ASSUMPTIONS 357–370, 373): the "Certificate approval" card (`pages.approval_panel`: `approval_state`'s
   states for everyone; the button only where the state offers approval; the primary "Approve certificates for this activity" + confirm dialog ONLY for
   can_approve_certificates, disabled with the reason when refused); "Apply the current design" for can_create_activity;
@@ -907,10 +931,9 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   the `xframe_options_sameorigin` views (with `certificates:preview`, ASSUMPTIONS 358, and the two sample previews
   `activities:certificates_sample_preview` / `certificates:draft_sample_preview`, ASSUMPTIONS 420); everything else stays
   `X-Frame-Options: DENY`. No CSP is set; adding one must allow it.
-- Reports, Assistant, Startups, Notifications and search pages (F5, ASSUMPTIONS 301–311): `reports/page_views.py` + `reports/pages.py`
+- Reports, Assistant, Notifications and search pages (F5, ASSUMPTIONS 301–311): `reports/page_views.py` + `reports/pages.py`
   (form: quick dates, sections preset by type, the AI switch adds `ai_summary`; a pending history row polls `reports:row` every 4 s and
-  stops when ready/failed or after 15 min), `assistant/page_views.py` + `assistant/pages.py`, `startups/staff_views.py` + `startups/pages.py`
-  (the public set-password page stays in `startups/page_views.py`), `notifications/views.py` (`/notifications/`), `config/search.py`
+  stops when ready/failed or after 15 min), `assistant/page_views.py` + `assistant/pages.py`, `notifications/views.py` (`/notifications/`), `config/search.py`
   (`/search/`, the top bar's box: the lists' own services, 5 per group). **Model answers are untrusted:** render them only through
   `assistant.pages.answer_html()` (escapes everything FIRST, then only bold, italics, `#`–`###` as a bold line, bullet/numbered
   lists, `<br>` and our `[n]` links; ASSUMPTIONS 376); never `|safe`, raw HTML, links or images from the model. Widening the subset
@@ -929,14 +952,16 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   Rename / Delete dialogs (data attributes, never titles inside JS); both POST and end on the open chat (`current`) (377).
   The page fits the window from 1024×600 (`fit-screen:` / `short-screen:` variants in `frontend/tailwind/app.css`; overrides
   the `panel_scroll` and `main_class` blocks of `layouts/app.html`, which other pages leave at their defaults) (380).
-- Startup portal pages (F6, ASSUMPTIONS 312–319): `startups/portal_views.py` + `startups/portal_pages.py`, `templates/portal/` on
-  `layouts/portal.html` (sidebar `config.frontend.PORTAL`, context `portal`). Every page uses `startups.decorators.portal_page_required`
-  (staff: 403; nobody: portal login). Login through `authenticate_startup`; `next` only within `/startups/portal/`. Registering only through
-  `register_as_startup`; evaluation links only when `evaluation_state()` is open. Portal pages must work at phone width.
 - Admin Console (F6, ASSUMPTIONS 320–322): `accounts/console_views.py` + `accounts/console_pages.py`, `templates/console/`, all
   `permission_required(MANAGE_USERS)`. Members through `accounts.services` (`list_members` for the list), designs through
   `certificates.services` (no delete URL, ever; the default signatories are shown read only, ASSUMPTIONS 363), System status through `accounts/system_status.py` (read only; never calls Gemini, never
   shows a secret; the PDF check goes through `get_renderer()`).
+- Enter never submits a long staff form (ASSUMPTIONS 450): mark the form `data-enter-submit="off"`
+  (`static/js/form_keys.js`, loaded by `base.html`; a textarea still makes a new line, buttons and the chat box are
+  untouched). Marked: activity New / Edit, field editor, certificate text, generator New draft, Submit to the Director,
+  Assign, Signatories add / edit, paper-sheet rows, staff walk-in. Never on login, search boxes or public pages.
+- Signatures (ASSUMPTIONS 453): `public/_signature_field.html` shows three equal tiles (Draw / Upload a picture / Type
+  my name) with one line of help each; the staff "Mark attended" dialog keeps Draw / Type.
 - Modals: always `<dialog class="modal">` (centred by `.modal`: fixed, inset 0, `margin: auto !important`, max 85dvh,
   scrolls inside; never give a dialog margins). Browser check, opt-in: `BROWSER_TESTS=1`, `config/tests/test_modals_browser.py`
   (ASSUMPTIONS 343).
@@ -945,7 +970,9 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 
 ## Business rules (enforce in services.py, not in views)
 - Registration closes at `max_slots` or `registration_deadline`, or when the TBI closes it by hand (ASSUMPTIONS 427).
-  No approval step: everyone who registers is in. Walk-ins register only at the QR check-in (ASSUMPTIONS 434).
+  No approval step: everyone who registers is in. Walk-ins register at the QR check-in (ASSUMPTIONS 434) or through the
+  staff "Add a walk-in" (ASSUMPTIONS 455: `registrations.attendance.add_walk_in_by_staff`, Ongoing, an activity day, the
+  same checks + signature + privacy consent, today's attendance "staff", History "Walk-in").
 - Evaluation opens after the activity's `end_date`, only for registrations with
   `attendance_confirmed = True` (attended at least one day, ASSUMPTIONS 434), and closes at `evaluation_deadline`.
   Never anonymous.
@@ -959,7 +986,6 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   readable old and new values.
 - Required-document reminders go to the activity's creator as an in-app NOTIFICATION (a flagged Draft's Activity Design /
   Request Letter also to every active Director, ASSUMPTIONS 417). Never create the same reminder twice.
-- Navigatu is accessed only through the `StartupProvider` class (mock for now).
 
 ## Working rules
 - Business logic goes in each app's `services.py`. Keep views thin.
@@ -991,7 +1017,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 4. Activities, status changes, audit log — done (incl. many categories per activity)
 5. Public registration, attendance, evaluation flow — done
 6. Documents, checklist, reminders (Django-Q2 scheduled task) — done
-7. Startups module with a mock StartupProvider — done
+7. Startups module with a mock StartupProvider — done (removed 2026-11-26, ASSUMPTIONS 458)
 8. RAG pipeline: parse, chunk, embed on approval, retrieve, answer with sources — done
 9. Certificates (WeasyPrint), sign-off flow, automatic emails — done
 10. Reports and dashboard numbers — done
@@ -1002,11 +1028,11 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Faster tests (2026-10-27): pytest-xdist, 2 workers, kept test databases, fresh cache per test (260).
 - Frontend F2a (2026-10-27): Activities list + calendar, create/edit, activity page with Overview and History (261–269).
 - Frontend F2b (2026-10-27): Forms, Registrations and Evaluation tabs, attendance sheet (270–277).
-- Frontend F3 (2026-10-27): public pages: open activities, registration, evaluation with review step, startup set password (278–288).
+- Frontend F3 (2026-10-27): public pages: open activities, registration, evaluation with review step, startup set password (278–288; set password removed, 458).
 - Tests and the time of day (2026-10-28): fake clock, walkthrough fix (289).
 - Frontend F4 (2026-10-28): documents tab, repository + review queue, document page, certificates tab and page, links (290–300).
-- Frontend F5 (2026-10-28): reports page with polling, AI assistant chat, startups pages, notifications page, global search (301–311).
-- Frontend F6 (2026-10-28): startup portal pages and the Admin Console (members, roles, certificate design, system status) (312–323).
+- Frontend F5 (2026-10-28): reports page with polling, AI assistant chat, startups pages (removed, 458), notifications page, global search (301–311).
+- Frontend F6 (2026-10-28): startup portal pages (removed, 458) and the Admin Console (members, roles, certificate design, system status) (312–323).
 - UI polish (2026-10-29): shared select style, compact KPI cards, collapsible My chats panel (324–326).
 - Documents at creation + preview (2026-10-30): optional documents on the New activity form, in-page document preview (327–330).
 - System Administrator (2026-10-31): role renamed, no can_create_activity, never both flags, audit log, SYSTEM sidebar (339–340).
@@ -1064,7 +1090,7 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
 - Client review version (2026-11-16): Docker Compose production setup, written for one Azure VM but never used there (only
   the Nov 17 UAT used it, once, on the laptop through a Cloudflare quick tunnel) (Caddy HTTPS, gunicorn, qcluster, pgvector), release
   step, deploy checks, token-free logs, noindex/robots, "Review version" label, privacy notice + required consent checkbox,
-  startup sync switch, create_first_admin / create_review_startup, Gelasio font, backups, docs/DEPLOY.md (391–398).
+  startup sync switch, create_first_admin / create_review_startup (both startup parts removed, 458), Gelasio font, backups, docs/DEPLOY.md (391–398).
   No database or ERD change.
 - Corrections after UAT, review round 1 (2026-11-17, NAVIGATU comments): quarterly / semi-annual / annual period presets with a
   Year choice and period titles and file names (399), participants by category per activity (400), evaluation summary per
@@ -1172,6 +1198,18 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   the header (441); the report generator with versions, the numbers rule, DOCX / PDF, save / submit (442); paper sheets
   read by the AI and confirmed by staff (443); the Activity Report after NAVIGATU's sample (444); the Evaluation Summary
   per activity and per period (445). Database: reports 0002 (six tables); 49 tables.
+- Owner feedback before the user testing, Part 1 (2026-11-26, branch prompt-7): Enter never submits a long form (450);
+  Trust Fund (451); close / open the evaluation by hand (452); three equal signature choices (453); QR check-in until
+  60 min after the start (454); staff "Add a walk-in" (455); no Director-to-self actions (456); certificate number and
+  name open the preview (457); the startup portal, Navigatu sync and Startups pages removed, a Chapter 5 recommendation
+  (458); green theme (459). Database: activities 0016 (ACTIVITY.evaluation_closed_by_hand + TRF name), registrations
+  0015, notifications 0005, startups 0003 (STARTUP dropped); 48 tables.
+- Owner feedback before the user testing, Part 2 (2026-11-26, branch prompt-7): all the Director's work assignable, two
+  kinds without an object, "May stamp my signature" (460); one Reports page with notes / files for the figures reports
+  and one past-reports list (461); the activity's Reports tab (462); For payment per activity with Generate / Upload on the
+  Dashboard, the Documents page and the activity's payment group (463). Database: approvals 0003
+  (WORK_ASSIGNMENT.allow_signing, two kinds), reports 0004 (GENERATED_REPORT.notes, REPORT_ATTACHMENT.generated_report_id,
+  draft_id nullable); still 48 tables.
 - Accomplishment Report + draft letters (2026-11-26, Prompt 7, branch prompt-7): DTI / partner agencies as MSMEs
   confirmed; `tailwind build` via a temporary file (449); the Accomplishment Report per quarter / half / year in the
   generator (446) with confirmed paper Attendance sheets per day (447); the draft Request Letter and Activity Design from
@@ -1193,12 +1231,12 @@ ASSUMPTIONS 437). The report generator and paper sheets live in `reports` (ASSUM
   Always run compose through `deploy/compose.sh` (server `.env` at `/opt/csu-tbi/.env`, root only). Scripts in `deploy/`
   (committed, LF line endings via `.gitattributes`; run them with `sh`), never `tools/`.
 - Server-only settings come from env: `BEHIND_HTTPS_PROXY` (proxy SSL header + short HSTS), `CSRF_TRUSTED_ORIGINS` from an https
-  SITE_URL, `STARTUP_SYNC_ENABLED` (False on the server; `DailySchedule.enabled_setting`), `REVIEW_VERSION_LABEL`
+  SITE_URL, `REVIEW_VERSION_LABEL`
   (`config.frontend.review_label`), `Q_CLUSTER_WORKERS`. `config/checks.py` runs in `check --deploy` (release step).
 - Every response has `X-Robots-Tag: noindex` (`config.headers.NoIndexMiddleware`); `/robots.txt`, `/healthz/` in `config/views.py`.
 - Logs never contain link tokens: `config.logfilters.HideTokensFilter` on the console handler. No access logs (Caddy, gunicorn).
 - Every email carries `SITE_URL` (also certificate and password-changed emails; tested in `accounts/tests/test_review_clean_seed.py`).
-- Clean database: `seed_data` only, `create_first_admin` (interactive, once), `create_review_startup` (one TEST startup).
+- Clean database: `seed_data` only, `create_first_admin` (interactive, once).
 
 ## Setup: WeasyPrint on Windows (once per machine)
 WeasyPrint needs the Pango/GObject system libraries (the pip package alone fails with
@@ -1233,15 +1271,13 @@ python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun; one account per role
 python manage.py changepassword director@demo.example.com   # give a demo account a password (typed, never stored)
-python manage.py setup_schedules          # once (safe to rerun): 7:00 sync, 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links (also 3 h before the end)
+python manage.py setup_schedules          # once (safe to rerun): 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links (also 3 h before the end)
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
-python manage.py sync_startups            # sync startups from the provider now (--force: override the guard)
 python manage.py index_documents          # index files not indexed yet, no OCR (--document / --report / --submission <id>: re-read one, scans included)
 python manage.py check_gemini             # models in use (and where from), models the key can use, tiny real calls
 python manage.py check_pdf                # WeasyPrint renders a test PDF in memory: OK or the exact error
 python manage.py send_test_email you@example.com [--smtp]   # one test email (--smtp: really send it, even in DEBUG)
 python manage.py create_first_admin       # SERVER: the first System Administrator of a clean database (asks; once only)
-python manage.py create_review_startup --email you@example.com   # SERVER: one TEST startup, set-password link emailed
 python manage.py retry_certificates       # render/issue ready certificates and send unsent emails now (the 8:30 retry)
 python manage.py purge_participant_signatures   # delete the signatures that are due now (the 7:45 job, ASSUMPTIONS 434)
 python manage.py make_sample_certificate_images <folder>    # DEMO: invented background + 2 signatures (PNG)
@@ -1260,6 +1296,8 @@ $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_evaluation_pho
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s approvals/tests/test_approvals_browser.py; Remove-Item Env:BROWSER_TESTS   # the inbox and the Assign dialog at 1366 / 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s assistant/tests/test_chat_browser.py; Remove-Item Env:BROWSER_TESTS   # AI Assistant: keys, scrolling, fits the window, the chat box at 1366 / 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_generator_browser.py; Remove-Item Env:BROWSER_TESTS   # the report generator page at 1366 / 390 px
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_reports_page_browser.py; Remove-Item Env:BROWSER_TESTS   # one Reports page, activity Reports tab, For payment cards (1366 / 390 px)
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_part1_browser.py; Remove-Item Env:BROWSER_TESTS   # Enter key, signature choices, check-in after the window (1366 / 390 px)
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation, the generator's Activity Report / Evaluation Summary) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations
 $env:TEST_FAKE_NOW = "2026-10-28T23:30"; pytest; Remove-Item Env:TEST_FAKE_NOW   # whole suite at a chosen Manila time

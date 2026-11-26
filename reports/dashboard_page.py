@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Min
+from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -35,7 +36,9 @@ ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs att
 # Calm colours of the brand family (ASSUMPTIONS 413): the primary navy, a muted cyan, green, soft amber, then violet, grey,
 # clay and a light blue. Every pair stays apart also with simulated protanopia, deuteranopia and tritanopia (smallest
 # difference dE 15); the legend and the text table carry the numbers.
-CATEGORY_COLORS = ["#2A4494", "#5AAFC8", "#2F7A50", "#EDC06A", "#8C6BB1", "#6B7686", "#D98B7A", "#C7DCF2"]
+# ASSUMPTIONS 459: the first colour is the primary green; the old green third slot became the former navy, so no two
+# neighbours look alike (checked for colour blindness, dE >= 15, accounts/tests/test_staff_layout.py).
+CATEGORY_COLORS = ["#1F6B3E", "#5AAFC8", "#2A4494", "#EDC06A", "#8C6BB1", "#6B7686", "#D98B7A", "#C7DCF2"]
 DONUT_STROKE = 7  # the ring's width in the donut's SVG units (circumference 100)
 DONUT_GAP = 1.5  # space between two segments, same units
 
@@ -122,6 +125,8 @@ class DashboardPage:
     can_approve_certificates: bool = False  # only the wording of the certificate card (ASSUMPTIONS 357)
     assigned: list = field(default_factory=list)  # "Assigned to me" (approvals.assignments, ASSUMPTIONS 437)
     approvals: dict | None = None  # the "For your approval" card (approvals.inbox, ASSUMPTIONS 437); None = approves nothing
+    payment: list = field(default_factory=list)  # "For payment (Supply Office)", one card per activity (ASSUMPTIONS 463)
+    payment_total: int = 0
 
     attention_shown: int = ATTENTION_SHOWN
 
@@ -222,7 +227,21 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         range_options=_range_options(today),
         approvals=approvals_card(member),
         assigned=assigned_card(member),
+        **payment_card(member, now),
     )
+
+
+PAYMENT_SHOWN = 4  # activities on the Dashboard's "For payment" card; the Documents page lists them all
+
+
+def payment_card(member: TBIMember, now: datetime | None = None) -> dict:
+    """ASSUMPTIONS 463: the Conducted activities still missing payment documents, one card each (oldest due first)."""
+    from documents.services import payment_missing
+
+    from .hub import payment_cards
+
+    rows = payment_missing(now)
+    return {"payment": payment_cards(member, rows[:PAYMENT_SHOWN]), "payment_total": len(rows)}
 
 
 def assigned_card(member: TBIMember) -> list[dict]:
@@ -329,6 +348,20 @@ def _attention(filters: metrics.ReportFilters, cards: dict, review: dict, can_ap
     approval (counted as activities)."""
     items: list[AttentionItem] = []
     rows = metrics.document_attention(filters, now)
+    # ASSUMPTIONS 463: payment documents are listed per activity on the "For payment" card, never grouped by type
+    # here: one line points to it.
+    payment_names = set(settings.DOCUMENT_TYPES_FOR_PAYMENT)
+    payment_overdue = [row for row in rows["overdue"] if row["document_type"] in payment_names]
+    payment_rows = payment_overdue + [row for row in rows["due_soon"] if row["document_type"] in payment_names]
+    rows = {key: [row for row in rows[key] if row["document_type"] not in payment_names] for key in ("overdue", "due_soon")}
+    if payment_rows:
+        count = len({row["activity_id"] for row in payment_rows})
+        overdue = bool(payment_overdue)
+        items.append(AttentionItem(
+            "danger" if overdue else "warning",
+            f"{count} {'activity is' if count == 1 else 'activities are'} missing payment documents",
+            f"For payment (Supply Office) · {_titles(payment_rows)}", "Open",
+            f"{reverse('documents:list')}?view=payment"))
     for type_name, group in _group_by_type(rows["overdue"]).items():
         first = group[0]  # oldest due date first
         if len(group) == 1:

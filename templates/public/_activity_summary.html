@@ -2,7 +2,7 @@
 The activity at the top of the registration pages. {% include "public/_activity_summary.html" with activity=activity summary=summary %}
 summary (services.public_activity_summary) adds the slots left, the deadline, the categories and the description;
 without it only the title, type, dates, time and venue are shown (Ongoing / Conducted activities). Never who registered.
-heading="h2": the title is an h2 (inside the portal layout, whose page title is the h1).
+heading="h2": the title is an h2 (when the page title is the h1).
 {% endcomment %}
 <div class="flex items-start gap-4">
   {% include "components/date_tile.html" with activity=activity gradient=True %}

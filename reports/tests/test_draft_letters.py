@@ -279,7 +279,7 @@ def test_other_generated_submissions_can_still_be_saved(staff, director, worksho
 def test_creating_a_typed_draft_through_the_page(staff, meals, raf, draft_activity, client,
                                                  django_capture_on_commit_callbacks) -> None:
     client.force_login(staff)
-    page = client.get(reverse("reports:generator")).content.decode()
+    page = client.get(reverse("reports:list") + "?kind=request_letter").content.decode()  # the one Reports page (461)
     assert "Type the details (no activity yet)" in page and "Pitch Night" in page
     post = {"kind": "request_letter", "proposal_scope": "typed", "proposal_title": "Bootcamp",
             "proposal_start_date": "2027-02-10", "proposal_end_date": "2027-02-10", "proposal_venue": "Hub",
@@ -293,7 +293,7 @@ def test_creating_a_typed_draft_through_the_page(staff, meals, raf, draft_activi
     draft = ReportDraft.objects.get()
     assert response.status_code == 302 and draft.activity is None and draft.options["proposal"]["title"] == "Bootcamp"
     assert draft.options["memo_for_name"] == "Dr. Rolyn Daguil"
-    assert 'value="Dr. Rolyn Daguil"' in client.get(reverse("reports:generator")).content.decode()  # remembered
+    assert 'value="Dr. Rolyn Daguil"' in client.get(reverse("reports:list") + "?kind=request_letter").content.decode()
     with django_capture_on_commit_callbacks():
         client.post(reverse("reports:generator"), {"kind": "activity_design", "proposal_scope": "activity",
                                                    "proposal_activity": str(draft_activity.pk)})

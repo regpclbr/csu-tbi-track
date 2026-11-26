@@ -11,7 +11,6 @@ from django.core.management import call_command
 from accounts.models import Position, Role, TBIMember
 from activities.models import Activity
 from documents.models import DocumentType
-from startups.models import Startup
 
 pytestmark = pytest.mark.django_db
 
@@ -40,7 +39,7 @@ def fresh_seed(monkeypatch) -> str:
 def test_fresh_seed_has_no_account_and_no_demo_data(fresh_seed) -> None:
     assert "Admin account skipped" in fresh_seed
     assert not TBIMember.objects.exists()
-    assert not Activity.objects.exists() and not Startup.objects.exists()
+    assert not Activity.objects.exists()
     assert not Position.objects.exists()  # added by the System Administrator (Admin Console → Positions)
 
 

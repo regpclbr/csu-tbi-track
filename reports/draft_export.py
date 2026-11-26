@@ -35,6 +35,7 @@ KIND_HEADINGS = {ReportDraft.Kind.ACTIVITY_REPORT: "ACTIVITY REPORT",
                  ReportDraft.Kind.ACTIVITY_DESIGN: "ACTIVITY DESIGN",
                  ReportDraft.Kind.OTHER: "REPORT"}
 BLANK_LINE = "______________________________"
+DOCX_HEADING_COLOR = "1F6B3E"  # the primary green, like the PDF headings (ASSUMPTIONS 459)
 
 
 def heading(version: ReportDraftVersion) -> str:
@@ -250,7 +251,7 @@ def render_docx(version: ReportDraftVersion) -> bytes:
     from docx.enum.section import WD_ORIENT
     from docx.enum.table import WD_TABLE_ALIGNMENT
     from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
-    from docx.shared import Cm, Pt
+    from docx.shared import Cm, Pt, RGBColor
 
     draft, facts = version.draft, version.facts
     header, blocks = facts.get("header", {}), section_blocks(version)
@@ -263,6 +264,8 @@ def render_docx(version: ReportDraftVersion) -> bytes:
     section.top_margin, section.bottom_margin = Cm(1.8), Cm(1.8)
     style = doc.styles["Normal"]
     style.font.name, style.font.size = "Arial", Pt(10.5)
+    for name in ("Heading 1", "Heading 2", "Heading 3"):  # Word's default blue headings -> the primary green (459)
+        doc.styles[name].font.color.rgb = RGBColor.from_string(DOCX_HEADING_COLOR)
     if facts.get("form_code"):
         section.footer.paragraphs[0].text = facts["form_code"]
         section.footer.paragraphs[0].runs[0].font.size = Pt(8)

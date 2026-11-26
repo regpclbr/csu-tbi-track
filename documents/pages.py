@@ -140,6 +140,13 @@ def _attendance_forms(activity: Activity) -> list[dict]:
                                 (attendance_forms.CONFIRMATION, "Generate Confirmation of Attendance"))]
 
 
+def _generate_action(item: services.ChecklistItem, activity: Activity) -> dict | None:
+    from reports.hub import payment_action
+
+    action = payment_action(item.document_type, activity)
+    return action if action["kind"] else None
+
+
 def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm | None = None) -> dict:
     """The checklist (services.document_checklist: required types with due date, state and overdue flag; optional
     types with their documents), each document with its actions, and the upload form."""
@@ -157,6 +164,9 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
             "rows": [document_row(member, document) for document in item.documents],
             # Event Photos: one or more pictures, so an "Add a photo" link stays after the first (ASSUMPTIONS 425).
             "accepts_more": item.document_type.name in settings.DOCUMENT_TYPES_IMAGES_ONLY,
+            # ASSUMPTIONS 463: a payment file the system can make has "Generate" (the Reports page, this activity and kind
+            # chosen) while it is not Approved; anything else keeps Upload.
+            "generate": _generate_action(item, activity) if item.is_payment and item.state != services.APPROVED else None,
         })
     optional = [  # only the optional types that have documents
         {"document_type": entry["document_type"], "rows": [document_row(member, d) for d in entry["documents"]]}
@@ -206,8 +216,11 @@ def _certificate_type_name() -> str:
 
 # --- Repository ("By activity" and "All documents") and review queue -------------------------------------------
 
-VIEW_BY_ACTIVITY, VIEW_ALL = "activity", "all"
-VIEWS = [(VIEW_BY_ACTIVITY, "By activity", "layout-grid"), (VIEW_ALL, "All documents", "list")]
+VIEW_BY_ACTIVITY, VIEW_ALL, VIEW_PAYMENT = "activity", "all", "payment"
+VIEWS = [(VIEW_BY_ACTIVITY, "By activity", "layout-grid"), (VIEW_ALL, "All documents", "list"),
+         (VIEW_PAYMENT, "For payment", "banknote")]  # ASSUMPTIONS 463: one card per activity
+# On a phone the switch shows these shorter words and no icons, so the three choices fit at 390 px (463).
+SHORT_VIEW_LABELS = {VIEW_ALL: ("All", " documents")}
 MISSING = services.MISSING_STATE
 STATE_CHOICES = REVIEW_STATE_CHOICES + [(MISSING, MISSING_LABEL[0])]  # Missing: the "By activity" view only
 CARDS_PER_PAGE = 10  # activity cards per page
@@ -277,7 +290,7 @@ def parse_repository_filters(query: QueryDict) -> RepositoryFilters:
     """Read in the order of the form's fields, so the "ignored" note names them in that order."""
     ignored: list[str] = []
     view = query.get("view", "") or VIEW_BY_ACTIVITY
-    if view not in (VIEW_BY_ACTIVITY, VIEW_ALL):
+    if view not in (VIEW_BY_ACTIVITY, VIEW_ALL, VIEW_PAYMENT):
         ignored.append("view")
         view = VIEW_BY_ACTIVITY
     activity = _number(query.get("activity", ""), "activity", ignored)
@@ -326,12 +339,14 @@ def summary_cards(counts: dict[str, int], filters: RepositoryFilters, can_approv
 
 
 def view_links(filters: RepositoryFilters) -> list[dict]:
-    """The "By activity / All documents" switch (the filters stay; "Missing" only exists in "By activity")."""
+    """The "By activity / All documents / For payment" switch (the filters stay; "Missing" only exists in "By
+    activity")."""
     links = []
     for key, label, icon in VIEWS:
         state = "" if key == VIEW_ALL and filters.state == MISSING else filters.state
-        links.append({"key": key, "label": label, "icon": icon, "selected": filters.view == key,
-                      "url": filters.url(view=key, state=state)})
+        short, rest = SHORT_VIEW_LABELS.get(key, (label, ""))
+        links.append({"key": key, "label": label, "short": short, "rest": rest, "icon": icon,
+                      "selected": filters.view == key, "url": filters.url(view=key, state=state)})
     return links
 
 
@@ -437,6 +452,13 @@ def repository_page(member: TBIMember, filters: RepositoryFilters, now=None) -> 
     }
     if filters.view == VIEW_ALL:
         return {**context, **repository(member, filters)}
+    if filters.view == VIEW_PAYMENT:  # ASSUMPTIONS 463: the missing payment documents, one card per activity
+        from reports.hub import payment_cards
+
+        rows = services.payment_missing(now)
+        if filters.activity:
+            rows = [row for row in rows if row.activity.pk == filters.activity]
+        return {**context, "payment_cards": payment_cards(member, rows), "result": {"total": len(rows)}}
     shown = [entry for entry in overview if not filters.activity or entry.activity.pk == filters.activity]
     cards = [card for card in (_activity_card(member, entry, filters) for entry in shown) if card]
     result = _paginate(cards, filters.page, CARDS_PER_PAGE)

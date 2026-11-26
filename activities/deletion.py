@@ -9,7 +9,7 @@ certificates, documents and registrations, which themselves import activities.se
 - Otherwise, after the member typed the activity's title: one transaction deletes the certificates (waiting and approved
   not issued), their evidence, the documents (and their AI index rows), evaluations, registrations and answers, forms,
   the activity's own certificate text, signatory slots, category and resource person links, notifications, the
-  History rows and the activity. Resource persons, signatories, startups and members stay.
+  History rows and the activity. Resource persons, signatories and members stay.
 - An ACTIVITY_DELETION row (no foreign key to the activity) keeps who, when, what and how many; one log line on
   `activities.audit`. The stored files are removed from media only after the commit (a failed delete loses no file).
 - Deleted certificate numbers are never given again (CERTIFICATE_NUMBER_SEQUENCE, certificates.services).

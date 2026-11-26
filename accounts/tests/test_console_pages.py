@@ -72,7 +72,7 @@ def test_the_sidebar_marks_the_console_on_every_tab(admin) -> None:
     for name in CONSOLE_PAGES[:4]:
         html = admin.get(reverse(name)).content.decode()
         assert 'aria-current="page"' in html.split("Admin Console</span>")[0].rsplit("<a", 1)[1]
-        assert "is coming soon" not in html and reverse("startups:list") in html  # the Startups link
+        assert "is coming soon" not in html and "Startups: sync" not in html  # the Startups link went (ASSUMPTIONS 458)
 
 
 # --- Members ---------------------------------------------------------------------------------------------

@@ -1,23 +1,23 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/search/?q= (config.search.search_page): the first results of the Activities, Documents and Startups lists, each with
+/search/?q= (config.search.search_page): the first results of the Activities and Documents lists, each with
 its total and a "See all" link to that list filtered by the same words.
 {% endcomment %}
 {% block content %}
 <form method="get" action="{% url 'search' %}" role="search" class="mb-6 flex max-w-2xl gap-2">
   <div class="relative flex-1">
-    <label for="search-page-q" class="sr-only">Search activities, documents and startups</label>
+    <label for="search-page-q" class="sr-only">Search activities and documents</label>
     <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-slate-500">{% include "components/icon.html" with name="search" class="size-4.5" %}</span>
-    <input id="search-page-q" type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Activity title, document title or file name, startup name or email…"
+    <input id="search-page-q" type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Activity title, document title or file name…"
            class="field-input rounded-full py-3 pl-11 shadow-card"{% if not q %} autofocus{% endif %}>
   </div>
   <button type="submit" class="btn btn-primary">Search</button>
 </form>
 
 {% if not q %}
-  <div class="card p-6">{% include "components/empty_state.html" with icon="search" title="Type something to search" text="Search looks in activity titles, document titles and file names, and startup names and emails." %}</div>
+  <div class="card p-6">{% include "components/empty_state.html" with icon="search" title="Type something to search" text="Search looks in activity titles, document titles and file names." %}</div>
 {% elif not total %}
-  <div class="card p-6" role="status">{% include "components/empty_state.html" with icon="search" title="Nothing matches" text="No activity, document or startup matches your search. Check the spelling or try fewer words." %}</div>
+  <div class="card p-6" role="status">{% include "components/empty_state.html" with icon="search" title="Nothing matches" text="No activity or document matches your search. Check the spelling or try fewer words." %}</div>
 {% else %}
   <p class="sr-only" role="status">{{ total }} result{{ total|pluralize }}.</p>
   <div class="grid gap-6 xl:grid-cols-3">
@@ -43,11 +43,6 @@ its total and a "See all" link to that list filtered by the same words.
                   <a href="{% url 'documents:detail' item.pk %}" class="hover-row block rounded-xl px-2 py-2">
                     <span class="block truncate text-sm font-semibold text-ink">{{ item.title }}</span>
                     <span class="mt-1 block truncate text-xs text-muted">{{ item.document_type.name }} · {{ item.activity.title }}</span>
-                  </a>
-                {% else %}
-                  <a href="{% url 'startups:detail' item.pk %}" class="hover-row block rounded-xl px-2 py-2">
-                    <span class="block truncate text-sm font-semibold text-ink">{{ item.name }}</span>
-                    <span class="mt-1 block truncate text-xs text-muted">{{ item.email }}{% if not item.is_active %} · Inactive{% endif %}</span>
                   </a>
                 {% endif %}
               </li>

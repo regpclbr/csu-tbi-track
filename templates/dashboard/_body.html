@@ -143,6 +143,17 @@ next activity (beside the welcome banner, a filled block like the banner: ASSUMP
 </section>
 {% endif %}
 
+{# --- For payment (Supply Office), one card per activity (ASSUMPTIONS 463): only while something is missing --- #}
+{% if page.payment %}
+<section id="payment" class="card scroll-mt-24 p-6 xl:col-span-2 xl:row-start-7" aria-labelledby="payment-title" data-payment-card>
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <h2 id="payment-title" class="card-title flex items-center gap-2">{% include "components/icon.html" with name="banknote" class="size-5 text-primary" %}For payment (Supply Office)</h2>
+    <a href="{% url 'documents:list' %}?view=payment" class="link text-sm">See all{% if page.payment_total > page.payment|length %} {{ page.payment_total }}{% endif %}</a>
+  </div>
+  {% include "documents/_payment_cards.html" with cards=page.payment %}
+</section>
+{% endif %}
+
 {% with next=page.next_activity %}
 {# --- Spotlight beside the banner: "Happening now" or "Next activity" (reports.services.dashboard_spotlight) --- #}
 {% if next %}

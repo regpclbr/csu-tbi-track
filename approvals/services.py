@@ -69,7 +69,9 @@ SIGN_PDF_ONLY = "Only PDF files can be signed. Approve it without signing, or as
 SIGN_NO_SIGNATORY = ("Your account is not linked to a signature on the signatory list. Ask the member who manages "
                      "signatories to link it (Certificates → Signatories).")
 SIGN_NO_IMAGE = "Your signature on the signatory list has no image yet. Ask the member who manages signatories to add it."
-SIGN_NOT_DELEGATED = "Signing is never delegated: approve it without signing, or ask the Director to sign it."
+SIGN_NOT_DELEGATED = ("The Director did not allow you to stamp their signature on this one: approve it without signing, "
+                      "or ask the Director to sign it.")
+SIGNED_ON_BEHALF_LABEL = "Submission"  # the activity's History row when an assignee signs (ASSUMPTIONS 460)
 ASSIGNEE_OWN = "You cannot review your own submission through an assignment (separation of duties)."
 SAVE_NOT_APPROVED = "Only an approved submission can be saved to the activity's documents."
 SAVE_NO_ACTIVITY = "This submission is not linked to an activity."
@@ -111,16 +113,30 @@ def is_pdf(submission: Submission) -> bool:
     return submission.file_extension == "pdf"
 
 
+def stamp_owner(member: TBIMember, submission: Submission):
+    """Whose signature `member` would stamp on this submission: their own (a reviewer, can_approve_documents), or the
+    ASSIGNER's when an open "Review the submission" assignment allows it (allow_signing, ASSUMPTIONS 460: "signed on
+    behalf of"). None when they may not sign it at all."""
+    if can_review(member):
+        return member
+    from .assignments import open_assignment
+
+    assignment = open_assignment(member, ("submission_review",), submission)
+    return assignment.assigned_by if assignment is not None and assignment.allow_signing else None
+
+
 def sign_refused_reason(member: TBIMember, submission: Submission) -> str | None:
-    """Why `member` cannot stamp their signature on this submission, or None. PDF only; their own active, linked
-    signature with an image (signing is never delegated)."""
+    """Why `member` cannot stamp a signature on this submission, or None. PDF only; the signature is always the
+    signing person's own active, linked one with an image: the reviewer's, or (ASSUMPTIONS 460) the Director's when they
+    allowed it in the assignment (never the assignee's own)."""
     from certificates.services import signatory_for
 
-    if not can_review(member):
-        return SIGN_NOT_DELEGATED  # an assignee may approve, never sign (ASSUMPTIONS 437)
+    owner = stamp_owner(member, submission)
+    if owner is None:
+        return SIGN_NOT_DELEGATED
     if not is_pdf(submission):
         return SIGN_PDF_ONLY
-    signatory = signatory_for(member)
+    signatory = signatory_for(owner)
     if signatory is None:
         return SIGN_NO_SIGNATORY
     if not signatory.signature_image_path:
@@ -211,6 +227,13 @@ def _notify_submitter(submission: Submission, actor: TBIMember, kind: str, messa
 
 def _reviewers_except(member: TBIMember) -> QuerySet:
     return active_document_approvers().exclude(pk=member.pk).order_by("pk")
+
+
+def offers_submit(member: TBIMember) -> bool:
+    """Show "Submit to the Director" (ASSUMPTIONS 456) only when somebody ELSE could approve it: never to the Director
+    on their own account (they would submit to themselves). submit() refuses the same case (nobody else could approve),
+    so hiding the button is never the only check."""
+    return _reviewers_except(member).exists()
 
 
 def _check_links(activity: Activity | None, document_type: DocumentType | None) -> None:
@@ -348,7 +371,7 @@ def _stamped(member: TBIMember, submission: Submission, placement: signing.Place
 
     if refused := sign_refused_reason(member, submission):
         raise SubmissionError(refused)
-    signatory = signatory_for(member)
+    signatory = signatory_for(stamp_owner(member, submission))  # own, or the Director's on their behalf (460)
     with signatory.signature_image_path.open("rb") as handle:
         image = handle.read()
     try:
@@ -362,7 +385,7 @@ def signed_preview(member: TBIMember, submission: Submission, placement: signing
                    now: datetime | None = None) -> bytes:
     """The stamped copy as it would be saved, for checking before approving (never stored). The same rules as signing
     while approving."""
-    require_permission(member, REVIEW_PERMISSION)
+    require_permission_for(member, REVIEW_PERMISSION, submission)  # or its assignment (ASSUMPTIONS 460)
     if submission.submitted_by_id == member.pk:
         raise SubmissionError(OWN_SUBMISSION)
     return _stamped(member, submission, placement, now or timezone.now())[0]
@@ -376,7 +399,7 @@ def approve_submission(member: TBIMember, submission: Submission, *, sign: bool 
     now = now or timezone.now()
     with transaction.atomic():
         submission = _locked(submission)
-        _ensure_reviewer(member, submission)
+        assignment = _ensure_reviewer(member, submission)
         signed_name = None
         if sign:
             data, signatory = _stamped(member, submission, placement or signing.Placement(signing.NOTED), now)
@@ -395,7 +418,9 @@ def approve_submission(member: TBIMember, submission: Submission, *, sign: bool 
                 submission.save()
                 _event(submission, SubmissionEvent.Action.APPROVED, member)
                 if signed_name:
-                    _event(submission, SubmissionEvent.Action.SIGNED, member)
+                    _event(submission, SubmissionEvent.Action.SIGNED, member)  # on_behalf_of = the assigner (460)
+                    if assignment is not None:
+                        _signed_on_behalf(submission, member, assignment.assigned_by)
                 audit_log.info("Submission approved: submission_id=%s by member_id=%s signed=%s", submission.pk,
                                member.pk, bool(signed_name))
                 from .assignments import complete_for
@@ -409,6 +434,23 @@ def approve_submission(member: TBIMember, submission: Submission, *, sign: bool 
             _delete_file(signed_name)
             raise
     return submission
+
+
+def _signed_on_behalf(submission: Submission, member: TBIMember, director: TBIMember) -> None:
+    """ASSUMPTIONS 460: an assignee stamped the Director's signature. The activity's History (when the submission is
+    linked to one) says "signed on behalf of" and the Director is told. SUBMISSION_EVENT already records it."""
+    if submission.activity_id:
+        from activities.services import _write_audit
+
+        _write_audit(submission.activity, member, [(
+            SIGNED_ON_BEHALF_LABEL, "",
+            f'"{submission.title[:150]}" approved and signed by {member.name} on behalf of {director.name}')])
+    if director.is_active:
+        Notification.objects.create(
+            member=director, submission=submission, activity=submission.activity, type=Notification.SUBMISSION_APPROVED,
+            message=f'{member.name[:60]} approved "{submission.title[:150]}" and stamped your signature on your behalf.')
+    audit_log.info("Submission signed on behalf: submission_id=%s by member_id=%s for member_id=%s", submission.pk,
+                   member.pk, director.pk)
 
 
 def return_submission(member: TBIMember, submission: Submission, reason: str, now: datetime | None = None) -> Submission:

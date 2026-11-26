@@ -32,6 +32,8 @@ class GeneratedReport(models.Model):
     format = models.CharField(max_length=10, choices=Format.choices)
     file_path = models.FileField(upload_to="reports/%Y/%m/", max_length=255)
     generated_at = models.DateTimeField(auto_now_add=True)
+    # ASSUMPTIONS 461: the member's notes to guide the AI summary (one Reports page). Never a source of numbers.
+    notes = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "generated_report"
@@ -175,7 +177,10 @@ class ReportAttachment(models.Model):
         NOT_SENT = "not_sent", "Not sent to the AI"
 
     attachment_id = models.BigAutoField(primary_key=True)
-    draft = models.ForeignKey(ReportDraft, on_delete=models.CASCADE, related_name="attachments")
+    # Exactly one of: a draft of the report generator, or a figures report (GENERATED_REPORT, ASSUMPTIONS 461).
+    draft = models.ForeignKey(ReportDraft, on_delete=models.CASCADE, null=True, blank=True, related_name="attachments")
+    generated_report = models.ForeignKey(GeneratedReport, on_delete=models.CASCADE, null=True, blank=True,
+                                         related_name="attachments")
     kind = models.CharField(max_length=20, choices=Kind.choices)
     file_path = models.FileField(upload_to=attachment_upload_to, max_length=255)
     file_name = models.CharField(max_length=255, help_text="The uploaded name, for display only (never in a path).")
@@ -190,6 +195,13 @@ class ReportAttachment(models.Model):
     class Meta:
         db_table = "report_attachment"
         ordering = ["uploaded_at", "attachment_id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(draft__isnull=False, generated_report__isnull=True)
+                | Q(draft__isnull=True, generated_report__isnull=False),
+                name="report_attachment_draft_or_generated_report",
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.file_name

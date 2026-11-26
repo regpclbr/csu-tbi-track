@@ -19,6 +19,10 @@ picks it from the tab); attendance changes are normal POSTs that come back here 
         <p class="card-subtitle">Nobody outside the TBI staff sees this list.</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        {% if walk_in and not walk_in.reason %}
+          {# ASSUMPTIONS 455: the staff "Add a walk-in" (registrations.attendance.add_walk_in_by_staff). #}
+          <a href="{{ walk_in.url }}" class="btn btn-secondary btn-sm" data-add-walk-in>{% include "components/icon.html" with name="user-plus" class="size-4" %}Add a walk-in</a>
+        {% endif %}
         <a href="{% url 'registrations:attendance_sheet' activity.pk %}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">
           {% include "components/icon.html" with name="file-text" class="size-4" %}Print attendance sheet<span class="sr-only"> (opens in a new tab)</span></a>
         <a href="{{ activity_url }}?tab=evaluation" hx-get="{{ activity_url }}?tab=evaluation" hx-target="#tab-area" hx-push-url="true" class="btn btn-secondary btn-sm">

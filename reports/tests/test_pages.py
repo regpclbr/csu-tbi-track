@@ -97,7 +97,7 @@ def test_no_pills_means_the_type_defaults(director, login, queued) -> None:
     data = {key: value for key, value in VALID.items() if key != "included_sections"}
     response = login(director).post(reverse("reports:list"), data)  # no pills and no AI: the service uses the defaults
     assert response.status_code == 302
-    assert services.sections_of(GeneratedReport.objects.get()) == ["summary", "by_category", "category_by_activity", "monthly", "startups"]
+    assert services.sections_of(GeneratedReport.objects.get()) == ["summary", "by_category", "category_by_activity", "monthly"]
 
 
 # --- History and polling -----------------------------------------------------------------------------------------

@@ -21,8 +21,6 @@ from assistant.gemini import AssistantUnavailable
 from reports import services, tasks
 from reports.content import AI_LABEL, REPORT_TYPES
 from reports.models import GeneratedReport
-from startups.models import Startup
-from startups.services import STARTUP_SESSION_KEY
 
 from .conftest import TEST_NOW
 
@@ -41,10 +39,9 @@ def queued(monkeypatch) -> list[int]:
 
 @pytest.fixture
 def year_data(make_activity, register, evaluate):
-    """One conducted activity with registrations, an evaluation (with personal text) and a startup."""
-    startup = Startup.objects.create(name="Secret Startup Inc", email="founder@secret.test", navigatu_id="S1")
+    """One conducted activity with registrations and an evaluation (with personal text)."""
     activity = make_activity("Pitching Workshop", start=date(2026, 3, 10), categories=("Faculty", "MSMEs"))
-    ana = register(activity, "Ana Dela Cruz", attended=True, email="ana.private@example.com", startup=startup)
+    ana = register(activity, "Ana Dela Cruz", attended=True, email="ana.private@example.com")
     register(activity, "Ben Santos", attended=False, email="ben.private@example.com")
     evaluate(ana, {"Overall rating": 5}, comments="Ana's private comment", text_answers={"Suggestions": "Call me at 0917"})
     return activity
@@ -199,7 +196,7 @@ def test_state_is_failed_when_the_task_failed(director, queued) -> None:
 
 def test_ai_summary_is_included_labeled_and_its_prompt_saved(director, queued, year_data, fake_gemini, fake_pdf_renderer) -> None:
     fake_gemini.replies.append(fake_gemini.say("In 2026 the TBI conducted one workshop with 2 registrants."))
-    report = request(director, included_sections=["summary", "ai_summary", "activities", "by_category", "evaluation", "startups"])
+    report = request(director, included_sections=["summary", "ai_summary", "activities", "by_category", "evaluation"])
     services.build_report(report.pk, now=TEST_NOW)
     report.refresh_from_db()
 
@@ -209,13 +206,13 @@ def test_ai_summary_is_included_labeled_and_its_prompt_saved(director, queued, y
     assert call["tools"] == []
     prompt = call["turns"][0].text
     assert report.ai_prompt == f"[System instruction]\n{call['system_instruction']}\n\n[Prompt]\n{prompt}"
-    # Only figures, activity titles and dates: never names, emails, comments, answers or startup names.
+    # Only figures, activity titles and dates: never names, emails, comments or answers.
     assert "Pitching Workshop" in prompt and "2026-03-10" in prompt
     for private in ("Ana Dela Cruz", "Ben Santos", "ana.private@example.com", "ben.private@example.com",
-                    "private comment", "Call me at 0917", "Secret Startup Inc", "founder@secret.test"):
+                    "private comment", "Call me at 0917"):
         assert private not in report.ai_prompt
     # The tables still come from the database.
-    assert "Secret Startup Inc" in text
+    assert "Pitching Workshop" in text
 
 
 def test_report_is_still_generated_when_gemini_fails(director, queued, year_data, fake_gemini, fake_pdf_renderer) -> None:
@@ -275,15 +272,9 @@ def test_any_active_staff_member_downloads_as_an_attachment(ready_report, view_o
     load_workbook(BytesIO(b"".join(response.streaming_content)))
 
 
-def test_download_refuses_anonymous_and_startups(ready_report) -> None:
+def test_download_refuses_anonymous(ready_report) -> None:
     url = reverse("reports:download", args=[ready_report.pk])
-    assert Client().get(url).status_code == 302
-    startup = Startup.objects.get(email="founder@secret.test")
-    client = Client()
-    session = client.session
-    session[STARTUP_SESSION_KEY] = startup.pk
-    session.save()
-    response = client.get(url)
+    response = Client().get(url)
     assert response.status_code == 302 and "login" in response["Location"]
 
 

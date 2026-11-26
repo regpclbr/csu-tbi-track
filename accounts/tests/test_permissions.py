@@ -10,7 +10,6 @@ from django.test import RequestFactory
 
 from accounts.permissions import Permission, has_permission, permission_required, require_permission
 from config.views import permission_denied
-from startups.models import Startup
 from conftest import VIEW_ONLY_ROLE
 
 # role: (can_create_activity, can_manage_users), as seeded in Step 2
@@ -33,10 +32,9 @@ def test_has_permission_for_each_role(make_member, role_name, expected) -> None:
 
 
 @pytest.mark.django_db
-def test_inactive_anonymous_and_startup_have_no_permissions(make_member) -> None:
+def test_inactive_and_anonymous_have_no_permissions(make_member) -> None:
     inactive_admin = make_member("System Administrator", is_active=False)
-    startup = Startup(name="Acme", email="acme@example.com")
-    for user in (inactive_admin, AnonymousUser(), startup, None):
+    for user in (inactive_admin, AnonymousUser(), None):
         assert not has_permission(user, Permission.CREATE_ACTIVITY)
         assert not has_permission(user, Permission.MANAGE_USERS)
 

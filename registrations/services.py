@@ -103,7 +103,7 @@ def _count_attempt(kind: str, value: str, limit: int) -> bool:
 
 
 def guard_public_registration(ip: str, email, honeypot) -> None:
-    """Checks for a public registration POST, before registering (never for the startup portal).
+    """Checks for a public registration POST, before registering (never for the staff "Add a walk-in").
 
     - Rate limit: at most REGISTRATION_MAX_ATTEMPTS_PER_IP attempts per IP address and
       REGISTRATION_MAX_ATTEMPTS_PER_EMAIL per email (any activity) in REGISTRATION_RATE_WINDOW_MINUTES.
@@ -125,7 +125,7 @@ def guard_public_registration(ip: str, email, honeypot) -> None:
 
 
 # --- Privacy notice consent (public registration and evaluation, ASSUMPTIONS 394) -----------------
-# A required checkbox, checked here so the HTML pages, the JSON endpoints and the startup portal all refuse the same way.
+# A required checkbox, checked here so the HTML pages and the JSON endpoints all refuse the same way.
 # Nothing is stored (no column, no ERD change): a registration or evaluation can only exist when it was ticked.
 
 PRIVACY_CONSENT_FIELD = "privacy_consent"
@@ -142,7 +142,7 @@ def has_privacy_consent(value) -> bool:
 
 def check_privacy_consent(value) -> None:
     """Refuse (ValidationError on PRIVACY_CONSENT_FIELD) unless the privacy notice checkbox was ticked. Call it before
-    `register` (public page, /api/register/, startup portal) and `submit_evaluation` (evaluation page, /api/evaluate/)."""
+    `register` (public page, /api/register/) and `submit_evaluation` (evaluation page, /api/evaluate/)."""
     if not has_privacy_consent(value):
         raise ValidationError({PRIVACY_CONSENT_FIELD: [PRIVACY_CONSENT_REQUIRED]})
 
@@ -176,7 +176,7 @@ def evaluation_answers(member: TBIMember, registration: Registration) -> dict:
     EvaluationSubmission.DoesNotExist when the registration has not evaluated (the views answer 404)."""
     from reports.metrics import participant_average
 
-    require_permission(member, INDIVIDUAL_EVALUATION_PERMISSION)
+    require_permission_for(member, INDIVIDUAL_EVALUATION_PERMISSION, registration.activity)  # or assigned (460)
     submission = EvaluationSubmission.objects.select_related("registration__participant_category").get(registration=registration)
     answers = sorted(submission.answers.select_related("field"), key=lambda answer: (answer.field.sort_order, answer.field_id))
     ratings, others = [], []
@@ -605,7 +605,7 @@ def open_activities(now: datetime | None = None) -> list[Activity]:
     """Activities open for registration right now, soonest first: Scheduled, deadline not passed,
     slots left and a registration form (registration_closed_reason is None). The query is
     activities.services.open_for_registration(), the one rule shared with the Activities card and
-    preset and the dashboard KPI. Used by the public list and the startup portal."""
+    preset and the dashboard KPI. Used by the public list."""
     return list(
         open_for_registration(now=now).select_related("status", "activity_type").order_by("start_date", "activity_id")
     )
@@ -668,21 +668,17 @@ def register(
     participant_category=None,
     answers: dict | None = None,
     now: datetime | None = None,
-    startup=None,
     signature: dict | None = None,
 ) -> Registration:
     """Public registration ("Will attend", ASSUMPTIONS 434). Everyone who registers is in (no approval step).
 
     `designation` (Designation / Position) and `office_agency` (Office / Agency) are required fixed fields of every
-    registration (ASSUMPTIONS 426): the public page and API, the startup portal and any later entry point.
+    registration (ASSUMPTIONS 426): the public page and API and any later entry point.
 
     `signature` (ASSUMPTIONS 434): the raw signature fields (registrations.signatures.from_post / from_json). Every public
-    entry point (registration page and API, startup portal page and API) passes it, even empty, so it is REQUIRED there
+    entry point (registration page and API) passes it, even empty, so it is REQUIRED there
     and checked together with the other fields; None = not asked (Django admin, demo seed, tests), like the privacy
     consent, which the entry points check before calling this.
-
-    `startup` is set only by the startup portal (a logged-in startup registering; source "portal"); every
-    other rule is exactly the same as for a public registration.
 
     The activity row is locked first, so two people cannot take the last slot at the same time. The registration, its
     answers and its signature are saved together; the confirmation email is sent only after the save succeeds.
@@ -717,9 +713,8 @@ def register(
     if locked.registrations.filter(email__iexact=values["email"]).exists():
         raise RegistrationError("This email is already registered for this activity.")
 
-    source = Registration.Source.PORTAL if startup is not None else Registration.Source.ONLINE
     registration = Registration.objects.create(
-        activity=locked, template=form, startup=startup, registration_source=source, **values,
+        activity=locked, template=form, registration_source=Registration.Source.ONLINE, **values,
     )
     for field, value in stored_answers.items():
         FormAnswer.objects.create(
@@ -809,11 +804,11 @@ def undo_refused_reason(registration: Registration) -> str | None:
 def list_registrations(
     activity: Activity, attended: bool | None = None, participant_category_id: int | None = None, search: str = ""
 ) -> QuerySet:
-    """Staff list of an activity's registrations by name, with category, startup, evaluation and answers.
+    """Staff list of an activity's registrations by name, with category, evaluation and answers.
     `search` matches the name, the email or the office / agency (ignoring case)."""
     registrations = (
         activity.registrations.select_related(
-            "participant_category", "startup", "evaluation_submission", "signature"
+            "participant_category", "evaluation_submission", "signature"
         )
         .prefetch_related("answers__field", "certificates", "attendance_days__marked_by")
         .order_by("name", "registration_id")
@@ -862,22 +857,31 @@ def evaluation_window(activity: Activity) -> tuple[datetime, datetime | None]:
 
 
 def evaluation_has_closed(activity: Activity, now: datetime | None = None) -> bool:
-    """True once the evaluation deadline has passed; never without a deadline (ASSUMPTIONS 423). The one check every
-    "closed" rule uses (links, Needs attention, certificate readiness)."""
+    """True once the evaluation deadline has passed (never without a deadline, ASSUMPTIONS 423) or while the TBI closed
+    it by hand (ASSUMPTIONS 452). The one check every "closed" rule uses (links, Needs attention, certificate
+    readiness)."""
+    if activity.evaluation_closed_by_hand:
+        return True
     deadline = activity.evaluation_deadline
     return deadline is not None and (now or timezone.now()) > deadline
 
 
 def evaluation_open_q(now: datetime) -> Q:
-    """Activities whose evaluation has not closed at `now` (no deadline, or the deadline not passed): the query
-    version of evaluation_has_closed."""
-    return Q(evaluation_deadline__isnull=True) | Q(evaluation_deadline__gte=now)
+    """Activities whose evaluation has not closed at `now` (not closed by hand, and no deadline or the deadline not
+    passed): the query version of evaluation_has_closed."""
+    return Q(evaluation_closed_by_hand=False) & (Q(evaluation_deadline__isnull=True) | Q(evaluation_deadline__gte=now))
+
+
+EVALUATION_CLOSED_BY_TBI = ("The TBI closed the evaluation of this activity. Please contact the TBI if you still need "
+                            "to answer it.")
 
 
 def _window_reason(activity: Activity, now: datetime) -> str | None:
     opens, closes = evaluation_window(activity)
     if now < opens:
         return f"The evaluation opens on {format_datetime(opens)}."
+    if activity.evaluation_closed_by_hand:
+        return EVALUATION_CLOSED_BY_TBI
     if evaluation_has_closed(activity, now):
         return f"The evaluation closed on {format_datetime(closes)}."
     return None
@@ -1089,7 +1093,7 @@ def send_evaluation_links(
     Refused if the activity has no evaluation form or the evaluation window is not open, and (with
     registration_ids) if one of them is not an attendee who still has to evaluate.
     """
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)  # or its assignment (ASSUMPTIONS 460)
     if reason := evaluation_links_closed_reason(activity, now):
         raise RegistrationError(reason)
     recipients = evaluation_link_recipients(activity)

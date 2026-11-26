@@ -2189,7 +2189,7 @@ REGISTRATION.office_agency (+ notes on TBI_MEMBER.position_id, POSITION.name and
      2026-11-24). The budget is already approved on paper inside the Activity Design: staff only copy it in. No approval
      status, notification or Needs attention item for the budget. *(Open question, CLAUDE.md.)*
      - **Database (34 -> 37 tables):** FUND_SOURCE (`fund_source_id`, `code` unique, `name`, `is_active`, `sort_order`,
-       `created_at`; RAF – Regular Agency Fund, IGF – Internally Generated Fund, TRF – Thrust Fund, BRF – Business Related
+       `created_at`; RAF – Regular Agency Fund, IGF – Internally Generated Fund, TRF – Trust Fund, BRF – Business Related
        Fund), BUDGET_CATEGORY (`budget_category_id`, `name` unique, `is_active`, `sort_order`, `created_at`; Meals/Snacks,
        Honorarium, Supplies, Venue, Transportation, Printing, Other), BUDGET_LINE (`budget_line_id`, `activity` FK CASCADE,
        `category` FK PROTECT, `particulars` max 255, `quantity` DECIMAL(10,2) > 0, `unit` max 30, `days` integer >= 1
@@ -2877,3 +2877,200 @@ Evaluation Summary (items 441 onwards).
      exists, mkdir '...\static\css'" whenever the CSS CHANGED (identical output is never written, which is why it seemed
      to work sometimes). The command now writes to a temporary file (`%TEMP%\tbi-tailwind-app.css`) and copies it into
      `static/css/app.css`; the manual steps are in CLAUDE.md ("Commands"). `tailwind watch` still writes directly.
+
+## Owner feedback before the user testing, Part 1: small fixes (2026-11-26)
+
+450. **Enter never submits a long staff form** (owner). `static/js/form_keys.js` (loaded on every page by `base.html`,
+     self-hosted): inside a form marked `data-enter-submit="off"`, Enter in a text, date, time, number or select box does
+     nothing; only clicking the submit button (or Enter / Space ON it) submits. A textarea still makes a new line;
+     buttons, links and the shared chat box (its own keys, item 441) are untouched. Marked: New / Edit activity (with its
+     budget lines and typed dates / times), the Forms tab's field editor, the per-activity "Certificate text" and
+     `/certificates/text/`, the report generator's New draft, Approvals' "Submit to the Director" and the Assign dialog,
+     the Signatories "Add a person" (page and inline) and "Edit", the paper-sheet rows and the staff "Add a walk-in".
+     NOT marked: login, the search boxes, the Reports prompt box (Enter sends, item 384), the AI chat and every public
+     page. Display help only: the server checks every value. Tests: `config/tests/test_owner_feedback_part1.py`; Chromium
+     `registrations/tests/test_part1_browser.py` (also items 453, 454).
+
+451. **TRF is the "Trust Fund"** (owner: not "Thrust Fund"). `accounts/seed.py`, ASSUMPTIONS 433, CLAUDE.md and the test.
+     Guarded data step in migration `activities/0016`: only a TRF row still named "Thrust Fund" is renamed (a name the
+     Admin changed is left alone; reversible). History rows written before keep their old text (append-only).
+
+452. **Close / open the evaluation by hand** (owner; same pattern as item 427). New `ACTIVITY.evaluation_closed_by_hand`
+     (default False = the old rules; migration `activities/0016`), changed ONLY by
+     `activities.services.set_evaluation_closed_by_hand` (can_create_activity or the activity's assignment; Ongoing or
+     Conducted; History row "Evaluation": "Closed by the TBI" / "Reopened by the TBI"). It works also without a deadline
+     (item 423). It is read ONLY by `registrations.services.evaluation_has_closed` / `evaluation_open_q` (the one
+     "closed" rule), so everything follows: the personal link and the API refuse new answers ("The TBI closed the
+     evaluation of this activity…", `EVALUATION_CLOSED_BY_TBI`), the general link shows closed, no links are sent (staff or
+     automatic), Needs attention treats it as closed. Opening again only removes the hand closing (the deadline still
+     applies). Evaluation tab: "Close the evaluation" / "Open the evaluation again" + an amber note while closed.
+     - **Certificates** ("No evaluation = no certificate", unchanged): while closed, an attendee who has not evaluated
+       gets "Evaluation closed without an answer" (`certificates.services.readiness`): no certificate is approved, issued
+       or emailed for them. Opening it again puts them back to "Waiting for evaluation". Evaluations already submitted,
+       approved and issued certificates are never touched.
+     - Tests: `registrations/tests/test_evaluation_closed_by_hand.py`.
+
+453. **The three signature choices are equal and visible** (owner: "Upload a picture" was easy to miss). The shared
+     `public/_signature_field.html` shows three tiles (radio + icon + one line of help): **Draw** ("With your finger, a
+     pen or the mouse"), **Upload a picture** ("A photo of your signature on paper (JPG or PNG)"), **Type my name** ("Your
+     full name, used as your signature"); one row from 640 px, stacked on phones; the chosen tile is highlighted. Used by
+     the public registration, the QR check-in, the QR walk-in and the staff "Add a walk-in"; the staff "Mark attended"
+     dialog keeps Draw / Type (staff=True). The rules (`signatures.clean_signature`) are unchanged.
+
+454. **The QR check-in window** (owner). Before: each activity day from `PARTICIPANT_CHECKIN_EARLY_MINUTES` (60) before
+     the start time until the END time (Scheduled or Ongoing; without times the whole day). Now: from 60 minutes before
+     the start until `PARTICIPANT_CHECKIN_LATE_MINUTES` (60, new setting) AFTER the start time, each day
+     (`registrations.attendance.day_window`); without times still the whole day. After today's window the check-in page
+     says "Check-in for today closed at 9:00 AM. Please ask the TBI staff at the registration desk to mark your
+     attendance." (`CHECKIN_CLOSED_TODAY`); QR walk-ins close with it. Staff marking by hand is unchanged
+     (`attendance_closed_reason`). Tests: `registrations/tests/test_checkin_window_and_staff_walk_in.py`.
+
+455. **Staff "Add a walk-in"** (owner decision 2026-11-26, because QR walk-ins now close an hour after the start). The
+     Registrations tab's "Add a walk-in" (can_create_activity or the activity's assignment) opens
+     `/registrations/activities/<id>/walk-in/`: the participant fills it in on the staff device: full name, email,
+     contact number, Designation / Position, Office / Agency, the participant category, the signature (draw, upload or
+     typed name: the three tiles of item 453) and the privacy consent (`services.check_privacy_consent`). The rule is
+     `registrations.attendance.add_walk_in_by_staff`: the same checks as the QR walk-in (`clean_registrant`, signature
+     required, the same email refused, no slot limit, also when registration is closed), on any day of the activity
+     while it is **Ongoing**; it marks TODAY's attendance with method "staff" (`marked_by` = the member) and writes a
+     History row "Walk-in" ("<name> added by staff, attended <date>"); the check-in email is queued as for a QR walk-in.
+
+456. **No Director-to-self actions** (owner). Decided by flags, never by the role's name:
+     - "Submit to the Director" (Approvals button, the "My submissions" empty state, the Documents tab link, the report
+       generator's Submit) is shown only when somebody ELSE could approve it (`approvals.services.offers_submit` = an
+       active member with can_approve_documents other than you). That is exactly the case `submit()` already refused
+       (separation of duties: never your own), so the Director never sees it, while a second approver (a stand-in) still
+       can submit to the Director.
+     - "Assigned to me" (Approvals tab) is hidden for a member with can_assign_work who has never been given work
+       (`approvals.assignments.shows_assigned_to_me`); the Dashboard card already appears only with open assignments.
+     - Both are on the staff layout (`layout.offers_submit`, `layout.shows_assigned`). Separation rules unchanged
+       (`accounts/tests/test_separation_of_duties.py`, `approvals/tests`).
+
+457. **The certificate number and the recipient's name open its preview** (owner). On the Certificates page
+     (`certificates/_table.html`: `certificates:preview` in a new tab) and on the Certificates tab (the same large preview
+     as the row's Preview button; without JavaScript its preview page). The preview of an Issued certificate is the
+     stored final PDF (item 358). The existing buttons stay.
+
+458. **The startup portal is removed** (owner, before the user testing: a Chapter 5 recommendation). Removed: the portal
+     (login, pages, layout, sidebar, set-password pages and emails, "My certificates"), the staff "Startups" pages and
+     the Admin Console link, the Navigatu sync (StartupProvider, the mock data, the 7:00 schedule, `sync_startups`,
+     `create_review_startup`, `STARTUP_*` settings, `.env.example` lines), the search group, the login-page link, the
+     N18 "Startups engaged" number (dashboard card, Summary row) and the Participation report's "Startups engaged"
+     section (older GENERATED_REPORT rows that list it are read safely: `content.ordered_sections` skips unknown keys;
+     their files stay as they are).
+     - **Database (49 -> 48 tables):** table STARTUP; columns REGISTRATION.startup_id and NOTIFICATION.startup_id; the
+       check "notification has exactly one recipient" (NOTIFICATION.member_id becomes required); the value "portal" of
+       REGISTRATION.registration_source (now online / walk_in).
+     - **Registrations are never lost:** migration `registrations/0015` turns every "portal" registration into an
+       "online" one (name, email, answers, attendance, evaluation and certificates unchanged) and prints how many, then
+       drops the column. `notifications/0005` deletes the notifications addressed to a startup (only the portal showed
+       them; they have no recipient any more; it prints how many); member notifications stay. `startups/0003` removes
+       the sync schedule row and drops STARTUP. The `startups` app stays installed as an empty shell (apps.py, an empty
+       models.py, its migrations) only so this migration runs on existing databases.
+     - Demo data: a few representatives of invented incubatee teams register online.
+     - Tests: `registrations/tests/test_migration_startup_portal_removed.py`.
+
+459. **Green theme** (owner: "close to CSU's green", same layout and gradients). The logo files in `static/img/` have no
+     CSU green (a teal mark #2ABAB2 and white strokes on the navy tile), so the proposed palette is used: only the tokens
+     between OPTION START / END changed: frame `#0F4A2C` -> `#3F9A6B`, primary `#1F6B3E` (hover `#195A34`, pressed
+     `#144A2B`, soft `#E6F1EA`, tint `#D2E6D9`), link `#1E7244`, on-dark muted `#D4EEDD`, accent `#9FDDB8` (white on the
+     primary 6.5:1, primary text on the panel 6.0:1, links 5.5-5.9:1, primary on its soft 5.6:1: every text pair at least
+     4.5:1). Everything else derives from the tokens (sidebar, focus ring, shadows, gradients). Chart colours: the first is
+     the primary green and the old green slot became the former navy (`CATEGORY_COLORS`, colour-blind check). The logo
+     tiles are re-exported on `#0F4A2C` (the mark at 72%, as item 256). The generated PDFs (report, draft, one
+     evaluation, attendance forms), the Excel header (`excel.BRAND_NAVY`, name kept) and the DOCX headings
+     (`draft_export.DOCX_HEADING_COLOR`) follow the same green. Status colours (info blue, success green, …) unchanged.
+     Real-WeasyPrint check: `reports/tests/test_report_pdf_layout.py`.
+
+## Owner feedback before the user testing, Part 2: assigned work, one Reports page, For payment (2026-11-26)
+
+460. **All the Director's work can be assigned** (owner; extends item 437, same WORK_ASSIGNMENT and helpers). Every
+     Director-only action is listed in `approvals.assignments.ASSIGNABLE_ACTIONS` with the kind that gives it (a test
+     keeps the list and `KIND_PERMISSIONS` in step):
+
+     | Director-only action | Assignment kind |
+     |---|---|
+     | Approve or return a document that needs review | document_review |
+     | Rename, replace or delete another member's waiting document | document_review |
+     | Approve or return a submission (never your own) | submission_review |
+     | Stamp the Director's signature on a submission | submission_review + "May stamp my signature" |
+     | Approve an activity's certificates; reissue its outdated certificates | certificate_approval |
+     | Choose an activity's signatories and their titles | signatory_choice |
+     | Edit the default certificate text | **certificate_text (new, no object)** |
+     | Manage the signatory list (add, edit, images, deactivate, defaults) | **signatories (new, no object)** |
+     | Close / reopen registration and the evaluation, edit another member's activity, the activity's evaluation answers, links, photos and attendance forms | activity |
+     | Prepare any report (figures report or report generator) | report |
+     | Unapprove a document / a submission / an activity's certificates | never (the Director's own decision) |
+     | Link a signature to an account, change a signature linked to an account | never (it is the Director's stamp) |
+     | Assign work | never |
+
+     - **Two new kinds without an object:** `certificate_text` (gives can_approve_certificates for the default text only:
+       `save_default_text` uses `require_permission_for(..., None, kind="certificate_text")`) and `signatories` (gives
+       can_manage_signatories for the list only; a signature linked to an account stays the Director's:
+       `certificates.services.LINKED_SIGNATURE_DIRECTOR_ONLY`; never to a can_manage_users member, like the flag). One open
+       assignment of each at a time (`one_open_assignment_per_global_task`); done by hand ("Mark as done"). Views use the
+       new `accounts.permissions.task_permission_required(permission, kind)`; the Signatories and Default certificate text
+       pages have the Assign button.
+     - **The per-activity actions accept the activity's assignment** (`require_permission_for(member, perm, activity)` and
+       `object_permission_required` on the views): one participant's evaluation and its PDF, resending evaluation links,
+       participant photos ("Use in reports", view, download), the generated attendance forms, and Apply the current
+       design / Mark handed over / Resend / Retry on the Certificates tab; reissue accepts the certificate approval
+       assignment (also when the activity is approved but has outdated certificates).
+     - **Signing on behalf of the Director:** the Assign dialog of a submission has "May stamp my signature"
+       (WORK_ASSIGNMENT.allow_signing, only on a submission review: check constraint
+       `work_assignment_signing_only_for_submissions`; only when the assigner's account is linked to a signature with an
+       image). Ticked: the assignee may approve WITH signing; the stamp is the ASSIGNER's signature
+       (`approvals.services.stamp_owner`), never the assignee's own. Logged: SUBMISSION_EVENT "signed" with
+       `on_behalf_of` = the Director, an activity History row "Submission: ... signed by <assignee> on behalf of
+       <Director>", `approvals.audit`, and a notification to the Director ("... stamped your signature ..."); the
+       submission page says "on behalf of". Not ticked: the assignee approves without signing (`SIGN_NOT_DELEGATED`).
+       Still never your own submission, still a stamped image (not a cryptographic signature).
+     - Database: WORK_ASSIGNMENT.kind gains `certificate_text`, `signatories`; new column WORK_ASSIGNMENT.allow_signing
+       (boolean, default false); migration `approvals/0003`. Still 48 tables.
+     - Tests: `approvals/tests/test_assign_all_work.py`.
+
+461. **One Reports page** (owner). `/reports/` merges the Reports page and the Report generator; the sidebar has one
+     "Reports" item. "What do you want to make?" is ONE list (`reports/hub.py`, display only): Figures (PDF / Excel:
+     accomplishment, participation, evaluation, document compliance, certificates; GENERATED_REPORT, rules unchanged in
+     `reports.services`) and Written with AI (Activity Report, Accomplishment Report, Evaluation Summary, Request Letter,
+     Activity Design, Other; REPORT_DRAFT, rules unchanged in `reports.generator`: versions, the numbers rule, save /
+     submit, item 448). `?kind=` chooses the form (works without JavaScript); `/reports/generator/` (GET) redirects to
+     `/reports/?kind=...` (its POST still creates a draft; a refusal comes back on the one page, 400).
+     - **The two tables stay** (owner approved): GENERATED_REPORT (figures, built in the background, any staff downloads)
+       and REPORT_DRAFT (the maker's own, versions). Merging them would mix two life cycles and every rule of 301 and 442.
+     - **Notes and files can always guide the AI:** the figures form has "Notes for the AI summary"
+       (GENERATED_REPORT.notes, max 2000) and "Files for the AI to read" (REPORT_ATTACHMENT rows now belong to exactly ONE
+       of a draft or a figures report: `report_attachment_draft_or_generated_report`; checked like a draft's files, text
+       only, no OCR). They are sent as data after `narrative.GUIDANCE_RULE`; the summary goes through the generator's
+       numbers rule (`generator.check_numbers`): a number not in the report's data leaves the summary out ("the AI wrote
+       numbers that are not in the report (...)"). Never a number from the notes.
+     - **One list of past reports** (`services.past_reports`, newest first): every figures report (as before) and the
+       member's own drafts (a draft stays its maker's only).
+     - The prompt box and its summary card still fit 1366x768 (item 384): the kinds are compact chips in two rows, the
+       group labels short ("Figures", "Written with AI").
+     - Database: GENERATED_REPORT.notes (text, default empty); REPORT_ATTACHMENT.draft_id nullable + new
+       REPORT_ATTACHMENT.generated_report_id (FK, CASCADE, nullable) with the "exactly one" check; migration
+       `reports/0004`. Still 48 tables.
+     - Tests: `reports/tests/test_one_reports_page.py`; browser `reports/tests/test_reports_page_browser.py`.
+
+462. **The activity's Reports tab** (owner). A "Reports" tab on the activity page lists only the kinds that make sense for
+     one activity (`hub.PER_ACTIVITY`: Activity Report, Evaluation Summary, Attendance form, Confirmation of Attendance,
+     Request Letter, Activity Design, Other); each opens `/reports/?kind=...&activity=<id>` with the activity chosen
+     (never the period-only figures reports or the Accomplishment Report). The attendance forms are generated there with
+     the Documents tab's own rule and URLs (`registrations.attendance_forms`). Below: this activity's past reports (the
+     member's drafts about it and the Activity Report / Attendance Sheet / Confirmation of Attendance documents saved on
+     it). Without can_create_activity (or an assignment) the tab only lists. No database change.
+
+463. **For payment per activity** (owner). The payment documents still needed are listed ONE CARD PER ACTIVITY, each with
+     its own missing files (`documents.services.payment_missing`: Conducted activities, `document_checklist()`'s own items
+     via `activity_document_overview`, payment types that count now and are not Approved; oldest due first). Each file has
+     "Generate" when the system can make it (Attendance Sheet, Confirmation of Attendance, Activity Report:
+     `reports.hub.PAYMENT_GENERATE_KINDS`; it only OPENS the Reports page with the activity and kind chosen, nothing is
+     made without the member) or "Upload" (the Documents tab with the type chosen). The Evaluation Summary is NOT a
+     payment document (owner); it stays on the activity's Reports tab. Shown on: the Dashboard card "For payment (Supply
+     Office)" (`dashboard_page.payment_card`, at most 4 activities + the total), the Documents page view "For payment"
+     (`?view=payment`, every activity; on a phone the switch shows "All" and no icons so the three choices fit 390 px)
+     and the Generate buttons in the activity's "For payment" group. The Dashboard's Needs attention no longer lists
+     payment documents by type: ONE line "N activities are missing payment documents" -> the For payment view. The
+     activity page's own Needs attention line (item 425) is unchanged. No database change.
+     - Tests: `documents/tests/test_payment_per_activity.py`; browser `reports/tests/test_reports_page_browser.py`.

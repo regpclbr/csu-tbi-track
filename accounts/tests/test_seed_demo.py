@@ -16,7 +16,6 @@ from accounts.management.commands.seed_demo import FORMULA_TEST_TITLE
 from accounts.models import Role, TBIMember
 from certificates.models import Certificate, CertificateTemplate
 from reports import metrics
-from startups.models import Startup
 
 
 @pytest.fixture
@@ -51,8 +50,6 @@ def test_demo_creates_prototype_activities(demo_settings) -> None:
         "Design Thinking Workshop", "Startup Finance Seminar", "Women in Tech Forum", "Digital Marketing Training",
         "Founder Mentoring Clinic", "Industry-Academe Networking Night", FORMULA_TEST_TITLE,
     }
-    assert Startup.objects.count() == 10  # from the mock Navigatu sync (Step 7)
-    assert Startup.objects.filter(is_active=True).count() == 9
     # ASSUMPTIONS 432: every demo upload is an approved copy (Approved by System), none waits for review.
     assert not Document.objects.filter(status__status_name="For Review").exists()
     assert Document.objects.filter(status__status_name="Approved", reviewed_by__isnull=True).exists()
@@ -110,8 +107,7 @@ def test_demo_gives_every_dashboard_card_and_chart_something_to_show(demo_settin
     data = metrics.dashboard(metrics.ReportFilters(today - timedelta(days=300), today + timedelta(days=60)))
     cards = {card["key"]: card for card in data["cards"]}
     for key in ("activities_by_status", "upcoming_activities", "activities_conducted", "registrations", "evaluations",
-                "documents_complete", "documents_overdue", "certificates_waiting_for_approval",
-                "startups_engaged"):
+                "documents_complete", "documents_overdue", "certificates_waiting_for_approval"):
         assert cards[key]["value"] > 0, key
     assert cards["documents_waiting_for_review"]["value"] == 0  # approved copies (ASSUMPTIONS 432)
     assert cards["certificates_waiting_for_approval"]["approved_not_issued"] > 0  # issued by retry_certificates / qcluster

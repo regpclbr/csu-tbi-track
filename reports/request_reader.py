@@ -29,7 +29,6 @@ SECTION_DESCRIPTIONS: dict[str, str] = {
     "evaluation": "evaluation (feedback) rating results",
     "documents": "required documents submitted, missing or overdue per activity",
     "certificates": "certificates issued and emailed in the period",
-    "startups": "startups engaged in the activities",
 }
 
 
@@ -52,7 +51,7 @@ SYSTEM_INSTRUCTION = (
     "activities (unless the word is the name of an activity type, then it is the activity type). The sections are: "
     + _section_list() + ".\n"
     "Only put into unsupported, copied word for word from the request, parts that no section or setting covers (for "
-    "example filters by person, venue, startup or a single activity)."
+    "example filters by person, venue or a single activity)."
 )
 
 

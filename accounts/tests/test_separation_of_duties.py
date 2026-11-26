@@ -222,7 +222,7 @@ def test_can_view_every_workspace_page(sysadmin, new_activity) -> None:
     client = client_for(sysadmin)
     for url in (reverse("home"), reverse("activities:list"), reverse("activities:detail", args=[new_activity.pk]),
                 reverse("documents:list"), reverse("certificates:list"), reverse("reports:list"),
-                reverse("startups:list"), reverse("assistant:chat"), reverse("notifications:list")):
+                reverse("assistant:chat"), reverse("notifications:list")):
         assert client.get(url).status_code == 200, url
 
 

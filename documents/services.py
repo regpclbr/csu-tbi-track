@@ -1305,6 +1305,41 @@ def document_state_counts(overview: list[ActivityDocuments]) -> dict[str, int]:
 MISSING_STATE = "missing"  # the fourth state on the Documents page (a required type with nothing uploaded)
 
 
+# --- For payment (Supply Office), per activity (ASSUMPTIONS 463) -------------------------------------------------------
+
+
+@dataclass
+class PaymentActivity:
+    """One Conducted activity with the payment documents it still needs (document_checklist()'s own items: required
+    payment types that apply to it, counting now, and not Approved yet)."""
+
+    activity: Activity
+    missing: list[ChecklistItem]
+
+    @property
+    def overdue(self) -> bool:
+        return any(item.is_overdue for item in self.missing)
+
+    @property
+    def first_due(self) -> date:
+        return min(item.due_date for item in self.missing)
+
+
+def payment_missing(now: datetime | None = None, activities: list[Activity] | None = None) -> list[PaymentActivity]:
+    """ASSUMPTIONS 463: the payment documents still needed, ONE ENTRY PER ACTIVITY (never grouped by type): every
+    Conducted activity (or `activities`) whose payment items (is_payment, counts_now: after Conducted, item 425) are not
+    Approved. The same rule as document_checklist() (activity_document_overview: two queries). Oldest due first."""
+    if activities is None:
+        activities = list(Activity.objects.filter(status__name=ActivityStatus.CONDUCTED)
+                          .select_related("status", "activity_type").order_by("end_date", "pk"))
+    result = []
+    for entry in activity_document_overview(activities, now):
+        missing = [item for item in entry.required if item.is_payment and item.counts_now and item.state != APPROVED]
+        if missing:
+            result.append(PaymentActivity(entry.activity, missing))
+    return sorted(result, key=lambda row: (row.first_due, row.activity.pk))
+
+
 # --- Reminders (run daily by Django-Q2; see documents/tasks.py) ----------------------------------
 
 

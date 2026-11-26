@@ -41,7 +41,7 @@ def worker(monkeypatch):
 
 def sent_column(client, activity, certificate) -> str:
     html = client.get(tab_url(activity.pk)).content.decode()
-    row = html.split(f">{certificate.certificate_number}</th>")[1].split("</tr>")[0]
+    row = html.split(f">{certificate.certificate_number}</a></th>")[1].split("</tr>")[0]  # a preview link (457)
     return row
 
 

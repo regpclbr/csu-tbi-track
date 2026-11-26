@@ -367,7 +367,8 @@ def text_panel(member, activity: Activity, values: dict | None = None, errors: d
         "types": types,
         "save_url": reverse("activities:certificates_text", args=[activity.pk]),
         "preview_url": reverse("activities:certificates_text_preview", args=[activity.pk]),
-        "defaults_url": reverse("certificates:text") if has_permission(member, Permission.APPROVE_CERTIFICATES) else "",
+        "defaults_url": reverse("certificates:text") if has_permission_for(
+            member, Permission.APPROVE_CERTIFICATES, None, kind="certificate_text") else "",  # or its assignment (460)
     }
 
 
@@ -393,7 +394,7 @@ def signatures_panel(member, activity: Activity) -> dict:
     of a new version, services.version_impact), "Add a person" and "All signatories" for can_manage_signatories only
     (ASSUMPTIONS 418). Without these flags: view only."""
     can_choose = services.can_choose_signatories(member, activity)
-    can_upload = has_permission(member, Permission.MANAGE_SIGNATORIES)
+    can_upload = has_permission_for(member, Permission.MANAGE_SIGNATORIES, None, kind="signatories")  # or assigned (460)
     rows = services.activity_slots(activity)
     inactive = services.inactive_slots(activity)
     people = list(services.active_signatories()) if can_choose else []
@@ -438,7 +439,7 @@ def reissue_panel(member, activity: Activity, outdated: set[int]) -> dict | None
     """"Reissue all outdated certificates (N)" (can_approve_certificates only, ASSUMPTIONS 364): the counts for the
     confirm dialog (emailed again / hard copies to reprint) and the reason it is closed. None for others or when
     nothing is outdated."""
-    if not outdated or not has_permission(member, Permission.APPROVE_CERTIFICATES):
+    if not outdated or not has_permission_for(member, Permission.APPROVE_CERTIFICATES, activity):  # or assigned (460)
         return None
     counts = services.outdated_counts(activity)
     return {**counts, "closed_reason": services.reissue_closed_reason(activity),
@@ -541,7 +542,7 @@ def certificates_tab(request: HttpRequest, activity: Activity, problems: list[st
     ).order_by("certificate_number"))
     member = request.user
     can_act = has_permission(member, Permission.CREATE_ACTIVITY)
-    can_approve = has_permission(member, Permission.APPROVE_CERTIFICATES)
+    can_approve = has_permission_for(member, Permission.APPROVE_CERTIFICATES, activity)  # or its assignment (460)
     labels = services.readiness_map(certificates)
     printed = printed_names(certificates)
     outdated = services.outdated_ids(activity)
@@ -611,7 +612,7 @@ def preview(certificate: Certificate, member=None) -> dict:
     whether it is final, and the Issued note (approval is per activity, on the tab: ASSUMPTIONS 369)."""
     printed = printed_names([certificate])
     labels = services.readiness_map([certificate])
-    can_approve = member is not None and has_permission(member, Permission.APPROVE_CERTIFICATES)
+    can_approve = member is not None and has_permission_for(member, Permission.APPROVE_CERTIFICATES, certificate.activity)
     outdated = services.outdated_ids(certificate.activity) & {certificate.pk}
     item = preview_items([certificate], printed, labels, can_approve, outdated)[0]
     return {

@@ -1,5 +1,5 @@
 """The privacy notice and its required checkbox (ASSUMPTIONS 394): the public registration page and /api/register/, the
-startup portal's registration (page and API), the evaluation review step and /api/evaluate/. Nothing is stored; without
+evaluation review step and /api/evaluate/. Nothing is stored; without
 the tick nothing is saved."""
 
 import json
@@ -114,57 +114,6 @@ def test_api_with_consent_registers(client, scheduled) -> None:
 def test_the_service_itself_is_unchanged(scheduled, signup) -> None:
     """Only the public entry points ask: staff tools and the demo seed call register() as before."""
     assert signup(scheduled, "staff.added@example.com").pk
-
-
-# --- Startup portal -------------------------------------------------------------------------------------------------
-
-
-@pytest.fixture
-def startup_client(client, scheduled):
-    """A startup signed in through the portal's login page (as startups/tests/test_portal_pages.py)."""
-    from startups.models import Startup
-
-    startup = Startup.objects.create(name="Kape Caraga", email="kape@example.com", contact_number="0917")
-    startup.set_password("Kalinaw-Sapa-2026!")
-    startup.save()
-    response = client.post(reverse("startups:portal_login_page"), {"email": startup.email, "password": "Kalinaw-Sapa-2026!"})
-    assert response.status_code == 302, response.content
-    return client
-
-
-def portal_data(activity, **extra) -> dict:
-    data = {"designation": "Founder", "office_agency": "Kape Caraga", **SIGN_POST}  # ASSUMPTIONS 426, 434
-    for key, value in registration_answers(activity).items():
-        data[f"field_{key}"] = value[0] if isinstance(value, list) else value
-    data.update(extra)
-    return data
-
-
-def test_portal_page_without_the_tick_saves_nothing(startup_client, scheduled) -> None:
-    url = reverse("startups:portal_register_page", args=[scheduled.pk])
-    response = startup_client.post(url, portal_data(scheduled))
-    if response.status_code == 302:  # the session fixture did not log in: a wrong setup, not a pass
-        pytest.fail(f"Not logged in: redirected to {response['Location']}")
-    assert response.status_code == 400
-    assert services.PRIVACY_CONSENT_REQUIRED in response.content.decode()
-    assert not Registration.objects.exists()
-
-
-def test_portal_page_with_the_tick_registers(startup_client, scheduled) -> None:
-    url = reverse("startups:portal_register_page", args=[scheduled.pk])
-    response = startup_client.post(url, portal_data(scheduled, **{FIELD: "yes"}))
-    assert response.status_code == 302
-    assert Registration.objects.get().startup.email == "kape@example.com"
-
-
-def test_portal_api_needs_consent(startup_client, scheduled) -> None:
-    url = reverse("startups:portal_register", args=[scheduled.pk])
-    body = {"designation": "Founder", "answers": registration_answers(scheduled), "signature": SIGN_JSON}
-    refused = startup_client.post(url, json.dumps(body), content_type="application/json")
-    assert refused.status_code == 400 and FIELD in refused.json()["errors"]
-    assert not Registration.objects.exists()
-    accepted = startup_client.post(url, json.dumps({**body, FIELD: True}), content_type="application/json")
-    assert accepted.status_code == 201
 
 
 # --- Evaluation -----------------------------------------------------------------------------------------------------

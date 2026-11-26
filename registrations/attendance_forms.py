@@ -20,7 +20,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, require_permission
+from accounts.permissions import Permission, require_permission_for
 from activities.models import Activity, ActivityStatus
 
 from . import signatures
@@ -39,7 +39,7 @@ FOOTER_NOTE = ("NOTE: Participants who signified to attend the meeting/activity 
 PLACEHOLDER_HEADER = ("Caraga State University", "CSU Technology Business Incubator")
 
 NO_ATTENDANCE = "Nobody has attended yet: the Attendance form lists the people checked in on each day."
-NO_PRE_REGISTRATION = "Nobody pre-registered: the Confirmation of Attendance lists the online and portal registrations."
+NO_PRE_REGISTRATION = "Nobody pre-registered: the Confirmation of Attendance lists the online registrations."
 DRAFT_REFUSED = "A Draft activity has no attendance forms."
 SIGNATURES_DELETED = ("The participants' signatures were deleted after the forms were kept (retention). Upload a "
                       "scanned sheet instead.")
@@ -113,7 +113,7 @@ def attendance_pages(activity: Activity) -> list[dict]:
 
 
 def confirmation_rows(activity: Activity) -> list[dict]:
-    """Everyone who pre-registered (online or portal; walk-ins never signified), by name: the signature goes under
+    """Everyone who pre-registered (online; walk-ins never signified), by name: the signature goes under
     "Will attend" or "Will not attend" (cancelled)."""
     registrations = (activity.registrations.exclude(registration_source=Registration.Source.WALK_IN)
                      .select_related("signature").order_by("name", "registration_id"))
@@ -183,7 +183,7 @@ def generate_form(member: TBIMember, activity: Activity, kind: str, now: datetim
     from certificates.pdf import get_renderer
     from documents.services import upload_document
 
-    require_permission(member, GENERATE_PERMISSION)
+    require_permission_for(member, GENERATE_PERMISSION, activity)  # or the activity's assignment (ASSUMPTIONS 460)
     if kind not in KINDS:
         raise FormError("Unknown form.")
     if reason := refused_reason(activity, kind):

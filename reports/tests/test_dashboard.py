@@ -12,8 +12,6 @@ from django.utils import timezone
 from activities.models import ActivityStatus, ActivityType
 from reports import metrics
 from reports.content import build_content
-from startups.models import Startup
-from startups.services import STARTUP_SESSION_KEY
 
 from .conftest import TEST_NOW, YEAR_2026
 
@@ -54,16 +52,6 @@ def test_anonymous_is_sent_to_login() -> None:
     assert response.status_code == 401 and response.json() == {"error": "Login required."}
 
 
-def test_a_startup_session_is_not_staff(roles) -> None:
-    startup = Startup.objects.create(name="Co", email="co@startup.test", navigatu_id="N1")
-    client = Client()
-    session = client.session
-    session[STARTUP_SESSION_KEY] = startup.pk
-    session.save()
-    response = client.get(URL)
-    assert response.status_code == 401 and response.json() == {"error": "Login required."}
-
-
 def test_any_active_staff_member_sees_the_dashboard(view_only, login) -> None:
     response = login(view_only).get(URL)
     assert response.status_code == 200
@@ -87,7 +75,6 @@ def test_every_card_says_its_scope(view_only, login, some_data) -> None:
         "documents_waiting_for_review": "now",
         "certificates_waiting_for_approval": "now",
         "certificates_issued": "period",
-        "startups_engaged": "period",
     }
     assert data["filters"] == {
         "start": "2026-01-01", "end": "2026-12-31", "range_text": "January 1 – December 31, 2026", "activity_type": None,
@@ -167,7 +154,6 @@ def test_dashboard_and_report_give_identical_numbers(some_data, director, make_a
         assert dashboard["documents_complete"]["value"] == key_figures["Activities with all required documents approved"]
         assert dashboard["certificates_issued"]["value"] == key_figures["Certificates issued"]
         assert dashboard["certificates_issued"]["emailed"] == key_figures["Certificates emailed"]
-        assert dashboard["startups_engaged"]["value"] == key_figures["Startups engaged"]
         # Charts and report tables come from the same functions too.
         category_table = {row[0]: row[1:4] for row in content.section("by_category").tables[0].rows}
         dashboard_categories = {

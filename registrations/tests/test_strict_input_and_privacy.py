@@ -104,6 +104,6 @@ def test_emailed_page_urls_open_the_html_pages(client, scheduled, attended) -> N
     person = attended(1)[0]
     token = services.evaluation_token(person)
     assert services.evaluation_link(person).endswith(f"/evaluate/{token}/")  # the email links to the page
-    for url in (f"/register/{scheduled.pk}/", f"/evaluate/{token}/", "/startups/set-password/anything/", "/register/999999/"):
+    for url in (f"/register/{scheduled.pk}/", f"/evaluate/{token}/", "/register/999999/"):
         response = client.get(url)
         assert response["Content-Type"].startswith("text/html")

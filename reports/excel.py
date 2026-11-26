@@ -3,7 +3,7 @@
 Sheets: "Report info", then one sheet per section in report order, with short names (SHEET_NAMES). Every sheet:
 - a compact title block (5 rows + 1 blank): report name, the TBI, the sheet's subtitle, the period, who generated
   it and when (Manila time); merged across the table width (the only merged cells besides the notes);
-- each data table is a real Excel table (header #2A4494 (the primary navy) with white bold text, banded rows, filter buttons), the
+- each data table is a real Excel table (header #1F6B3E (the primary green, ASSUMPTIONS 459) with white bold text, banded rows, filter buttons), the
   panes frozen below the first table's header; a totals row (Table.total, from metrics.period_summary) and notes go
   BELOW the table range, never inside it;
 - an empty section or table is one row of text instead of an empty table;
@@ -59,17 +59,16 @@ SHEET_NAMES = {
     "evaluation": "Evaluation",
     "documents": "Documents",
     "certificates": "Certificates",
-    "startups": "Startups",
 }
 INFO_SHEET = "Report info"
 UNIVERSITY_LINE = "Technology Business Incubator, Caraga State University"
 EMPTY_TABLE = "Nothing to show for this period."
 FOOTER = "Page &P of &N"
 
-BRAND_NAVY = "2A4494"  # the app's primary colour (ASSUMPTIONS 413); white bold text on it 8.9:1
+BRAND_NAVY = "1F6B3E"  # the app's primary colour, green since ASSUMPTIONS 459 (the name is kept); white bold text on it 6.5:1
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 HEADER_FILL = PatternFill("solid", fgColor=BRAND_NAVY)
-TABLE_STYLE = "TableStyleMedium2"  # banded rows; the header colour is set on the cells (#2A4494)
+TABLE_STYLE = "TableStyleMedium2"  # banded rows; the header colour is set on the cells (#1F6B3E)
 TITLE_FONTS = [
     Font(bold=True, size=14, color="1E3A8A"),
     Font(size=10, color="475569"),

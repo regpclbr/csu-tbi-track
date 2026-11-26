@@ -45,7 +45,6 @@ PERMISSION_LABELS = {
 def is_staff_member(user: object) -> bool:
     """True only for a logged-in, active TBI_MEMBER.
 
-    A STARTUP is a different model and is never a TBI_MEMBER, so it always gets False.
     """
     return isinstance(user, TBIMember) and user.is_authenticated and user.is_active
 
@@ -93,6 +92,8 @@ OBJECT_KINDS = {
     (Permission.CREATE_ACTIVITY, None): ("report",),  # a report to prepare: generating reports while it is open
 }
 SIGNATORY_CHOICE = "signatory_choice"  # can_approve_certificates on an activity, only for choosing who signs
+CERTIFICATE_TEXT_TASK = "certificate_text"  # can_approve_certificates for the default certificate text (ASSUMPTIONS 460)
+SIGNATORIES_TASK = "signatories"  # can_manage_signatories for the signatory list (ASSUMPTIONS 460)
 
 # Who the current member is acting for: (member ID, the assigner) after a permission was granted by an assignment,
 # else None. Every permission check sets it, staff_login_required clears it at the start of each request, and History
@@ -234,6 +235,12 @@ def object_permission_required(permission: Permission, loader: Callable[..., obj
         return staff_login_required(wrapper)
 
     return decorator
+
+
+def task_permission_required(permission: Permission, kind: str) -> Callable[[ViewFunc], ViewFunc]:
+    """Staff login, plus `permission` from the role OR an open assignment of `kind` without an object (ASSUMPTIONS 460:
+    the default certificate text, the signatory list). The service checks again and logs "on behalf of"."""
+    return object_permission_required(permission, lambda **kwargs: None, kind)
 
 
 def permission_required(permission: Permission) -> Callable[[ViewFunc], ViewFunc]:

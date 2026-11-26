@@ -200,9 +200,9 @@ def test_registration_and_answers_are_saved_together(scheduled, signup, monkeypa
 
 
 @pytest.mark.django_db
-def test_answers_are_saved_and_startup_stays_empty(scheduled, signup) -> None:
+def test_answers_are_saved_as_an_online_registration(scheduled, signup) -> None:
     registration = signup(scheduled, "ana@example.com")
-    assert registration.startup is None
+    assert registration.registration_source == "online"
     assert registration.template == form_of(scheduled)
     assert sorted(a.field.field_label for a in registration.answers.all()) == ["Affiliation / Organization"]
 

@@ -11,7 +11,7 @@ activity's documents). approvals.services.submit checks everything again; errors
   {% if errors.form %}
     <div class="notice notice-danger mb-6" role="alert">{% include "components/icon.html" with name="circle-alert" class="size-4" %}<p>{{ errors.form }}</p></div>
   {% endif %}
-  <form method="post" enctype="multipart/form-data" class="space-y-4" novalidate>
+  <form data-enter-submit="off" method="post" enctype="multipart/form-data" class="space-y-4" novalidate>
     {% csrf_token %}
     <div>
       <label for="submit-title-input" class="text-sm font-semibold text-ink">Title <span class="text-danger" aria-hidden="true">*</span></label>

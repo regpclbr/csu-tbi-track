@@ -2,7 +2,7 @@
 
 Creates the eight activities from the Figma prototype, plus (Step 10) seven earlier Conducted
 activities spread over several months, types and categories, with fake registrations,
-attendance, evaluations, resource persons, startups, documents and certificates, so every
+attendance, evaluations, resource persons, documents and certificates, so every
 dashboard card and chart has something to show. One of them is titled "=HYPERLINK(...)"
 on purpose, to show that the Excel report writes it as text, never as a formula.
 
@@ -56,9 +56,6 @@ from registrations.models import (
     FormType,
     Registration,
 )
-from startups.models import Startup
-from startups.providers import MockStartupProvider
-from startups.services import sync_startups
 
 DEMO_DOMAIN = "demo.example.com"
 
@@ -98,6 +95,10 @@ class DemoActivity:
 
 
 FORMULA_TEST_TITLE = '=HYPERLINK("https://example.com","Formula test")'
+
+# Invented incubatee team names for the demo registrations (ASSUMPTIONS 458: no STARTUP table any more).
+DEMO_INCUBATEE_TEAMS = ["AgriLink Caraga", "BukidTech", "Hinatuan Seaweed Co.", "Kape Surigao", "Lumad Weaves",
+                        "SolarSari", "TubigLinis", "Butuan Bites"]
 
 DEMO_ACTIVITIES = [
     DemoActivity("Startup Pitch Competition", "Forum", ["Incubatees", "MSMEs"], "Conducted", -30, 1, 40, 32, "25000.00",
@@ -220,7 +221,7 @@ def demo_budget_lines(total: Decimal, slots: int, days: int) -> list[dict]:
 
 
 class Command(BaseCommand):
-    help = "DEMO ONLY: create fake activities, registrations, startups and documents. Refuses to run if DEBUG=False."
+    help = "DEMO ONLY: create fake activities, registrations and documents. Refuses to run if DEBUG=False."
 
     def handle(self, *args, **options) -> None:
         if not settings.DEBUG:
@@ -233,7 +234,6 @@ class Command(BaseCommand):
             load_lookups()
             load_default_form_fields()
             self.staff = self.create_demo_staff()
-            self.startups = self.create_startups()
             self.resource_persons = self.create_resource_persons()
 
             created = 0
@@ -272,14 +272,6 @@ class Command(BaseCommand):
                 )
             staff[role.role_name] = member
         return staff
-
-    def create_startups(self) -> list[Startup]:
-        """Demo startups come from a mock Navigatu sync (the same path as real data). Safe to run twice."""
-        result = sync_startups(provider=MockStartupProvider(), deactivate_missing=False)
-        self.stdout.write(
-            f"  startups synced from the mock provider: {result['created']} created, {result['updated']} updated"
-        )
-        return list(Startup.objects.filter(is_active=True, email__endswith=f"@{DEMO_DOMAIN}").order_by("navigatu_id"))
 
     def create_resource_persons(self) -> list[ResourcePerson]:
         persons = []
@@ -389,32 +381,32 @@ class Command(BaseCommand):
         fields = list(form.fields.all())
         registrations = []
 
-        # A few incubatee startups register while logged in.
-        linked_startups = self.rng.sample(self.startups, min(3, len(self.startups))) if incubatees else []
-        people = [(s.name + " (representative)", s.email, s) for s in linked_startups]
+        # A few representatives of (invented) incubatee startups register like everyone else (the startup portal was
+        # removed, ASSUMPTIONS 458).
+        teams = self.rng.sample(DEMO_INCUBATEE_TEAMS, 3) if incubatees else []
+        people = [(f"{team} (representative)", f"{slugify(team)}@{DEMO_DOMAIN}", team) for team in teams]
         people += [(name, email, None) for name, email in self.fake_people(spec.registrations - len(people))]
 
         for name, email, startup in people:
             registration = Registration.objects.create(
                 activity=activity,
                 template=form,
-                startup=startup,
                 participant_category=incubatees if startup else self.rng.choice(categories),
                 name=name,
                 email=email,
-                registration_source=Registration.Source.PORTAL if startup else Registration.Source.ONLINE,
+                registration_source=Registration.Source.ONLINE,
                 contact_number=f"09{self.rng.randint(100000000, 999999999)}",
                 # The fixed fields of every registration (ASSUMPTIONS 426).
                 designation="Founder" if startup else self.rng.choice(
                     ["Owner", "Faculty member", "Student", "Project officer", "Freelancer"]),
-                office_agency=startup.name if startup else self.rng.choice(
+                office_agency=startup if startup else self.rng.choice(
                     ["CSU", "Freelance", "Family business", "LGU", "DTI Caraga"]),
             )
             # registration_date is filled automatically; move it before the deadline so it looks real.
             Registration.objects.filter(pk=registration.pk).update(
                 registration_date=activity.registration_deadline - timedelta(days=self.rng.randint(1, 14))
             )
-            raw = {str(f.pk): self.fake_answer(f, startup.name if startup else "") for f in fields}
+            raw = {str(f.pk): self.fake_answer(f, startup or "") for f in fields}
             self.save_answers(form, raw, registration=registration)
             registrations.append(registration)
         return registrations
@@ -493,7 +485,7 @@ class Command(BaseCommand):
         ANALYZE may run inside this transaction and also counts the rows it inserted.
         """
         models = [Activity, ActivityParticipantCategory, Registration, EvaluationSubmission, FormTemplate, FormField,
-                  FormAnswer, Document, Certificate, Startup, ResourcePerson]
+                  FormAnswer, Document, Certificate, ResourcePerson]
         tables = ", ".join(connection.ops.quote_name(model._meta.db_table) for model in models)
         with connection.cursor() as cursor:
             cursor.execute(f"ANALYZE {tables}")

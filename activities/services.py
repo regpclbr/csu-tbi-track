@@ -90,6 +90,10 @@ DOCUMENTS_LABEL = "Documents"  # uploaded as an approved copy, replaced, deleted
 REGISTRATION_LABEL = "Registration"
 REGISTRATION_CLOSED_VALUE = "Closed by the TBI"
 REGISTRATION_REOPENED_VALUE = "Reopened by the TBI"
+EVALUATION_LABEL = "Evaluation"  # ASSUMPTIONS 452: History of the hand switch
+EVALUATION_CLOSED_VALUE = "Closed by the TBI"
+EVALUATION_REOPENED_VALUE = "Reopened by the TBI"
+EVALUATION_SWITCH_STATUSES = (ONGOING, CONDUCTED)  # the evaluation can only be open from the end date (item 419: Ongoing)
 
 DEFAULT_PAGE_SIZE = 20
 
@@ -652,6 +656,37 @@ def set_registration_closed_by_hand(member: TBIMember, activity: Activity, close
     return activity
 
 
+def evaluation_switch(activity: Activity) -> str | None:
+    """Which evaluation hand switch the Evaluation tab offers: "close", "reopen" or None (not Ongoing / Conducted). The
+    permission is checked by the view and again by set_evaluation_closed_by_hand (ASSUMPTIONS 452)."""
+    if activity.status.name not in EVALUATION_SWITCH_STATUSES:
+        return None
+    return "reopen" if activity.evaluation_closed_by_hand else "close"
+
+
+@transaction.atomic
+def set_evaluation_closed_by_hand(member: TBIMember, activity: Activity, closed: bool) -> Activity:
+    """Close the evaluation by hand (closed=True) or open it again (False), also when it has no deadline (ASSUMPTIONS
+    452); one History row "Evaluation". Ongoing or Conducted only (also a Conducted activity: this is not an edit of its
+    details). While closed, registrations.services.evaluation_has_closed is True: no new answers, no links, and
+    attendees who have not evaluated get no certificate ("No evaluation = no certificate"). Opening again only removes
+    the hand closing: the deadline still decides."""
+    require_permission_for(member, Permission.CREATE_ACTIVITY, activity)
+    current = Activity.objects.select_for_update(of=("self",)).select_related("status").get(pk=activity.pk)
+    if current.status.name not in EVALUATION_SWITCH_STATUSES:
+        raise ActivityError("The evaluation can be closed or opened by hand only while the activity is Ongoing or "
+                            "Conducted.")
+    if current.evaluation_closed_by_hand == closed:
+        raise ActivityError("The evaluation is already closed by the TBI." if closed
+                            else "The evaluation was not closed by hand.")
+    current.evaluation_closed_by_hand = closed
+    current.save(update_fields=["evaluation_closed_by_hand", "updated_at"])
+    change = ("", EVALUATION_CLOSED_VALUE) if closed else (EVALUATION_CLOSED_VALUE, EVALUATION_REOPENED_VALUE)
+    _write_audit(current, member, [(EVALUATION_LABEL, *change)])
+    activity.refresh_from_db()
+    return activity
+
+
 # --- Status changes ------------------------------------------------------------------------
 
 
@@ -993,7 +1028,7 @@ def grouped_activities(
 
 def open_for_registration(queryset: QuerySet | None = None, now: datetime | None = None) -> QuerySet:
     """Activities open for registration now, as a database query: the ONE rule behind the Activities card and
-    preset, the dashboard KPI, /register/ and the startup portal (registrations.services.open_activities).
+    preset, the dashboard KPI, and /register/ (registrations.services.open_activities).
 
     Scheduled, deadline not passed, slots left (= is_registration_open()) AND a registration form that counts
     (= registrations.services.registration_form_ready: exists, and marked ready on activities created with their

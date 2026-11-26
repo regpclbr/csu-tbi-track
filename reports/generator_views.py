@@ -37,9 +37,19 @@ def _files(request: HttpRequest) -> list[generator.NewFile]:
 @staff_login_required
 @require_http_methods(["GET", "POST"])
 def generator_list(request: HttpRequest) -> HttpResponse:
-    """GET: the "New draft" form and my drafts. POST: create a draft (generator.create_draft checks everything)."""
+    """GET: the old address of the report generator: redirects to the ONE Reports page (ASSUMPTIONS 461) with the same
+    kind (?start_kind= or ?kind=) and activity. POST: create a draft (generator.create_draft checks everything); a
+    refusal shows the Reports page again with the typed values and the errors."""
+    if request.method == "GET":
+        from django.http import QueryDict
+
+        query = QueryDict(mutable=True)
+        query["kind"] = request.GET.get("start_kind") or request.GET.get("kind") or ReportDraft.Kind.ACTIVITY_REPORT
+        if request.GET.get("activity", "").isdigit():
+            query["activity"] = request.GET["activity"]
+        return redirect(f"{reverse('reports:list')}?{query.urlencode()}")
     _need_generator(request)
-    form = generator_pages.new_form(request.POST if request.method == "POST" else request.GET, member=request.user)
+    form = generator_pages.new_form(request.POST, member=request.user)
     status = 200
     if request.method == "POST":
         data = request.POST
@@ -70,9 +80,10 @@ def generator_list(request: HttpRequest) -> HttpResponse:
         else:
             messages.success(request, "The draft is being written. It appears here in a moment.")
             return redirect("reports:generator_draft", draft_id=draft.pk)
-    context = {"page_title": "Report generator", "page_subtitle": PAGE_SUBTITLE, "form": form,
-               "drafts": generator_pages.draft_rows(request.user)}
-    return render(request, "reports/generator_list.html", context, status=status)
+    from .page_views import chosen_activity, render_hub
+
+    return render_hub(request, request.POST.get("kind", ""), chosen_activity(request), generator_form=form,
+                      status=status)
 
 
 @staff_login_required
@@ -132,8 +143,10 @@ def add_files(request: HttpRequest, draft_id: int) -> HttpResponse:
 
 
 def _own_attachment(request: HttpRequest, attachment_id: int) -> ReportAttachment:
-    attachment = get_object_or_404(ReportAttachment.objects.select_related("draft__activity"), pk=attachment_id)
-    if attachment.draft.created_by_id != request.user.pk:
+    attachment = get_object_or_404(ReportAttachment.objects.select_related("draft__activity", "generated_report"),
+                                   pk=attachment_id)
+    owner = attachment.draft.created_by_id if attachment.draft_id else attachment.generated_report.generated_by_id
+    if owner != request.user.pk:
         raise Http404("No such file.")
     return attachment
 

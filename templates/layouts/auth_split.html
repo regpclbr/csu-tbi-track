@@ -4,7 +4,7 @@ The staff sign-in pages (docs/design/login.png): login, forgot password, reset p
 password change. The whole page is one gradient (the frame's dark navy top left -> its light end bottom right, ASSUMPTIONS 413, CSS .auth-bg) with two
 columns: logo, headline, sentence and illustration on the left; the frosted glass card (.auth-card) on the right.
 Only the card changes from page to page. Blocks: card_heading, card_text (the helper line under the heading), card (the form),
-below_card (a small link under the card); the startup portal login (F6) also changes headline, panel_text and home_url.
+below_card (a small link under the card).
 Animations (CSS only, frontend/tailwind/app.css "Sign-in panel animations"): the headline lines, the illustration and
 the card enter once; only the illustration floats. All off with prefers-reduced-motion.
 From 1024 px (lg) the page fits the screen without scrolling (the illustration shrinks with the window height).

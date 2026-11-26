@@ -52,7 +52,7 @@ def _staff_pages(activity: Activity) -> list[str]:
         *[f"{reverse('activities:detail', args=[activity.pk])}?tab={tab}" for tab in tabs],
         reverse("documents:list"), f"{reverse('documents:list')}?view=all", reverse("certificates:list"),
         f"{reverse('certificates:list')}?view=all", reverse("certificates:signatories"), reverse("certificates:text"),
-        reverse("reports:list"), reverse("assistant:chat"), reverse("startups:list"), reverse("notifications:list"),
+        reverse("reports:list"), reverse("assistant:chat"), reverse("notifications:list"),
         f"{reverse('search')}?q=pitch",
     ]
 

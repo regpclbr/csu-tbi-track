@@ -17,7 +17,6 @@ API_URLS = [
     "/documents/api/",
     "/certificates/api/",
     "/reports/api/dashboard/",
-    "/startups/api/",
     "/assistant/api/chats/",
     "/notifications/api/",
 ]

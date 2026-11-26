@@ -14,7 +14,6 @@ from assistant.models import AIChat
 from assistant.testing import FakeGemini
 from documents import services as document_services
 from documents.models import Document
-from startups.tests.conftest import STARTUP_PASSWORD, make_startup  # noqa: F401  (fixture reused here)
 
 from .conftest import docx_file, text_pdf
 
@@ -187,17 +186,6 @@ def test_cards_open_the_document_page_and_download_through_the_checked_view(dire
     assert "/media/" not in html and "Bootcamp attendance" in html and ">Files<" in html
     response = client.get(reverse("documents:download", args=[document.pk]))
     assert response.status_code == 200 and response["Content-Disposition"].startswith("attachment")
-
-
-def test_download_refuses_anyone_without_staff_access(files, make_startup) -> None:
-    url = reverse("documents:download", args=[files["attendance"].pk])
-    assert Client().get(url).status_code == 302  # not signed in: the login page
-    startup = make_startup(email="person0@example.com", navigatu_id="NAV-1")
-    portal = Client()
-    assert portal.post("/startups/portal/api/login/", {"email": startup.email, "password": STARTUP_PASSWORD},
-                       content_type="application/json").status_code == 200
-    response = portal.get(url)
-    assert response.status_code in (302, 403) and not response.has_header("Content-Disposition")
 
 
 def test_a_file_deleted_later_shows_no_longer_available(director, chat, files) -> None:

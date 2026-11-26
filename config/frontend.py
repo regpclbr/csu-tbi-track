@@ -1,5 +1,5 @@
 """What every staff page's layout needs: the sidebar items, the member's badge counts and the date.
-The startup portal's layout (phase F6) is `portal` (portal_layout), with its own list of items.
+(The startup portal and its layout were removed, ASSUMPTIONS 458.)
 
 Used as a context processor (settings.TEMPLATES), so every template can use `layout`. The counts are
 computed only when a template reads them (the Django admin, emails and PDFs never do).
@@ -41,10 +41,7 @@ WORKSPACE = [
     NavItem("Documents", "documents:list", "folder", "documents", badge="review_count"),
     NavItem("Certificates", "certificates:list", "award", "certificates"),
     NavItem("Approvals", "approvals:inbox", "inbox", "approvals", badge="approval_count"),  # ASSUMPTIONS 437
-    NavItem("Startups", "startups:list", "store", "startups"),
-    NavItem("Reports", "reports:list", "chart-column", "reports"),
-    NavItem("Report generator", "reports:generator", "pen-line", "report_generator",
-            permission=Permission.CREATE_ACTIVITY),  # ASSUMPTIONS 442
+    NavItem("Reports", "reports:list", "chart-column", "reports"),  # one Reports page with the generator (461)
     NavItem("AI Assistant", "assistant:chat", "sparkles", "assistant"),
 ]
 ADMIN = [
@@ -68,8 +65,6 @@ class StaffLayout:
             return ""
         if match.view_name.startswith("accounts:console"):
             return "console"
-        if match.view_name.startswith(("reports:generator", "reports:paper_sheet")):
-            return "report_generator"  # ASSUMPTIONS 442: its own sidebar item, not "Reports"
         return match.namespace or match.view_name
 
     def _items(self, items: list[NavItem]) -> list[dict]:
@@ -113,6 +108,20 @@ class StaffLayout:
         return unread_count(self.member)
 
     @cached_property
+    def offers_submit(self) -> bool:
+        """"Submit to the Director" is offered (ASSUMPTIONS 456: never to the Director on their own account)."""
+        from approvals.services import offers_submit
+
+        return offers_submit(self.member)
+
+    @cached_property
+    def shows_assigned(self) -> bool:
+        """"Assigned to me" is shown (ASSUMPTIONS 456: hidden for the Director who has never been given work)."""
+        from approvals.assignments import shows_assigned_to_me
+
+        return shows_assigned_to_me(self.member)
+
+    @cached_property
     def today(self) -> date:
         return today_in_manila()
 
@@ -132,65 +141,6 @@ def staff_layout(request: HttpRequest) -> dict:
     if not is_staff_member(user) or user.must_change_password:
         return {}
     return {"layout": StaffLayout(request)}
-
-
-PORTAL = [
-    NavItem("Overview", "startups:portal_home", "layout-grid", "startups:portal_home"),
-    NavItem("Open activities", "startups:portal_activities", "calendar", "activities"),
-    NavItem("My registrations", "startups:portal_registrations_page", "clipboard-list", "startups:portal_registrations_page"),
-    NavItem("My certificates", "startups:portal_certificates_page", "award", "startups:portal_certificates_page"),
-    NavItem("Notifications", "startups:portal_notifications_page", "bell", "startups:portal_notifications_page", badge="unread_count"),
-    NavItem("Profile", "startups:portal_profile", "user-round", "startups:portal_profile"),
-]
-# Pages that mark "Open activities" as active (the list and registering).
-PORTAL_ACTIVITY_VIEWS = {"startups:portal_activities", "startups:portal_register_page", "startups:portal_registered"}
-
-
-class PortalLayout:
-    """The layout data for one portal request by a logged-in startup (request.startup, set by portal_page_required)."""
-
-    def __init__(self, request: HttpRequest) -> None:
-        self.request = request
-        self.startup = request.startup
-
-    def _section(self) -> str:
-        match = self.request.resolver_match
-        view_name = match.view_name if match else ""
-        return "activities" if view_name in PORTAL_ACTIVITY_VIEWS else view_name
-
-    @cached_property
-    def items(self) -> list[dict]:
-        section = self._section()
-        return [
-            {
-                "label": item.label,
-                "url": reverse(item.url_name),
-                "icon": item.icon,
-                "active": item.section == section,
-                "badge": getattr(self, item.badge) if item.badge else 0,
-                "badge_label": "unread" if item.badge else "",
-            }
-            for item in PORTAL
-        ]
-
-    @cached_property
-    def unread_count(self) -> int:
-        return unread_count(self.startup)
-
-    @cached_property
-    def today(self) -> date:
-        return today_in_manila()
-
-    @cached_property
-    def initials(self) -> str:
-        return initials(self.startup.name)
-
-
-def portal_layout(request: HttpRequest) -> dict:
-    """Context processor: `portal` on the startup portal's pages (a logged-in startup); nothing otherwise."""
-    if getattr(request, "startup", None) is None:
-        return {}
-    return {"portal": PortalLayout(request)}
 
 
 def public_footer(request: HttpRequest) -> dict:

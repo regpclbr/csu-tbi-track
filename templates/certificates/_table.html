@@ -22,9 +22,10 @@ flush: inside a group card.
     <tbody class="divide-y divide-line">
       {% for row in rows %}{% with certificate=row.certificate %}
         <tr class="align-top hover:bg-slate-50">
-          <th scope="row" class="px-3 py-3 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
+          {# ASSUMPTIONS 457: the number and the name open the preview (the issued PDF once Issued), like Preview. #}
+          <th scope="row" class="px-3 py-3 font-semibold whitespace-nowrap text-ink"><a href="{% url 'certificates:preview' certificate.pk %}" target="_blank" rel="noopener" class="cert-link rounded-md hover:text-primary hover:underline" data-preview-link>{{ certificate.certificate_number }}<span class="sr-only"> (preview, opens in a new tab)</span></a></th>
           {% if show_activity %}<td class="min-w-36 px-3 py-3"><a href="{% url 'activities:detail' certificate.activity_id %}?tab=certificates" class="cert-link rounded-md text-slate-700 hover:text-primary hover:underline">{{ certificate.activity.title }}</a></td>{% endif %}
-          <td class="min-w-32 px-3 py-3 [overflow-wrap:anywhere] text-slate-700">{{ row.recipient }}{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</td>
+          <td class="min-w-32 px-3 py-3 [overflow-wrap:anywhere] text-slate-700"><a href="{% url 'certificates:preview' certificate.pk %}" target="_blank" rel="noopener" class="cert-link rounded-md hover:text-primary hover:underline" data-preview-link>{{ row.recipient }}<span class="sr-only"> (preview, opens in a new tab)</span></a>{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</td>
           <td class="px-3 py-3 whitespace-nowrap text-slate-700">{{ row.kind }}<span class="block text-xs text-muted">{{ row.delivery }}</span></td>
           <td class="min-w-40 px-3 py-3">
             <div class="flex flex-wrap items-start gap-1">

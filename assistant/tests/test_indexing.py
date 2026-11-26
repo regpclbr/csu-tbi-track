@@ -264,7 +264,7 @@ def test_setup_schedules_adds_index_pending_at_7_30() -> None:
     call_command("setup_schedules")
     call_command("setup_schedules")
     schedule = Schedule.objects.get(name=tasks.INDEX_SCHEDULE_NAME)
-    assert Schedule.objects.count() == 6  # plus the certificate retry (Step 9), the 5-minute job and the signature deletion (434)
+    assert Schedule.objects.count() == 5  # (the startup sync went, ASSUMPTIONS 458) plus the certificate retry (Step 9), the 5-minute job and the signature deletion (434)
     assert schedule.func == tasks.INDEX_PENDING_TASK and schedule.schedule_type == Schedule.DAILY
     local = timezone.localtime(schedule.next_run)
     assert (local.hour, local.minute) == (7, 30)

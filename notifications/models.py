@@ -1,4 +1,4 @@
-"""NOTIFICATION: in-app messages for TBI members and startups."""
+"""NOTIFICATION: in-app messages for TBI members."""
 
 from django.conf import settings
 from django.db import models
@@ -6,7 +6,7 @@ from django.db.models import Q
 
 
 class Notification(models.Model):
-    """An in-app notification for exactly one recipient: a TBI member or a startup."""
+    """An in-app notification for one TBI member (the startup recipients were removed with the portal, ASSUMPTIONS 458)."""
 
     # Values of `type`. A reminder is sent at most once per (member, activity, document type, type).
     DOCUMENT_DUE_SOON = "document_due_soon"
@@ -42,12 +42,7 @@ class Notification(models.Model):
     REMINDER_TYPES = (DOCUMENT_DUE_SOON, DOCUMENT_OVERDUE)
 
     notification_id = models.BigAutoField(primary_key=True)
-    member = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
-    )
-    startup = models.ForeignKey(
-        "startups.Startup", on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
-    )
+    member = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
     activity = models.ForeignKey(
         "activities.Activity", on_delete=models.CASCADE, null=True, blank=True, related_name="notifications"
     )
@@ -71,11 +66,6 @@ class Notification(models.Model):
         db_table = "notification"
         ordering = ["-created_at"]
         constraints = [
-            models.CheckConstraint(
-                condition=Q(member__isnull=False, startup__isnull=True)
-                | Q(member__isnull=True, startup__isnull=False),
-                name="notification_has_exactly_one_recipient",
-            ),
             # Never the same reminder twice, even when two runs happen at the same moment.
             # Returned-document notifications are not limited (a document can be returned again).
             models.UniqueConstraint(

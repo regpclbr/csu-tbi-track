@@ -1,5 +1,5 @@
-"""Response headers for pages whose URL carries a personal token (phase F3): the evaluation page and the
-startup set-password page."""
+"""Response headers for pages whose URL carries a personal token (phase F3): the evaluation page and the cancel-a-
+registration page. (The startup set-password page was removed with the portal, ASSUMPTIONS 458.)"""
 
 from collections.abc import Callable
 from functools import wraps

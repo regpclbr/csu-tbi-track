@@ -1,0 +1,27 @@
+{% comment %}
+Reports tab (ASSUMPTIONS 462): the kinds that make sense for ONE activity (reports.hub.kind_choices: Activity Report,
+Evaluation Summary, the Attendance and Confirmation of Attendance forms, the draft Request Letter and Activity Design,
+Other). Each opens the one Reports page with this activity chosen already (reports.hub.kind_url). Below, this
+activity's past reports (reports.hub.past: the member's drafts about it and the report-like documents saved on it).
+{% endcomment %}
+<div class="space-y-6">
+  <section class="card p-6" aria-labelledby="activity-reports-title">
+    {% include "components/section_header.html" with id="activity-reports-title" title="Make a report for this activity" subtitle="Every number, date and name comes from the system; notes and files can guide the AI." %}
+    {% if can_generate %}
+      <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-activity-report-kinds>
+        {% for item in report_kinds %}
+          <li><a href="{{ item.url }}" class="hover-lift flex h-full flex-col rounded-2xl border border-line bg-white p-4" data-kind="{{ item.choice.key }}">
+            <span class="font-semibold text-ink">{{ item.choice.label }}</span>
+            <span class="caption mt-1 text-muted">{{ item.choice.help }}</span>
+          </a></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-sm text-slate-700">Making a report needs a role that can create activities (or a report assigned to you).</p>
+    {% endif %}
+  </section>
+  <section class="card p-6" aria-labelledby="activity-past-reports-title">
+    {% include "components/section_header.html" with id="activity-past-reports-title" title="Past reports" subtitle="Your drafts about this activity and the reports and forms saved on it." %}
+    {% include "reports/_history.html" %}
+  </section>
+</div>

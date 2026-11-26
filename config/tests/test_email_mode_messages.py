@@ -16,7 +16,6 @@ from activities import services as activity_services
 from activities.models import FundSource, ActivityType, ParticipantCategory
 from config.mail import CONSOLE_MODE_NOTICE, email_sent_message, prints_emails
 from registrations import services as registration_services
-from startups.models import Startup
 
 pytestmark = pytest.mark.django_db
 
@@ -76,12 +75,6 @@ def test_password_reset_by_the_admin(mode, admin_member, make_member) -> None:
     assert messages_of(response) == [expected(mode, f"A new temporary password was emailed to {other.email}.")]
     api = client.post(reverse("accounts:api_member_reset_password", args=[other.pk]))
     assert api.json()["message"] == expected(mode, f"A new temporary password was emailed to {other.email}.")
-
-
-def test_startup_set_password_link(mode, admin_member) -> None:
-    startup = Startup.objects.create(name="Kalinaw Agritech", email="kalinaw@example.com", contact_number="09171234567")
-    response = logged_in(admin_member).post(reverse("startups:send_password_link", args=[startup.pk]), follow=True)
-    assert messages_of(response) == [expected(mode, f"A set-password link was emailed to {startup.email}.")]
 
 
 def test_evaluation_links(mode, make_member, monkeypatch) -> None:

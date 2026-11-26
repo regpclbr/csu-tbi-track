@@ -436,18 +436,60 @@ def check_files(draft: ReportDraft | None, files: list[NewFile]) -> list[str]:
     return extensions
 
 
-def _store(draft: ReportDraft, member: TBIMember, new: NewFile, extension: str, now: datetime) -> ReportAttachment:
+def _store(draft: ReportDraft | None, member: TBIMember, new: NewFile, extension: str, now: datetime,
+           generated_report=None) -> ReportAttachment:
+    """One stored file for a draft, or (ASSUMPTIONS 461) for a figures report (GENERATED_REPORT)."""
     year = timezone.localtime(now).year
     storage = ReportAttachment._meta.get_field("file_path").storage
     new.file.seek(0)
-    name = storage.save(f"{UPLOAD_ROOT}/{year}/draft-{draft.pk}-{secrets.token_hex(8)}.{extension}", new.file)
+    prefix = f"draft-{draft.pk}" if draft is not None else f"report-{generated_report.pk}"
+    name = storage.save(f"{UPLOAD_ROOT}/{year}/{prefix}-{secrets.token_hex(8)}.{extension}", new.file)
     original = (new.file.name or f"file.{extension}").replace("\\", "/").rsplit("/", 1)[-1][:255]
     return ReportAttachment(
-        draft=draft, kind=new.kind, file_path=name, file_name=original, file_extension=extension,
+        draft=draft, generated_report=generated_report, kind=new.kind, file_path=name, file_name=original,
+        file_extension=extension,
         file_size_kb=max(1, (new.file.size + 1023) // 1024), uploaded_by=member,
         text_status=(ReportAttachment.TextStatus.PENDING if new.kind == ReportAttachment.Kind.DOCUMENT
                      else ReportAttachment.TextStatus.NOT_SENT),
     )
+
+
+def save_report_attachments(report, member: TBIMember, files: list[NewFile], now: datetime) -> list[str]:
+    """ASSUMPTIONS 461: the files a member adds to a figures report "for the AI to read" (documents only: a figures
+    report has no photo page), checked like a draft's (check_files) and stored inside the caller's transaction.
+    Returns the stored names (the caller removes them if the transaction fails)."""
+    files = [NewFile(new.file, ReportAttachment.Kind.DOCUMENT) for new in files]
+    extensions = check_files(None, files)
+    rows = []
+    try:
+        for new, extension in zip(files, extensions):
+            rows.append(_store(None, member, new, extension, now, generated_report=report))
+        ReportAttachment.objects.bulk_create(rows)
+    except Exception:
+        _delete_files([row.file_path.name for row in rows])
+        raise
+    return [row.file_path.name for row in rows]
+
+
+def read_report_attachments(report) -> list[dict]:
+    """The text of a figures report's files (read in the background task; text only, no OCR: the AI summary is short and
+    a scan would need the per-file consent of item 438). Returns [{"file", "text"}] cut to the limits."""
+    from assistant import indexing
+
+    files = []
+    for attachment in ReportAttachment.objects.filter(generated_report=report):
+        if attachment.text_status == ReportAttachment.TextStatus.PENDING:
+            source = indexing.Source("attachment", attachment, attachment.file_name, attachment.file_path,
+                                     attachment.file_extension.lower())
+            try:
+                attachment.text = indexing.extract_text(source, allow_ocr=False)
+                attachment.text_status, attachment.text_note = ReportAttachment.TextStatus.READ, ""
+            except (indexing.NotIndexable, AssistantUnavailable) as error:
+                attachment.text_status, attachment.text_note = ReportAttachment.TextStatus.NOT_READABLE, str(error)[:300]
+            attachment.save(update_fields=["text", "text_status", "text_note"])
+        if attachment.text_status == ReportAttachment.TextStatus.READ:
+            files.append({"file": attachment.file_name, "text": attachment.text[: settings.REPORT_GENERATOR_FILE_CHARS]})
+    return files
 
 
 def _delete_files(names: list[str]) -> None:

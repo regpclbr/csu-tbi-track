@@ -51,7 +51,7 @@ def test_the_example_fills_every_setting(director, fake_gemini, training) -> Non
                                     format="excel"))
     result = fill(director)
     assert result.report_type == "participation"
-    assert result.sections == ["summary", "by_category", "category_by_activity", "monthly", "startups"]  # the type's usual sections
+    assert result.sections == ["summary", "by_category", "category_by_activity", "monthly"]  # the type's usual sections
     assert (result.start, result.end) == (date(2026, 10, 1), date(2026, 12, 31))  # Manila, by our parser
     assert result.activity_type == str(training.pk)
     assert result.format == "excel"
@@ -133,7 +133,7 @@ def test_gemini_is_told_that_sections_combine(director, fake_gemini) -> None:
     assert "activities (Activities conducted) = the list of conducted activities" in call["system_instruction"]
     description = call["tools"][0].parameters["properties"]["sections"]["description"]
     assert "certificates (Certificates) = certificates issued" in description
-    assert "startups (Startups engaged) = startups engaged" in description
+    assert "startups" not in description  # removed with the startup portal (ASSUMPTIONS 458)
 
 
 def test_a_mixed_request_gets_the_missing_section_from_our_code(director, fake_gemini) -> None:
@@ -368,14 +368,14 @@ def test_the_summary_card_matches_the_form(director, login, fake_gemini, trainin
     assert (fields.values["date_range_start"], fields.values["date_range_end"]) == ("2026-10-01", "2026-12-31")
     assert fields.selects["report-activity-type"] == str(training.pk)
     assert fields.checked["format"] == ["excel"] and fields.checked["ai_summary"] == ["on"]
-    assert fields.checked["included_sections"] == ["summary", "by_category", "category_by_activity", "monthly", "startups"]
+    assert fields.checked["included_sections"] == ["summary", "by_category", "category_by_activity", "monthly"]
     # ... and the summary card shows the same values.
     assert fields.selects["summary-type"] == "participation"
     assert fields.selects["summary-range"] == "q4" and fields.selects["summary-year"] == "2026"
     assert 'x-text="rangeText()">October 1 – December 31, 2026</p>' in html
     assert fields.selects["summary-activity-type"] == str(training.pk)
     assert fields.pressed == ["excel"]
-    assert '<span x-text="sections.length">5</span> section' in html and "+ AI summary" in html
+    assert '<span x-text="sections.length">4</span> section' in html  # "startups" went (ASSUMPTIONS 458) and "+ AI summary" in html
     # Only the full form's fields are named: the summary card never posts a second value.
     assert not re.search(r'<select id="summary-[^"]*"[^>]*\bname=', html)
     assert fields.values["show_summary"] == "1" and fields.details == {"report-more": False}

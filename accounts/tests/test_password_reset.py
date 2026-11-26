@@ -116,13 +116,10 @@ def test_forgot_password_emails_a_single_use_link(client, make_member, settings)
     assert login.status_code == 302 and SESSION_KEY in client.session
 
 
-@pytest.mark.parametrize("case", ["unknown", "deactivated", "startup"])
+@pytest.mark.parametrize("case", ["unknown", "deactivated"])
 def test_forgot_password_never_reveals_whether_the_email_exists(client, make_member, case) -> None:
-    from startups.models import Startup
-
     make_member("Director", email="ana@example.com", is_active=case != "deactivated")
-    Startup.objects.create(name="Acme", email="acme@example.com")
-    email = {"unknown": "nobody@example.com", "deactivated": "ana@example.com", "startup": "acme@example.com"}[case]
+    email = {"unknown": "nobody@example.com", "deactivated": "ana@example.com"}[case]
     response = client.post("/accounts/password/forgot/", {"email": email})
     assert response.status_code == 302 and response.url == "/accounts/password/forgot/sent/"  # the same answer
     assert mail.outbox == []  # but no email: unknown, deactivated, or not a staff account

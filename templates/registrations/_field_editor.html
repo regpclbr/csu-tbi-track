@@ -3,7 +3,7 @@ Inline editor for a new field or one field (inside _form_card.html). Saved with 
 the service's messages under the inputs and the focus on the first one. `editor` = registrations.pages.editor_values
 (+ errors). Options are shown only for the choice types the server lists (choice_types).
 {% endcomment %}
-<form method="post"
+<form method="post" data-enter-submit="off"
       action="{% if card.editing == "new" %}{% url 'registrations:field_add' card.form.pk %}{% else %}{% url 'registrations:field_update' card.editing %}{% endif %}"
       hx-post="{% if card.editing == "new" %}{% url 'registrations:field_add' card.form.pk %}{% else %}{% url 'registrations:field_update' card.editing %}{% endif %}"
       hx-target="#form-card-{{ card.form_type }}" hx-swap="outerHTML"

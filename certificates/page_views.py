@@ -28,9 +28,13 @@ from django.views.decorators.http import require_GET, require_POST
 from django.urls import reverse
 
 from accounts.permissions import (
+    CERTIFICATE_TEXT_TASK,
+    SIGNATORIES_TASK,
     Permission,
+    task_permission_required,
     object_permission_required,
     has_permission,
+    has_permission_for,
     is_htmx,
     permission_required,
     require_any_permission,
@@ -114,7 +118,7 @@ def certificate_list(request: HttpRequest) -> HttpResponse:
                "filters": filters, **pages.certificate_list(filters), **pages.filter_choices()}
     if is_htmx(request):
         return render(request, "certificates/_results.html", context)
-    if has_permission(request.user, Permission.MANAGE_SIGNATORIES):  # the Signatories page (ASSUMPTIONS 363, 418)
+    if has_permission_for(request.user, Permission.MANAGE_SIGNATORIES, None, kind=SIGNATORIES_TASK):  # 363, 418, 460
         context["signatories_link"] = reverse("certificates:signatories")
     return render(request, "certificates/list.html", context)
 
@@ -271,7 +275,7 @@ def text_preview(request: HttpRequest, activity_id: int) -> HttpResponse:
 # --- Apply the current design, hand over, resend (can_create_activity) --------------------------------------------
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, activity_from_url)  # or assigned (460)
 @post_only_or_tab("certificates")
 def apply_design(request: HttpRequest, activity_id: int) -> HttpResponse:
     """"Apply the current design": the active template and signatories on every certificate of the activity that is
@@ -387,7 +391,7 @@ def signatory_current_version(request: HttpRequest, activity_id: int, slot: str)
     return redirect(pages.tab_url(activity.pk))
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @post_only_or_tab("certificates")
 def signature_upload(request: HttpRequest, activity_id: int, slot: str) -> HttpResponse:
     """POST file: add or replace the signature image of the person on `slot` (services.upload_signature). A replaced
@@ -423,7 +427,7 @@ def reissued_message(certificates: list[Certificate]) -> str:
     return email_sent_message("", before=text + " ").strip() if by_email else text
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@object_permission_required(Permission.APPROVE_CERTIFICATES, activity_from_url)  # or its assignment (460)
 @post_only_or_tab("certificates")
 def reissue_one(request: HttpRequest, activity_id: int, certificate_id: int) -> HttpResponse:
     """The preview's "Reissue with current signatures"."""
@@ -438,7 +442,7 @@ def reissue_one(request: HttpRequest, activity_id: int, certificate_id: int) -> 
     return redirect(pages.tab_url(activity.pk, preview=certificate.pk))
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@object_permission_required(Permission.APPROVE_CERTIFICATES, activity_from_url)  # or its assignment (460)
 @post_only_or_tab("certificates")
 def reissue_all(request: HttpRequest, activity_id: int) -> HttpResponse:
     """"Reissue all outdated certificates (N)" after the confirm dialog."""
@@ -459,17 +463,18 @@ def reissue_all(request: HttpRequest, activity_id: int) -> HttpResponse:
 def _text_page(request: HttpRequest, *, values: dict | None = None, errors: dict | None = None,
                status: int = 200) -> HttpResponse:
     context = {"page_title": "Certificate text", "page_subtitle": "The default wording printed on certificates of participation and appreciation",
-               **pages.default_text_page(values, errors)}
+               **pages.default_text_page(values, errors),
+               "assign": _assign_panel(request.user, task=CERTIFICATE_TEXT_TASK)}  # ASSUMPTIONS 460
     return render(request, "certificates/text.html", context, status=status)
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@task_permission_required(Permission.APPROVE_CERTIFICATES, CERTIFICATE_TEXT_TASK)  # or its assignment (460)
 @require_GET
 def certificate_text(request: HttpRequest) -> HttpResponse:
     return _text_page(request)
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@task_permission_required(Permission.APPROVE_CERTIFICATES, CERTIFICATE_TEXT_TASK)  # or its assignment (460)
 @require_POST
 def certificate_text_save(request: HttpRequest, certificate_type: str) -> HttpResponse:
     """POST the fields "<type>-<field>" of one type (after the impact dialog): services.save_default_text."""
@@ -513,7 +518,7 @@ def new_activity_text_preview(request: HttpRequest) -> HttpResponse:
     return render(request, "certificates/_text_preview.html", {"preview": services.wording_preview(None, kind, values)})
 
 
-@permission_required(Permission.APPROVE_CERTIFICATES)
+@task_permission_required(Permission.APPROVE_CERTIFICATES, CERTIFICATE_TEXT_TASK)  # or its assignment (460)
 @require_POST
 def certificate_text_preview(request: HttpRequest) -> HttpResponse:
     """HTMX, while typing on the Certificate text page: the default wording filled with sample values."""
@@ -532,8 +537,15 @@ def certificate_text_preview(request: HttpRequest) -> HttpResponse:
 def _signatories_page(request: HttpRequest, *, errors: dict | None = None, values: dict | None = None,
                       open_form: str = "", status: int = 200) -> HttpResponse:
     context = {"page_title": "Signatories", "page_subtitle": "The people whose names and signatures are printed on certificates, and the two defaults",
-               **pages.signatories_page(request.user, errors, values, open_form)}
+               **pages.signatories_page(request.user, errors, values, open_form),
+               "assign": _assign_panel(request.user, task=SIGNATORIES_TASK)}  # ASSUMPTIONS 460
     return render(request, "certificates/signatories.html", context, status=status)
+
+
+def _assign_panel(member, task: str):
+    from approvals import pages as approval_pages  # approvals imports certificates
+
+    return approval_pages.assign_panel(member, task=task)
 
 
 def _back(request: HttpRequest) -> str:
@@ -546,13 +558,13 @@ def _flat(error: ValidationError) -> dict:
     return {"__all__": " ".join(error.messages)}
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_GET
 def signatories(request: HttpRequest) -> HttpResponse:
     return _signatories_page(request)
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_add(request: HttpRequest) -> HttpResponse:
     """POST name, position, file (optional); from the Certificates tab also activity + slot (the new person then signs
@@ -581,7 +593,7 @@ def signatory_add(request: HttpRequest) -> HttpResponse:
     return redirect(_back(request))
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_edit(request: HttpRequest, signatory_id: int) -> HttpResponse:
     """POST name, position: in place when no certificate uses the person, else a new version (services.edit_signatory)."""
@@ -608,7 +620,7 @@ def _plural(count: int, one: str, many: str) -> str:
     return f"{count} {one if count == 1 else many}"
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_image(request: HttpRequest, signatory_id: int) -> HttpResponse:
     """POST file: add or replace the person's signature image (services.replace_signature)."""
@@ -626,7 +638,7 @@ def signatory_image(request: HttpRequest, signatory_id: int) -> HttpResponse:
     return redirect(_back(request))
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_remove_background(request: HttpRequest, signatory_id: int) -> HttpResponse:
     """"Remove white background" on the Signatories page (services.remove_signature_background: a new version)."""
@@ -641,7 +653,7 @@ def signatory_remove_background(request: HttpRequest, signatory_id: int) -> Http
     return redirect(_back(request))
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signature_preview(request: HttpRequest) -> HttpResponse:
     """HTMX, from the upload dialogs: the chosen image as it will be stored (white background removed unless "Keep
@@ -656,7 +668,7 @@ def signature_preview(request: HttpRequest) -> HttpResponse:
     return render(request, "certificates/_signature_preview.html", context)
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_add_inline(request: HttpRequest) -> HttpResponse:
     """HTMX, from the activity form's "Add a person…" (ASSUMPTIONS 365): add the person (services.add_signatory) and
@@ -677,7 +689,7 @@ def signatory_add_inline(request: HttpRequest) -> HttpResponse:
     return response
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_deactivate(request: HttpRequest, signatory_id: int) -> HttpResponse:
     person = get_object_or_404(CertificateSignatory, pk=signatory_id)
@@ -691,7 +703,7 @@ def signatory_deactivate(request: HttpRequest, signatory_id: int) -> HttpRespons
     return redirect(_back(request))
 
 
-@permission_required(Permission.MANAGE_SIGNATORIES)
+@task_permission_required(Permission.MANAGE_SIGNATORIES, SIGNATORIES_TASK)  # or its assignment (460)
 @require_POST
 def signatory_defaults(request: HttpRequest) -> HttpResponse:
     """POST left, right (signatory IDs): the people a new activity starts with (services.set_default_signatory)."""

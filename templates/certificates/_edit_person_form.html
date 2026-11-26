@@ -1,7 +1,7 @@
 {% comment %}Inside the Signatories page's Edit dialog (`row`, `person` from the loop; ASSUMPTIONS 363). A person not printed
 on any certificate yet is changed in place; otherwise the change is a new version and row.impact says what it changes.
 POST to certificates:signatory_edit (services.edit_signatory).{% endcomment %}
-<form method="post" action="{% url 'certificates:signatory_edit' person.pk %}" novalidate class="space-y-4">
+<form data-enter-submit="off" method="post" action="{% url 'certificates:signatory_edit' person.pk %}" novalidate class="space-y-4">
   {% csrf_token %}
   {% if row.impact %}
     <p class="flex items-start gap-2 rounded-xl border border-warning-line bg-warning-soft px-3 py-2 text-sm text-amber-900" role="note">

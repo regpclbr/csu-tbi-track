@@ -17,7 +17,7 @@ from config.parsing import parse_bool
 from .models import Position, Role
 from .permissions import Permission, has_permission
 
-# The tab row of every console page: (label, URL name, icon). Startups live on their own page (sync, set-password links).
+# The tab row of every console page: (label, URL name, icon).
 TABS = [
     ("Members", "accounts:console", "users"),
     ("Roles", "accounts:console_roles", "shield"),

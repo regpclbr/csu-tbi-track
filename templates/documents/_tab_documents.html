@@ -118,8 +118,10 @@ Other documents, ASSUMPTIONS 386). Uploads are normal POSTs: success comes back 
       </button>
     </form>
     {# ASSUMPTIONS 437: a letter or report that needs the Director's approval (and signature) goes through Approvals #}
+    {% if layout.offers_submit %}{# ASSUMPTIONS 456 #}
     <p class="mt-4 border-t border-line pt-4 text-sm text-slate-700">Needs the Director's approval or signature first?
       <a href="{% url 'approvals:submit' %}?activity={{ activity.pk }}" class="link font-semibold">Submit it to the Director</a>.</p>
+    {% endif %}
   </section>
   {% include "documents/_dialog.html" %}
 </div>

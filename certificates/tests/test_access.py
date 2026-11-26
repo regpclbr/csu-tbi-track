@@ -1,5 +1,5 @@
-"""Who sees certificates: staff (list, detail, download), the startup portal (only its own Issued
-certificates), and evidence documents (DOCUMENT.related_certificate, Step 6 rules)."""
+"""Who sees certificates: staff (list, detail, download), and evidence documents (DOCUMENT.related_certificate, Step 6
+rules). (The startup portal's "My certificates" was removed with the portal, ASSUMPTIONS 458.)"""
 
 import pytest
 from django.core.exceptions import PermissionDenied
@@ -63,49 +63,6 @@ def test_not_logged_in_is_sent_to_the_login(client, both_issued) -> None:
     certificate = certificate_of(both_issued[1][0])
     for url in ("/certificates/api/", f"/certificates/api/{certificate.pk}/", f"/certificates/{certificate.pk}/download/"):
         assert client.get(url).status_code == (401 if "/api/" in url else 302)  # API: JSON; file: login page
-
-
-# --- Startup portal ---------------------------------------------------------------------------------
-
-
-def test_startup_sees_and_downloads_only_its_own_issued_certificates(both_issued, make_startup, portal_for) -> None:
-    activity, people = both_issued
-    mine = make_startup(email="person0@example.com", navigatu_id="NAV-0")  # matches people[0] by email (Step 7)
-    other = make_startup(email="person1@example.com", navigatu_id="NAV-1", name="Other Startup")
-    portal = portal_for(mine)
-
-    listed = portal.get("/startups/portal/api/certificates/").json()["certificates"]
-    assert [c["certificate_number"] for c in listed] == [certificate_of(people[0]).certificate_number]
-    assert portal.get(listed[0]["download_url"]).status_code == 200
-
-    others = certificate_of(people[1])
-    assert portal.get(f"/startups/portal/certificates/{others.pk}/download/").status_code == 404
-    assert portal.get(f"/startups/portal/certificates/{appreciation_of(activity).pk}/download/").status_code == 404
-    assert portal_for(other).get(listed[0]["download_url"]).status_code == 404
-
-
-def test_startup_list_is_based_on_registrations_not_on_certificate_email(both_issued, make_startup, portal_for) -> None:
-    """The certificate went to zero.cert@example.com, but "My certificates" follows the registration."""
-    stranger = make_startup(email="zero.cert@example.com", navigatu_id="NAV-9")
-    assert portal_for(stranger).get("/startups/portal/api/certificates/").json()["certificates"] == []
-
-
-def test_startup_sees_linked_registrations_and_only_issued_ones(generated, make_startup, portal_for) -> None:
-    activity, people = generated
-    linked = make_startup(email="different@example.com", navigatu_id="NAV-5")
-    Registration.objects.filter(pk=people[1].pk).update(startup=linked)
-    portal = portal_for(linked)
-    assert portal.get("/startups/portal/api/certificates/").json()["certificates"] == []  # Generated: not shown yet
-    Certificate.objects.filter(registration=people[1]).update(status=S.ISSUED)
-    assert len(portal.get("/startups/portal/api/certificates/").json()["certificates"]) == 1
-
-
-def test_staff_and_anonymous_cannot_use_the_portal(client, both_issued, director) -> None:
-    certificate = certificate_of(both_issued[1][0])
-    url = f"/startups/portal/certificates/{certificate.pk}/download/"
-    assert client.get(url).status_code == 401
-    client.force_login(director)
-    assert client.get(url).status_code == 403
 
 
 # --- Evidence documents (owner decision Q1 = B) -----------------------------------------------------

@@ -1,0 +1,31 @@
+{% comment %}
+For payment (Supply Office), ONE card per activity (ASSUMPTIONS 463; documents.services.payment_missing ->
+reports.hub.payment_cards): each Conducted activity with its OWN missing payment documents, never grouped by type. A
+file the system can make (Attendance, Confirmation of Attendance, Activity Report) has "Generate": it opens the Reports
+page with this activity and kind chosen (nothing is made without the member). Anything else has "Upload".
+{% include "documents/_payment_cards.html" with cards=payment_cards %}
+{% endcomment %}
+{% if cards %}
+  <ul class="grid gap-4 lg:grid-cols-2" data-payment-cards>
+    {% for card in cards %}
+      <li class="rounded-2xl border p-4 {% if card.overdue %}has-accent accent-danger border-danger-line{% else %}border-line{% endif %} bg-white" data-payment-activity="{{ card.activity.pk }}">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <a href="{% url 'activities:detail' card.activity.pk %}?tab=documents" class="min-w-0 grow basis-48 font-semibold text-ink hover:text-primary hover:underline">{{ card.activity.title }}</a>
+          <span class="caption text-muted">Ended {{ card.activity.end_date|date:"M j, Y" }}</span>
+        </div>
+        <ul class="mt-3 space-y-2">
+          {% for row in card.items %}
+            <li class="flex flex-wrap items-center gap-2 text-sm">
+              <span class="min-w-0 grow basis-40 text-ink">{{ row.item.document_type.name }}</span>
+              {% include "components/badge.html" with text=row.state.0 tone=row.state.1 %}
+              <span class="caption {% if row.item.is_overdue %}font-semibold text-danger{% else %}text-muted{% endif %}">{% if row.item.is_overdue %}Overdue since {{ row.item.due_date|date:"M j" }}{% else %}Due {{ row.item.due_date|date:"M j" }}{% endif %}</span>
+              <a href="{{ row.action.url }}" class="btn btn-secondary btn-sm ml-auto" data-payment-action="{{ row.action.label|lower }}">{% if row.action.kind %}{% include "components/icon.html" with name="sparkles" class="size-4" %}{% else %}{% include "components/icon.html" with name="upload" class="size-4" %}{% endif %}{{ row.action.label }}<span class="sr-only"> the {{ row.item.document_type.name }} of {{ card.activity.title }}</span></a>
+            </li>
+          {% endfor %}
+        </ul>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  {% include "components/empty_state.html" with icon="file-check" title="Nothing missing for payment" text="Every Conducted activity has its payment documents approved." compact=True %}
+{% endif %}

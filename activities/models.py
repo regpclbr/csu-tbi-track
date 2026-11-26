@@ -174,6 +174,10 @@ class Activity(models.Model):
     # activities.services.set_registration_closed_by_hand (History row); read by is_registration_open /
     # open_for_registration. The automatic rules (deadline, slots, Scheduled) still apply when it is False.
     registration_closed_by_hand = models.BooleanField(default=False)
+    # ASSUMPTIONS 452: True = the evaluation was closed by hand ("Close the evaluation"), also without a deadline.
+    # Changed ONLY by activities.services.set_evaluation_closed_by_hand (History row); read ONLY by
+    # registrations.services.evaluation_has_closed / evaluation_open_q (the one "closed" rule).
+    evaluation_closed_by_hand = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

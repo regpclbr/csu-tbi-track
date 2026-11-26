@@ -49,6 +49,20 @@ the shared Alpine values (ASSUMPTIONS 384).
         <span id="ai-summary-help" class="field-help mt-0">A short summary written by Gemini from the report's figures only (never names or document text). If Gemini is not available, the report is still made without it.</span>
       </span>
     </label>
+
+    {# ASSUMPTIONS 461: notes and files always guide the AI; every number still comes from the report's figures. #}
+    <div class="space-y-4 rounded-xl border border-line p-4" data-report-guidance>
+      <div>
+        <label for="report-notes" class="text-sm font-semibold text-ink">Notes for the AI <span class="font-normal text-muted">(optional)</span></label>
+        <textarea id="report-notes" name="notes" rows="3" maxlength="{{ notes_max }}" class="field-input mt-2" placeholder="For example: highlight the partnership with DTI; mention the new incubatees.">{{ form.notes }}</textarea>
+        {% if form.errors.notes %}<p class="field-error">{{ form.errors.notes }}</p>{% endif %}
+      </div>
+      <div>
+        <label for="report-files" class="text-sm font-semibold text-ink">Files for the AI to read <span class="font-normal text-muted">(optional)</span></label>
+        <input id="report-files" type="file" name="report_files" multiple accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png" class="field-input mt-2">
+        {% if form.errors.files %}<p class="field-error">{{ form.errors.files }}</p>{% else %}<p class="field-help">Used with the AI summary only, at most {{ max_files }} files. Numbers always come from the report's figures.</p>{% endif %}
+      </div>
+    </div>
   </div>
 
   <div class="space-y-6">

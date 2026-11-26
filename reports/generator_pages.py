@@ -139,6 +139,12 @@ def _section_views(version: ReportDraftVersion) -> list[dict]:
     return views
 
 
+def _offers_submit(member) -> bool:
+    from approvals.services import offers_submit
+
+    return offers_submit(member)
+
+
 def version_view(member, version: ReportDraftVersion, is_latest: bool) -> dict:
     """One version: its state, progress, sections (editable when it is the newest and ready), the facts preview and the
     actions with their refusal reasons."""
@@ -159,6 +165,7 @@ def version_view(member, version: ReportDraftVersion, is_latest: bool) -> dict:
         "save_refused": refused or generator.save_refused_reason(version),
         "draft_note": generator.DRAFT_NOT_SAVED if not generator.save_offered(draft) else "",
         "submit_refused": refused or (generator.ALREADY_SUBMITTED if version.submission_id else None),
+        "submit_offered": _offers_submit(member),  # ASSUMPTIONS 456: never to the Director on their own account
         "ai_label": generator.AI_LABEL,
         "status_url": reverse("reports:generator_version_status", args=[version.pk]),
         "poll_seconds": POLL_SECONDS,

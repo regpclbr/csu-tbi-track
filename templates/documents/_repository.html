@@ -82,13 +82,17 @@ Summary cards: click = filter by that state (again = clear). Rendered from the U
     {% for link in view_links %}
       <a href="{{ link.url }}" hx-get="{{ link.url }}" hx-target="#document-repository" hx-push-url="true"{% if link.selected %} aria-current="true"{% endif %}
          class="segmented-item {% if link.selected %}is-selected{% endif %}">
-        {% include "components/icon.html" with name=link.icon class="size-4" %}{{ link.label }}</a>
+        {% include "components/icon.html" with name=link.icon class="hidden size-4 sm:block" %}{{ link.short }}{% if link.rest %}<span class="hidden sm:inline">{{ link.rest }}</span>{% endif %}</a>
     {% endfor %}
   </nav>
-  {% if filters.view != "all" %}<p class="text-sm text-muted" role="status">{{ result.total }} activit{{ result.total|pluralize:"y,ies" }}{% if filters.any_set %} matching the filters{% endif %} · ongoing first, then the newest</p>{% endif %}
+  {% if filters.view == "payment" %}<p class="text-sm text-muted" role="status">{{ result.total }} Conducted activit{{ result.total|pluralize:"y,ies" }} still missing payment documents · oldest due first</p>
+  {% elif filters.view != "all" %}<p class="text-sm text-muted" role="status">{{ result.total }} activit{{ result.total|pluralize:"y,ies" }}{% if filters.any_set %} matching the filters{% endif %} · ongoing first, then the newest</p>{% endif %}
 </div>
 {% if filters.view == "all" %}
   {% include "documents/_results.html" %}
+{% elif filters.view == "payment" %}
+  {# For payment (Supply Office), ASSUMPTIONS 463: one card per activity with its own missing files (Generate / Upload). #}
+  {% include "documents/_payment_cards.html" with cards=payment_cards %}
 {% else %}
   {% if cards %}
     <ul class="space-y-4">

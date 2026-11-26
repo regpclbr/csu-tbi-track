@@ -1,29 +1,53 @@
 {% comment %}
-The history table of /reports/ (reports.pages.history). The pager swaps only this part (HTMX). Each row is
-reports/_row.html, which polls itself while pending.
+"Past reports" of the ONE Reports page (reports.hub.past, ASSUMPTIONS 461-462): every figures report (any staff member
+downloads them) and the member's own drafts, newest first; for one activity, its drafts and the report-like documents
+saved on it. The pager swaps only this part (HTMX). A figures report row is reports/_row.html (it polls itself while
+pending); a draft opens its page; a saved document opens the document page.
 {% endcomment %}
 <div id="report-history" class="htmx-dim">
   {% if rows %}
     <div class="relative overflow-x-auto rounded-2xl border border-line">{# relative: keeps the sr-only texts inside the scroll box #}
       <table class="w-full text-left text-sm">
-        <caption class="sr-only">Generated reports, newest first</caption>
+        <caption class="sr-only">Past reports, newest first</caption>
         <thead class="bg-slate-50 text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase">
           <tr>
             <th scope="col" class="px-3 py-3">Report</th>
-            <th scope="col" class="px-3 py-3">Sections</th>
-            <th scope="col" class="px-3 py-3">Period</th>
-            <th scope="col" class="px-3 py-3">Requested</th>
+            <th scope="col" class="px-3 py-3">Details</th>
+            <th scope="col" class="px-3 py-3">About</th>
+            <th scope="col" class="px-3 py-3">Made</th>
             <th scope="col" class="px-3 py-3">State</th>
-            <th scope="col" class="px-3 py-3"><span class="sr-only">Download</span></th>
+            <th scope="col" class="px-3 py-3"><span class="sr-only">Open or download</span></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-line">
-          {% for row in rows %}{% include "reports/_row.html" %}{% endfor %}
+          {% for row in rows %}
+            {% if row.type == "draft" %}
+              <tr class="align-top hover:bg-slate-50" data-past-draft>
+                <th scope="row" class="min-w-52 px-3 py-3 font-normal"><span class="block font-semibold text-ink">{{ row.draft.title }}</span><span class="text-xs text-muted">{{ row.kind }} · written with the AI</span></th>
+                <td class="min-w-48 px-3 py-3 text-xs text-slate-700">{% if row.latest %}Version {{ row.latest.number }}{% else %}–{% endif %}</td>
+                <td class="min-w-40 px-3 py-3 text-slate-700">{{ row.scope }}</td>
+                <td class="min-w-36 px-3 py-3 text-slate-700">You<br><time class="text-xs whitespace-nowrap text-muted" datetime="{{ row.when|date:'c' }}">{{ row.when|date:"M j, Y g:i A" }}</time></td>
+                <td class="px-3 py-3">{% if row.latest %}{% include "components/badge.html" with text=row.latest.get_state_display tone=row.tone %}{% endif %}</td>
+                <td class="px-3 py-3 text-right"><a href="{{ row.url }}" class="btn btn-secondary btn-sm whitespace-nowrap">{% include "components/icon.html" with name="file-text" class="size-4" %}Open<span class="sr-only"> {{ row.draft.title }}</span></a></td>
+              </tr>
+            {% elif row.type == "document" %}
+              <tr class="align-top hover:bg-slate-50" data-past-document>
+                <th scope="row" class="min-w-52 px-3 py-3 font-normal"><span class="block font-semibold text-ink">{{ row.document.title }}</span><span class="text-xs text-muted">{{ row.document.document_type.name }} · saved on this activity</span></th>
+                <td class="min-w-48 px-3 py-3 text-xs text-slate-700">{{ row.document.file_extension|upper }}</td>
+                <td class="min-w-40 px-3 py-3 text-slate-700">{{ activity.title }}</td>
+                <td class="min-w-36 px-3 py-3 text-slate-700">{{ row.document.uploaded_by.name|default:"System" }}<br><time class="text-xs whitespace-nowrap text-muted" datetime="{{ row.when|date:'c' }}">{{ row.when|date:"M j, Y g:i A" }}</time></td>
+                <td class="px-3 py-3">{% include "components/badge.html" with text="Saved" tone="success" %}</td>
+                <td class="px-3 py-3 text-right"><a href="{{ row.url }}" class="btn btn-secondary btn-sm whitespace-nowrap">{% include "components/icon.html" with name="folder" class="size-4" %}Open<span class="sr-only"> {{ row.document.title }}</span></a></td>
+              </tr>
+            {% else %}
+              {% include "reports/_row.html" %}
+            {% endif %}
+          {% endfor %}
         </tbody>
       </table>
     </div>
-    {% include "components/pagination.html" with result=result hx_target="#report-history" %}
+    {% url 'reports:list' as reports_url %}{% include "components/pagination.html" with result=result hx_target="#report-history" query=page_query base_url=reports_url %}
   {% else %}
-    {% include "components/empty_state.html" with icon="chart-column" title="No reports yet" text="Generated reports will be listed here, newest first." %}
+    {% include "components/empty_state.html" with icon="chart-column" title="No reports yet" text="Everything you make here is listed, newest first." %}
   {% endif %}
 </div>

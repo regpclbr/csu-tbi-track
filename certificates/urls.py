@@ -1,4 +1,4 @@
-"""Certificates (mounted at /certificates/). The startup portal's "My certificates" is in startups/urls.py."""
+"""Certificates (mounted at /certificates/)."""
 
 from django.urls import path
 

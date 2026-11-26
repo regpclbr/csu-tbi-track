@@ -1,7 +1,7 @@
 {% comment %}"Add a person" (can_manage_signatories; ASSUMPTIONS 363, 418): adds a person to the signatory list. From the
 activity's Certificates tab (`slot` from the loop, `activity`) the new person also signs on that side; `next` brings the
 member back to the tab. On the Signatories page (no slot) it only adds them. POST to certificates:signatory_add.{% endcomment %}
-<form method="post" action="{% url 'certificates:signatory_add' %}" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ busy: false }" @submit="busy = true">
+<form data-enter-submit="off" method="post" action="{% url 'certificates:signatory_add' %}" enctype="multipart/form-data" novalidate class="space-y-4" x-data="{ busy: false }" @submit="busy = true">
   {% csrf_token %}
   {% if slot %}
     <input type="hidden" name="activity" value="{{ activity.pk }}">

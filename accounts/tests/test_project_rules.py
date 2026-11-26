@@ -1,5 +1,5 @@
-"""Static checks of project rules from CLAUDE.md, by reading the source files (like the Navigatu
-"only the provider module" test in startups/tests/test_sync.py)."""
+"""Static checks of project rules from CLAUDE.md, by reading the source files.
+"""
 
 import re
 from pathlib import Path

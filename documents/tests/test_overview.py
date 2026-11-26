@@ -235,7 +235,7 @@ def test_summary_cards_use_the_shared_card_link_style(world, director, login) ->
     assert "Filtered" in html and 'md:grid-cols-4' in html
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").replace(" ", "")
     assert ".stat-card-link:focus,.stat-card-link:focus-visible{outline:none}" in css
-    assert ".stat-card-link:focus-visible{box-shadow:0002px#2a449499}" in css  # the primary at 60% (ASSUMPTIONS 413)
+    assert ".stat-card-link:focus-visible{box-shadow:0002px#1f6b3e99}" in css  # the primary at 60% (413, green since 459)
     assert ".stat-card-link[aria-pressed=true]{box-shadow:0002pxvar(--color-primary)}" in css
     assert ".stat-card-link[aria-pressed=true].chip{" in css and ".stat-cards-selected.stat-card-link[aria-pressed=false]{" in css
 

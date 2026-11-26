@@ -1,36 +1,28 @@
-"""Business logic for in-app notifications (to TBI members and to startups).
+"""Business logic for in-app notifications to TBI members.
 
-Views stay thin and call the functions in this module. A NOTIFICATION has exactly one
-recipient (a member or a startup), and a recipient only ever sees and changes their own:
-every query filters by that recipient.
+Views stay thin and call the functions in this module. A NOTIFICATION has exactly one recipient (a member; the startup
+recipients were removed with the portal, ASSUMPTIONS 458), and a member only ever sees and changes their own: every
+query filters by that member.
 """
 
-from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 
 from accounts.models import Role, TBIMember
 from accounts.permissions import require_staff_member
 from activities.services import PageResult, _paginate
-from startups.models import Startup
 
 from .models import Notification
 
 DEFAULT_PAGE_SIZE = 20
 
-Recipient = TBIMember | Startup
+Recipient = TBIMember
 
 
 def my_notifications(recipient: Recipient) -> QuerySet:
-    """The recipient's own notifications: an active staff member's, or an active startup's."""
-    if isinstance(recipient, Startup):
-        if not recipient.is_active:
-            raise PermissionDenied("This startup account is not active.")
-        queryset = Notification.objects.filter(startup=recipient)
-    else:
-        require_staff_member(recipient)
-        queryset = Notification.objects.filter(member=recipient)
-    return queryset.select_related("activity", "document_type")
+    """The member's own notifications (an active staff member only)."""
+    require_staff_member(recipient)
+    return Notification.objects.filter(member=recipient).select_related("activity", "document_type")
 
 
 def list_notifications(recipient: Recipient, page: int | str | None = 1, unread_only: bool = False,

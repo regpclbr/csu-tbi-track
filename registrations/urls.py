@@ -29,6 +29,7 @@ urlpatterns = [
         name="evaluation_pdf",
     ),
     path("activities/<int:activity_id>/attendance/", page_views.attendance, name="attendance"),
+    path("activities/<int:activity_id>/walk-in/", page_views.walk_in, name="walk_in"),  # ASSUMPTIONS 455
     path("activities/<int:activity_id>/attendance/<int:registration_id>/sign/", page_views.attendance_signature,
          name="attendance_signature"),
     path("activities/<int:activity_id>/registrations/<int:registration_id>/signature.png", page_views.signature_image,

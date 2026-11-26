@@ -80,17 +80,17 @@ def _form(activity: Activity, form_type: str) -> FormTemplate:
 
 @pytest.fixture
 def register():
-    """register(activity, "Ana", attended=True, category="Faculty", email=None, startup=None) -> Registration."""
+    """register(activity, "Ana", attended=True, category="Faculty", email=None) -> Registration."""
 
     def make(activity: Activity, name: str = "Ana Cruz", *, attended: bool = False, category: str | None = None,
-             email: str | None = None, startup=None) -> Registration:
+             email: str | None = None) -> Registration:
         category_row = (
             ParticipantCategory.objects.get(name=category) if category else activity.participant_categories.order_by("name").first()
         )
         email = email or f"{name.lower().replace(' ', '.')}.{activity.pk}@example.com"
         return Registration.objects.create(
             activity=activity, template=_form(activity, FormType.REGISTRATION), participant_category=category_row,
-            name=name, email=email, attendance_confirmed=attended, startup=startup,
+            name=name, email=email, attendance_confirmed=attended,
         )
 
     return make

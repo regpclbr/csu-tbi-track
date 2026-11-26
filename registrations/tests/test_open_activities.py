@@ -1,5 +1,5 @@
-"""The list of activities open for registration: public (/api/activities/open/) and in the startup
-portal (/startups/portal/api/activities/, with already_registered). Same rule as the registration page."""
+"""The list of activities open for registration: public (/api/activities/open/). Same rule as the registration page.
+(The startup portal's list was removed with the portal, ASSUMPTIONS 458.)"""
 
 from datetime import timedelta
 
@@ -10,7 +10,6 @@ from activities import services as activity_services
 from activities.models import Activity
 from registrations import services
 from registrations.models import FormType
-from startups.tests.conftest import STARTUP_PASSWORD, make_startup  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
@@ -72,13 +71,3 @@ def test_the_list_needs_get(client) -> None:
     assert client.post("/api/activities/open/").status_code == 405
 
 
-def test_startup_portal_list_marks_my_registrations(make_scheduled, make_startup, signup) -> None:
-    mine, other = make_scheduled("Mine"), make_scheduled("Other")
-    startup = make_startup(email="acme@example.com")
-    signup(mine, "ACME@example.com")  # an older public registration with the startup's email counts as mine
-    portal = Client()
-    assert portal.get("/startups/portal/api/activities/").status_code == 401  # startup login required
-    portal.post("/startups/portal/api/login/", {"email": startup.email, "password": STARTUP_PASSWORD}, content_type="application/json")
-    rows = {row["title"]: row for row in portal.get("/startups/portal/api/activities/").json()["activities"]}
-    assert rows["Mine"]["already_registered"] is True and rows["Other"]["already_registered"] is False
-    assert set(rows["Mine"]) == PUBLIC_FIELDS | {"already_registered"}

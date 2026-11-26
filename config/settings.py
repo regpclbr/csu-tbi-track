@@ -59,7 +59,7 @@ INSTALLED_APPS = [
     "documents",
     "certificates",
     "reports",
-    "startups",
+    "startups",  # kept ONLY for its migrations: the portal and STARTUP were removed (ASSUMPTIONS 458)
     "assistant",
     "notifications",
     "approvals",  # work submitted to the Director, the "For your approval" inbox (ASSUMPTIONS 437)
@@ -94,7 +94,6 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "config.frontend.staff_layout",  # sidebar, top bar counts (staff pages only)
-                "config.frontend.portal_layout",  # the startup portal's sidebar (portal pages only)
                 "config.frontend.public_footer",  # the contact address in the public pages' footer
                 "config.frontend.review_label",  # the "Review version" label (REVIEW_VERSION_LABEL, empty = none)
             ],
@@ -138,7 +137,7 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "home"
 LOGOUT_REDIRECT_URL = "accounts:login"
 
-# Sessions (staff and startup portal): at most 8 hours after logging in, and they also end when the
+# Sessions (staff): at most 8 hours after logging in, and they also end when the
 # browser is closed (shared office computers).
 SESSION_COOKIE_AGE = 8 * 60 * 60
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
@@ -187,6 +186,9 @@ REGISTRATION_RATE_WINDOW_MINUTES = 60
 # QR attendance check-in (ASSUMPTIONS 434): /checkin/<id>/ opens this many minutes before start_time on every activity
 # day (also on day 1 while the activity is still Scheduled) and closes at end_time (Manila).
 PARTICIPANT_CHECKIN_EARLY_MINUTES = env_int("PARTICIPANT_CHECKIN_EARLY_MINUTES", 60)
+# ASSUMPTIONS 454: the QR check-in closes this many minutes AFTER the start time on each day (late participants); after
+# that the page says to ask the staff, who mark attendance by hand (or add a walk-in, ASSUMPTIONS 455).
+PARTICIPANT_CHECKIN_LATE_MINUTES = env_int("PARTICIPANT_CHECKIN_LATE_MINUTES", 60)
 # Rate limit of the public check-in page (every POST counts: email, signature and walk-in steps): per IP address (a
 # whole venue shares one network) and per typed email, in CHECKIN_RATE_WINDOW_MINUTES.
 CHECKIN_MAX_ATTEMPTS_PER_IP = 600
@@ -236,7 +238,7 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {"simple": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
-    # Personal links (evaluation, startup set-password, password reset) carry a token in the URL; Django logs the path
+    # Personal links (evaluation, cancel registration, password reset) carry a token in the URL; Django logs the path
     # of every 404/400 ("Not Found: /evaluate/<token>/"), so the token is replaced by "<hidden>" (ASSUMPTIONS 391).
     "filters": {"hide_tokens": {"()": "config.logfilters.HideTokensFilter"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple", "filters": ["hide_tokens"]}},
@@ -322,18 +324,9 @@ EVALUATION_LINK_HOURS_BEFORE_END = env_int("EVALUATION_LINK_HOURS_BEFORE_END", 3
 ATTENTION_DRAFT_DAYS_BEFORE = 7
 
 
-# --- Startups and Navigatu (Step 7) -------------------------------------------------
-# Navigatu is reached ONLY through this provider class (dotted path). The mock reads
-# invented data from startups/mock_data/; NavigatuStartupProvider is a stub for later.
-STARTUP_PROVIDER = os.environ.get("STARTUP_PROVIDER", "startups.providers.MockStartupProvider")
-STARTUP_SYNC_HOUR = 7  # the daily sync runs at 7:00 AM Manila time
-# False on the hosted review version (ASSUMPTIONS 393): no daily sync schedule, the task and `sync_startups` do nothing.
-# With the mock provider a sync would otherwise load invented startups into a clean database.
-STARTUP_SYNC_ENABLED = env_bool("STARTUP_SYNC_ENABLED", True)
-# Safety guard: a sync that would deactivate more than this share of the active startups
-# (or gets zero records) deactivates nobody. `sync_startups --force` overrides it on purpose.
-STARTUP_SYNC_MAX_DEACTIVATE_RATIO = 0.5
-STARTUP_PASSWORD_LINK_HOURS = 72  # a "set your password" link expires after this many hours
+# --- Startups and Navigatu: removed (ASSUMPTIONS 458) -----------------------------------
+# The startup portal, the Navigatu sync (StartupProvider) and the STARTUP table were removed on 2026-11-26 before the
+# user testing; they are a Chapter 5 recommendation. No STARTUP_* setting is read any more.
 
 
 # --- Certificates (Step 9) ---------------------------------------------------------------

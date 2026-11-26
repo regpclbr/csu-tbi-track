@@ -279,16 +279,40 @@ def can_generate(member) -> bool:
     return has_permission_for(member, GENERATE_REPORT_PERMISSION)
 
 
-def request_report(member: TBIMember, data: dict, now: datetime | None = None, queue: bool = True) -> GeneratedReport:
+REPORT_NOTES_MAX = 2000  # ASSUMPTIONS 461: the member's notes for the AI summary
+
+
+def request_report(member: TBIMember, data: dict, now: datetime | None = None, queue: bool = True,
+                   files=None) -> GeneratedReport:
     """Save a report request and queue its generation (after the commit). `queue=False` is only for the
     `generate_report` command, which builds the file itself right away.
 
     data: report_type, included_sections (list; default: the type's sections), date_range_start and
     date_range_end (both required, YYYY-MM-DD, end on or after start; a future range is allowed),
-    activity_type (ID, optional), format.
+    activity_type (ID, optional), format, notes (optional, ASSUMPTIONS 461: guide the AI summary; never numbers).
+    files: optional files "for the AI to read" (reports.generator.NewFile list), checked like a draft's.
     """
     require_permission_for(member, GENERATE_REPORT_PERMISSION)  # or a report assignment (ASSUMPTIONS 437)
     report_type, sections, filters, report_format = _clean_request(data, now)
+    notes = str(data.get("notes") or "").replace("\r\n", "\n").strip()
+    if len(notes) > REPORT_NOTES_MAX:
+        raise ValidationError({"notes": [f"Keep the notes under {REPORT_NOTES_MAX} characters."]})
+    from . import generator
+
+    stored: list[str] = []
+    if files:
+        generator.check_files(None, [generator.NewFile(f.file, "document") for f in files])
+    try:
+        return _save_request(member, report_type, sections, filters, report_format, notes, files or [], queue, now,
+                             stored)
+    except Exception:
+        generator._delete_files(stored)  # nothing was saved: never leave files behind
+        raise
+
+
+def _save_request(member, report_type, sections, filters, report_format, notes, files, queue, now, stored) -> GeneratedReport:
+    from . import generator
+
     with transaction.atomic():
         report = GeneratedReport.objects.create(
             generated_by=member,
@@ -299,7 +323,10 @@ def request_report(member: TBIMember, data: dict, now: datetime | None = None, q
             activity_type_id=filters.activity_type_id,
             format=report_format,
             file_path="",
+            notes=notes,
         )
+        if files:
+            stored.extend(generator.save_report_attachments(report, member, files, now or timezone.now()))
         # robust=True: a problem queueing never undoes the request (`generate_report --report` builds it by hand).
         if queue:
             transaction.on_commit(lambda: queue_build(report.pk), robust=True)
@@ -570,7 +597,11 @@ def build_report(report_id: int, now: datetime | None = None) -> str:
     if report.file_path:
         return "already generated"
     content = report_content(report, now)
-    written = narrative.add_narrative(content, report.pk)
+    from .generator import read_report_attachments
+
+    guidance = {"notes": report.notes, "files": read_report_attachments(report)} if report.notes or \
+        report.attachments.exists() else None
+    written = narrative.add_narrative(content, report.pk, guidance=guidance)
     data = pdf.render_report_pdf(content) if report.format == GeneratedReport.Format.PDF else excel.build_workbook(content)
 
     name = file_name_for(report)
@@ -593,6 +624,38 @@ def build_report(report_id: int, now: datetime | None = None) -> str:
         raise
     logger.info("Report %s generated (%s, %d bytes).", report_id, report.format, len(data))
     return "generated"
+
+
+# --- The one Reports page: past reports (ASSUMPTIONS 461-462) ------------------------------------------------------
+
+ACTIVITY_REPORT_DOCUMENT_TYPES = ("Activity Report", "Attendance Sheet", "Confirmation of Attendance")
+
+
+def past_reports(member: TBIMember, activity=None) -> list[dict]:
+    """Every output of the one Reports page, newest first: [{"type": "figures" | "draft" | "document", "object", "when"}].
+    - Without an activity: every figures report (any active staff member may download them, item 301) and the member's
+      OWN drafts (a draft is its maker's only, item 442).
+    - For one activity (its Reports tab): the member's drafts about it and the report-like documents saved on it
+      (Activity Report, Attendance Sheet, Confirmation of Attendance: generated forms and saved drafts are approved
+      copies there). Figures reports are about periods, so they are not listed there."""
+    from documents.models import Document
+
+    from .models import ReportDraft
+
+    require_staff_member(member)
+    drafts = ReportDraft.objects.filter(created_by=member).select_related("activity")
+    entries = []
+    if activity is None:
+        entries += [{"type": "figures", "object": report, "when": report.generated_at}
+                    for report in GeneratedReport.objects.select_related("generated_by", "activity_type")]
+    else:
+        drafts = drafts.filter(activity=activity)
+        entries += [{"type": "document", "object": document, "when": document.uploaded_at}
+                    for document in Document.objects.activity_documents().filter(
+                        activity=activity, document_type__name__in=ACTIVITY_REPORT_DOCUMENT_TYPES)
+                    .select_related("document_type", "uploaded_by")]
+    entries += [{"type": "draft", "object": draft, "when": draft.updated_at} for draft in drafts]
+    return sorted(entries, key=lambda entry: entry["when"], reverse=True)
 
 
 # --- State, listing and detail ---------------------------------------------------------------------

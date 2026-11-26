@@ -130,7 +130,7 @@ def test_header_style_banding_and_frozen_header(director, queued, data) -> None:
         assert table.tableStyleInfo.showRowStripes
         row = header_row(sheet)
         for cell in table_rows(sheet, table)[0]:
-            assert cell.fill.fgColor.rgb.endswith("2A4494") and cell.font.bold and cell.font.color.rgb.endswith("FFFFFF")
+            assert cell.fill.fgColor.rgb.endswith("1F6B3E") and cell.font.bold and cell.font.color.rgb.endswith("FFFFFF")
         assert sheet.freeze_panes == f"A{row + 1}" == "A8"
 
 
@@ -258,9 +258,16 @@ def test_empty_period_shows_one_row_per_section(director, queued, data) -> None:
     assert info["Result"] == NO_ACTIVITIES
 
 
-def test_empty_table_shows_one_row_instead_of_a_table(director, queued, data) -> None:
-    _report, workbook = build(director, "participation")  # nobody in the data is a startup
-    sheet = workbook["Startups"]
+def test_empty_table_shows_one_row_instead_of_a_table(director, queued, data, monkeypatch) -> None:
+    """(It used the Startups sheet until that section went with the startup portal, ASSUMPTIONS 458.)"""
+    from reports import content as report_content
+    from reports.content import Column, Section, Table
+
+    monkeypatch.setitem(report_content.SECTIONS, "documents", "Document compliance")
+    monkeypatch.setattr(report_content, "_documents", lambda filters, now: Section(
+        "documents", "Document compliance", tables=[Table("Nothing here", [Column("Name")], [])]))
+    _report, workbook = build(director, "document_compliance")
+    sheet = workbook["Documents"]
     assert not sheet.tables and sheet["A7"].value == excel.EMPTY_TABLE
 
 

@@ -23,7 +23,7 @@ ACTIVITY_STATUSES = ["Draft", "Scheduled", "Ongoing", "Conducted"]
 PARTICIPANT_CATEGORIES = ["Faculty", "Incubatees", "MSMEs"]
 ACTIVITY_TYPES = ["Workshop", "Training", "Seminar", "Mentoring", "Networking", "Forum"]
 # ASSUMPTIONS 433 (NAVIGATU): created only when missing (the Admin edits / deactivates them in the Django admin).
-FUND_SOURCES = [("RAF", "Regular Agency Fund"), ("IGF", "Internally Generated Fund"), ("TRF", "Thrust Fund"),
+FUND_SOURCES = [("RAF", "Regular Agency Fund"), ("IGF", "Internally Generated Fund"), ("TRF", "Trust Fund"),
                 ("BRF", "Business Related Fund")]
 BUDGET_CATEGORIES = ["Meals/Snacks", "Honorarium", "Supplies", "Venue", "Transportation", "Printing", "Other"]
 DOCUMENT_STATUSES = [DocumentStatus.FOR_REVIEW, DocumentStatus.APPROVED]

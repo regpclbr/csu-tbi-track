@@ -137,7 +137,11 @@ def test_only_members_who_create_activities(workshop, view_only, client) -> None
     with pytest.raises(PermissionDenied):
         make_draft(view_only, workshop)
     client.force_login(view_only)
-    assert client.get(reverse("reports:generator")).status_code == 403
+    # The old address redirects to the one Reports page (ASSUMPTIONS 461), which shows no form without the permission;
+    # posting a draft is still refused.
+    assert client.get(reverse("reports:generator")).status_code == 302
+    assert "data-report-kinds" not in client.get(reverse("reports:list")).content.decode()
+    assert client.post(reverse("reports:generator"), {"kind": "activity_report", "activity": workshop.pk}).status_code == 403
 
 
 def test_a_report_assignment_opens_the_generator(workshop, director, view_only, monkeypatch) -> None:
@@ -461,8 +465,8 @@ def test_pages_render_with_the_compact_chat_bar(workshop, staff, fake_gemini, cl
     draft = make_draft(staff, workshop)
     write(draft)
     client.force_login(staff)
-    listing = client.get(reverse("reports:generator")).content.decode()
-    assert "Write the draft" in listing and draft.title in listing and "Report generator" in listing
+    listing = client.get(reverse("reports:generator"), follow=True).content.decode()  # -> /reports/?kind=activity_report
+    assert "Write the draft" in listing and draft.title in listing and "What do you want to make?" in listing
     html = client.get(reverse("reports:generator_draft", args=[draft.pk])).content.decode()
     assert 'class="chat-bar"' in html and 'id="gen-send"' in html and 'rows="1"' in html
     assert generator.AI_LABEL in html and "Not from the system: 45" in html
@@ -484,13 +488,14 @@ def test_creating_through_the_page(workshop, staff, client, monkeypatch) -> None
 
 def test_the_sidebar_item_and_export_responses(workshop, staff, view_only, fake_gemini, client, renderer) -> None:
     client.force_login(staff)
-    assert reverse("reports:generator") in client.get(reverse("home")).content.decode()
+    home = client.get(reverse("home")).content.decode()
+    assert reverse("reports:list") in home and "Report generator" not in home  # one Reports item (ASSUMPTIONS 461)
     fake_gemini.replies.append(reply(**GOOD))
     version = write(make_draft(staff, workshop))
     response = client.get(reverse("reports:generator_export", args=[version.pk, "docx"]))
     assert response["Content-Disposition"].startswith("attachment;") and response["Cache-Control"] == "private, no-store"
     client.force_login(view_only)
-    assert reverse("reports:generator") not in client.get(reverse("home")).content.decode()
+    assert reverse("reports:generator") not in client.get(reverse("home")).content.decode()  # no sidebar item at all
 
 
 def test_deleting_the_activity_counts_and_removes_the_drafts(workshop, staff, make_member,

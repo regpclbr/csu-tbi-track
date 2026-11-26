@@ -48,7 +48,7 @@ in the generated reports ("From the paper sheet"), never added to the registrati
   {% if rows %}
     <section class="card p-6" aria-labelledby="sheet-rows-title">
       {% include "components/section_header.html" with id="sheet-rows-title" title="Rows" aside=rows|length|stringformat:"s"|add:" rows" %}
-      <form method="post">
+      <form method="post" data-enter-submit="off">
         {% csrf_token %}
         <ul class="space-y-3">
           {% for row in rows %}

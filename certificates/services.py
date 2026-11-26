@@ -65,6 +65,8 @@ from PIL import Image
 
 from accounts.models import TBIMember
 from accounts.permissions import (
+    CERTIFICATE_TEXT_TASK,
+    SIGNATORIES_TASK,
     SIGNATORY_CHOICE,
     Permission,
     has_any_permission,
@@ -226,10 +228,50 @@ def prepare_signature_file(file: UploadedFile | None, keep_background: bool = Fa
     return ContentFile(imaging.png_bytes(cleaned), name="signature.png"), BACKGROUND_REMOVED
 
 
+LINKED_SIGNATURE_DIRECTOR_ONLY = ("This person's signature is linked to an account (it is stamped on approved work), so "
+                                  "only a member who manages signatories can change it, never through an assignment.")
+
+
+def _require_signatory_list(member: TBIMember, signatory: CertificateSignatory | None = None):
+    """can_manage_signatories, or an open "Manage the signatory list" assignment (ASSUMPTIONS 460). Through an assignment
+    a signature LINKED to an account (a person's own stamp, item 437) is never changed: refused. Linking accounts
+    (link_signatory_account) stays flag-only. Returns the assignment that allowed it (or None)."""
+    assignment = require_permission_for(member, Permission.MANAGE_SIGNATORIES, None, kind=SIGNATORIES_TASK)
+    if assignment is not None and signatory is not None and signatory.member_id is not None:
+        raise PermissionDenied(LINKED_SIGNATURE_DIRECTOR_ONLY)
+    return assignment
+
+
+def _one_activity(certificate_ids: list[int] | None, activity: Activity | None) -> Activity | None:
+    """The single activity these certificates belong to (or `activity`), or None when they span several."""
+    if activity is None and certificate_ids:
+        ids = set(Certificate.objects.filter(pk__in=certificate_ids).values_list("activity_id", flat=True))
+        activity = Activity.objects.filter(pk=next(iter(ids))).first() if len(ids) == 1 else None
+    return activity
+
+
+def _require_for_certificates(member: TBIMember, permissions: tuple, certificate_ids: list[int] | None,
+                              activity: Activity | None) -> None:
+    """One of `permissions` from the role, or (ASSUMPTIONS 460) an open assignment on the single activity the
+    certificates belong to (an "activity" assignment for can_create_activity work, "Approve the certificates" for
+    can_approve_certificates work). Several activities: the role flag only."""
+    activity = _one_activity(certificate_ids, activity)
+    if activity is None:
+        require_any_permission(member, *permissions)
+    else:
+        require_any_permission_for(member, permissions, activity)
+
+
+def _require_reissue(member: TBIMember, certificate_ids: list[int] | None, activity: Activity | None) -> None:
+    """Reissuing: can_approve_certificates, or the activity's "Approve the certificates" assignment when every
+    certificate belongs to that one activity (ASSUMPTIONS 460)."""
+    _require_for_certificates(member, (Permission.APPROVE_CERTIFICATES,), certificate_ids, activity)
+
+
 def signature_preview(member: TBIMember, file: UploadedFile | None, keep_background: bool = False) -> dict:
     """The upload dialog's preview, before saving (nothing is stored): {"data_uri": the image as it will be stored,
     "note": what happened, "outcome"}. can_manage_signatories (ASSUMPTIONS 418)."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     stored, outcome = prepare_signature_file(file, keep_background)
     stored.seek(0)
     content = stored.read()
@@ -344,7 +386,7 @@ def add_signatory(member: TBIMember, name: str, position: str, file: UploadedFil
                   keep_background: bool = False) -> CertificateSignatory:
     """Add a person to the list (active), with their signature image (PNG or JPG; a white background is made
     transparent unless keep_background: prepare_signature_file) or without it (added later)."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     name, position = _clean_person(name, position)
     if file is not None:
         file, _outcome = prepare_signature_file(file, keep_background)
@@ -371,7 +413,7 @@ def deactivate_closed_reason(signatory: CertificateSignatory) -> str | None:
 @transaction.atomic
 def deactivate_signatory(member: TBIMember, signatory: CertificateSignatory) -> CertificateSignatory:
     """Remove a person from the dropdowns. Activities that already use them keep them ("(inactive)" on the tab)."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member, signatory)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     locked = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if reason := deactivate_closed_reason(locked):
         raise CertificateError(reason)
@@ -388,7 +430,7 @@ def set_default_signatories(member: TBIMember, left: CertificateSignatory, right
     defaults are no longer defaults. A slot someone already chose never changes; EMPTY slots of activities without
     certificates are filled from the new defaults (fill_empty_slots_from_defaults, ASSUMPTIONS 366).
     Returns {"filled": slots filled}."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     if left.pk == right.pk:
         raise CertificateError("The same person cannot be the default on both sides.")
     locked = {s.pk: s for s in CertificateSignatory.objects.select_for_update()
@@ -518,7 +560,7 @@ def edit_signatory(member: TBIMember, signatory: CertificateSignatory, name: str
     """Change a person's name or position. Not used by any certificate yet: changed in place. Used: a new version
     (_new_version; the image stays). Returns {"action": "unchanged" | "edited" | "new_version", "signatory": ...,
     "activities", "updated", "outdated", "outdated_activities"}."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member, signatory)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     name, position = _clean_person(name, position)
     current = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if not current.is_active:
@@ -545,7 +587,7 @@ def replace_signature(member: TBIMember, signatory: CertificateSignatory, file: 
     keep_background: prepare_signature_file). No image yet: stored on that row (every certificate using it gets it).
     Already an image: a new version with the new image (_new_version), so Issued certificates keep the old one.
     Returns {"action": "added" | "replaced", "signatory", "activities", "updated", "outdated", "outdated_activities"}."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member, signatory)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     current = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if not current.is_active:
         raise CertificateError("Inactive people (and earlier versions) cannot get a new signature.")
@@ -591,7 +633,7 @@ def remove_signature_background(member: TBIMember, signatory: CertificateSignato
     """The Signatories page's "Remove white background" for an existing image (ASSUMPTIONS 366): a new version of
     the person with the cleaned PNG (like Replace: _new_version), so Issued certificates keep the old image. Refused
     for an image that is already transparent. Returns replace_signature's dict with action "background_removed"."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member, signatory)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     current = CertificateSignatory.objects.select_for_update().get(pk=signatory.pk)
     if not current.is_active:
         raise CertificateError("Inactive people (and earlier versions) cannot get a new signature.")
@@ -1066,7 +1108,7 @@ def save_default_text(member: TBIMember, certificate_type: str, values: dict, no
     their row. Returns {"changed", "activities", "updated", "cancelled"}."""
     from activities.services import write_certificate_text_history
 
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    require_permission_for(member, Permission.APPROVE_CERTIFICATES, None, kind=CERTIFICATE_TEXT_TASK)  # or its assignment (460)
     _check_type(certificate_type)
     cleaned = clean_texts({certificate_type: values})[certificate_type]
     current = wording.default_text(certificate_type)
@@ -1960,7 +2002,7 @@ def upload_signature(member: TBIMember, activity: Activity, slot: str, file: Upl
     """The activity's Certificates tab: add or replace the signature image of the person on `slot`
     (replace_signature: a replaced image is a new version for every activity that uses the person; a white
     background is made transparent unless keep_background). can_manage_signatories (ASSUMPTIONS 418)."""
-    require_permission(member, Permission.MANAGE_SIGNATORIES)
+    _require_signatory_list(member)  # can_manage_signatories or its assignment (ASSUMPTIONS 460)
     if slot not in SLOTS:
         raise ValidationError({"slot": ["Choose left or right."]})
     signatory = activity_signatories(activity)[slot]
@@ -2124,7 +2166,7 @@ def reissue_certificates(member: TBIMember, *, certificate_ids: list[int] | None
     be handed over again. The old PDF is replaced when the new one is written. All or nothing; one History row."""
     from activities.services import write_certificate_history
 
-    require_permission(member, Permission.APPROVE_CERTIFICATES)
+    _require_reissue(member, certificate_ids, activity)  # can_approve_certificates or the activity's assignment
     now = now or timezone.now()
     if activity is not None:
         ids = sorted(outdated_ids(activity))
@@ -2224,7 +2266,7 @@ def regenerate_certificates(member: TBIMember, *, certificate_ids: list[int] | N
     """Apply the active design and the activity's current signatories to certificates that are not Issued, remove
     their rendered PDF and send them back to "Waiting for approval" (they are approved again). The number stays.
     Issued certificates are refused here (they are reissued instead: reissue_certificates)."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    _require_for_certificates(member, (Permission.CREATE_ACTIVITY,), certificate_ids, activity)  # or the activity's assignment (460)
     certificates = _select_for_action(certificate_ids, activity, [Status.GENERATED, Status.APPROVED],
                                       empty="This activity has no certificates to regenerate (Issued certificates are final).")
     designs = {}
@@ -2254,7 +2296,7 @@ def mark_handed_over(member: TBIMember, *, certificate_ids: list[int] | None = N
     certificate is handed over. Needs the rendered PDF (staff print it). Never emailed.
     A reissued hard copy (Issued, "Not handed over (updated copy to print)", ASSUMPTIONS 364) stays Issued and gets a
     new issued_at (the hand-over of the updated copy)."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    _require_for_certificates(member, (Permission.CREATE_ACTIVITY,), certificate_ids, activity)  # or the activity's assignment (460)
     now = now or timezone.now()
     certificates = _select_for_action(certificate_ids, activity, [Status.APPROVED, Status.ISSUED],
                                       Q(status=Status.APPROVED, delivery_method=DeliveryMethod.HARD_COPY) | reprint_q())
@@ -2280,7 +2322,7 @@ def mark_handed_over(member: TBIMember, *, certificate_ids: list[int] | None = N
 def resend_certificates(member: TBIMember, *, certificate_ids: list[int] | None = None, activity: Activity | None = None) -> int:
     """Queue the email again for Issued participant certificates that were not sent (usually "Send failed").
     send_certificate still sends each one at most once."""
-    require_permission(member, Permission.CREATE_ACTIVITY)
+    _require_for_certificates(member, (Permission.CREATE_ACTIVITY,), certificate_ids, activity)  # or the activity's assignment (460)
     certificates = _select_for_action(
         certificate_ids, activity, Status.ISSUED, Q(delivery_method=DeliveryMethod.EMAIL, sent_at__isnull=True),
         empty="This activity has no certificate emails waiting to be sent.",
@@ -2463,7 +2505,7 @@ def retry_certificate_pdfs(member: TBIMember, *, certificate_ids: list[int] | No
                            activity: Activity | None = None) -> int:
     """"Retry" on a failed PDF (can_create_activity or can_approve_certificates, ASSUMPTIONS 421): the failure is cleared
     and the render is queued again. Only certificates whose PDF failed and that can be rendered now; all or nothing."""
-    require_any_permission(member, *RETRY_PERMISSIONS)
+    _require_for_certificates(member, RETRY_PERMISSIONS, certificate_ids, activity)  # or assigned (460)
     certificates = _select_for_action(certificate_ids, activity, [Status.APPROVED, Status.ISSUED],
                                       Q(render_failed_at__isnull=False), empty="No certificate PDFs of this activity failed.")
 
@@ -2647,7 +2689,7 @@ def retry_pending_certificates() -> dict[str, int]:
     return result
 
 
-# --- Reading: staff list, startup portal ------------------------------------------------------
+# --- Reading: staff list ------------------------------------------------------
 
 
 def _filtered_certificates(filters: dict, with_status: bool = True) -> QuerySet:
@@ -2743,18 +2785,6 @@ def certificate_status_counts(filters: dict | None = None) -> dict[str, int]:
     rows = _filtered_certificates(filters or {}, with_status=False).order_by().values("status").annotate(n=Count("pk"))
     counts.update({row["status"]: row["n"] for row in rows})
     return counts
-
-
-def certificates_for_startup(startup) -> QuerySet:
-    """"My certificates": Issued certificates of the startup's registrations (linked or matched by
-    email, as in Step 7), never by certificate_email."""
-    from startups.services import registrations_for
-
-    return (
-        Certificate.objects.filter(status=Status.ISSUED, registration__in=registrations_for(startup).values("pk"))
-        .select_related("activity")
-        .order_by("-issued_at", "-pk")
-    )
 
 
 # --- Evidence documents (DOCUMENT.related_certificate, owner decision Q1 = B) ---------------------

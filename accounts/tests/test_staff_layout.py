@@ -44,7 +44,7 @@ def test_admin_section_only_with_can_manage_users(admin_member, director, view_o
 
 def test_workspace_items_and_the_active_one(director) -> None:
     html = logged_in(director).get(HOME).content.decode()
-    for label in ("Dashboard", "Activities", "Documents", "Certificates", "Startups", "Reports", "AI Assistant"):
+    for label in ("Dashboard", "Activities", "Documents", "Certificates", "Reports", "AI Assistant"):
         assert f'<span class="flex-1">{label}</span>' in html
     active = re.findall(r'<a href="([^"]+)"[^>]*aria-current="page"', html)
     assert active == [HOME]
@@ -161,7 +161,7 @@ def test_no_coming_soon_page_is_left(admin_member) -> None:
     import config.views
 
     assert not hasattr(config.views, "coming_soon") and not hasattr(config.views, "COMING_SOON_PAGES")
-    for url_name in ("reports:list", "assistant:chat", "startups:list", "accounts:console"):
+    for url_name in ("reports:list", "assistant:chat", "accounts:console"):
         response = logged_in(admin_member).get(reverse(url_name))
         assert response.status_code == 200 and "is coming soon" not in response.content.decode()
         assert Client().get(reverse(url_name)).status_code == 302
@@ -317,7 +317,7 @@ STATIC = Path(settings.BASE_DIR) / "static"
 
 def test_built_css_and_vendor_files_exist() -> None:
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
-    assert "--color-frame-dark:#1e2f73" in css.lower().replace(" ", "")  # option B (413); run: python manage.py tailwind build
+    assert "--color-frame-dark:#0f4a2c" in css.lower().replace(" ", "")  # green (459); run: python manage.py tailwind build
     for name in ("vendor/htmx-2.0.11.min.js", "vendor/alpine-3.17.4.min.js", "fonts/InterVariable.woff2",
                  "img/favicon-32.png", "img/apple-touch-icon-180.png", "img/logo-96.png"):
         assert (STATIC / name).exists(), name
@@ -382,7 +382,7 @@ def test_hover_styles_exist_and_motion_stops_for_reduced_motion() -> None:
 
 
 def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -> None:
-    """ASSUMPTIONS 257, 413: one gradient behind the whole page (the calmer original: navy #1E2F73 -> muted cyan #3B8AA6,
+    """ASSUMPTIONS 257, 413, 459: one gradient behind the whole page (green since 459: #0F4A2C -> #3F9A6B,
     no glowing end), a frosted glass card (white 88% + blur, white 92% without backdrop-filter), dark text in the card."""
     html = client.get(reverse("accounts:login")).content.decode()
     assert 'class="auth-bg ' in html and "auth-panel" not in html
@@ -390,8 +390,8 @@ def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
     gradient = r"linear-gradient\(135deg, ?var\(--color-frame-dark\) 0%, ?var\(--color-frame-dark\) 22%, ?var\(--color-frame-light\) 100%\)"
     assert re.search(r"\.auth-bg\{background:" + gradient + r"\}", css)
-    assert "--color-frame-dark:#1e2f73" in css and "--color-frame-light:#3b8aa6" in css
-    for old in ("#60cdee", "#204654", "#2f6170", "#fafbed", "#caffa6"):  # the glowing cyan end and the teal palette are gone
+    assert "--color-frame-dark:#0f4a2c" in css and "--color-frame-light:#3f9a6b" in css
+    for old in ("#60cdee", "#204654", "#2f6170", "#fafbed", "#caffa6", "#1e2f73", "#3b8aa6"):  # older palettes are gone
         assert old not in css
     card = re.search(r"\.auth-card(?:,\.public-card)?\{([^}]*)\}", css).group(1)  # F3: the public pages share the glass
     assert "background:#ffffffeb" in card and "border-radius:24px" in card  # the fallback: white 92%
@@ -412,7 +412,7 @@ def test_app_shell_is_a_gradient_frame_with_a_rounded_panel_and_pill_buttons(dir
     assert re.search(r"\.app-bg\{background:linear-gradient\(135deg, ?var\(--color-frame-dark\) 0%, ?var\(--color-frame-dark\) 30%, ?var\(--color-frame-light\) 100%\)\}", css)
     assert "--color-panel:#f4f6f9" in css  # neutral light grey, not white, not cream (413)
     assert ".app-shell .btn{border-radius:9999px}" in css
-    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#1e2f7312" in css  # card radius + soft navy shadow
+    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#0f4a2c12" in css  # card radius + soft shadow (459)
 
 
 def test_page_header_holds_the_title_once_and_the_primary_action(director) -> None:
@@ -433,7 +433,7 @@ def test_every_staff_page_has_its_own_description(director) -> None:
     client = logged_in(director)
     seen = set()
     for name in ("activities:list", "activities:create", "documents:list", "certificates:list", "reports:list",
-                 "assistant:chat", "notifications:list", "startups:list", "search", "accounts:profile"):
+                 "assistant:chat", "notifications:list", "search", "accounts:profile"):
         html = client.get(reverse(name)).content.decode()
         description = re.search(r'<p class="page-description">(.*?)</p>', html, re.S).group(1).strip()
         assert description and "happening at CSU-TBI" not in description, name
@@ -596,10 +596,10 @@ def contrast(foreground: str, background: str) -> float:
     return (light + 0.05) / (dark + 0.05)
 
 
-def test_option_b_is_the_brand() -> None:
-    """The owner's choice (2026-11-21, docs/design/options/): the original's two hues, calmer: navy -> muted cyan."""
+def test_green_is_the_brand() -> None:
+    """The owner's choice (2026-11-26, ASSUMPTIONS 459): option B's layout and gradients in green (close to CSU's)."""
     tokens = theme_tokens()
-    assert tokens["frame-dark"] == "#1E2F73" and tokens["frame-light"] == "#3B8AA6" and tokens["primary"] == "#2A4494"
+    assert tokens["frame-dark"] == "#0F4A2C" and tokens["frame-light"] == "#3F9A6B" and tokens["primary"] == "#1F6B3E"
     assert tokens["panel"] == "#F4F6F9" and tokens["heading"] == tokens["ink"]
     source = SOURCE_CSS.read_text(encoding="utf-8")
     assert "--color-sidebar: var(--color-frame-dark)" in source and "--color-focus: var(--color-primary)" in source

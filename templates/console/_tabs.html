@@ -1,4 +1,4 @@
-{# The Admin Console's tab row (accounts.console_pages.TABS) and the link to the Startups page (sync, set-password links). #}
+{# The Admin Console's tab row (accounts.console_pages.TABS). #}
 <nav class="mb-6 flex flex-wrap items-center gap-2" aria-label="Admin Console">
   <ul class="inline-flex flex-wrap gap-1 rounded-full border border-line bg-slate-50 p-1">
     {% for tab in tabs %}
@@ -7,5 +7,4 @@
         {% include "components/icon.html" with name=tab.icon class="size-4" %}{{ tab.label }}</a></li>
     {% endfor %}
   </ul>
-  <a href="{% url 'startups:list' %}" class="btn btn-ghost btn-sm">{% include "components/icon.html" with name="store" class="size-4" %}Startups: sync and set-password links{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
 </nav>

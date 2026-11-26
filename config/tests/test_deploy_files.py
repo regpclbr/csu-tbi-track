@@ -156,7 +156,7 @@ def test_server_setup_turns_off_password_login_and_opens_only_three_ports() -> N
 
 def test_env_example_has_the_server_settings_without_real_values() -> None:
     example = text(BASE_DIR / ".env.example")
-    for name in ("BEHIND_HTTPS_PROXY=", "STARTUP_SYNC_ENABLED=", "REVIEW_VERSION_LABEL=", "SITE_DOMAIN=", "ACME_EMAIL=",
+    for name in ("BEHIND_HTTPS_PROXY=", "REVIEW_VERSION_LABEL=", "SITE_DOMAIN=", "ACME_EMAIL=",
                  "Q_CLUSTER_WORKERS=", "GUNICORN_WORKERS="):
         assert name in example
     assert re.search(r"^EMAIL_HOST_PASSWORD=$", example, re.MULTILINE)

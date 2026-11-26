@@ -11,7 +11,6 @@ from certificates.models import Certificate, CertificateSignatory
 from documents.models import DocumentStatus
 from reports import metrics
 from reports.metrics import ReportFilters
-from startups.models import Startup
 
 from .conftest import TEST_NOW, YEAR_2026, manila
 
@@ -278,25 +277,6 @@ def test_s5_s6_certificates_now(make_activity, register, make_certificate_row, e
     Activity.objects.filter(pk=second.pk).update(certificates_approved_at=timezone.now())  # approved: not a staff task
     assert metrics.certificates_now(YEAR_2026)["waiting_activities"] == 1
     assert metrics.certificates_now(YEAR_2026)["waiting_certificates"] == 2
-
-
-# --- N18: startups engaged ---------------------------------------------------------------------------
-
-
-def test_n18_startups_engaged(make_activity, register) -> None:
-    linked = Startup.objects.create(name="Linked Co", email="linked@startup.test", navigatu_id="N1")
-    by_email = Startup.objects.create(name="Email Co", email="hello@emailco.test", navigatu_id="N2", is_active=False)
-    absent = Startup.objects.create(name="Absent Co", email="absent@startup.test", navigatu_id="N3")
-    other = Startup.objects.create(name="Other Co", email="other@startup.test", navigatu_id="N4")
-    first, second = make_activity(), make_activity()
-    register(first, "Linked rep", attended=True, startup=linked)
-    register(second, "Linked rep", attended=True, startup=linked)  # still one startup
-    register(first, "Email rep", attended=True, email="HELLO@emailco.test")  # older public registration, by email
-    register(first, "Absent rep", attended=False, startup=absent)  # registered but did not attend
-    register(make_activity(status=ONGOING), "Other rep", attended=True, startup=other)  # not conducted
-    engaged = metrics.engaged_startups(YEAR_2026)
-    assert {s.name: s.activities_attended for s in engaged} == {"Linked Co": 2, "Email Co": 1}
-    assert summary()["startups_engaged"] == 2
 
 
 # --- S1 / S2 -------------------------------------------------------------------------------------------

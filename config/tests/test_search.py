@@ -1,4 +1,4 @@
-"""Phase F5: global search (/search/?q=): the first results of the Activities, Documents and Startups lists, with
+"""Phase F5: global search (/search/?q=): the first results of the Activities and Documents lists (ASSUMPTIONS 458), with
 their totals, "See all" links to the filtered lists, and the empty states. Uses the lists' own services."""
 
 import pytest
@@ -11,7 +11,6 @@ from config.search import GROUP_SIZE
 from documents import services as document_services
 from documents.models import DocumentType
 from documents.tests.conftest import certificate_for, make_file  # noqa: F401  (fixture re-exported)
-from startups.models import Startup
 
 pytestmark = pytest.mark.django_db
 
@@ -34,13 +33,11 @@ def test_results_are_grouped_with_see_all_links(director, new_activity, login) -
     document = document_services.upload_document(
         director, new_activity, DocumentType.objects.get(name="Invitation Letter"), make_file(), "Pitching invitation"
     )
-    Startup.objects.create(name="Pitch Perfect Labs", email="pitch@demo.example.com")
-    Startup.objects.create(name="Unrelated Co", email="other@demo.example.com")
     html = search(login(director), "pitch")
     assert reverse("activities:detail", args=[new_activity.pk]) in html and "Pitching Workshop" in html
     assert reverse("documents:detail", args=[document.pk]) in html and "Pitching invitation" in html
-    assert "Pitch Perfect Labs" in html and "Unrelated Co" not in html
-    for list_name in ("activities:list", "documents:list", "startups:list"):
+    assert "Startups" not in html  # the group went with the startup portal (ASSUMPTIONS 458)
+    for list_name in ("activities:list", "documents:list"):
         assert f'href="{reverse(list_name)}?q=pitch"' in html
 
 
@@ -69,7 +66,7 @@ def test_empty_states(director, login) -> None:
 def test_the_top_bar_searches_everything(director, login) -> None:
     html = login(director).get(reverse("home")).content.decode()
     assert f'<form action="{reverse("search")}" method="get" role="search"' in html
-    assert "Search activities, documents and startups" in html
+    assert "Search activities and documents" in html
 
 
 def test_search_needs_a_staff_login(client) -> None:

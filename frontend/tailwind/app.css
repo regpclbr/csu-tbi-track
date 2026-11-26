@@ -40,19 +40,20 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* --- Brand colours (ASSUMPTIONS 413): the calmer version of the original #22378F -> #60CDEE ------------------------ */
+  /* --- Brand colours (ASSUMPTIONS 413, green since 459): the frame gradient, the primary, the link ------------------- */
   /* OPTION START */
-  /* Option B, chosen by the owner 2026-11-21 (docs/design/options/): navy -> muted cyan, the original's two hues toned down. */
-  --color-frame-dark: #1E2F73;         /* gradient start (sidebar side): white on it 12.3:1 */
-  --color-frame-light: #3B8AA6;        /* gradient end (behind the panel): white on it 3.9:1 (large text only; no text there) */
-  --color-primary: #2A4494;            /* solid primary button: white on it 8.9:1; as text 8.2:1 on the panel */
-  --color-primary-hover: #243A7E;      /* white on it 10.6:1 */
-  --color-primary-pressed: #1E316B;
-  --color-primary-soft: #EAECF4;       /* current tab, selected pill, icon chips: primary text on it 7.6:1 */
-  --color-primary-tint: #D9DDEC;       /* hover on a soft item, selected card */
-  --color-link: #2C5AA8;               /* text links: 6.7:1 on white, 6.2:1 on the panel */
-  --color-on-dark-muted: #D3E8F0;      /* secondary text on the gradient's dark part: 9.7:1 (7.0:1 on the primary) */
-  --color-on-dark-accent: #9AD4E4;     /* the sign-in headline's accent line (large text): 7.6:1 on the dark part */
+  /* Green (ASSUMPTIONS 459, owner 2026-11-26: "close to CSU's green"; the logo files have no CSU green, only the teal
+     mark on the brand tile). Same layout and gradients as option B (413); only the hues change. Measured contrasts: */
+  --color-frame-dark: #0F4A2C;         /* gradient start (sidebar side): white on it 10.3:1 */
+  --color-frame-light: #3F9A6B;        /* gradient end (behind the panel): white on it 3.5:1 (large text only; no text there) */
+  --color-primary: #1F6B3E;            /* solid primary button: white on it 6.5:1; as text 6.0:1 on the panel */
+  --color-primary-hover: #195A34;      /* white on it 8.2:1 */
+  --color-primary-pressed: #144A2B;    /* white on it 10.3:1 */
+  --color-primary-soft: #E6F1EA;       /* current tab, selected pill, icon chips: primary text on it 5.6:1 */
+  --color-primary-tint: #D2E6D9;       /* hover on a soft item, selected card: primary text on it 5.0:1 */
+  --color-link: #1E7244;               /* text links: 5.9:1 on white, 5.5:1 on the panel */
+  --color-on-dark-muted: #D4EEDD;      /* secondary text on the gradient's dark part: 8.4:1 (5.3:1 on the primary) */
+  --color-on-dark-accent: #9FDDB8;     /* the sign-in headline's accent line (large text): 6.6:1 on the dark part */
   /* OPTION END */
   --color-sidebar: var(--color-frame-dark);   /* the slide-in sidebar below 1024 px (solid) */
   --color-sidebar-hover: color-mix(in srgb, var(--color-frame-dark) 85%, #FFFFFF);

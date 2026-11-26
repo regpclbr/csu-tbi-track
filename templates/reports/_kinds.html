@@ -1,0 +1,17 @@
+{% comment %}
+"What do you want to make?" (reports.hub.kind_choices, ASSUMPTIONS 461-462): ONE list of links, grouped: the figures
+reports (PDF / Excel), the reports written with the AI (DOCX / PDF), and (one activity) the attendance forms. A link
+reloads the page with ?kind= (and ?activity=), so it works without JavaScript; the chosen form is shown below.
+{% endcomment %}
+<nav class="flex flex-col gap-2" aria-label="What to make" data-report-kinds>
+  {% regroup kinds by choice.group as groups %}
+  {% for group in groups %}
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="caption w-full font-semibold text-muted sm:w-auto">{% if group.grouper == "figures" %}Figures<span class="sr-only"> (PDF or Excel)</span>{% elif group.grouper == "written" %}Written with AI<span class="sr-only"> (DOCX or PDF)</span>{% else %}Attendance forms{% endif %}</span>
+      {% for item in group.list %}
+        <a href="{{ item.url }}" title="{{ item.choice.help }}" data-kind="{{ item.choice.key }}"{% if item.current %} aria-current="true"{% endif %}
+           class="rounded-full border px-3 py-1 text-xs font-semibold {% if item.current %}border-primary bg-primary-soft text-primary{% else %}border-line bg-white text-slate-700 hover:border-primary hover:text-primary{% endif %}">{{ item.choice.label }}</a>
+      {% endfor %}
+    </div>
+  {% endfor %}
+</nav>

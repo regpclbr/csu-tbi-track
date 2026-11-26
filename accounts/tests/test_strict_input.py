@@ -6,7 +6,6 @@ import json
 import pytest
 
 from config.parsing import parse_bool
-from startups.models import Startup
 
 pytestmark = pytest.mark.django_db
 
@@ -55,10 +54,7 @@ def test_notification_unread_filter_is_strict(client, admin_member) -> None:
     assert client.get("/notifications/api/", {"unread": "1"}).json() == {"errors": {"unread": ["unread must be true or false."]}}
 
 
-def test_startup_and_document_filters_are_strict(client, admin_member) -> None:
-    Startup.objects.create(name="Acme", email="acme@example.com")
+def test_document_filters_are_strict(client, admin_member) -> None:
     client.force_login(admin_member)
-    assert client.get("/startups/api/", {"is_active": "true"}).json()["total"] == 1
-    assert client.get("/startups/api/", {"is_active": "1"}).status_code == 400
     assert client.get("/documents/api/", {"searchable": "false"}).status_code == 200
     assert client.get("/documents/api/", {"searchable": "yes"}).status_code == 400

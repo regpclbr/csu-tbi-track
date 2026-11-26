@@ -1,5 +1,5 @@
 {% comment %}
-The participant's signature (ASSUMPTIONS 434), required at pre-registration (public page and startup portal), at the QR
+The participant's signature (ASSUMPTIONS 434), required at pre-registration (public page), at the QR
 check-in for anyone without one, for walk-ins, and (staff=True: draw or typed only) in the staff "Mark attended" dialog.
 {% include "public/_signature_field.html" with values=values error=errors.signature focus=focus %}
 Three ways: draw on the screen (static/js/signature_pad.js writes signature_drawn), upload a JPG/PNG picture
@@ -10,15 +10,25 @@ decides; drawing then needs JavaScript (a note says so).
 <fieldset x-data="{ kind: '{{ values.signature_kind|default:'' }}' }" class="space-y-3"{% if error %} aria-describedby="id_signature-error"{% endif %} data-signature-field>
   <legend class="text-sm font-semibold text-ink">Your signature <span class="text-danger" aria-hidden="true">*</span><span class="sr-only">(required)</span></legend>
   <p class="text-sm text-slate-700">Given once and printed on the attendance forms of this activity{% if not staff %} instead of signing on paper{% endif %}. Choose one way:</p>
-  <div class="flex flex-wrap gap-x-4 gap-y-1">
-    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
-      <input type="radio" name="signature_kind" value="draw" x-model="kind" class="size-5 accent-primary"{% if values.signature_kind == "draw" %} checked{% endif %}{% if focus == "signature" %} autofocus{% endif %}{% if error %} aria-invalid="true"{% endif %}>Draw it on the screen</label>
+  {# ASSUMPTIONS 453: three equal, clearly visible choices (two in the staff dialog), each with one line of help. #}
+  <div class="grid gap-2 {% if staff %}grid-cols-2{% else %}grid-cols-1 sm:grid-cols-3{% endif %}" data-signature-choices>
+    <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line-strong bg-white p-3 text-ink has-[:checked]:border-primary has-[:checked]:bg-primary-soft has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary" data-signature-choice="draw">
+      <input type="radio" name="signature_kind" value="draw" x-model="kind" class="mt-1 size-5 shrink-0 accent-primary"{% if values.signature_kind == "draw" %} checked{% endif %}{% if focus == "signature" %} autofocus{% endif %}{% if error %} aria-invalid="true"{% endif %}>
+      <span class="min-w-0"><span class="flex items-center gap-2 text-sm font-semibold">{% include "components/icon.html" with name="pen-line" class="size-4 shrink-0 text-primary" %}Draw</span>
+        <span class="mt-1 block text-xs text-slate-700">With your finger, a pen or the mouse.</span></span>
+    </label>
     {% if not staff %}
-    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
-      <input type="radio" name="signature_kind" value="upload" x-model="kind" class="size-5 accent-primary"{% if values.signature_kind == "upload" %} checked{% endif %}>Upload a picture of it</label>
+    <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line-strong bg-white p-3 text-ink has-[:checked]:border-primary has-[:checked]:bg-primary-soft has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary" data-signature-choice="upload">
+      <input type="radio" name="signature_kind" value="upload" x-model="kind" class="mt-1 size-5 shrink-0 accent-primary"{% if values.signature_kind == "upload" %} checked{% endif %}>
+      <span class="min-w-0"><span class="flex items-center gap-2 text-sm font-semibold">{% include "components/icon.html" with name="image" class="size-4 shrink-0 text-primary" %}Upload a picture</span>
+        <span class="mt-1 block text-xs text-slate-700">A photo of your signature on paper (JPG or PNG).</span></span>
+    </label>
     {% endif %}
-    <label class="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
-      <input type="radio" name="signature_kind" value="typed" x-model="kind" class="size-5 accent-primary"{% if values.signature_kind == "typed" %} checked{% endif %}>Type my full name</label>
+    <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-line-strong bg-white p-3 text-ink has-[:checked]:border-primary has-[:checked]:bg-primary-soft has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary" data-signature-choice="typed">
+      <input type="radio" name="signature_kind" value="typed" x-model="kind" class="mt-1 size-5 shrink-0 accent-primary"{% if values.signature_kind == "typed" %} checked{% endif %}>
+      <span class="min-w-0"><span class="flex items-center gap-2 text-sm font-semibold">{% include "components/icon.html" with name="pencil" class="size-4 shrink-0 text-primary" %}Type my name</span>
+        <span class="mt-1 block text-xs text-slate-700">Your full name, used as your signature.</span></span>
+    </label>
   </div>
 
   <div x-show="kind === 'draw'" x-cloak x-data="signaturePad()" class="space-y-2" data-signature-draw>

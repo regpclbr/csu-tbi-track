@@ -327,7 +327,8 @@ def test_a_period_report_is_submitted_but_never_saved(staff, director, workshop,
 def test_creating_an_accomplishment_report_through_the_page(staff, workshop, client, clock, django_capture_on_commit_callbacks) -> None:
     clock(timezone.make_aware(timezone.datetime(2026, 11, 26, 9, 0)))
     client.force_login(staff)
-    page = client.get(reverse("reports:generator") + "?start_kind=accomplishment_report")
+    page = client.get(reverse("reports:generator") + "?start_kind=accomplishment_report", follow=True)
+    assert page.redirect_chain[-1][0].endswith("?kind=accomplishment_report")  # the one Reports page (461)
     assert page.status_code == 200 and "Quarter, half or year" in page.content.decode()
     refused = client.post(reverse("reports:generator"), {"kind": "accomplishment_report", "preset": "", "year": "2026",
                                                          "program_name": "NAVIGATU"})
@@ -338,5 +339,6 @@ def test_creating_an_accomplishment_report_through_the_page(staff, workshop, cli
     draft = ReportDraft.objects.get()
     assert response.status_code == 302 and (draft.date_range_start, draft.date_range_end) == (date(2026, 7, 1), date(2026, 9, 30))
     assert draft.options["program_name"] == "TARA"
-    assert 'value="TARA"' in client.get(reverse("reports:generator")).content.decode()  # remembered
-    assert "Report generator" in client.get(reverse("reports:list")).content.decode()  # the Reports page links here
+    assert 'value="TARA"' in client.get(reverse("reports:list") + "?kind=accomplishment_report").content.decode()
+    figures = client.get(reverse("reports:list")).content.decode()  # the figures Accomplishment report links here (446)
+    assert "data-accomplishment-note" in figures and "?kind=accomplishment_report" in figures

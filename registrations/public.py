@@ -13,7 +13,7 @@ def guard_registration_request(request: HttpRequest, email, honeypot) -> None:
 
     The IP address comes only from config.network.client_ip(). Raises services.RegistrationRateLimited
     (show as 429) or services.RegistrationError (honeypot filled in). Call it before services.register();
-    the service itself is never limited (startup portal, Django admin, demo seed).
+    the service itself is never limited (staff "Add a walk-in", Django admin, demo seed).
     """
     services.guard_public_registration(client_ip(request), email, honeypot)
 

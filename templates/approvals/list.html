@@ -16,13 +16,17 @@ member who approves something (inbox.has_inbox). Filters stay in the URL and swa
       <a href="{% url 'approvals:all' %}" class="segmented-item {% if tab == 'all' %}is-selected{% endif %}"{% if tab == "all" %} aria-current="page"{% endif %}>
         {% include "components/icon.html" with name="list" class="size-4" %}All submissions</a>
     {% endif %}
+    {% if layout.shows_assigned %}{# ASSUMPTIONS 456: not for the Director who has never been given work #}
     <a href="{% url 'approvals:assigned' %}" class="segmented-item {% if tab == 'assigned' %}is-selected{% endif %}"{% if tab == "assigned" %} aria-current="page"{% endif %}>
       {% include "components/icon.html" with name="user-plus" class="size-4" %}Assigned to me
       {% if assigned_total %}<span class="rounded-full bg-primary-soft px-2 text-xs font-bold text-primary">{{ assigned_total }}<span class="sr-only"> open</span></span>{% endif %}</a>
+    {% endif %}
     <a href="{% url 'approvals:mine' %}" class="segmented-item {% if tab == 'mine' %}is-selected{% endif %}"{% if tab == "mine" %} aria-current="page"{% endif %}>
       {% include "components/icon.html" with name="send" class="size-4" %}My submissions</a>
   </nav>
+  {% if layout.offers_submit %}{# ASSUMPTIONS 456: never to the Director on their own account #}
   <a href="{% url 'approvals:submit' %}" class="btn btn-primary">{% include "components/icon.html" with name="upload" class="size-4" %}Submit to the Director</a>
+  {% endif %}
 {% endblock %}
 {% block content %}
 <section class="card p-6" aria-label="{{ page_title }}">

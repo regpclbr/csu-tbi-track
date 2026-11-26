@@ -42,8 +42,8 @@ class LoginError(Exception):
     """Login refused. The message is safe to show: it never says whether the email exists."""
 
 
-# Staff and startups use the same limits and messages but separate counters ("scope").
-STAFF_SCOPE, STARTUP_SCOPE = "staff", "startup"
+# The login lockout's counter scope (the startup scope went with the portal, ASSUMPTIONS 458).
+STAFF_SCOPE = "staff"
 
 
 def _counter_key(scope: str, kind: str, value: str) -> str:
@@ -96,7 +96,7 @@ def authenticate_member(request: HttpRequest, email: str, password: str) -> TBIM
 
     - Wrong password, unknown email and deactivated account all give the same message.
     - Repeated failures lock the email (and, at a higher limit, the IP) for a short time.
-    - Only TBI_MEMBER accounts are checked; STARTUP accounts can never log in here.
+    - Only TBI_MEMBER accounts are checked.
     """
     email = email.strip().lower()
     ip = client_ip(request)

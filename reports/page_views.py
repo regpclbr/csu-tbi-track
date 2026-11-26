@@ -1,6 +1,8 @@
-"""The Reports page (phase F5): /reports/ with the "New report" form and the history. Thin views: the rules are in
-reports.services (request_report checks can_create_activity and the input; report_state decides pending, ready or
-failed); reports/pages.py prepares what the templates show.
+"""The ONE Reports page (phase F5; ASSUMPTIONS 461-462): /reports/?kind=<kind>&activity=<id> with one list of what to
+make (figures reports and the report generator's kinds; for one activity also the attendance forms) and one list of
+past reports. Thin views: the rules are in reports.services (request_report checks can_create_activity and the input;
+report_state decides pending, ready or failed) and reports.generator; reports/hub.py and reports/pages.py prepare
+what the templates show. /reports/generator/ redirects here (reports.generator_views).
 
 Any active staff member lists and downloads reports; only can_create_activity sees the form and may post it. A
 pending row asks for itself again (HTMX polling, reports:row) until it is ready or failed.
@@ -18,7 +20,7 @@ from approvals import pages as approval_pages  # the Assign dialog (ASSUMPTIONS 
 from accounts.permissions import has_permission, is_htmx, staff_login_required
 from activities.models import Activity
 
-from . import pages, services
+from . import hub, pages, services
 from .models import GeneratedReport
 
 
@@ -26,17 +28,23 @@ def _form_context(form: pages.ReportForm) -> dict:
     return {"form": form, **pages.form_options(pages.today(), form)}
 
 
-def _page(request: HttpRequest, form: pages.ReportForm, status: int = 200) -> HttpResponse:
-    context = {
-        "page_title": "Reports",
-        "page_subtitle": "Accomplishment, participation, evaluation, document compliance and certificate reports",
-        "can_generate": services.can_generate(request.user),  # also a report assignment (ASSUMPTIONS 437)
-        "assign": approval_pages.assign_panel(request.user, report=True),
-        "poll_seconds": pages.POLL_SECONDS,
-        **_form_context(form),
-        **pages.history(request.GET.get("page", "1")),
-    }
+def chosen_activity(request: HttpRequest) -> Activity | None:
+    raw = request.GET.get("activity", "") or request.POST.get("for_activity", "")
+    return Activity.objects.select_related("status").filter(pk=raw).first() if raw.isdigit() else None
+
+
+def render_hub(request: HttpRequest, kind: str | None = None, activity: Activity | None = None, *, figures_form=None,
+               generator_form=None, status: int = 200) -> HttpResponse:
+    """The one Reports page for `kind` (default: the figures Accomplishment report; for one activity, the Activity
+    Report)."""
+    kind = hub.choose_kind(kind if kind is not None else request.GET.get("kind"), activity)
+    context = {**hub.page_context(request, kind, activity, figures_form=figures_form, generator_form=generator_form),
+               "assign": approval_pages.assign_panel(request.user, report=True)}
     return render(request, "reports/list.html", context, status=status)
+
+
+def _page(request: HttpRequest, form: pages.ReportForm, status: int = 200) -> HttpResponse:
+    return render_hub(request, f"{hub.FIGURES_PREFIX}{form.report_type}", figures_form=form, status=status)
 
 
 @staff_login_required
@@ -46,14 +54,18 @@ def report_list(request: HttpRequest) -> HttpResponse:
     history. POST: request a report (services.request_report, which checks the permission and every value);
     errors come back under their fields (400)."""
     if request.method == "GET":
-        if is_htmx(request):
-            return render(request, "reports/_history.html", {"poll_seconds": pages.POLL_SECONDS,
-                                                             **pages.history(request.GET.get("page", "1"))})
-        return _page(request, pages.empty_form(pages.today()))
+        activity = chosen_activity(request)
+        if is_htmx(request):  # the pager of the past reports
+            return render(request, "reports/_history.html", {"poll_seconds": pages.POLL_SECONDS, "activity": activity,
+                                                             **hub.past(request.user, activity, request.GET.get("page", "1"))})
+        return render_hub(request, activity=activity)
 
     form = pages.form_from_post(request.POST, pages.today())
+    from .generator import NewFile
+
+    files = [NewFile(f, "document") for f in request.FILES.getlist("report_files")]
     try:
-        report = services.request_report(request.user, form.service_data())  # PermissionDenied -> the 403 page
+        report = services.request_report(request.user, form.service_data(), files=files)  # PermissionDenied -> 403
     except ValidationError as error:
         form.errors = pages.flat_errors(error.message_dict)
         return _page(request, form, status=400)

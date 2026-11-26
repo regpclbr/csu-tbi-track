@@ -48,6 +48,7 @@ TABS = [
     ("evaluation", "Evaluation"),
     ("documents", "Documents"),
     ("certificates", "Certificates"),
+    ("reports", "Reports"),  # ASSUMPTIONS 462: the one Reports page with this activity chosen
 ]
 DEFAULT_TAB = "overview"
 NO_EVALUATION_DEADLINE = "No deadline (the evaluation stays open)"  # ASSUMPTIONS 423

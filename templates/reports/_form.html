@@ -11,7 +11,7 @@ reports.services.request_report reads. The summary card's controls have no names
 the chips and More settings are Alpine". Every value is checked by the services, never here. The dates of a period
 choice come from the server's table (preset_dates, ASSUMPTIONS 399); Alpine only looks them up.
 {% endcomment %}
-<form id="report-form" method="post" action="{% url 'reports:list' %}" novalidate class="px-6 pt-3 pb-6"
+<form id="report-form" method="post" action="{% url 'reports:list' %}" enctype="multipart/form-data" novalidate class="px-6 pt-3 pb-6"
       x-data="{
         type: '{{ form.report_type|escapejs }}',
         sections: JSON.parse(document.getElementById('report-sections-data').textContent),
@@ -62,7 +62,7 @@ choice come from the server's table (preset_dates, ASSUMPTIONS 399); Alpine only
   {% if ai_fill_available %}
     {% comment %} The prompt box: Gemini only fills in the settings (reports:fill); every line shown is the service's text. {% endcomment %}
     <div>
-      <label for="report-request" class="block text-base font-semibold text-ink">What report do you need?</label>
+      <label for="report-request" class="block text-sm font-semibold text-ink">What report do you need?</label>
       <div class="relative mt-2">
         <textarea id="report-request" name="request_text" rows="2" maxlength="{{ request_max_chars }}" x-ref="request" :readonly="busy"
                   x-init="checkText()" @input="checkText()" @keydown.enter="enterKey($event)"

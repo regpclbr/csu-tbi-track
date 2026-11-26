@@ -57,9 +57,6 @@ class MinutesSchedule:
 
 SCHEDULES: list[DailySchedule | MinutesSchedule] = [
     DailySchedule("Daily document reminders", "documents.tasks.run_document_reminders", "DOCUMENT_REMINDER_HOUR"),
-    # Off with STARTUP_SYNC_ENABLED=False (the hosted review version, ASSUMPTIONS 393): setup_schedules then removes it.
-    DailySchedule("Daily Navigatu startup sync", "startups.tasks.run_startup_sync", "STARTUP_SYNC_HOUR",
-                  enabled_setting="STARTUP_SYNC_ENABLED"),
     # Indexes files that are not indexed yet (e.g. after a Gemini rate limit); never reads scans (ASSUMPTIONS 438).
     DailySchedule("Index pending documents", "assistant.tasks.run_index_pending", "ASSISTANT_INDEX_HOUR", "ASSISTANT_INDEX_MINUTE"),
     # Renders/issues Approved + evaluated certificates and sends Issued + unsent ones (Step 9).

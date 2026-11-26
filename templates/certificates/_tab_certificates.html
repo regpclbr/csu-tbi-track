@@ -323,10 +323,13 @@ Every action redirects back to /activities/<id>/?tab=certificates.
           <tbody class="divide-y divide-line">
             {% for row in rows %}{% with certificate=row.certificate %}
               <tr class="hover:bg-slate-50">
-                <th scope="row" class="px-3 py-3 font-semibold whitespace-nowrap text-ink">{{ certificate.certificate_number }}</th>
+                {# ASSUMPTIONS 457: the number and the name open the same preview as the row's Preview button. #}
+                <th scope="row" class="px-3 py-3 font-semibold whitespace-nowrap text-ink"><a href="{% url 'certificates:preview_dialog' certificate.pk %}" class="cert-link rounded-md hover:text-primary hover:underline" data-preview-link
+                    @click.prevent="$dispatch('certificate-preview', {{ certificate.pk }})">{{ certificate.certificate_number }}</a></th>
                 <td class="min-w-48 px-3 py-3 text-slate-700">
                   <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span>{{ row.recipient }}{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</span>
+                    <span><a href="{% url 'certificates:preview_dialog' certificate.pk %}" class="cert-link rounded-md hover:text-primary hover:underline" data-preview-link
+                       @click.prevent="$dispatch('certificate-preview', {{ certificate.pk }})">{{ row.recipient }}</a>{% if row.registered_as %}<span class="block text-xs text-muted">registered as {{ row.registered_as }}</span>{% endif %}</span>
                     <a href="{% url 'certificates:preview_dialog' certificate.pk %}" class="btn btn-ghost btn-sm"
                        @click.prevent="$dispatch('certificate-preview', {{ certificate.pk }})">
                       {% include "components/icon.html" with name="eye" class="size-4" %}Preview<span class="sr-only"> {{ certificate.certificate_number }}</span></a>

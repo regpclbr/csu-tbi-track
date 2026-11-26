@@ -106,6 +106,7 @@ class ReportForm:
     fill_error: str = ""
 
     summary_shown: bool = False  # the summary card was on the page (kept through a refused Generate)
+    notes: str = ""  # ASSUMPTIONS 461: notes to guide the AI summary (files come with the request)
 
     @property
     def show_summary(self) -> bool:
@@ -130,14 +131,16 @@ class ReportForm:
             "date_range_end": self.end,
             "activity_type": self.activity_type,
             "format": self.format,
+            "notes": self.notes,
         }
 
 
-def empty_form(today: date) -> ReportForm:
-    """The default: this quarter of this year."""
+def empty_form(today: date, report_type: str = "accomplishment") -> ReportForm:
+    """The default: this quarter of this year; `report_type` preselects a type chosen on the one Reports page (461)."""
+    report_type = report_type if report_type in REPORT_TYPES else "accomplishment"
     key = current_quarter(today)
     start, end = report_range(key, today, today.year)
-    return ReportForm(sections=list(REPORT_TYPES["accomplishment"].default_sections), range_key=key,
+    return ReportForm(report_type=report_type, sections=list(REPORT_TYPES[report_type].default_sections), range_key=key,
                       period_year=today.year, start=start.isoformat(), end=end.isoformat())
 
 
@@ -167,6 +170,7 @@ def form_from_post(post: QueryDict, today: date) -> ReportForm:
         # An example chip posted without JavaScript sends its text as `example` (with JavaScript it fills the box).
         request_text=(post.get("example") or post.get("request_text", ""))[:2000],
         summary_shown=post.get("show_summary") == "1",
+        notes=post.get("notes", "")[:4000],
     )
 
 
@@ -217,6 +221,7 @@ def form_options(today: date, form: ReportForm | None = None) -> dict:
         "ai_fill_available": gemini.is_configured(),  # "Describe the report you want" (ASSUMPTIONS 384)
         "request_max_chars": settings.REPORT_FORM_FILL_MAX_CHARS,
         "example_requests": EXAMPLE_REQUESTS,
+        "notes_max": services.REPORT_NOTES_MAX, "max_files": settings.REPORT_GENERATOR_MAX_ATTACHMENTS,
     }
 
 

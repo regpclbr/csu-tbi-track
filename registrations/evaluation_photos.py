@@ -35,7 +35,7 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from accounts.permissions import Permission, require_permission
+from accounts.permissions import Permission, require_permission_for
 
 from .models import EvaluationAttachment, EvaluationSubmission
 
@@ -216,7 +216,7 @@ def photos_for_reports(activities) -> QuerySet:
 def set_use_in_reports(member, attachment: EvaluationAttachment, use: bool, now: datetime | None = None) -> EvaluationAttachment:
     """Tick or untick "Use in reports" (can_create_activity). Keeps who and when (the latest change) and logs it on
     registrations.audit with IDs only. Setting the value it already has changes nothing."""
-    require_permission(member, VIEW_PERMISSION)
+    require_permission_for(member, VIEW_PERMISSION, attachment.submission.registration.activity)  # or assigned (460)
     with transaction.atomic():
         attachment = EvaluationAttachment.objects.select_for_update().get(pk=attachment.pk)
         if attachment.use_in_reports == bool(use):

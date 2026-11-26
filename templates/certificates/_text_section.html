@@ -13,7 +13,7 @@ not issued and cancels the activity's approval. Without the flags: the text, rea
     {% endif %}
   </div>
   {% if text.can_edit %}
-    <form method="post" action="{{ text.save_url }}" class="mt-4 space-y-4" novalidate>
+    <form data-enter-submit="off" method="post" action="{{ text.save_url }}" class="mt-4 space-y-4" novalidate>
       {% csrf_token %}
       <div class="flex flex-wrap gap-4" role="radiogroup" aria-label="Which text this activity uses">
         <label class="flex items-center gap-2 text-sm text-ink"><input type="radio" name="mode" value="default" x-model="mode"{% if not text.custom %} checked{% endif %}> Use the default text</label>

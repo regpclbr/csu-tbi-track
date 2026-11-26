@@ -67,7 +67,6 @@ or staff, with the time). The table scrolls sideways inside the card on narrow s
               <th scope="col" class="px-3 py-3">Attendance</th>
               <th scope="col" class="px-3 py-3">Signature</th>
               <th scope="col" class="px-3 py-3">Evaluation</th>
-              <th scope="col" class="px-3 py-3">Startup</th>
               <th scope="col" class="px-3 py-3"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
@@ -104,7 +103,6 @@ or staff, with the time). The table scrolls sideways inside the card on narrow s
                       Submitted<span class="sr-only">: open the evaluation of {{ registration.name }}</span></button>
                   {% else %}<span class="text-muted">–</span>{% endif %}
                 </td>
-                <td class="min-w-36 px-3 py-3 text-slate-700">{{ registration.startup.name|default:"–" }}</td>
                 <td class="px-3 py-3 text-right whitespace-nowrap">
                   {% if can_create and not attendance_reason %}
                     {% if not row.on_day %}

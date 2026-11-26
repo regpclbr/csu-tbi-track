@@ -144,6 +144,9 @@ class WorkAssignment(models.Model):
         DOCUMENT_REVIEW = "document_review", "Review the document"
         SUBMISSION_REVIEW = "submission_review", "Review the submission"
         REPORT = "report", "Prepare a report"
+        # ASSUMPTIONS 460: the Director's work that has no single object (one open assignment of each at a time).
+        CERTIFICATE_TEXT = "certificate_text", "Edit the default certificate text"
+        SIGNATORIES = "signatories", "Manage the signatory list"
 
     class Status(models.TextChoices):
         OPEN = "open", "Open"
@@ -151,6 +154,7 @@ class WorkAssignment(models.Model):
         REMOVED = "removed", "Removed"
 
     ACTIVITY_KINDS = ("activity", "certificate_approval", "signatory_choice")
+    GLOBAL_KINDS = ("certificate_text", "signatories")  # no target; one open assignment of each kind (ASSUMPTIONS 460)
 
     assignment_id = models.BigAutoField(primary_key=True)
     kind = models.CharField(max_length=30, choices=Kind.choices)
@@ -166,6 +170,9 @@ class WorkAssignment(models.Model):
     assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="work_assigned_by_me")
     note = models.TextField(blank=True, default="")
     due_date = models.DateField(null=True, blank=True)
+    # ASSUMPTIONS 460: a submission review may also stamp the ASSIGNER's own linked signature ("signed on behalf of"),
+    # only when the assigner ticked it; never for any other kind.
+    allow_signing = models.BooleanField(default=False)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
     created_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -183,8 +190,11 @@ class WorkAssignment(models.Model):
         ordering = ["-created_at", "-assignment_id"]
         constraints = [
             models.CheckConstraint(condition=Q(kind__in=["activity", "certificate_approval", "signatory_choice",
-                                                         "document_review", "submission_review", "report"]),
+                                                         "document_review", "submission_review", "report",
+                                                         "certificate_text", "signatories"]),
                                    name="work_assignment_kind_valid"),
+            models.CheckConstraint(condition=Q(allow_signing=False) | Q(kind="submission_review"),
+                                   name="work_assignment_signing_only_for_submissions"),
             models.CheckConstraint(condition=Q(status__in=["open", "done", "removed"]), name="work_assignment_status_valid"),
             # Exactly the target the kind needs.
             models.CheckConstraint(
@@ -195,7 +205,9 @@ class WorkAssignment(models.Model):
                            | Q(kind="submission_review", submission__isnull=False, activity__isnull=True,
                                document__isnull=True)
                            | Q(kind="report", activity__isnull=True, document__isnull=True, submission__isnull=True)
-                           & ~Q(report_title="")),
+                           & ~Q(report_title="")
+                           | Q(kind__in=["certificate_text", "signatories"], activity__isnull=True,
+                               document__isnull=True, submission__isnull=True)),
                 name="work_assignment_target_matches_kind"),
             models.CheckConstraint(condition=~Q(assigned_to=models.F("assigned_by")), name="work_assignment_not_to_self"),
             models.CheckConstraint(
@@ -210,6 +222,9 @@ class WorkAssignment(models.Model):
                                     name="one_open_assignment_per_document"),
             models.UniqueConstraint(fields=["submission"], condition=Q(status="open", submission__isnull=False),
                                     name="one_open_assignment_per_submission"),
+            models.UniqueConstraint(fields=["kind"], condition=Q(status="open", kind__in=["certificate_text",
+                                                                                         "signatories"]),
+                                    name="one_open_assignment_per_global_task"),
         ]
 
     def __str__(self) -> str:

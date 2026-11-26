@@ -26,30 +26,10 @@ from registrations.tests.conftest import (  # noqa: F401  (re-exported fixtures)
     valid_data,
     with_forms,
 )
-from startups.tests.conftest import STARTUP_PASSWORD, make_startup  # noqa: F401
 
 S = Certificate.Status
 
 
-@pytest.fixture
-def portal_for():
-    """Factory: portal_for(startup) is a new test client logged in to the startup portal."""
-    from django.test import Client
-
-    def login(startup) -> Client:
-        client = Client()
-        response = client.post(
-            "/startups/portal/api/login/", {"email": startup.email, "password": STARTUP_PASSWORD}, content_type="application/json"
-        )
-        assert response.status_code == 200
-        return client
-
-    return login
-
-
-@pytest.fixture
-def startup_portal(portal_for, make_startup):
-    return portal_for(make_startup(email="person0@example.com", navigatu_id="NAV-1"))
 A4 = (1754, 1240)  # smallest accepted template size
 
 

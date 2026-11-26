@@ -12,7 +12,12 @@
   assign it). Either way the permission ends at once.
 - Separation of duties: never to yourself; nobody is assigned to review their own upload / submission or certificates
   they prepared or of an activity they created; a member whose role manages users is never given work that role may not
-  have (check_role_flags: activities, signatories, documents, submissions, reports); signing is never delegated.
+  have (check_role_flags: activities, signatories, documents, submissions, reports).
+- ASSUMPTIONS 460: ALL the Director's work can be assigned (ASSIGNABLE_ACTIONS lists every Director-only action and its
+  kind). Two kinds have no object: the default certificate text and the signatory list (one open assignment of each).
+  A submission review may allow stamping the ASSIGNER's own linked signature ("May stamp my signature", allow_signing):
+  logged "signed on behalf of". Never assignable: unapproving (documents, submissions, certificates), linking a
+  signature to an account, changing a signature linked to an account, and assigning work itself.
 """
 
 import logging
@@ -43,11 +48,38 @@ KIND_PERMISSIONS = {
     Kind.DOCUMENT_REVIEW: Permission.APPROVE_DOCUMENTS,
     Kind.SUBMISSION_REVIEW: Permission.APPROVE_DOCUMENTS,
     Kind.REPORT: Permission.CREATE_ACTIVITY,
+    Kind.CERTIFICATE_TEXT: Permission.APPROVE_CERTIFICATES,
+    Kind.SIGNATORIES: Permission.MANAGE_SIGNATORIES,
 }
+GLOBAL_KINDS = tuple(WorkAssignment.GLOBAL_KINDS)  # no target (ASSUMPTIONS 460)
+TARGETLESS = (Kind.REPORT, *GLOBAL_KINDS)
 # Work a role that manages users may never get (separation of duties, accounts.services.check_role_flags).
-NOT_FOR_USER_MANAGERS = {Kind.ACTIVITY, Kind.SIGNATORY_CHOICE, Kind.DOCUMENT_REVIEW, Kind.SUBMISSION_REVIEW, Kind.REPORT}
+NOT_FOR_USER_MANAGERS = {Kind.ACTIVITY, Kind.SIGNATORY_CHOICE, Kind.DOCUMENT_REVIEW, Kind.SUBMISSION_REVIEW, Kind.REPORT,
+                         Kind.SIGNATORIES}
 # Kinds the assignee (or the assigner) closes with "Mark done"; the others close themselves when approved / returned.
-MANUAL_DONE = {Kind.ACTIVITY, Kind.SIGNATORY_CHOICE, Kind.REPORT}
+MANUAL_DONE = {Kind.ACTIVITY, Kind.SIGNATORY_CHOICE, Kind.REPORT, Kind.CERTIFICATE_TEXT, Kind.SIGNATORIES,
+               Kind.CERTIFICATE_APPROVAL}  # a certificate approval also closes itself when approved; reissuing: Mark done
+
+# ASSUMPTIONS 460: every Director-only action (the flags only the Director holds by default) and how it is assigned.
+# None = never assignable. Shown in ASSUMPTIONS 460 and checked by approvals/tests/test_assign_all_work.py.
+ASSIGNABLE_ACTIONS = [
+    ("Approve or return a document that needs review", Kind.DOCUMENT_REVIEW),
+    ("Rename, replace or delete another member's waiting document", Kind.DOCUMENT_REVIEW),
+    ("Unapprove a document", None),
+    ("Approve or return a submission (never your own)", Kind.SUBMISSION_REVIEW),
+    ("Stamp the Director's signature on a submission (\"May stamp my signature\")", Kind.SUBMISSION_REVIEW),
+    ("Unapprove a submission", None),
+    ("Approve an activity's certificates", Kind.CERTIFICATE_APPROVAL),
+    ("Reissue an activity's outdated certificates", Kind.CERTIFICATE_APPROVAL),
+    ("Unapprove an activity's certificates", None),
+    ("Choose an activity's signatories and their titles", Kind.SIGNATORY_CHOICE),
+    ("Edit the default certificate text", Kind.CERTIFICATE_TEXT),
+    ("Manage the signatory list (add, edit, images, deactivate, defaults)", Kind.SIGNATORIES),
+    ("Link a signature to an account / change a signature linked to an account", None),
+    ("Close or reopen registration and the evaluation, edit another member's activity", Kind.ACTIVITY),
+    ("Prepare any report (figures report or report generator)", Kind.REPORT),
+    ("Assign work", None),
+]
 NOTE_MAX = 1000
 REPORT_TITLE_MAX = 255
 
@@ -84,7 +116,10 @@ def open_assignment(member: TBIMember, kinds: tuple, obj=None) -> WorkAssignment
 
 
 def open_for(kind: str, obj) -> WorkAssignment | None:
-    """The open assignment of `kind` on `obj` (anyone's), or None."""
+    """The open assignment of `kind` on `obj` (anyone's), or None. A global kind (ASSUMPTIONS 460) has no object."""
+    if kind in GLOBAL_KINDS:
+        return (WorkAssignment.objects.filter(kind=kind, status=Status.OPEN)
+                .select_related("assigned_to", "assigned_by").first())
     field = target_field(kind)
     if field is None:
         return None
@@ -96,6 +131,16 @@ def target_field(kind: str) -> str | None:
     if kind in WorkAssignment.ACTIVITY_KINDS:
         return "activity"
     return {Kind.DOCUMENT_REVIEW: "document", Kind.SUBMISSION_REVIEW: "submission"}.get(kind)
+
+
+def shows_assigned_to_me(member) -> bool:
+    """Show "Assigned to me" (ASSUMPTIONS 456): hidden for a member who gives the work (can_assign_work, the Director)
+    and has never been given any; shown to everyone else and whenever something was ever assigned to the member."""
+    from accounts.permissions import Permission, has_permission
+
+    if not has_permission(member, Permission.ASSIGN_WORK):
+        return True
+    return WorkAssignment.objects.filter(assigned_to=member).exists()
 
 
 def assigned_to_me(member: TBIMember, include_closed: bool = False) -> QuerySet:
@@ -122,6 +167,8 @@ def is_overdue(assignment: WorkAssignment, today: date | None = None) -> bool:
 def target_title(assignment: WorkAssignment) -> str:
     if assignment.kind == Kind.REPORT:
         return assignment.report_title
+    if assignment.kind in GLOBAL_KINDS:
+        return Kind(assignment.kind).label
     target = assignment.activity or assignment.document or assignment.submission
     return target.title if target is not None else ""
 
@@ -130,6 +177,10 @@ def target_url(assignment: WorkAssignment) -> str:
     """Where the work is done (one click from the inbox, the notification and "Assigned to me")."""
     if assignment.kind == Kind.REPORT:
         return reverse("reports:list")
+    if assignment.kind == Kind.CERTIFICATE_TEXT:
+        return reverse("certificates:text")
+    if assignment.kind == Kind.SIGNATORIES:
+        return reverse("certificates:signatories")
     if assignment.kind == Kind.DOCUMENT_REVIEW:
         return reverse("documents:detail", args=[assignment.document_id])
     if assignment.kind == Kind.SUBMISSION_REVIEW:
@@ -176,7 +227,8 @@ def _target_refused(kind: str, target) -> str | None:
 
     if kind == Kind.ACTIVITY and target.status.name == ActivityStatus.CONDUCTED:
         return CONDUCTED_READ_ONLY
-    if kind == Kind.CERTIFICATE_APPROVAL and certificate_services.is_approved(target):
+    if (kind == Kind.CERTIFICATE_APPROVAL and certificate_services.is_approved(target)
+            and not certificate_services.outdated_certificates(target).exists()):  # approved and nothing to reissue (460)
         return certificate_services.ALREADY_APPROVED
     if kind == Kind.DOCUMENT_REVIEW and not (target.review_state == target.WAITING_FOR_REVIEW
                                              and document_services.needs_review(target.document_type,
@@ -217,7 +269,7 @@ def _history(assignment: WorkAssignment, member: TBIMember, old: str, new: str) 
 def _describe(assignment: WorkAssignment) -> str:
     what = Kind(assignment.kind).label
     title = target_title(assignment)
-    if assignment.kind not in WorkAssignment.ACTIVITY_KINDS:
+    if assignment.kind not in (*WorkAssignment.ACTIVITY_KINDS, *GLOBAL_KINDS):
         what = f'{what} "{title[:120]}"'
     due = f", due {assignment.due_date:%b} {assignment.due_date.day}, {assignment.due_date.year}" if assignment.due_date else ""
     return f"{what} assigned to {assignment.assigned_to.name}{due}"
@@ -232,10 +284,18 @@ def _notify(member: TBIMember, assignment: WorkAssignment, kind: str, message: s
 # --- Assign, mark done, remove ---------------------------------------------------------------------------------------
 
 
+SIGNING_ONLY_FOR_SUBMISSIONS = "Only a submission review can allow stamping your signature."
+SIGNING_NEEDS_YOUR_SIGNATURE = ("Your account is not linked to a signature with an image, so there is nothing to stamp. "
+                                "Link it on the Signatories page first.")
+
+
 def assign_work(member: TBIMember, kind: str, assignee: TBIMember | None, *, activity=None, document=None,
-                submission=None, report_title: str = "", note: str = "", due_date: date | None = None) -> WorkAssignment:
+                submission=None, report_title: str = "", note: str = "", due_date: date | None = None,
+                allow_signing: bool = False) -> WorkAssignment:
     """"Assign to": one piece of work to one member. Refused (AssignmentError / ValidationError / PermissionDenied) by
-    the rules above. The assignee is notified; a History row on the activity of the work; approvals.audit."""
+    the rules above. The assignee is notified; a History row on the activity of the work; approvals.audit.
+    `allow_signing` (submission reviews only, ASSUMPTIONS 460): the assignee may stamp the ASSIGNER's own linked
+    signature while approving; the assigner must have one with an image."""
     if kind not in KIND_PERMISSIONS:
         raise AssignmentError("Choose what to assign.")
     require_permission(member, Permission.ASSIGN_WORK)
@@ -247,10 +307,21 @@ def assign_work(member: TBIMember, kind: str, assignee: TBIMember | None, *, act
         raise ValidationError({"assigned_to": [NOT_TO_YOURSELF]})
     if kind in NOT_FOR_USER_MANAGERS and has_permission(assignee, Permission.MANAGE_USERS):
         raise ValidationError({"assigned_to": [USER_MANAGER_REFUSED.format(name=assignee.name)]})
+    if allow_signing:
+        from certificates.services import signatory_for
+
+        if kind != Kind.SUBMISSION_REVIEW:
+            raise ValidationError({"allow_signing": [SIGNING_ONLY_FOR_SUBMISSIONS]})
+        own = signatory_for(member)
+        if own is None or not own.signature_image_path:
+            raise ValidationError({"allow_signing": [SIGNING_NEEDS_YOUR_SIGNATURE]})
     target = {Kind.DOCUMENT_REVIEW: document, Kind.SUBMISSION_REVIEW: submission}.get(kind, activity)
-    if kind != Kind.REPORT and target is None:
+    if kind not in TARGETLESS and target is None:
         raise AssignmentError("Choose the work to assign.")
-    if kind != Kind.REPORT:
+    if kind in GLOBAL_KINDS:
+        if existing := open_for(kind, None):
+            raise AssignmentError(ALREADY_ASSIGNED.format(name=existing.assigned_to.name))
+    elif kind != Kind.REPORT:
         if refused := _target_refused(kind, target) or own_work_reason(assignee, kind, target):
             raise AssignmentError(refused)
         if existing := open_for(kind, target):
@@ -260,7 +331,7 @@ def assign_work(member: TBIMember, kind: str, assignee: TBIMember | None, *, act
         document=document if kind == Kind.DOCUMENT_REVIEW else None,
         submission=submission if kind == Kind.SUBMISSION_REVIEW else None,
         report_title=report_title if kind == Kind.REPORT else "", assigned_to=assignee, assigned_by=member,
-        note=note, due_date=due_date)
+        note=note, due_date=due_date, allow_signing=bool(allow_signing))
     try:
         with transaction.atomic():
             assignment.save()
@@ -268,8 +339,8 @@ def assign_work(member: TBIMember, kind: str, assignee: TBIMember | None, *, act
             _notify(assignee, assignment, Notification.WORK_ASSIGNED,
                     f"{member.name[:60]} assigned you: {_describe(assignment).replace(' assigned to ' + assignee.name, '')}"
                     + (f". Note: {note}" if note else ""))
-            audit_log.info("Work assigned: assignment_id=%s kind=%s to member_id=%s by member_id=%s", assignment.pk,
-                           kind, assignee.pk, member.pk)
+            audit_log.info("Work assigned: assignment_id=%s kind=%s to member_id=%s by member_id=%s signing=%s",
+                           assignment.pk, kind, assignee.pk, member.pk, assignment.allow_signing)
     except IntegrityError as error:  # two clicks at once: the unique constraint keeps one open assignment
         raise AssignmentError("This work was just assigned by someone else. Reload the page.") from error
     return assignment

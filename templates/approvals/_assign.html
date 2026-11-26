@@ -26,7 +26,7 @@ Remove. POST approvals:assign / approvals:assignment_remove; approvals.assignmen
         </ul>
       {% endif %}
       {% if assign.kinds %}
-        <form method="post" action="{% url 'approvals:assign' %}" class="space-y-4" novalidate>
+        <form data-enter-submit="off" method="post" action="{% url 'approvals:assign' %}" class="space-y-4" novalidate>
           {% csrf_token %}
           <input type="hidden" name="next" value="{{ next }}">
           {% if assign.activity %}<input type="hidden" name="activity" value="{{ assign.activity.pk }}">{% endif %}
@@ -63,6 +63,13 @@ Remove. POST approvals:assign / approvals:assignment_remove; approvals.assignmen
               <input id="assign-due" type="date" name="due_date" class="field-input mt-2">
             </div>
           </div>
+          {% if assign.offers_signing %}
+            {# ASSUMPTIONS 460: the assignee may stamp YOUR own linked signature while approving ("signed on behalf of"). #}
+            <label class="flex items-start gap-3 rounded-xl border border-line p-3 text-sm text-ink" data-allow-signing>
+              <input type="checkbox" name="allow_signing" value="yes" class="mt-1 size-5 shrink-0 accent-primary">
+              <span><span class="font-semibold">May stamp my signature</span><span class="mt-1 block text-xs text-slate-700">If they approve it, they may put your signature on a copy of the PDF. It is logged and shown as “signed on behalf of” you.</span></span>
+            </label>
+          {% endif %}
           <div>
             <label for="assign-note" class="text-sm font-semibold text-ink">Note (optional)</label>
             <textarea id="assign-note" name="note" rows="3" maxlength="{{ assign.note_max }}" class="field-input mt-2"></textarea>

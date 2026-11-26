@@ -1,5 +1,5 @@
 """Designation / Position and Office / Agency (ASSUMPTIONS 426): fixed REGISTRATION columns, required for every new
-registration (public page and API, startup portal), shown on the Registrations tab, the registration detail and the
+registration (public page and API), shown on the Registrations tab, the registration detail and the
 attendance sheet; migration registrations/0010 moves the old "Affiliation / Organization" answers."""
 
 import importlib
@@ -16,7 +16,6 @@ from activities import services as activity_services
 from activities.models import ActivityType
 from registrations import services
 from registrations.models import DefaultFormField, FormAnswer, FormField, FormType, Registration
-from startups.models import Startup
 
 from .conftest import FIXED, OLD_FIELD, form_of, registration_answers
 from .conftest import SIGN_JSON, SIGN_POST
@@ -108,44 +107,6 @@ def test_staff_pages_show_both(director, scheduled, signup) -> None:
     api = client.get(reverse("registrations:api_registrations", args=[scheduled.pk])).json()
     assert api["registrations"][0]["office_agency"] == "CSU College of Engineering"
     assert [r.pk for r in services.list_registrations(scheduled, search="engineering")] == [person.pk]
-
-
-# --- Startup portal ------------------------------------------------------------------------------------------------
-
-
-@pytest.fixture
-def startup_client(client, scheduled):
-    """A startup signed in through the portal's login page (as test_privacy_consent.py)."""
-    startup = Startup.objects.create(name="Kape Caraga", email="kape@example.com", contact_number="0917")
-    startup.set_password("Kalinaw-Sapa-2026!")
-    startup.save()
-    response = client.post(reverse("startups:portal_login_page"), {"email": startup.email, "password": "Kalinaw-Sapa-2026!"})
-    assert response.status_code == 302, response.content
-    return client
-
-
-def test_portal_page_prefills_office_with_the_startup_name(startup_client, scheduled) -> None:
-    url = reverse("startups:portal_register_page", args=[scheduled.pk])
-    page = startup_client.get(url).content.decode()
-    assert 'name="office_agency"' in page and 'value="Kape Caraga"' in page and 'name="designation"' in page
-    answers = {f"field_{key}": value for key, value in registration_answers(scheduled).items()}
-    response = startup_client.post(url, {**answers, "designation": "Founder", "office_agency": "Kape Caraga Inc.",
-                                         "privacy_consent": "yes", **SIGN_POST})
-    assert response.status_code == 302
-    registration = Registration.objects.get()
-    assert (registration.designation, registration.office_agency) == ("Founder", "Kape Caraga Inc.")
-
-
-def test_portal_api_defaults_office_to_the_startup_name_but_needs_a_designation(startup_client, scheduled) -> None:
-    url = reverse("startups:portal_register", args=[scheduled.pk])
-    body = {"answers": registration_answers(scheduled), "privacy_consent": True, "signature": SIGN_JSON}
-    refused = startup_client.post(url, json.dumps(body), content_type="application/json")
-    assert refused.status_code == 400 and set(refused.json()["errors"]) == {"designation"}
-    cleared = startup_client.post(url, json.dumps({**body, "designation": "CEO", "office_agency": ""}),
-                                  content_type="application/json")
-    assert cleared.status_code == 400 and "office_agency" in cleared.json()["errors"]  # emptied on purpose: refused
-    accepted = startup_client.post(url, json.dumps({**body, "designation": "CEO"}), content_type="application/json")
-    assert accepted.status_code == 201 and accepted.json()["registration"]["office_agency"] == "Kape Caraga"
 
 
 # --- Seed and migration 0010 ---------------------------------------------------------------------------------------

@@ -22,7 +22,7 @@ TEXT, INT, PERCENT, DECIMAL, DATE, MONEY = "text", "int", "percent", "decimal", 
 class Column:
     label: str
     kind: str = TEXT
-    for_ai: bool = True  # False: never sent to Gemini (e.g. startup names)
+    for_ai: bool = True  # False: never sent to Gemini (e.g. names)
     # What the column holds, for the PDF layout only (reports/pdf.py): "start" + "end" are printed as one Date column,
     # "time" in its compact form; "title" / "venue" get the widest text columns. Excel keeps every column as it is.
     key: str = ""
@@ -114,7 +114,8 @@ SECTIONS: dict[str, str] = {
     "evaluation": "Evaluation results",
     "documents": "Document compliance",
     "certificates": "Certificates",
-    "startups": "Startups engaged",
+    # "startups" (Startups engaged) was removed with the startup portal (ASSUMPTIONS 458); ordered_sections skips it in
+    # older GENERATED_REPORT rows, whose files stay as they are.
 }
 
 
@@ -132,7 +133,7 @@ REPORT_TYPES: dict[str, ReportType] = {
         main=True,
     ),
     "participation": ReportType(
-        "Participation Report", ("summary", "by_category", "category_by_activity", "monthly", "startups"), main=True
+        "Participation Report", ("summary", "by_category", "category_by_activity", "monthly"), main=True
     ),
     "evaluation": ReportType("Evaluation Report", ("summary", "evaluation", "activities")),
     "document_compliance": ReportType("Document Compliance Report", ("documents",)),
@@ -227,7 +228,6 @@ def _summary(filters: ReportFilters, summary: dict) -> Section:
         ["Activities with all required documents approved", s["fully_compliant_activities"]],
         ["Certificates issued", s["certificates_issued"]],
         ["Certificates emailed", s["certificates_emailed"]],
-        ["Startups engaged", s["startups_engaged"]],
     ]
     return Section(
         "summary", SECTIONS["summary"],
@@ -404,19 +404,6 @@ def _certificates(filters: ReportFilters, summary: dict, today: date) -> Section
     )
 
 
-def _startups(filters: ReportFilters) -> Section:
-    rows = [
-        [s.name, s.maturity_stage or "", s.activities_attended or 0]
-        for s in metrics.engaged_startups(filters).order_by("name", "pk")
-    ]
-    columns = [Column("Startup", for_ai=False), Column("Maturity stage", for_ai=False), Column("Activities attended", INT)]
-    return Section(
-        "startups", SECTIONS["startups"], tables=[Table("Startups engaged", columns, rows)],
-        note="Startups with at least one attended registration in a conducted activity of the period "
-             "(registered while logged in, or with the startup's email).",
-    )
-
-
 def build_content(
     report_type: str, sections: list[str], filters: ReportFilters, *, generated_by: str,
     generated_at: datetime, now: datetime | None = None,
@@ -441,7 +428,6 @@ def build_content(
         "evaluation": lambda: _evaluation(filters),
         "documents": lambda: _documents(filters, now),
         "certificates": lambda: _certificates(filters, summary, today),
-        "startups": lambda: _startups(filters),
     }
     activity_type = (
         ActivityType.objects.get(pk=filters.activity_type_id).name if filters.activity_type_id else "All activity types"

@@ -15,7 +15,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import content_disposition_header
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from accounts.permissions import (
     Permission,
@@ -30,7 +30,9 @@ from config.parsing import parse_bool
 from activities.models import Activity
 from config.mail import email_sent_message
 
-from . import evaluation_photos, pages, services
+from . import attendance as attendance_rules
+from . import evaluation_photos, pages, services, signatures
+from . import public_pages
 from reports import services as report_services
 from reports.page_views import activity_file_response
 
@@ -216,7 +218,7 @@ def field_move(request: HttpRequest, field_id: int) -> HttpResponse:
 def registration_detail(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
     """HTMX: one registration's details and answers (for the modal)."""
     registration = get_object_or_404(
-        Registration.objects.select_related("participant_category", "startup", "evaluation_submission", "signature")
+        Registration.objects.select_related("participant_category", "evaluation_submission", "signature")
         .prefetch_related("answers__field", "attendance_days__marked_by"),
         pk=registration_id, activity_id=activity_id,
     )
@@ -225,7 +227,7 @@ def registration_detail(request: HttpRequest, activity_id: int, registration_id:
                    "evaluation": pages.evaluation_detail(request.user, registration)})
 
 
-@permission_required(services.INDIVIDUAL_EVALUATION_PERMISSION)
+@object_permission_required(services.INDIVIDUAL_EVALUATION_PERMISSION, form_activity_from_url)  # or the activity's assignment (460)
 @require_GET
 def evaluation_pdf(request: HttpRequest, activity_id: int, registration_id: int) -> HttpResponse:
     """One participant's submitted evaluation as PDF (ASSUMPTIONS 402): can_create_activity only (403 otherwise, also
@@ -237,6 +239,50 @@ def evaluation_pdf(request: HttpRequest, activity_id: int, registration_id: int)
     except EvaluationSubmission.DoesNotExist:
         raise Http404("This registration has no evaluation.") from None
     return activity_file_response(file)
+
+
+WALK_IN_FIELDS = ("name", "email", "contact_number", "designation", "office_agency", "participant_category")
+
+
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)
+@require_http_methods(["GET", "POST"])
+def walk_in(request: HttpRequest, activity_id: int) -> HttpResponse:
+    """The staff "Add a walk-in" page (ASSUMPTIONS 455): the participant fills it in on the staff device (the same fields,
+    category, privacy consent and signature as the QR walk-in). The rule is attendance.add_walk_in_by_staff; the
+    consent is checked first (services.check_privacy_consent), as on every page that registers someone."""
+    activity = _activity(activity_id)
+    values = {key: request.POST.get(key, "") for key in WALK_IN_FIELDS}
+    values["privacy_consent"] = services.has_privacy_consent(request.POST.get(services.PRIVACY_CONSENT_FIELD))
+    values["signature_kind"] = request.POST.get("signature_kind", "")
+    values["signature_typed_name"] = request.POST.get("signature_typed_name", "")
+    errors, message, status = {}, "", 200
+    offer = pages.walk_in_offer(request.user, activity)
+    if request.method == "POST":
+        try:
+            services.check_privacy_consent(request.POST.get(services.PRIVACY_CONSENT_FIELD))
+            registration = attendance_rules.add_walk_in_by_staff(
+                request.user, activity, name=values["name"], email=values["email"],
+                contact_number=values["contact_number"], designation=values["designation"],
+                office_agency=values["office_agency"], participant_category=values["participant_category"] or None,
+                signature=signatures.from_post(request.POST, request.FILES))
+        except ValidationError as error:
+            errors, status = public_pages.flat_errors(error.message_dict), 400
+        except (attendance_rules.AttendanceError, services.RegistrationError) as error:
+            message, status = str(error), 400
+        else:
+            messages.success(request, f"{registration.name} was added as a walk-in and marked attended today.")
+            return redirect(_tab_url(activity, "registrations"))
+    context = {
+        "page_title": "Add a walk-in", "page_subtitle": f"{activity.title}: register someone at the venue and mark today's "
+                                                         "attendance",
+        "activity": activity, "values": values, "errors": errors, "message": message, "offer": offer,
+        "categories": list(activity.participant_categories.order_by("name")),
+        "consent_field": services.PRIVACY_CONSENT_FIELD,
+        "focus": next((key for key in (*WALK_IN_FIELDS, signatures.FIELD, services.PRIVACY_CONSENT_FIELD) if key in errors),
+                      None),
+        "back_url": _tab_url(activity, "registrations"),
+    }
+    return render(request, "registrations/walk_in.html", context, status=status)
 
 
 def _attendance_request(post) -> tuple[list[str], bool]:
@@ -316,7 +362,7 @@ def signature_image(request: HttpRequest, activity_id: int, registration_id: int
     return response
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)  # or the activity's assignment (460)
 @post_only_or_tab("documents")
 def generate_attendance_form(request: HttpRequest, activity_id: int, kind: str) -> HttpResponse:
     """Generate "Attendance" or "Confirmation of Attendance" (ASSUMPTIONS 434) and save it as a document (an approved
@@ -342,7 +388,7 @@ def generate_attendance_form(request: HttpRequest, activity_id: int, kind: str) 
     return redirect(_tab_url(activity, "documents"))
 
 
-@permission_required(Permission.CREATE_ACTIVITY)
+@object_permission_required(Permission.CREATE_ACTIVITY, form_activity_from_url)  # or the activity's assignment (460)
 @post_only_or_tab("evaluation")
 def send_links(request: HttpRequest, activity_id: int) -> HttpResponse:
     """Resend evaluation links (Evaluation tab): POST registration_id=<id> for one attendee, or nothing for everyone
@@ -413,21 +459,21 @@ def _attachment_response(attachment: EvaluationAttachment, *, as_attachment: boo
     return response
 
 
-@permission_required(evaluation_photos.VIEW_PERMISSION)
+@object_permission_required(evaluation_photos.VIEW_PERMISSION, form_activity_from_url)  # or the activity's assignment (460)
 @require_GET
 def evaluation_photo(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
     """A participant's photo (thumbnail and larger view) or PDF, shown inline."""
     return _attachment_response(_attachment(activity_id, attachment_id), as_attachment=False)
 
 
-@permission_required(evaluation_photos.VIEW_PERMISSION)
+@object_permission_required(evaluation_photos.VIEW_PERMISSION, form_activity_from_url)  # or the activity's assignment (460)
 @require_GET
 def evaluation_photo_download(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
     """The same file as a download, under the participant's file name."""
     return _attachment_response(_attachment(activity_id, attachment_id), as_attachment=True)
 
 
-@permission_required(evaluation_photos.VIEW_PERMISSION)
+@object_permission_required(evaluation_photos.VIEW_PERMISSION, form_activity_from_url)  # or the activity's assignment (460)
 @require_GET
 def evaluation_photo_dialog(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
     """The larger view (loaded into #photo-dialog with HTMX); without JavaScript the link opens the file itself."""
@@ -436,7 +482,7 @@ def evaluation_photo_dialog(request: HttpRequest, activity_id: int, attachment_i
                   {"activity": attachment.submission.registration.activity, "item": pages.photo_item(attachment)})
 
 
-@permission_required(evaluation_photos.VIEW_PERMISSION)
+@object_permission_required(evaluation_photos.VIEW_PERMISSION, form_activity_from_url)  # or the activity's assignment (460)
 @post_only_or_tab("evaluation")
 def evaluation_photo_mark(request: HttpRequest, activity_id: int, attachment_id: int) -> HttpResponse:
     """Tick or untick "Use in reports" (POST use_in_reports=true|false). HTMX: the updated photo card + a toast;

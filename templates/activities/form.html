@@ -23,7 +23,7 @@ default; it holds the signatories, the text and a sample preview; ASSUMPTIONS 42
   </div>
 {% endblock %}
 {% block content %}
-<form method="post" novalidate{% if not activity %} enctype="multipart/form-data"{% endif %} class="mx-auto max-w-4xl space-y-6"
+<form data-enter-submit="off" method="post" novalidate{% if not activity %} enctype="multipart/form-data"{% endif %} class="mx-auto max-w-4xl space-y-6"
       x-data x-init="$nextTick(() => { const first = $el.querySelector('[aria-invalid=true]'); if (first) first.focus(); })">
   {% csrf_token %}
 
