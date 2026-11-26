@@ -1,0 +1,69 @@
+{% comment %}
+The general "Assign work" form (ASSUMPTIONS 468): loaded into the dialog of approvals/_assign_any.html (HTMX) or shown on
+its own page without JavaScript (approvals/assign_any.html). `general` = approvals.pages.general_assign_panel (with
+`preset_target`); WHAT (every kind in plain words), the target (only the work that can be assigned now; none for the
+certificate text, the signatory list or a report, which asks which report), the member, due date and note. Each kind
+has its own picker named "target-<kind>" (Alpine disables the hidden ones; without JavaScript every picker posts and the
+view uses the chosen kind's). POST approvals:assign; approvals.assignments.assign_work checks everything again.
+{% endcomment %}
+<div x-data="{ kind: '{{ general.first|escapejs }}' }">
+  <form data-enter-submit="off" method="post" action="{% url 'approvals:assign' %}" class="space-y-4" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div>
+          <label for="assign-any-kind" class="field-label">What</label>
+          <select id="assign-any-kind" name="kind" class="field-input field-select" x-model="kind">
+            {% for choice in general.choices %}<option value="{{ choice.kind }}"{% if choice.kind == general.first %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+          </select>
+        </div>
+        {% for choice in general.choices %}
+          <div x-show="kind === '{{ choice.kind }}'"{% if choice.kind != general.first %} x-cloak{% endif %} data-assign-target="{{ choice.kind }}">
+            {% if choice.field %}
+              {% if choice.targets %}
+                <label for="assign-any-target-{{ choice.kind }}" class="field-label">{% if choice.field == "document" %}Which document{% elif choice.field == "submission" %}Which submission{% else %}Which activity{% endif %}</label>
+                <select id="assign-any-target-{{ choice.kind }}" name="target-{{ choice.kind }}" class="field-input field-select" :disabled="kind !== '{{ choice.kind }}'">
+                  {% for pk, label in choice.targets %}<option value="{{ pk }}"{% if choice.kind == general.first and pk|stringformat:"s" == general.preset_target %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+              {% else %}
+                <p class="notice notice-info text-sm">{{ choice.reason }}</p>
+              {% endif %}
+            {% elif choice.kind == "report" %}
+              <label for="assign-any-report-title" class="field-label">Which report <span class="text-danger" aria-hidden="true">*</span></label>
+              <input id="assign-any-report-title" name="report_title" maxlength="255" class="field-input" :disabled="kind !== 'report'" placeholder="For example: Accomplishment Report - Q4 2026">
+            {% elif choice.reason %}
+              <p class="notice notice-info text-sm">{{ choice.reason }}</p>
+            {% else %}
+              <p class="text-sm text-slate-700">No activity or document to choose: this is one task for the whole office.</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+        <div>
+          <label for="assign-any-member" class="field-label">Assign to <span class="text-danger" aria-hidden="true">*</span></label>
+          <select id="assign-any-member" name="assigned_to" required class="field-input field-select">
+            <option value="">Choose a member</option>
+            {% for person in general.members %}<option value="{{ person.pk }}">{{ person.name }} · {{ person.role.role_name }}</option>{% endfor %}
+          </select>
+          <p class="field-help">They get a notification and permission for this task only, until it is done or you remove it. What they do is logged “on behalf of” you.</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="min-w-0">
+            <label for="assign-any-due" class="field-label">Due date (optional)</label>
+            <input id="assign-any-due" type="date" name="due_date" class="field-input">
+          </div>
+        </div>
+        {% if general.offers_signing %}
+          <label class="flex items-start gap-3 rounded-xl border border-line p-3 text-sm text-ink" x-show="kind === 'submission_review'" x-cloak data-allow-signing>
+            <input type="checkbox" name="allow_signing" value="yes" class="mt-1 size-5 shrink-0 accent-primary" :disabled="kind !== 'submission_review'">
+            <span><span class="font-semibold">May stamp my signature</span><span class="mt-1 block text-xs text-slate-700">If they approve it, they may put your signature on a copy of the PDF. It is logged and shown as “signed on behalf of” you.</span></span>
+          </label>
+        {% endif %}
+        <div>
+          <label for="assign-any-note" class="field-label">Note (optional)</label>
+          <textarea id="assign-any-note" name="note" rows="3" maxlength="{{ general.note_max }}" class="field-input"></textarea>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="btn btn-secondary" onclick="const d = this.closest('dialog'); if (d) { d.close() } else { history.back() }">Cancel</button>
+          <button type="submit" class="btn btn-primary" data-assign-any-submit>Assign</button>
+        </div>
+      </form>
+</div>

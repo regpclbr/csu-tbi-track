@@ -1,24 +1,21 @@
 """Quarterly, semi-annual and annual reports (ASSUMPTIONS 399): the period presets (dates only from
-reports.services.preset_range), the Year choice, the title and file name named after the period, and "What report do
-you need?" filling the presets. Gemini is always the fake."""
+reports.services.preset_range), the Year choice, the title and file name named after the period. ("What report do you need?" was removed by
+ASSUMPTIONS 467: step 3's notes guide the AI instead.)"""
 
-from datetime import date, datetime
+from datetime import date
 
 import pytest
 from django.http import QueryDict
 from django.urls import reverse
 
-from assistant.testing import FakeGemini
-from reports import pages, request_reader, services
+from reports import pages, services
 from reports.content import period_name, report_title
 from reports.models import GeneratedReport
 
 from .conftest import TEST_NOW
-from .test_form_fill import Fields
 
 pytestmark = pytest.mark.django_db
 
-HTMX = {"HTTP_HX_REQUEST": "true"}
 FORM = {"report_type": "accomplishment", "included_sections": ["summary", "activities"], "range": "this_month",
         "date_range_start": "", "date_range_end": "", "format": "pdf", "activity_type": ""}
 
@@ -151,63 +148,3 @@ def test_the_pdf_and_the_history_name_the_quarter(director, login, queued, fake_
     assert "Period: Q3 2026 (July 1 – September 30, 2026) (2026-07-01 to 2026-09-30)" in text
     html = login(director).get(reverse("reports:list")).content.decode()
     assert "Q3 2026" in html and "July 1 – September 30, 2026" in html
-
-
-# --- "What report do you need?" fills the presets ----------------------------------------------------------------
-
-
-def tool(**args):
-    return FakeGemini.call(request_reader.TOOL_NAME, **args)
-
-
-def filled(login, director, fake_gemini, clock, text: str, **args) -> str:
-    clock(datetime(2026, 11, 17, 9, 0))
-    fake_gemini.replies.append(tool(**args))
-    return login(director).post(reverse("reports:fill"), {**FORM, "request_text": text}, **HTMX).content.decode()
-
-
-def test_quarterly_report_for_q3_selects_q3_of_this_year(director, login, fake_gemini, clock) -> None:
-    html = filled(login, director, fake_gemini, clock, "quarterly participation report for Q3 in Excel",
-                  report_type="participation", period_words="Q3", format="excel")
-    fields = Fields(html)
-    assert fields.checked["range"] == ["q3"] and fields.selects["report-year"] == "2026"
-    assert fields.selects["summary-range"] == "q3" and fields.selects["summary-year"] == "2026"
-    assert (fields.values["date_range_start"], fields.values["date_range_end"]) == ("2026-07-01", "2026-09-30")
-    assert 'x-text="rangeText()">July 1 – September 30, 2026</p>' in html
-
-
-def test_a_year_elsewhere_in_the_request_is_used(director, fake_gemini) -> None:
-    fake_gemini.replies.append(tool(period_words="Q3"))  # Gemini copied only "Q3"
-    result = services.fill_report_form(director, "Q3 accomplishment report for 2025", now=TEST_NOW)
-    assert (result.start, result.end) == (date(2025, 7, 1), date(2025, 9, 30))
-
-
-def test_annual_report_2026_selects_the_whole_year(director, fake_gemini) -> None:
-    fake_gemini.replies.append(tool(report_type="accomplishment", period_words="annual report 2026"))
-    result = services.fill_report_form(director, "annual report 2026", now=TEST_NOW)
-    assert (result.start, result.end) == (date(2026, 1, 1), date(2026, 12, 31))
-    assert pages.matching_range_key(result.start, result.end, date(2026, 11, 17)) == ("year", 2026)
-
-
-def test_annual_report_without_period_words_still_works(director, fake_gemini) -> None:
-    fake_gemini.replies.append(tool(report_type="accomplishment"))  # Gemini returned no period words
-    result = services.fill_report_form(director, "annual accomplishment report", now=TEST_NOW)
-    assert (result.start, result.end) == (date(2026, 1, 1), date(2026, 12, 31))
-
-
-@pytest.mark.parametrize("text, words, note", [
-    ("quarterly participation report", "quarterly", services.FILL_WHICH["quarterly"]),
-    ("semi-annual accomplishment report", "semi-annual", services.FILL_WHICH["semi-annual"]),
-])
-def test_quarterly_without_saying_which_asks_and_keeps_the_dates(director, fake_gemini, text, words, note) -> None:
-    fake_gemini.replies.append(tool(period_words=words))
-    result = services.fill_report_form(director, text, now=TEST_NOW)
-    assert result.start is None and result.end is None
-    assert note in result.notes
-    assert not any(n.startswith("Not in your request") and "period" in n for n in result.notes)
-
-
-def test_gemini_saying_quarterly_does_not_hide_the_quarter_in_the_request(director, fake_gemini) -> None:
-    fake_gemini.replies.append(tool(period_words="quarterly"))
-    result = services.fill_report_form(director, "quarterly report, second quarter", now=TEST_NOW)
-    assert (result.start, result.end) == (date(2026, 4, 1), date(2026, 6, 30))

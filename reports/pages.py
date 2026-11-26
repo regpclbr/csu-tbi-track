@@ -26,14 +26,6 @@ REPORT_RANGES = [(THIS_MONTH, "This month"), *services.PERIOD_PRESETS.items(), (
 # The Year choice offers this year - YEARS_BACK ... this year + YEARS_AHEAD (plus the form's own year if outside).
 YEARS_BACK, YEARS_AHEAD = 5, 1
 
-# The example chips under "What report do you need?" (ASSUMPTIONS 384). Clicking one sends it like a typed request.
-EXAMPLE_REQUESTS = [
-    "Quarterly accomplishment report for Q3 (PDF)",
-    "Participation report last month in Excel",
-    "Evaluation results January to June",
-    "Certificates issued this year",
-]
-
 # A pending row asks for itself again every POLL_SECONDS, at most MAX_POLLS times (15 minutes), so a forgotten tab
 # does not poll forever (then: "refresh to check again").
 POLL_SECONDS = 4
@@ -99,23 +91,11 @@ class ReportForm:
     activity_type: str = ""
     format: str = GeneratedReport.Format.PDF
     errors: dict[str, str] = field(default_factory=dict)
-    # "Describe the report you want" (ASSUMPTIONS 384): the typed request and what "Fill in the form" said.
-    request_text: str = ""
-    filled: list[str] = field(default_factory=list)
-    fill_notes: list[str] = field(default_factory=list)
-    fill_error: str = ""
-
-    summary_shown: bool = False  # the summary card was on the page (kept through a refused Generate)
     notes: str = ""  # ASSUMPTIONS 461: notes to guide the AI summary (files come with the request)
 
     @property
-    def show_summary(self) -> bool:
-        """The summary card appears after "Fill in the form" ran (and stays after a refused Generate)."""
-        return bool(self.filled or self.fill_notes or self.summary_shown)
-
-    @property
     def range_text(self) -> str:
-        """The dates in words for the summary card ("October 1 – December 31, 2026"), "" while they are not valid."""
+        """The dates in words ("October 1 – December 31, 2026"), "" while they are not valid."""
         try:
             return range_in_words(date.fromisoformat(self.start), date.fromisoformat(self.end))
         except ValueError:
@@ -136,12 +116,14 @@ class ReportForm:
 
 
 def empty_form(today: date, report_type: str = "accomplishment") -> ReportForm:
-    """The default: this quarter of this year; `report_type` preselects a type chosen on the one Reports page (461)."""
+    """The defaults (ASSUMPTIONS 467): this quarter of this year, the type's sections, PDF, and the AI summary when the
+    AI is available (so the notes and files of step 3 are used; a failed summary never stops the report)."""
     report_type = report_type if report_type in REPORT_TYPES else "accomplishment"
     key = current_quarter(today)
     start, end = report_range(key, today, today.year)
     return ReportForm(report_type=report_type, sections=list(REPORT_TYPES[report_type].default_sections), range_key=key,
-                      period_year=today.year, start=start.isoformat(), end=end.isoformat())
+                      period_year=today.year, start=start.isoformat(), end=end.isoformat(),
+                      ai_summary=gemini.is_configured())
 
 
 def _posted_year(post: QueryDict, today: date) -> int:
@@ -167,9 +149,6 @@ def form_from_post(post: QueryDict, today: date) -> ReportForm:
         end=end,
         activity_type=post.get("activity_type", "").strip(),
         format=post.get("format", ""),
-        # An example chip posted without JavaScript sends its text as `example` (with JavaScript it fills the box).
-        request_text=(post.get("example") or post.get("request_text", ""))[:2000],
-        summary_shown=post.get("show_summary") == "1",
         notes=post.get("notes", "")[:4000],
     )
 
@@ -184,28 +163,8 @@ def matching_range_key(start: date, end: date, today: date) -> tuple[str, int]:
     return CUSTOM, today.year
 
 
-def apply_fill(form: ReportForm, fill: services.FormFill, today: date) -> None:
-    """Put the checked settings of services.fill_report_form() into the form (None = keep the current value)."""
-    if fill.report_type is not None:
-        form.report_type = fill.report_type
-    if fill.sections is not None:
-        form.sections = list(fill.sections)
-    if fill.ai_summary is not None:
-        form.ai_summary = fill.ai_summary
-    if fill.start is not None and fill.end is not None:
-        form.start, form.end = fill.start.isoformat(), fill.end.isoformat()
-        form.range_key, form.period_year = matching_range_key(fill.start, fill.end, today)
-    if fill.activity_type is not None:
-        form.activity_type = fill.activity_type
-    if fill.format is not None:
-        form.format = fill.format
-    form.filled, form.fill_notes, form.fill_error = list(fill.filled), list(fill.notes), ""
-    form.summary_shown = True
-
-
 def form_options(today: date, form: ReportForm | None = None) -> dict:
-    """Choices for the form: the five types (the two main ones first, as REPORT_TYPES lists them) with their default
-    sections, the sections without the AI summary, the formats, the period choices with their years and dates, and
+    """Choices for the form: the five types with their default sections, the sections without the AI summary, the formats, the period choices with their years and dates, and
     the activity types."""
     years = year_choices(today, form.period_year if form else None)
     presets = date_presets(today, years)
@@ -218,9 +177,7 @@ def form_options(today: date, form: ReportForm | None = None) -> dict:
         "preset_dates": presets["dates"],
         "years": years,
         "activity_types": ActivityType.objects.order_by("name"),
-        "ai_fill_available": gemini.is_configured(),  # "Describe the report you want" (ASSUMPTIONS 384)
-        "request_max_chars": settings.REPORT_FORM_FILL_MAX_CHARS,
-        "example_requests": EXAMPLE_REQUESTS,
+        "ai_available": gemini.is_configured(),
         "notes_max": services.REPORT_NOTES_MAX, "max_files": settings.REPORT_GENERATOR_MAX_ATTACHMENTS,
     }
 

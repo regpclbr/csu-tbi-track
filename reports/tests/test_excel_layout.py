@@ -130,7 +130,7 @@ def test_header_style_banding_and_frozen_header(director, queued, data) -> None:
         assert table.tableStyleInfo.showRowStripes
         row = header_row(sheet)
         for cell in table_rows(sheet, table)[0]:
-            assert cell.fill.fgColor.rgb.endswith("1F6B3E") and cell.font.bold and cell.font.color.rgb.endswith("FFFFFF")
+            assert cell.fill.fgColor.rgb.endswith("1A5C38") and cell.font.bold and cell.font.color.rgb.endswith("FFFFFF")
         assert sheet.freeze_panes == f"A{row + 1}" == "A8"
 
 

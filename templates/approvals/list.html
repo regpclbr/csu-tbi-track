@@ -24,6 +24,7 @@ member who approves something (inbox.has_inbox). Filters stay in the URL and swa
     <a href="{% url 'approvals:mine' %}" class="segmented-item {% if tab == 'mine' %}is-selected{% endif %}"{% if tab == "mine" %} aria-current="page"{% endif %}>
       {% include "components/icon.html" with name="send" class="size-4" %}My submissions</a>
   </nav>
+  {% include "approvals/_assign_any.html" with general=general_assign next=request.get_full_path %}
   {% if layout.offers_submit %}{# ASSUMPTIONS 456: never to the Director on their own account #}
   <a href="{% url 'approvals:submit' %}" class="btn btn-primary">{% include "components/icon.html" with name="upload" class="size-4" %}Submit to the Director</a>
   {% endif %}

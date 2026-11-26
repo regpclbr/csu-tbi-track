@@ -11,27 +11,23 @@
 
 import json
 import logging
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime
 
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
 from accounts.models import TBIMember
-from accounts.permissions import Permission, require_permission, require_permission_for, require_staff_member
-from activities.models import Activity, ActivityType
+from accounts.permissions import Permission, require_permission_for, require_staff_member
+from activities.models import Activity
 from activities.services import PageResult, _paginate, happening_now
-from assistant import gemini
-from assistant.periods import ASK, half_period, parse_range, quarter_period, year_period
-from config import ratelimit
+from assistant.periods import half_period, quarter_period, year_period
 from config.files import write_file_atomically
 
 from . import content as content_module
-from . import excel, metrics, narrative, pdf, request_reader
+from . import excel, metrics, narrative, pdf
 from .content import (
     AI_SUMMARY, FREQUENCY_WORDS, REPORT_TYPES, SECTIONS, ReportContent, build_content, ordered_sections, period_name,
     range_in_words,
@@ -331,241 +327,6 @@ def _save_request(member, report_type, sections, filters, report_format, notes, 
         if queue:
             transaction.on_commit(lambda: queue_build(report.pk), robust=True)
     return report
-
-
-# --- "Describe the report you want" (ASSUMPTIONS 384) -------------------------------------------------------------
-# Gemini only reads the request (reports.request_reader); every value it returns is checked here against the allowed
-# choices, dates are worked out by assistant.periods.parse_range() in Manila time, and every message shown is our own
-# sentence. Nothing is saved: the member reviews the filled form and clicks Generate (request_report, unchanged).
-
-FILL_EMPTY = "Describe the report you want first."
-FILL_TOO_LONG = "Keep the description under {limit} characters."
-FILL_AI_OFF = "Describing the report is not available: the AI is turned off. Fill in the form by hand."
-FILL_RATE_LIMITED = "You've used this {limit} times in the last hour. Try again later, or fill in the form by hand."
-FILL_NOT_UNDERSTOOD = "The request could not be read. Nothing was changed; fill in the form by hand."
-FILL_RATE_SCOPE = "report_form_fill"
-MAX_UNSUPPORTED_SHOWN, MAX_QUOTE_CHARS = 3, 80
-FILL_CONDUCTED_ONLY = "Reports include only Conducted activities. For upcoming activities, ask the AI Assistant."
-# "quarterly" / "semi-annual" without saying which one (ASSUMPTIONS 399): the dates are never guessed.
-FILL_WHICH = {
-    "quarterly": "Which quarter? Choose the quarter and the year under Period; the dates were not changed.",
-    "semi-annual": "Which half? Choose First half or Second half and the year under Period; the dates were not changed.",
-}
-# Our own topic words (never Gemini's): the activity list, certificates, and activities that have not happened yet.
-ACTIVITY_WORDS = re.compile(r"\b(?:activit(?:y|ies)(?!\s+types?\b)|events?|programs?|programmes?|trainings?|seminars?|"
-                            r"workshops?|sessions?)\b", re.IGNORECASE)
-CERTIFICATE_WORDS = re.compile(r"\bcertificates?\b", re.IGNORECASE)
-UPCOMING_WORDS = re.compile(r"\b(?:upcoming|planned|scheduled|future|forthcoming)\b", re.IGNORECASE)
-
-
-@dataclass
-class FormFill:
-    """What "Fill in the form" changes. None = keep the form's current value. `filled` and `notes` are our sentences."""
-
-    report_type: str | None = None
-    sections: list[str] | None = None  # without ai_summary (the switch)
-    ai_summary: bool | None = None
-    start: date | None = None
-    end: date | None = None
-    activity_type: str | None = None  # an ActivityType ID as text, or "" = all activity types
-    format: str | None = None
-    filled: list[str] = field(default_factory=list)
-    notes: list[str] = field(default_factory=list)
-
-
-def _squash(text: str) -> str:
-    return " ".join(str(text).lower().replace("’", "'").split())
-
-
-def _quoted_from_request(value, request: str) -> str | None:
-    """`value` when it is a string that appears word for word in the request (so we only ever echo the user's own
-    words), else None."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip() if _squash(value) in _squash(request) else None
-
-
-def _short(text: str) -> str:
-    text = " ".join(text.split())
-    return text if len(text) <= MAX_QUOTE_CHARS else text[:MAX_QUOTE_CHARS - 1] + "…"
-
-
-def _singular(name: str) -> str:
-    name = _squash(name)
-    return name[:-1] if name.endswith("s") and not name.endswith("ss") else name
-
-
-def match_activity_type(name: str) -> ActivityType | None:
-    """The ACTIVITY TYPE row with this name, ignoring case and a plural "s" ("trainings" = "Training"); active rows
-    only (the table decides, never a fixed list)."""
-    wanted = _singular(name)
-    for activity_type in ActivityType.objects.filter(is_active=True).order_by("name"):
-        if _singular(activity_type.name) == wanted:
-            return activity_type
-    return None
-
-
-def mentions_activities(text: str) -> bool:
-    """Activities, events, programs, trainings, seminars, workshops, sessions, unless the word is the name of an
-    activity type in the table ("trainings only" = the Training type, not the activity list)."""
-    return any(not match_activity_type(match.group(0)) for match in ACTIVITY_WORDS.finditer(text))
-
-
-def _fill_period(fill: FormFill, args: dict, request: str, now: datetime, asks_upcoming: bool) -> bool:
-    """Dates from OUR parser: Gemini's period words only when they are in the request, else the request itself.
-    Returns False when the request says nothing about a period."""
-    words = _quoted_from_request(args.get("period_words"), request)
-    # Gemini's words with the whole request as context, so "Q3" still finds the "2025" said elsewhere in it.
-    period = parse_range(words, now, context=request) if words else None
-    if period is None or period.kind == ASK:
-        period = parse_range(request, now) or period
-    if period is None:
-        if words:
-            fill.notes.append(f"Couldn't work out the period “{_short(words)}”; the dates were not changed.")
-        return bool(words)
-    if period.kind == ASK:
-        fill.notes.append(FILL_WHICH[period.label])
-        return True
-    if period.start is None or period.end is None:
-        if not asks_upcoming:  # else FILL_CONDUCTED_ONLY explains it
-            fill.notes.append(f"“{period.label}” is not a date range; the dates were not changed. Choose the dates below.")
-        return True
-    fill.start, fill.end = period.start, period.end
-    fill.filled.append(f"Period: {range_in_words(period.start, period.end)}")
-    return True
-
-
-def _fill_sections(fill: FormFill, args: dict, request: str, current_sections: list[str] | None, asks_upcoming: bool) -> bool:
-    """Gemini's sections (checked), else the report type's usual sections; then OUR rule: a request that mentions
-    activities / certificates gets that section when it is missing ("Added: ..."). False = sections left as they were."""
-    raw = args.get("sections")
-    chosen = []
-    if isinstance(raw, (list, tuple)):
-        chosen = [key for key in ordered_sections([k for k in raw if isinstance(k, str)]) if key != AI_SUMMARY]
-    from_type = not chosen and bool(fill.report_type)
-    if from_type:
-        chosen = [key for key in REPORT_TYPES[fill.report_type].default_sections if key != AI_SUMMARY]
-    base = chosen or [key for key in (current_sections or []) if key in SECTIONS and key != AI_SUMMARY]
-    added = []
-    if mentions_activities(request) and not asks_upcoming and "activities" not in base:
-        added.append("activities")
-    if CERTIFICATE_WORDS.search(request) and "certificates" not in base:
-        added.append("certificates")
-    if not chosen and not added:
-        return False
-    fill.sections = ordered_sections(base + added)
-    if from_type and not added:
-        fill.filled.append("Sections: the report type's usual sections")
-    else:
-        fill.filled.append("Sections: " + ", ".join(SECTIONS[key] for key in fill.sections))
-    if added:
-        fill.notes.append("Added: " + ", ".join(SECTIONS[key] for key in added) + ".")
-    return True
-
-
-def _check_fill(args: dict, request: str, now: datetime, current_sections: list[str] | None = None) -> FormFill:
-    fill = FormFill()
-    kept: list[str] = []
-    asks_upcoming = bool(UPCOMING_WORDS.search(request))
-
-    report_type = args.get("report_type")
-    if report_type in REPORT_TYPES:
-        fill.report_type = report_type
-        fill.filled.append(f"Report type: {REPORT_TYPES[report_type].label}")
-    else:
-        kept.append("report type")
-
-    if not _fill_sections(fill, args, request, current_sections, asks_upcoming):
-        kept.append("sections")
-
-    if isinstance(args.get("ai_summary"), bool):
-        fill.ai_summary = args["ai_summary"]
-        fill.filled.append("AI summary: " + ("included" if fill.ai_summary else "not included"))
-
-    if not _fill_period(fill, args, request, now, asks_upcoming):
-        kept.append("period")
-
-    name = args.get("activity_type")
-    if isinstance(name, str) and name.strip():
-        if _squash(name) in ("all", "any", "all activity types", "all types"):
-            fill.activity_type = ""
-            fill.filled.append("Activity type: All activity types")
-        elif activity_type := match_activity_type(name):
-            fill.activity_type = str(activity_type.pk)
-            fill.filled.append(f"Activity type: {activity_type.name}")
-        else:
-            fill.notes.append(f"There is no activity type named “{_short(name.strip())}”; the activity type was not changed.")
-    else:
-        kept.append("activity type")
-
-    report_format = args.get("format")
-    if report_format in GeneratedReport.Format.values:
-        fill.format = report_format
-        fill.filled.append(f"Format: {GeneratedReport.Format(report_format).label}")
-    else:
-        kept.append("format")
-
-    if asks_upcoming:
-        fill.notes.append(FILL_CONDUCTED_ONLY)
-
-    # Quotes the form CAN do are not "unsupported": activities / certificates once their section is in, upcoming
-    # wording once FILL_CONDUCTED_ONLY explains it.
-    sections = fill.sections or []
-    raw_unsupported = args.get("unsupported")
-    quotes = []
-    for value in raw_unsupported if isinstance(raw_unsupported, (list, tuple)) else []:
-        quote = _quoted_from_request(value, request)
-        if not quote or (asks_upcoming and UPCOMING_WORDS.search(quote)):
-            continue
-        if ("activities" in sections and mentions_activities(quote)) or ("certificates" in sections and CERTIFICATE_WORDS.search(quote)):
-            continue
-        if _short(quote) not in quotes:
-            quotes.append(_short(quote))
-    if quotes:
-        fill.notes.append("These can't be set in this form: " + "; ".join(f"“{q}”" for q in quotes[:MAX_UNSUPPORTED_SHOWN]) + ".")
-    if kept:
-        fill.notes.append("Not in your request, so kept as it was: " + ", ".join(kept) + ".")
-    return fill
-
-
-def fill_report_form(member: TBIMember, text: str, now: datetime | None = None,
-                     current_sections: list[str] | None = None) -> FormFill:
-    """Read a typed report request and return the checked form settings (nothing is saved). `current_sections`: the
-    form's sections now, the base when the request names no type or sections but our rule adds one.
-
-    Same permission as generating a report. Refusals (empty or too long text, the AI turned off, the hourly limit,
-    Gemini failing) raise ValidationError({"request_text": [message]}) with a message safe to show. The request text
-    is never logged or stored.
-    """
-    require_permission(member, GENERATE_REPORT_PERMISSION)
-    text = (text or "").strip()
-    if not text:
-        raise ValidationError({"request_text": [FILL_EMPTY]})
-    if len(text) > settings.REPORT_FORM_FILL_MAX_CHARS:
-        raise ValidationError({"request_text": [FILL_TOO_LONG.format(limit=settings.REPORT_FORM_FILL_MAX_CHARS)]})
-    if not gemini.is_configured():
-        raise ValidationError({"request_text": [FILL_AI_OFF]})
-    limit = settings.REPORT_FORM_FILL_MAX_PER_HOUR
-    if not ratelimit.count_attempt(FILL_RATE_SCOPE, "member", str(member.pk), limit, 60):
-        logger.info("Report form fill: member %s, refused (hourly limit).", member.pk)
-        raise ValidationError({"request_text": [FILL_RATE_LIMITED.format(limit=limit)]})
-
-    try:
-        with gemini.time_limit(settings.REPORT_FORM_FILL_TIMEOUT_SECONDS):
-            args = request_reader.read_request(text)
-    except gemini.AssistantUnavailable as error:
-        logger.info("Report form fill: member %s, Gemini unavailable (%s).", member.pk, error.kind)
-        raise ValidationError({"request_text": [str(error)]}) from None
-    if args is None:
-        logger.info("Report form fill: member %s, no settings returned.", member.pk)
-        raise ValidationError({"request_text": [FILL_NOT_UNDERSTOOD]})
-
-    fill = _check_fill(args, text, now or timezone.now(), current_sections)
-    logger.info("Report form fill: member %s, %d setting(s) filled, %d note(s).", member.pk, len(fill.filled), len(fill.notes))
-    return fill
-
-
-# --- Building the file ------------------------------------------------------------------------------
 
 
 def report_content(report: GeneratedReport, now: datetime | None = None) -> ReportContent:

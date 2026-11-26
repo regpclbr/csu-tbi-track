@@ -8,7 +8,6 @@ app_name = "reports"
 
 urlpatterns = [
     path("", page_views.report_list, name="list"),  # the Reports page: form (POST) and history
-    path("fill/", page_views.fill_form, name="fill"),
     # The report generator (ASSUMPTIONS 442) and paper sheets (443)
     path("generator/", generator_views.generator_list, name="generator"),
     path("generator/<int:draft_id>/", generator_views.draft_page, name="generator_draft"),
@@ -27,7 +26,9 @@ urlpatterns = [
     path("paper-sheets/<int:read_id>/", generator_views.paper_sheet, name="paper_sheet"),
     path("paper-sheets/<int:read_id>/status/", generator_views.paper_sheet_status, name="paper_sheet_status"),
     path("paper-sheets/from-document/<int:document_id>/", generator_views.read_sheet_from_document,
-         name="paper_sheet_from_document"),  # "Fill in the form" from a typed request (ASSUMPTIONS 384)
+         name="paper_sheet_from_document"),
+    # Step 2 of an attendance form on the general Reports page: the chosen activity (ASSUMPTIONS 467)
+    path("attendance-form/", page_views.attendance_form, name="attendance_form"),
     path("<int:report_id>/row/", page_views.report_row, name="row"),  # one history row (HTMX polling)
     # One activity's evaluation summary, made on request (ASSUMPTIONS 401)
     path("activities/<int:activity_id>/evaluation-summary/<str:file_format>/", page_views.evaluation_summary,

@@ -8,6 +8,7 @@ env/
 
 # Uploaded and generated files
 media/
+media_testing/
 staticfiles/
 
 # Python

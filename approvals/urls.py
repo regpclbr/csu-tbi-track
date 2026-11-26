@@ -22,6 +22,7 @@ urlpatterns = [
     # Assignments (ASSUMPTIONS 437)
     path("assigned/", page_views.assigned, name="assigned"),
     path("assign/", page_views.assign, name="assign"),
+    path("assign/any/", page_views.assign_any, name="assign_any"),  # the general "Assign work" form (ASSUMPTIONS 468)
     path("assignments/<int:assignment_id>/done/", page_views.assignment_done, name="assignment_done"),
     path("assignments/<int:assignment_id>/remove/", page_views.assignment_remove, name="assignment_remove"),
 ]

@@ -46,8 +46,9 @@ def fail(report: GeneratedReport) -> None:
 def test_page_shows_the_form_to_members_who_can_generate(director, login) -> None:
     html = login(director).get(reverse("reports:list")).content.decode()
     assert "is coming soon" not in html and 'id="new-report"' in html
-    assert html.index("Accomplishment Report") < html.index("Participation Report") < html.index("Evaluation Report")
-    for label in ("Document Compliance Report", "Certificates", "Include AI summary", "This month", "Q1 (Jan–Mar)",
+    # ASSUMPTIONS 467: step 1 lists every kind with a description; step 2 the period; Options the rest.
+    assert html.index("Accomplishment figures") < html.index("Participation") < html.index("Evaluation results")
+    for label in ("Document compliance", "Certificates", "Include an AI summary", "This month", "Q1 (Jan–Mar)",
                   "Q4 (Oct–Dec)", "First half (Jan–Jun)", "Second half (Jul–Dec)", "Whole year (Jan–Dec)", "Custom dates",
                   'name="period_year"', "Excel", "All activity types"):
         assert label in html
@@ -87,9 +88,9 @@ def test_service_errors_appear_under_their_fields(director, login, queued) -> No
     })
     assert response.status_code == 400 and not GeneratedReport.objects.exists()
     html = response.content.decode()
-    assert re.search(r'<details id="report-more"[^>]*\sopen>', html)  # "More settings" opens to show the errors
+    assert re.search(r'<details id="report-options"[^>]*\sopen>', html)  # "Options" opens to show the errors
     assert re.search(r'id="report-end-error" class="field-error">The end date \(2026-06-01\) is before the start date', html)
-    assert 'id="report-type-error"' in html and 'id="report-format-error"' in html
+    assert 'id="report-format-error"' in html and "The report was not requested" in html
     assert 'value="2026-06-30"' in html  # the typed values are kept
 
 

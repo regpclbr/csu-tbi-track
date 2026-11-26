@@ -93,9 +93,11 @@ def assign_panel(member, *, activity=None, document=None, submission=None, repor
     kinds = assignments.assignable_kinds(member, candidates)
     if not kinds:
         return None
-    taken = {row.kind for row in current} if not report else set()
+    target = activity or document or submission
+    # ASSUMPTIONS 468: offer only the work that can be assigned NOW (still open, not assigned already): the same checks
+    # as assign_work, so the dialog never offers something the service then refuses.
     return {
-        "kinds": [(kind, label) for kind, label in kinds if kind not in taken],
+        "kinds": [(kind, label) for kind, label in kinds if assignments.refused_now(kind, target) is None],
         "current": [{"assignment": row, "overdue": assignments.is_overdue(row), "label": Kind(row.kind).label,
                      "title": assignments.target_title(row)}
                     for row in current.select_related("assigned_to").order_by("pk")],
@@ -103,6 +105,45 @@ def assign_panel(member, *, activity=None, document=None, submission=None, repor
         "activity": activity, "document": document, "submission": submission, "report": report,
         "note_max": assignments.NOTE_MAX, "offers_signing": submission is not None and _has_stamp(member),
     }
+
+
+def general_assign_panel(member, kind: str = "", target: str = "") -> dict | None:
+    """The general "Assign work" dialog (Dashboard, Approvals, each For-your-approval item; ASSUMPTIONS 468): WHAT (every
+    kind this member may assign, in plain words), then the target (only the open ones), the member, due date and note.
+    None for a member without can_assign_work. `kind` / `target`: chosen already (a For-your-approval item's Assign).
+    Display only: approvals.assignments.assign_work checks everything."""
+    from accounts.permissions import Permission, has_permission
+
+    from . import assignments
+
+    if not has_permission(member, Permission.ASSIGN_WORK):
+        return None
+    choices = assignments.general_choices(member)
+    if not choices:
+        return None
+    first = next((c["kind"] for c in choices if c["targets"] or (c["field"] is None and not c["reason"])),
+                 choices[0]["kind"])
+    if kind in {c["kind"] for c in choices}:
+        first = kind
+    return {"choices": choices, "first": first, "preset_target": str(target or ""), "members": assignments.assignee_choices(member),
+            "note_max": assignments.NOTE_MAX, "offers_signing": _has_stamp(member)}
+
+
+# The assignment kind of each For-your-approval item (an overdue assignment is already assigned: no button).
+INBOX_ASSIGN_KINDS = {"certificates": "certificate_approval", "submission": "submission_review",
+                      "document": "document_review"}
+
+
+def mark_assignable(items, general: dict | None) -> None:
+    """Each inbox item gets extra["assign_kind"] when the general dialog can assign that very work now (its target is
+    one of the dialog's open targets), so its Assign button opens the dialog preset. Display only."""
+    if general is None:
+        return
+    open_targets = {(choice["kind"], pk) for choice in general["choices"] for pk, _label in choice["targets"]}
+    for item in items:
+        kind = INBOX_ASSIGN_KINDS.get(item.kind)
+        if kind and (kind, item.extra.get("target")) in open_targets:
+            item.extra["assign_kind"] = kind
 
 
 def _has_stamp(member) -> bool:

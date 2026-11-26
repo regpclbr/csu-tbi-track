@@ -1,17 +1,27 @@
 {% comment %}
-"What do you want to make?" (reports.hub.kind_choices, ASSUMPTIONS 461-462): ONE list of links, grouped: the figures
-reports (PDF / Excel), the reports written with the AI (DOCX / PDF), and (one activity) the attendance forms. A link
-reloads the page with ?kind= (and ?activity=), so it works without JavaScript; the chosen form is shown below.
+Step 1 "What do you want to make?" (reports.hub.kind_choices, ASSUMPTIONS 461-462, 467): ONE list, every kind with a
+one-line description, a small caption where the output changes (figures = PDF / Excel, written with AI = DOCX / PDF,
+attendance forms = PDF). A link reloads the page with ?kind= (and ?activity=), so it works without JavaScript; steps 2
+and 3 below follow the chosen kind.
 {% endcomment %}
-<nav class="flex flex-col gap-2" aria-label="What to make" data-report-kinds>
-  {% regroup kinds by choice.group as groups %}
-  {% for group in groups %}
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="caption w-full font-semibold text-muted sm:w-auto">{% if group.grouper == "figures" %}Figures<span class="sr-only"> (PDF or Excel)</span>{% elif group.grouper == "written" %}Written with AI<span class="sr-only"> (DOCX or PDF)</span>{% else %}Attendance forms{% endif %}</span>
-      {% for item in group.list %}
-        <a href="{{ item.url }}" title="{{ item.choice.help }}" data-kind="{{ item.choice.key }}"{% if item.current %} aria-current="true"{% endif %}
-           class="rounded-full border px-3 py-1 text-xs font-semibold {% if item.current %}border-primary bg-primary-soft text-primary{% else %}border-line bg-white text-slate-700 hover:border-primary hover:text-primary{% endif %}">{{ item.choice.label }}</a>
-      {% endfor %}
-    </div>
-  {% endfor %}
+<nav aria-label="What to make" data-report-kinds>
+  <ul class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" role="list">
+    {% for item in kinds %}
+      {% ifchanged item.choice.group %}
+        <li class="caption pt-2 font-semibold text-muted sm:col-span-2 xl:col-span-3" aria-hidden="true">
+          {% if item.choice.group == "figures" %}Figures · PDF or Excel{% elif item.choice.group == "written" %}Written with AI · DOCX or PDF{% else %}Attendance forms · PDF, saved to the activity{% endif %}
+        </li>
+      {% endifchanged %}
+      <li>
+        <a href="{{ item.url }}" data-kind="{{ item.choice.key }}"{% if item.current %} aria-current="true"{% endif %}
+           class="flex h-full items-start gap-3 rounded-2xl border px-4 py-3 transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:outline-none {% if item.current %}border-primary bg-primary-soft{% else %}border-line bg-white hover:border-primary{% endif %}">
+          <span aria-hidden="true" class="mt-1 flex size-4 shrink-0 items-center justify-center rounded-full border-2 {% if item.current %}border-primary{% else %}border-slate-400{% endif %}">{% if item.current %}<span class="size-2 rounded-full bg-primary"></span>{% endif %}</span>
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold {% if item.current %}text-primary{% else %}text-ink{% endif %}">{{ item.choice.label }}</span>
+            <span class="block text-xs text-muted">{{ item.choice.help }}</span>
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
 </nav>

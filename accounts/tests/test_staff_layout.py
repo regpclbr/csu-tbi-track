@@ -317,7 +317,7 @@ STATIC = Path(settings.BASE_DIR) / "static"
 
 def test_built_css_and_vendor_files_exist() -> None:
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
-    assert "--color-frame-dark:#0f4a2c" in css.lower().replace(" ", "")  # green (459); run: python manage.py tailwind build
+    assert "--color-frame-dark:#0b3d24" in css.lower().replace(" ", "")  # green (459); run: python manage.py tailwind build
     for name in ("vendor/htmx-2.0.11.min.js", "vendor/alpine-3.17.4.min.js", "fonts/InterVariable.woff2",
                  "img/favicon-32.png", "img/apple-touch-icon-180.png", "img/logo-96.png"):
         assert (STATIC / name).exists(), name
@@ -382,7 +382,7 @@ def test_hover_styles_exist_and_motion_stops_for_reduced_motion() -> None:
 
 
 def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -> None:
-    """ASSUMPTIONS 257, 413, 459: one gradient behind the whole page (green since 459: #0F4A2C -> #3F9A6B,
+    """ASSUMPTIONS 257, 413, 459: one gradient behind the whole page (deep forest green since 465: #0B3D24 -> #24603F,
     no glowing end), a frosted glass card (white 88% + blur, white 92% without backdrop-filter), dark text in the card."""
     html = client.get(reverse("accounts:login")).content.decode()
     assert 'class="auth-bg ' in html and "auth-panel" not in html
@@ -390,7 +390,7 @@ def test_sign_in_pages_use_the_full_screen_gradient_and_the_glass_card(client) -
     css = (Path(settings.BASE_DIR) / "static/css/app.css").read_text(encoding="utf-8").lower()
     gradient = r"linear-gradient\(135deg, ?var\(--color-frame-dark\) 0%, ?var\(--color-frame-dark\) 22%, ?var\(--color-frame-light\) 100%\)"
     assert re.search(r"\.auth-bg\{background:" + gradient + r"\}", css)
-    assert "--color-frame-dark:#0f4a2c" in css and "--color-frame-light:#3f9a6b" in css
+    assert "--color-frame-dark:#0b3d24" in css and "--color-frame-light:#24603f" in css
     for old in ("#60cdee", "#204654", "#2f6170", "#fafbed", "#caffa6", "#1e2f73", "#3b8aa6"):  # older palettes are gone
         assert old not in css
     card = re.search(r"\.auth-card(?:,\.public-card)?\{([^}]*)\}", css).group(1)  # F3: the public pages share the glass
@@ -412,7 +412,7 @@ def test_app_shell_is_a_gradient_frame_with_a_rounded_panel_and_pill_buttons(dir
     assert re.search(r"\.app-bg\{background:linear-gradient\(135deg, ?var\(--color-frame-dark\) 0%, ?var\(--color-frame-dark\) 30%, ?var\(--color-frame-light\) 100%\)\}", css)
     assert "--color-panel:#f4f6f9" in css  # neutral light grey, not white, not cream (413)
     assert ".app-shell .btn{border-radius:9999px}" in css
-    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#0f4a2c12" in css  # card radius + soft shadow (459)
+    assert re.search(r"\.card\{[^}]*border-radius:24px", css) and "#0b3d2412" in css  # card radius + soft shadow (459)
 
 
 def test_page_header_holds_the_title_once_and_the_primary_action(director) -> None:
@@ -424,7 +424,9 @@ def test_page_header_holds_the_title_once_and_the_primary_action(director) -> No
     header = re.search(r'<div class="page-header">(.*?)<div class="page-header-actions">(.*?)</div>', html, re.S)
     assert '<h1 class="page-title' in header.group(1) and ">Dashboard</h1>" in header.group(1)
     assert "Here&#x27;s what&#x27;s happening at CSU-TBI" in header.group(1) or "Here's what's happening" in header.group(1)
-    assert 'class="btn btn-primary"' in header.group(2) and "New activity" in header.group(2)
+    actions = html[html.index('<div class="page-header-actions">'):]
+    actions = actions[:actions.index("New activity") + 20]  # the Assign work dialog (ASSUMPTIONS 468) has its own divs
+    assert 'class="btn btn-primary"' in actions and actions.index("data-assign-any-trigger") < actions.index("btn-primary")
     assert html.count("<h1") == 1
 
 
@@ -599,7 +601,7 @@ def contrast(foreground: str, background: str) -> float:
 def test_green_is_the_brand() -> None:
     """The owner's choice (2026-11-26, ASSUMPTIONS 459): option B's layout and gradients in green (close to CSU's)."""
     tokens = theme_tokens()
-    assert tokens["frame-dark"] == "#0F4A2C" and tokens["frame-light"] == "#3F9A6B" and tokens["primary"] == "#1F6B3E"
+    assert tokens["frame-dark"] == "#0B3D24" and tokens["frame-light"] == "#24603F" and tokens["primary"] == "#1A5C38"
     assert tokens["panel"] == "#F4F6F9" and tokens["heading"] == tokens["ink"]
     source = SOURCE_CSS.read_text(encoding="utf-8")
     assert "--color-sidebar: var(--color-frame-dark)" in source and "--color-focus: var(--color-primary)" in source

@@ -466,7 +466,7 @@ def test_pages_render_with_the_compact_chat_bar(workshop, staff, fake_gemini, cl
     write(draft)
     client.force_login(staff)
     listing = client.get(reverse("reports:generator"), follow=True).content.decode()  # -> /reports/?kind=activity_report
-    assert "Write the draft" in listing and draft.title in listing and "What do you want to make?" in listing
+    assert 'id="report-generate"' in listing and draft.title in listing and "What do you want to make?" in listing
     html = client.get(reverse("reports:generator_draft", args=[draft.pk])).content.decode()
     assert 'class="chat-bar"' in html and 'id="gen-send"' in html and 'rows="1"' in html
     assert generator.AI_LABEL in html and "Not from the system: 45" in html

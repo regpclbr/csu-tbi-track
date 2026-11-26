@@ -25,7 +25,7 @@ from datetime import date, datetime
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.urls import reverse
 from django.utils import timezone
 
@@ -196,6 +196,89 @@ def can_assign(member: TBIMember, kind: str) -> bool:
 
 def assignable_kinds(member: TBIMember, kinds) -> list[tuple[str, str]]:
     return [(kind, Kind(kind).label) for kind in kinds if can_assign(member, kind)]
+
+
+# ASSUMPTIONS 468: the general "Assign work" dialog says what each kind is in plain words, in this order.
+KIND_DESCRIPTIONS = {
+    Kind.DOCUMENT_REVIEW: "Review a document waiting for approval",
+    Kind.SUBMISSION_REVIEW: "Review a submission sent to you",
+    Kind.CERTIFICATE_APPROVAL: "Approve an activity's certificates",
+    Kind.SIGNATORY_CHOICE: "Choose who signs an activity's certificates",
+    Kind.ACTIVITY: "Work on an activity (edit it, registration, evaluation, attendance forms, photos)",
+    Kind.REPORT: "Prepare a report",
+    Kind.CERTIFICATE_TEXT: "Edit the default certificate text",
+    Kind.SIGNATORIES: "Manage the signatory list and signature images",
+}
+GENERAL_TARGET_LIMIT = 200  # targets per kind in the general dialog (an office never has this many open)
+
+
+def refused_now(kind: str, target) -> str | None:
+    """Why this work cannot be assigned right now (the same checks assign_work makes before the member is looked at:
+    the work must still be open and not assigned already), or None."""
+    if kind in GLOBAL_KINDS:
+        existing = open_for(kind, None)
+    elif kind == Kind.REPORT:
+        return None
+    else:
+        if refused := _target_refused(kind, target):
+            return refused
+        existing = open_for(kind, target)
+    return ALREADY_ASSIGNED.format(name=existing.assigned_to.name) if existing else None
+
+
+def _candidate_targets(member: TBIMember, kind: str):
+    """The objects one kind could be about, before refused_now: waiting documents of a type that needs review, waiting
+    submissions (never the member's own), activities that are not Conducted (work on it), not Conducted or with
+    certificates not issued yet (signatories), with certificates or prepared ones (certificate approval)."""
+    from activities.models import Activity, ActivityStatus
+    from approvals.services import waiting_for
+    from documents.services import review_queue
+
+    if kind == Kind.DOCUMENT_REVIEW:
+        return review_queue(member).select_related("activity")
+    if kind == Kind.SUBMISSION_REVIEW:
+        return waiting_for(member).select_related("submitted_by")
+    activities = Activity.objects.select_related("status").order_by("-start_date", "-pk")
+    if kind == Kind.CERTIFICATE_APPROVAL:
+        return activities.filter(Q(certificates__isnull=False) | Q(certificates_prepared_at__isnull=False)).distinct()
+    if kind == Kind.SIGNATORY_CHOICE:
+        return activities.filter(~Q(status__name=ActivityStatus.CONDUCTED)
+                                 | Q(certificates__status__in=("generated", "approved"))).distinct()
+    return activities.exclude(status__name=ActivityStatus.CONDUCTED)
+
+
+def _target_label(kind: str, target) -> str:
+    if kind == Kind.DOCUMENT_REVIEW:
+        return f"{target.title} · {target.activity.title}"[:150]
+    if kind == Kind.SUBMISSION_REVIEW:
+        return f"{target.title} · from {target.submitted_by.name}"[:150]
+    return f"{target.title} ({target.status.name}, {target.start_date:%b} {target.start_date.day}, {target.start_date.year})"[:150]
+
+
+def general_choices(member: TBIMember) -> list[dict]:
+    """The general "Assign work" dialog (ASSUMPTIONS 468): every kind this member may assign (can_assign), in plain
+    words, with the targets that can be assigned NOW (refused_now is None) or, for a kind without a target, whether it
+    is free. A kind with nothing to assign stays in the list with the reason, so the Director sees why. Display only:
+    assign_work checks everything again."""
+    choices = []
+    for kind, description in KIND_DESCRIPTIONS.items():
+        if not can_assign(member, kind):
+            continue
+        field = target_field(kind)
+        entry = {"kind": kind, "label": description, "field": field, "targets": [], "reason": ""}
+        if field is None:
+            entry["reason"] = refused_now(kind, None) or ""
+        else:
+            entry["targets"] = [(target.pk, _target_label(kind, target))
+                                for target in _candidate_targets(member, kind)[:GENERAL_TARGET_LIMIT]
+                                if refused_now(kind, target) is None]
+            if not entry["targets"]:
+                entry["reason"] = {Kind.DOCUMENT_REVIEW: "No document is waiting for review.",
+                                   Kind.SUBMISSION_REVIEW: "No submission is waiting for you.",
+                                   Kind.CERTIFICATE_APPROVAL: "No activity has certificates waiting for approval."}.get(
+                    kind, "No activity is open for this work.")
+        choices.append(entry)
+    return choices
 
 
 def assignee_choices(member: TBIMember) -> list[TBIMember]:

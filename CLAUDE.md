@@ -490,7 +490,7 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   against their tables (never a fixed list). Add a phrasing test in `assistant/tests/test_routing.py` for every change.
 - Activities and find-files answers are written by `assistant/listings.py` without Gemini (work without the key; the page
   shows "The AI is turned off…" via `gemini.is_configured()`). Periods only through `assistant/periods.py` (`parse_period`; the
-  Reports form uses `parse_range`, which adds quarters/halves/ranges, "annual"/"yearly", a year said anywhere (`context=`) and
+  Reports form used `parse_range` until ASSUMPTIONS 467 removed the fill-in box; it stays, tested, unused; it adds quarters/halves/ranges, "annual"/"yearly", a year said anywhere (`context=`) and
   kind `ASK` for "quarterly"/"semi-annual" without which one (ASSUMPTIONS 399), and leaves `parse_period` unchanged) (Manila,
   weeks Monday–Sunday, month without a year = this year unless clearly past/future); Gemini never computes dates (the
   `list_activities_by_period` / `find_files` tools take the user's words; when only they ran, the reply is our text).
@@ -560,6 +560,12 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   own work; never give a can_manage_users member activities, signatories, documents, submissions or reports),
   `mark_done` (assignee or assigner), `remove_assignment`, `complete_for` (approve / return closes the review
   assignments). Assign dialog `approvals/_assign.html` (+ `pages.assign_panel`), notice `approvals/_assigned_notice.html`.
+- Assign where the work happens (ASSUMPTIONS 468): a dialog offers only work that can be assigned NOW
+  (`assignments.refused_now`, the same checks as `assign_work`). The general "Assign work" (Dashboard, Approvals pages;
+  `approvals/_assign_any.html`, form `approvals:assign_any` loaded when opened, its own page without JavaScript): WHAT
+  (`assignments.KIND_DESCRIPTIONS`, plain words) -> the target (`assignments.general_choices`; picker `target-<kind>`,
+  mapped by the `approvals:assign` view) -> member, due date, note. Each For-your-approval item has Assign (opens it
+  preset: `pages.mark_assignable`, `$dispatch('assign-open', {kind, target})`).
 
 ## Report generator and paper sheets (ASSUMPTIONS 441-445)
 - ONE Reports page (ASSUMPTIONS 461): `/reports/?kind=<kind>&activity=<id>` (`reports.page_views.report_list`, display
@@ -570,7 +576,16 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   generator"). `/reports/generator/` GET redirects there (its POST creates a draft; a refusal re-renders the one page via
   `render_hub`, 400). Figures reports take notes (GENERATED_REPORT.notes, max 2000) and files (REPORT_ATTACHMENT belongs to
   exactly ONE of draft / generated_report) as data for the AI summary (`narrative.GUIDANCE_RULE`, then
-  `generator.check_numbers`: an unknown number leaves the summary out). The prompt box + summary card still fit 1366x768.
+  `generator.check_numbers`: an unknown number leaves the summary out).
+- Three steps on one screen (ASSUMPTIONS 467): 1 "What do you want to make?" = one list with a line of description per
+  kind (`hub.FIGURES_HELP`, `WRITTEN_HELP`, `FORMS`; attendance forms on the general page too), 2 only what the kind needs
+  with defaults (`hub.generator_data`: the newest Conducted activity `hub.latest_conducted`, the first Draft / Scheduled one
+  for a draft letter / design, the current quarter, `DEFAULT_PROGRAM_NAME`; `pages.empty_form`: current quarter, PDF, every
+  section, the AI summary when the AI is on; attendance forms: an activity picker -> `reports:attendance_form` =
+  `attendance_forms.generate_form`), 3 notes + Attach files; ONE Generate (`#report-generate`); format / sections /
+  activity type / AI summary (drafts: photos, title, office line, names) under a closed "Options" (`#report-options`).
+  Three clicks with the defaults (browser test). No prompt box, chips or type cards (the "fill in the form" feature of
+  384 was removed).
 - Activity page tab "Reports" (ASSUMPTIONS 462): `activities/_tab_reports.html`, the per-activity kinds only (links via
   `hub.kind_url`), the activity's past reports.
 - Pages `/reports/generator/<id>/` (a draft) and `/reports/paper-sheets/<id>/`; views `reports/generator_views.py`, display
@@ -707,7 +722,8 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   `send_failed_at` ("Send failed" + Resend on the tab, ASSUMPTIONS 360).
   Retries: 5/30/120 min one-off schedules, then the 8:30 daily retry (`retry_pending_certificates`).
 - Email: `settings.MAILERS` (console in DEBUG unless `EMAIL_REAL_SENDING`; `config.mail.GuardedSMTPBackend`
-  never sends to `EMAIL_BLOCKED_DOMAINS`). Tests never open SMTP (root conftest).
+  never sends to `EMAIL_BLOCKED_DOMAINS` = example.com / .org / .net and their subdomains, ASSUMPTIONS 464: the demo and
+  user-testing accounts). Tests never open SMTP (root conftest).
 - "… was emailed" success messages go through `config.mail.email_sent_message()` (console mode: "Email printed in the
   terminal …"; the mode check `prints_emails()` is also System status's) (ASSUMPTIONS 342).
 - Evidence = DOCUMENT with `related_certificate` (`upload_evidence`), Step 6 rules, never listed/indexed.
@@ -764,19 +780,6 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   through `excel_datetime` (Manila, no tzinfo), money `"₱"#,##0.00`, print setup on every sheet. Layout only: never count here.
 - AI narrative only through `reports/narrative.py`: Gemini gets figures, activity titles and dates only
   (`for_ai=False` columns removed), the exact prompt goes in `ai_prompt`, a failure never stops the report.
-- "Describe the report you want" (ASSUMPTIONS 384): Gemini only READS the typed request (`reports/request_reader.py`, one
-  tool) and returns form settings; `services.fill_report_form` checks each against `REPORT_TYPES` / `SECTIONS` /
-  `GeneratedReport.Format` / active ACTIVITY_TYPE rows, dates only via `assistant.periods.parse_range` (Gemini's
-  `period_words` only if they are in the request), notes are our sentences (quotes only from the request). Nothing saved,
-  text never logged; same permission as generating (`services.GENERATE_REPORT_PERMISSION`), 30 per member per hour
-  (`config.ratelimit`), hidden without the key. `POST /reports/fill/` swaps `#report-form` (`templates/reports/_form.html`).
-  Page = type, check, generate: "What report do you need?" (Enter sends, Shift + Enter new line), `pages.EXAMPLE_REQUESTS`
-  chips, a summary card after a fill, the full form (`_form_fields.html`, the ONLY named fields) under "More settings" (closed;
-  open after a refused Generate; AI off = shown open, no prompt box). Alpine may only mirror values between the summary
-  card and the full form (approved exception), plus the keyboard, chips and More settings; never a rule. Sections combine:
-  our code adds "Activities conducted" / "Certificates" when the request mentions them (activity type names are the filter)
-  and gives the fixed Conducted-only note for upcoming / planned / scheduled. Must fit 1366×768
-  (opt-in `reports/tests/test_report_form_browser.py`).
 - Template comments: `{# #}` on ONE line only (a multi-line one is printed on the page); otherwise `{% comment %}`
   (`config/tests/test_template_comments.py`).
 
@@ -785,14 +788,15 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   the ORIGINAL identity (`docs/design/dashboard.png`, `login.png`, `logo.png`: navy -> blue gradient frame around a rounded
   light panel, frosted glass sign-in / public cards, pill buttons, Inter, the navy logo tile, the Dashboard's filled
   banner + "Next activity" card) made calmer. The teal / cream palette of 412 was rejected: never bring it back.
-  Colours: **GREEN since ASSUMPTIONS 459** (owner: close to CSU's green; same layout and gradients as option B, 413),
-  only between `OPTION START` / `OPTION END` in the `@theme` block of `frontend/tailwind/app.css`: frame `#0F4A2C` ->
-  `#3F9A6B`, primary `#1F6B3E`, link `#1E7244`, light text on the gradient `on-dark-muted` `#D4EEDD`, headline accent
-  `on-dark-accent` `#9FDDB8`. Everything else refers to them (sidebar, focus ring,
+  Colours: **DEEP FOREST GREEN since ASSUMPTIONS 465** (459's green made darker and calmer; same layout and gradients
+  as option B, 413), only between `OPTION START` / `OPTION END` in the `@theme` block of `frontend/tailwind/app.css`:
+  frame `#0B3D24` -> `#24603F`, primary `#1A5C38`, link `#1E6B42` (one step lighter so links stay apart from body text),
+  light text on the gradient `on-dark-muted` `#D4EEDD`, headline accent `on-dark-accent` `#B3DCC4`. Everything else refers to them (sidebar, focus ring,
   shadows, `.app-bg`, `.auth-bg`, `.welcome-banner`, `.spotlight`, `.date-tile-gradient`). Panel `#F4F6F9` (neutral light
   grey) with white cards; Tailwind's own slate scale. Status tokens `info` / `warning` / `success` / `danger` / `neutral`
   (+ `-soft`, `-line`); use them, not Tailwind `amber-50/200`, `red-50/200`, `blue-*`, `green-*`. Report / draft / form PDFs, the Excel
-  header and the DOCX headings use `#1F6B3E`; logo tiles (`static/img/`) = `docs/design/logo.png` on `#0F4A2C` (459).
+  header and the DOCX headings use `#1A5C38`; logo tiles (`static/img/`) = `docs/design/logo.png` recoloured by
+  `docs/design/recolor_logo.py`: soft gold mark, off-white strokes on `#0B3D24` (466).
   Chart colours (status bar, `reports.dashboard_page.CATEGORY_COLORS`) are checked for colour blindness (dE >= 15).
   Measure every new colour pair (text 4.5:1, large text / icons / input borders / accent bars 3:1);
   `accounts/tests/test_staff_layout.py` recomputes them from the tokens. Desktop-first staff pages (1280 px+, usable at
@@ -1210,6 +1214,10 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   Dashboard, the Documents page and the activity's payment group (463). Database: approvals 0003
   (WORK_ASSIGNMENT.allow_signing, two kinds), reports 0004 (GENERATED_REPORT.notes, REPORT_ATTACHMENT.generated_report_id,
   draft_id nullable); still 48 tables.
+- User testing day (2026-11-26, branch testing-fixes): `seed_testing --reset` fills a separate testing database
+  (`DATABASE_NAME`, `MEDIA_DIR`) with every state, nothing emailed, `@example.com` never emailed (464); deep forest green
+  (465); the logo recoloured (466); the Reports page in three steps, the fill-in box removed (467); Assign where the
+  Director's work happens + a general "Assign work" (468). No database change, no migration.
 - Accomplishment Report + draft letters (2026-11-26, Prompt 7, branch prompt-7): DTI / partner agencies as MSMEs
   confirmed; `tailwind build` via a temporary file (449); the Accomplishment Report per quarter / half / year in the
   generator (446) with confirmed paper Attendance sheets per day (447); the draft Request Letter and Activity Design from
@@ -1270,6 +1278,9 @@ python manage.py migrate
 python manage.py createcachetable   # once: table for login lockout counters
 python manage.py seed_data      # lookups + Admin account (SEED_ADMIN_* in .env); safe to rerun
 python manage.py seed_demo      # DEMO ONLY, fake data, needs DEBUG=True; safe to rerun; one account per role
+# USER TESTING ONLY (ASSUMPTIONS 464): in .env DATABASE_NAME=csu_tbi_testing and MEDIA_DIR=media_testing first, never on
+# the development database. EMPTIES the connected database and uploads folder, prints the accounts and passwords:
+python manage.py seed_testing --reset --checkin-start 13:00 [--testing-date 2026-11-26] [--skip-ai-index]
 python manage.py changepassword director@demo.example.com   # give a demo account a password (typed, never stored)
 python manage.py setup_schedules          # once (safe to rerun): 7:30 indexing, 8:00 reminders, 8:30 certificate retry, every 5 min statuses + evaluation links (also 3 h before the end)
 python manage.py send_document_reminders  # run the reminders once by hand (testing)
@@ -1293,10 +1304,10 @@ $env:BROWSER_TESTS = "1"; pytest -n 0 -s documents/tests/test_document_rows_brow
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s certificates/tests/test_signatories_browser.py; Remove-Item Env:BROWSER_TESTS   # Signatories page: names never squeezed
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_checkin_browser.py; Remove-Item Env:BROWSER_TESTS   # drawing a signature, the QR check-in page at 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_evaluation_photos_browser.py; Remove-Item Env:BROWSER_TESTS   # evaluation photos at 390 px, "Use in reports" at 1280 px
-$env:BROWSER_TESTS = "1"; pytest -n 0 -s approvals/tests/test_approvals_browser.py; Remove-Item Env:BROWSER_TESTS   # the inbox and the Assign dialog at 1366 / 390 px
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s approvals/tests/test_approvals_browser.py; Remove-Item Env:BROWSER_TESTS   # the inbox, the Assign dialog and the general "Assign work" (every kind) at 1366 / 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s assistant/tests/test_chat_browser.py; Remove-Item Env:BROWSER_TESTS   # AI Assistant: keys, scrolling, fits the window, the chat box at 1366 / 390 px
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_generator_browser.py; Remove-Item Env:BROWSER_TESTS   # the report generator page at 1366 / 390 px
-$env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_reports_page_browser.py; Remove-Item Env:BROWSER_TESTS   # one Reports page, activity Reports tab, For payment cards (1366 / 390 px)
+$env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_reports_page_browser.py; Remove-Item Env:BROWSER_TESTS   # the three-step Reports page (3 clicks), activity Reports tab, For payment cards (1366 / 390 px)
 $env:BROWSER_TESTS = "1"; pytest -n 0 -s registrations/tests/test_part1_browser.py; Remove-Item Env:BROWSER_TESTS   # Enter key, signature choices, check-in after the window (1366 / 390 px)
 $env:PDF_LAYOUT_TESTS = "1"; pytest -n 0 -s reports/tests/test_report_pdf_layout.py; Remove-Item Env:PDF_LAYOUT_TESTS   # report PDFs (+ evaluation summary, one evaluation, the generator's Activity Report / Evaluation Summary) with real WeasyPrint: nothing cut off (PDF_LAYOUT_OUT=<folder>: PDFs + PNGs)
 pytest --create-db                        # rebuild the test databases: once after adding or changing migrations

@@ -66,8 +66,8 @@ def test_the_page_offers_figures_and_written_kinds() -> None:
     keys = [choice.key for choice in hub.kind_choices(None)]
     assert keys[:5] == ["figures-accomplishment", "figures-participation", "figures-evaluation",
                         "figures-document_compliance", "figures-certificates"]
-    assert set(keys[5:]) == set(Kind.values)  # every generator kind, once
-    assert hub.FORM_ATTENDANCE not in keys  # the attendance forms need one activity
+    assert set(keys[5:11]) == set(Kind.values)  # every generator kind, once
+    assert keys[11:] == [hub.FORM_ATTENDANCE, hub.FORM_CONFIRMATION]  # ASSUMPTIONS 467: with an activity picker
 
 
 def test_one_activity_gets_only_the_per_activity_kinds(conducted) -> None:

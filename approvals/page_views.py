@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_GET, require_POST
 
-from accounts.permissions import is_htmx, staff_login_required
+from accounts.permissions import Permission, has_permission, is_htmx, staff_login_required
 from activities.models import Activity
 from activities.services import _paginate
 from documents.models import DocumentType
@@ -34,7 +34,9 @@ def _tabs_context(request: HttpRequest, tab: str) -> dict:
 
     return {"tab": tab, "has_inbox": inbox.has_inbox(request.user), "can_review": services.can_review(request.user),
             "inbox_total": inbox.inbox_counts(request.user)["total"] if inbox.has_inbox(request.user) else 0,
-            "assigned_total": assigned_to_me(request.user).count()}
+            "assigned_total": assigned_to_me(request.user).count(),
+            # ASSUMPTIONS 468: the general "Assign work" dialog (can_assign_work only)
+            "general_assign": has_permission(request.user, Permission.ASSIGN_WORK)}
 
 
 @staff_login_required
@@ -46,8 +48,11 @@ def inbox_page(request: HttpRequest) -> HttpResponse:
         return redirect("approvals:mine")
     filters = pages.parse_inbox_filters(request.GET)
     items = inbox.inbox(request.user, filters.as_dict())
+    tabs = _tabs_context(request, "inbox")
+    if tabs["general_assign"]:
+        pages.mark_assignable(items, pages.general_assign_panel(request.user))
     context = {
-        **_tabs_context(request, "inbox"), "page_title": "For your approval", "page_subtitle": LIST_SUBTITLE,
+        **tabs, "page_title": "For your approval", "page_subtitle": LIST_SUBTITLE,
         "filters": filters, "items": items, "kinds": [(kind, inbox.KIND_LABELS[kind]) for kind in inbox.kinds_for(request.user)],
         "kind_tones": pages.KIND_TONES, "kind_icons": pages.KIND_ICONS,
         "activities": pages.activity_choices(), "list_url": reverse("approvals:inbox"),
@@ -280,7 +285,8 @@ def _next(request: HttpRequest, default: str) -> str:
 @staff_login_required
 @require_POST
 def assign(request: HttpRequest) -> HttpResponse:
-    """POST kind, assigned_to, activity | document | submission | report_title, note, due_date (YYYY-MM-DD), next:
+    """POST kind, assigned_to, activity | document | submission (or target-<kind> from the general dialog) | report_title,
+    note, due_date (YYYY-MM-DD), next:
     approvals.assignments.assign_work (can_assign_work + the flag of the work; every rule checked there)."""
     from datetime import date as date_type
 
@@ -289,8 +295,14 @@ def assign(request: HttpRequest) -> HttpResponse:
     from . import assignments
     from .models import WorkAssignment
 
+    kind = request.POST.get("kind", "")
+    # The general dialog (ASSUMPTIONS 468) sends each kind's target as "target-<kind>" (one picker per kind, so it works
+    # without JavaScript); the work's own dialog sends activity / document / submission.
+    general_target = request.POST.get(f"target-{kind}", "")
+    general_field = assignments.target_field(kind) if kind in WorkAssignment.Kind.values else None
+
     def pick(model, key):
-        raw = request.POST.get(key, "")
+        raw = general_target if general_target and key == general_field else request.POST.get(key, "")
         return model.objects.filter(pk=raw).first() if raw.isdigit() else None
 
     back = _next(request, reverse("approvals:assigned"))
@@ -304,7 +316,7 @@ def assign(request: HttpRequest) -> HttpResponse:
 
     try:
         assignment = assignments.assign_work(
-            request.user, request.POST.get("kind", ""), pick(TBIMember, "assigned_to"),
+            request.user, kind, pick(TBIMember, "assigned_to"),
             activity=pick(Activity, "activity"), document=pick(Document, "document"),
             submission=pick(Submission, "submission"), report_title=request.POST.get("report_title", ""),
             note=request.POST.get("note", ""), due_date=due,
@@ -317,6 +329,19 @@ def assign(request: HttpRequest) -> HttpResponse:
         messages.success(request, f"{WorkAssignment.Kind(assignment.kind).label}: assigned to "
                                   f"{assignment.assigned_to.name}. They got a notification.")
     return redirect(back)
+
+
+@staff_login_required
+@require_GET
+def assign_any(request: HttpRequest) -> HttpResponse:
+    """GET kind, target, next: the general "Assign work" form (ASSUMPTIONS 468), loaded into the dialog (HTMX) or on its
+    own page without JavaScript. can_assign_work only (403 otherwise); posting goes to approvals:assign."""
+    panel = pages.general_assign_panel(request.user, request.GET.get("kind", ""), request.GET.get("target", ""))
+    if panel is None:
+        raise PermissionDenied("Assigning work needs the Director's permission (can_assign_work).")
+    context = {"general": panel, "next": _next(request, reverse("approvals:inbox")),
+               "page_title": "Assign work", "page_subtitle": "Give one piece of the Director's work to a member"}
+    return render(request, "approvals/_assign_any_form.html" if is_htmx(request) else "approvals/assign_any.html", context)
 
 
 def _assignment_action(request: HttpRequest, assignment_id: int, action, success: str) -> HttpResponse:

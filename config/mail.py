@@ -8,7 +8,7 @@ ConsoleEmailBackend (development): prints emails in the terminal.
   instead of printing thousands of lines of base64.
 
 GuardedSMTPBackend (real sending): Django's SMTP backend, but it never emails an address in
-settings.EMAIL_BLOCKED_DOMAINS (the demo data, @demo.example.com), so demo data can never reach a
+settings.EMAIL_BLOCKED_DOMAINS (example.com / .org / .net and their subdomains: the demo and user-testing data), so demo data can never reach a
 real mailbox. Those emails are printed to the console while DEBUG is on; with DEBUG off only the
 fact that one was blocked is logged (never the body: it may hold a link or a temporary password).
 """

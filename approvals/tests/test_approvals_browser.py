@@ -4,7 +4,8 @@ At 1366 and 390 px:
   - the inbox lists every kind with an Open button; no two buttons overlap, none sticks out, the page never scrolls sideways;
   - the Assign dialog opens from the activity page, fits the window (inside the viewport, its own scrolling), its fields
     and buttons are visible and do not overlap, and assigning through it creates the assignment;
-  - "Assigned to me" shows it for the assignee.
+  - "Assigned to me" shows it for the assignee;
+  - the general "Assign work" dialog (ASSUMPTIONS 468) assigns every kind and fits the window.
 Screenshots go to pytest's tmp_path (the -s output prints the folder).
 """
 
@@ -110,4 +111,74 @@ def test_inbox_and_assign_dialog(live_server, tmp_path, monkeypatch, director, s
         page.screenshot(path=str(tmp_path / "assigned-390.png"), full_page=True)
         browser.close()
     print(f"\nScreenshots: {tmp_path}")
+    assert not problems, "\n".join(problems)
+
+
+GENERAL_DIALOG = r"""() => {
+  const dialog = document.querySelector('dialog[data-assign-any-dialog]');
+  const r = dialog.getBoundingClientRect();
+  const fields = [...dialog.querySelectorAll('select, textarea, input:not([type=hidden]), button')]
+    .map(el => el.getBoundingClientRect()).filter(b => b.width > 0);
+  const outside = fields.filter(b => b.left < r.left - 1 || b.right > r.right + 1).length;
+  return {open: dialog.open, left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+          vw: document.documentElement.clientWidth, vh: window.innerHeight, outside,
+          sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1};
+}"""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_director_assigns_every_kind_from_the_general_dialog(live_server, monkeypatch, director, staff, head, activity,
+                                                                 submit, director_signature) -> None:
+    """ASSUMPTIONS 468: Dashboard -> "Assign work": WHAT (each kind in plain words), the target, the member, Assign; at
+    1366 and 390 px the dialog fits the window, and each For-your-approval item's Assign opens it with its work chosen."""
+    from playwright.sync_api import sync_playwright
+
+    from activities.models import Activity
+    from documents import services as document_services
+    from documents.models import DocumentType
+
+    Activity.objects.filter(pk=activity.pk).update(certificates_prepared_by=director, certificates_prepared_at=NOW)
+    DocumentType.objects.filter(name="Invitation Letter").update(needs_review=True)
+    document_services.upload_document(staff, activity, DocumentType.objects.get(name="Invitation Letter"), pdf_file(),
+                                      "Invitation", now=NOW)
+    submit(staff, title="Terminal report")
+    monkeypatch.setenv("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
+    cookie = cookie_for(director)
+    problems = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        for width in WIDTHS:
+            WorkAssignment.objects.all().delete()
+            phone = width < 640
+            context = browser.new_context(viewport={"width": width, "height": 844 if phone else 768}, is_mobile=phone,
+                                          has_touch=phone)
+            context.add_cookies([{"name": django_settings.SESSION_COOKIE_NAME, "value": cookie, "url": live_server.url}])
+            page = context.new_page()
+            for kind in WorkAssignment.Kind.values:
+                page.goto(live_server.url + reverse("home"))
+                page.locator("[data-assign-any-trigger]").click()
+                page.locator("#assign-any-kind").wait_for()
+                box = page.evaluate(GENERAL_DIALOG)
+                if (not box["open"] or box["left"] < 0 or box["right"] > box["vw"] + 1 or box["top"] < 0
+                        or box["bottom"] > box["vh"] + 1 or box["outside"] or box["sideways"]):
+                    problems.append(f"{width}px {kind}: the dialog does not fit ({box})")
+                page.select_option("#assign-any-kind", kind)
+                if kind == "report":
+                    page.fill("#assign-any-report-title", "Accomplishment Report - Q4 2026")
+                page.select_option("#assign-any-member", str(head.pk))
+                page.locator("[data-assign-any-submit]").click()
+                page.wait_for_load_state()
+                if not WorkAssignment.objects.filter(kind=kind, assigned_to=head).exists():
+                    problems.append(f"{width}px {kind}: not assigned ({page.locator('[role=status], .toast').all_inner_texts()})")
+            WorkAssignment.objects.all().delete()
+            page.goto(live_server.url + reverse("approvals:inbox"))
+            buttons = page.locator("[data-inbox-assign]")
+            if buttons.count() != 3:
+                problems.append(f"{width}px: each inbox item should have Assign ({buttons.count()})")
+            page.locator("[data-inbox-assign='submission_review']").first.click()
+            page.locator("#assign-any-kind").wait_for()
+            if page.locator("#assign-any-kind").input_value() != "submission_review":
+                problems.append(f"{width}px: an inbox item's Assign should choose its work")
+            context.close()
+        browser.close()
     assert not problems, "\n".join(problems)

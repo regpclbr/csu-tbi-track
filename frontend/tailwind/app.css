@@ -42,18 +42,19 @@
 
   /* --- Brand colours (ASSUMPTIONS 413, green since 459): the frame gradient, the primary, the link ------------------- */
   /* OPTION START */
-  /* Green (ASSUMPTIONS 459, owner 2026-11-26: "close to CSU's green"; the logo files have no CSU green, only the teal
-     mark on the brand tile). Same layout and gradients as option B (413); only the hues change. Measured contrasts: */
-  --color-frame-dark: #0F4A2C;         /* gradient start (sidebar side): white on it 10.3:1 */
-  --color-frame-light: #3F9A6B;        /* gradient end (behind the panel): white on it 3.5:1 (large text only; no text there) */
-  --color-primary: #1F6B3E;            /* solid primary button: white on it 6.5:1; as text 6.0:1 on the panel */
-  --color-primary-hover: #195A34;      /* white on it 8.2:1 */
-  --color-primary-pressed: #144A2B;    /* white on it 10.3:1 */
-  --color-primary-soft: #E6F1EA;       /* current tab, selected pill, icon chips: primary text on it 5.6:1 */
-  --color-primary-tint: #D2E6D9;       /* hover on a soft item, selected card: primary text on it 5.0:1 */
-  --color-link: #1E7244;               /* text links: 5.9:1 on white, 5.5:1 on the panel */
-  --color-on-dark-muted: #D4EEDD;      /* secondary text on the gradient's dark part: 8.4:1 (5.3:1 on the primary) */
-  --color-on-dark-accent: #9FDDB8;     /* the sign-in headline's accent line (large text): 6.6:1 on the dark part */
+  /* Deep forest green (ASSUMPTIONS 465, owner 2026-11-26: "the green is too bright, darker and calmer"; replaces 459's
+     #0F4A2C -> #3F9A6B). Same layout and gradients as option B (413); only the hues change. Measured contrasts: */
+  --color-frame-dark: #0B3D24;         /* gradient start (sidebar side): white on it 12.3:1 */
+  --color-frame-light: #24603F;        /* gradient end (behind the panel): white on it 7.5:1 */
+  --color-primary: #1A5C38;            /* solid primary button: white on it 8.0:1; as text 7.4:1 on the panel */
+  --color-primary-hover: #144A2D;      /* white on it 10.3:1 */
+  --color-primary-pressed: #0F3B23;    /* white on it 12.6:1 */
+  --color-primary-soft: #E8F0EB;       /* current tab, selected pill, icon chips: primary text on it 6.9:1 */
+  --color-primary-tint: #D3E4D9;       /* hover on a soft item, selected card: primary text on it 6.0:1 */
+  --color-link: #1E6B42;               /* text links: 6.5:1 on white, 6.0:1 on the panel, 5.6:1 on primary-soft; one step
+                                          lighter than the primary so links stay apart from body text (2.3:1 to the ink) */
+  --color-on-dark-muted: #D4EEDD;      /* secondary text on the gradient's dark part: 10.0:1 (6.5:1 on the primary) */
+  --color-on-dark-accent: #B3DCC4;     /* the sign-in headline's accent line (large text, calmer): 8.2:1 on the dark part */
   /* OPTION END */
   --color-sidebar: var(--color-frame-dark);   /* the slide-in sidebar below 1024 px (solid) */
   --color-sidebar-hover: color-mix(in srgb, var(--color-frame-dark) 85%, #FFFFFF);
@@ -315,6 +316,14 @@
   }
   .tag-type {
     @apply border-transparent bg-primary-soft font-semibold text-primary;
+  }
+
+  /* The Reports page's three steps (ASSUMPTIONS 467): "2  For which period?" — a numbered step heading. */
+  .report-step {
+    @apply mb-3 flex items-center gap-2 text-base font-semibold text-ink;
+  }
+  .report-step-number {
+    @apply inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-soft text-xs font-bold text-primary;
   }
 
   /* Forms */

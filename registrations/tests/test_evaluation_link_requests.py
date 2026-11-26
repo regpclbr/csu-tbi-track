@@ -22,6 +22,13 @@ pytestmark = pytest.mark.django_db
 Result, Delivery = Registration.LinkRequestResult, Registration.LinkDelivery
 
 
+@pytest.fixture(autouse=True)
+def only_demo_addresses_blocked(settings):
+    """These tests tell "sent" (person0@example.com) from "printed_demo" (ana@demo.example.com); since ASSUMPTIONS 464 all
+    of example.com is blocked, so they keep the old list."""
+    settings.EMAIL_BLOCKED_DOMAINS = ["demo.example.com"]
+
+
 @pytest.fixture
 def real_mailer(monkeypatch):
     """The mailer really sends (not the console one), whatever DEBUG / EMAIL_REAL_SENDING the test run has."""

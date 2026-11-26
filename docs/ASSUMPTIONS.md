@@ -3074,3 +3074,106 @@ Evaluation Summary (items 441 onwards).
      payment documents by type: ONE line "N activities are missing payment documents" -> the For payment view. The
      activity page's own Needs attention line (item 425) is unchanged. No database change.
      - Tests: `documents/tests/test_payment_per_activity.py`; browser `reports/tests/test_reports_page_browser.py`.
+
+## User testing day: testing database, darker green, logo, three-step Reports page, Assign everywhere (2026-11-26)
+
+464. **The user-testing database (`seed_testing`)** (owner, for the UAT with 7 respondents). `python manage.py
+     seed_testing --reset [--testing-date YYYY-MM-DD] [--checkin-start HH:MM] [--skip-ai-index]` fills an EMPTIED
+     database with invented, realistic data that shows every feature, built ONLY through the real services (activities,
+     registrations, attendance, signatures, evaluations with photos, documents, certificates, approvals, assignments, the
+     report generator, paper sheets), so History, notifications and every rule are the real ones.
+     - **A separate database and uploads folder:** `DATABASE_NAME` (new setting: the database Django uses in the same
+       container; empty = `POSTGRES_DB`) and `MEDIA_DIR` (new: the uploads folder; empty = `media`). For the testing:
+       `DATABASE_NAME=csu_tbi_testing`, `MEDIA_DIR=media_testing` (git-ignored); the development data and `media\` are
+       never touched. Switching back = empty both lines.
+     - **Safety:** only with DEBUG on and only with `--reset`, which first prints the database name and the uploads
+       folder it EMPTIES (`flush` + the folder's contents); it refuses a MEDIA_ROOT that is the project folder, a folder
+       above it or a drive. Repeatable: every run gives the same activities and states (new temporary passwords).
+     - **Past events at their own time:** the command moves `django.utils.timezone.now` (the one clock every service
+       reads, like the tests' `clock` fixture) for each event and puts it back at the end; `--testing-date` is "today".
+     - **Accounts** (temporary passwords printed once, `must_change_password` off): System Administrator Regine Paclibar;
+       Director Riah E. Encarnacion, DIT ("Director, TBI & Manager, NAVIGATU", signature image, linked signatory, the
+       left default signatory); John Mark B. Correa, Jenelyn Asis, Teodoro Jr. Abrea (Incubation Project Head) and Mary
+       Pilar Barber (Community Development Head) with can_create_activity; Meledy Ganoy and Adelberto G. Laplana (Admin
+       Staff). No role is missing: "Manager, TARA" and "Portfolio Manager" are POSITIONS on the Incubation Project Head
+       role (same flags); no new role. Emails `<first>.<last>@example.com`.
+     - **Activities** (NAVIGATU and TARA, fund sources RAF / IGF / TRF / BRF, objectives, budget lines): a Draft without
+       documents (flagged: uploading the two creation documents schedules it); a Scheduled one a week ahead with
+       registration open, prepared certificates and an Invitation Letter waiting for review; one Ongoing yesterday and
+       today from `--checkin-start` for 3 hours (QR check-in from 60 min before to 60 min after the start, 3 "Will not
+       attend", day-1 attendance with drawn / uploaded / typed signatures and a walk-in, certificates prepared and
+       approved early so a respondent who checks in and evaluates gets the certificate email at Conducted); four
+       Conducted: complete (previous quarter: attendance per day, walk-ins, evaluations, photos with 2 ticked, generated
+       Attendance and Confirmation forms, Activity Report, Event Photos, certificates approved / issued and emailed / one
+       handed over, a confirmed paper sheet), waiting for certificate approval with the Attendance Sheet MISSING (For
+       payment: Generate), an older complete one (the quarter before), and one ended 3 days ago with the evaluation
+       closed by hand and the Activity Report / Event Photos missing and a scanned Attendance Sheet not yet read.
+     - **The Director's work:** the Invitation Letter type set to needs review (a Django admin switch) with two documents
+       waiting; submissions waiting (one to approve and sign), returned and unapproved (with its reason); one assignment
+       of EVERY kind (one done, one overdue, one with "May stamp my signature"). Reports: three figures reports, an
+       Activity Report draft with 2 versions and its chat, an Accomplishment Report for the previous quarter, a Request
+       Letter draft. Then `setup_schedules` and the AI index (`index_pending_documents`, no OCR; skipped without a key or
+       with `--skip-ai-index`: run `index_documents` later). The confirmed paper sheet is "read" from the rows the seed
+       printed on its own invented scan (no AI call); the second scan is left for "Read the rows with AI".
+     - **Nothing is emailed while seeding:** every email goes to an in-memory mailbox (counted at the end), queued
+       confirmation / check-in / evaluation-link / chat-title tasks are dropped, certificate PDFs, reports and drafts run
+       at once. **`EMAIL_BLOCKED_DOMAINS` is now `example.com`, `example.org`, `example.net` and their subdomains**
+       (reserved names, RFC 2606; was only demo.example.com), so the seeded accounts and participants are never really
+       emailed by the worker either, while the respondents' real addresses are (EMAIL_REAL_SENDING=True + qcluster).
+     - Tests: `accounts/tests/test_seed_testing.py` (every state on an empty test database at a fixed date; twice).
+
+465. **Deep forest green** (owner: "the green is too bright"; replaces 459's hues, same layout and gradients). Tokens:
+     frame `#0B3D24` -> `#24603F`, primary `#1A5C38` (hover `#144A2D`, pressed `#0F3B23`, soft `#E8F0EB`, tint `#D3E4D9`),
+     on-dark accent `#B3DCC4` (calmer). Measured: white on the primary 8.0:1, primary on the panel 7.4:1, on its soft
+     6.9:1, on-dark muted on the frame 10.0:1. **The link colour is `#1E6B42`, not the suggested `#1A5C38`:** with the
+     primary's value links were only 1.8:1 against the body text (the rule `test_links_stay_apart_from_body_text` wants
+     more than 2:1 so links stay recognisable); `#1E6B42` is 6.0:1 on the panel and 2.3:1 to the ink. The report /
+     draft / evaluation / attendance-form PDFs, the Excel header (`excel.BRAND_NAVY`) and the DOCX headings use
+     `#1A5C38`; the first chart colour too.
+
+466. **The logo in the new green** (owner). The tiles (`static/img/favicon-32.png`, `logo-96.png` = the sidebar and
+     sign-in logo, `apple-touch-icon-180.png`) are re-made from `docs/design/logo.png` by `docs/design/recolor_logo.py`:
+     the deep forest tile `#0B3D24`, the mark cropped to its drawing at 72 %, the teal arrow in soft gold `#D8B45C` and the
+     strokes off-white `#F4F7F4`; the previous green tiles are kept as `docs/design/*-green-old.png`, the before / after
+     sheet is `docs/design/logo-before-after.png`. The generated PDFs have no logo (only the placeholder letterhead text,
+     open question "Letterhead"), so there is no PDF header logo to change.
+
+467. **The Reports page in three steps** (owner: "too many ways to do the same thing"; replaces 384's prompt box and
+     461's chips / type cards; the rules of 301, 399, 442-448, 461 unchanged). One card, one screen:
+     1. **"What do you want to make?"** = ONE list (`reports/hub.py` `kind_choices`): every kind with a one-line
+        description (`FIGURES_HELP`, `WRITTEN_HELP`, `FORMS`), captions Figures / Written with AI / Attendance forms;
+        the attendance forms are now on the general page too.
+     2. **"For which activity / period?"**: only what the kind needs, with defaults (`hub.generator_data`,
+        `pages.empty_form`): the newest Conducted activity (`hub.latest_conducted`; the first Draft / Scheduled one for a
+        draft letter / design), the current quarter and year (figures, Accomplishment Report, which also gets the
+        remembered or a default program name, `DEFAULT_PROGRAM_NAME`), one activity or a period (Evaluation Summary,
+        Other). Attendance forms: an activity picker (Ongoing / Conducted, newest first) posting to the new
+        `reports:attendance_form` (the same `attendance_forms.generate_form`, 403 without the permission).
+     3. **"Anything to add? (optional)"**: one notes box and Attach files (figures: notes + files for the AI summary;
+        drafts: the notes and files for the AI).
+     One **Generate** button. Format, included sections (all of the type by default), the activity type filter and the
+     AI summary (on by default when the AI is available, so step 3 is used) are under a closed **"Options"** (drafts: the
+     extra photos, title, office line, unit, leader, the memorandum's names, who approves). With the defaults a report
+     takes three clicks: Reports, the kind, Generate (browser test). The activity's Reports tab still opens the page with
+     steps 1 and 2 filled. **Removed:** "What report do you need?" (`reports/request_reader.py`, `fill_report_form`,
+     `reports:fill`, the summary card, the example chips, the duplicate type cards and "Main" badges,
+     `REPORT_FORM_FILL_*` settings). Lost: typing a sentence instead of choosing; the choices are now one list and two
+     pickers, so nothing a report can contain is lost. Tests: `reports/tests/test_reports_three_steps.py`, browser
+     `reports/tests/test_reports_page_browser.py`.
+
+468. **Assign where the Director's work happens** (owner: the dialog seemed to offer only "Prepare a report").
+     - Where Assign is: the activity page (Work on the activity, Approve the certificates, Choose who signs), a document
+       waiting for review (Review the document), a submission (Review the submission, "May stamp my signature"), the
+       Default certificate text page, the Signatories page, the Reports page (Prepare a report) - all since 437 / 460 -
+       and NEW: **"Assign work"** on the Dashboard and the Approvals pages (every kind), and **Assign on each
+       For-your-approval item** (certificate approval, submission review, document review; opens the general dialog with
+       that work chosen; none on an overdue assignment).
+     - The general dialog (`approvals/_assign_any.html`, form `approvals:assign_any`, loaded when opened so the pages
+       stay fast; its own page without JavaScript): WHAT (`assignments.KIND_DESCRIPTIONS`, plain words), the target (only
+       the work that can be assigned NOW: `assignments.general_choices` / `refused_now`, the same checks as
+       `assign_work`; a kind with nothing open says why), the member, due date, note. Each kind's picker is
+       `target-<kind>`; the `approvals:assign` view maps it to activity / document / submission.
+     - **The work's own dialog now offers only what can still be assigned** (`refused_now`: open and not assigned yet),
+       so it never offers work the service then refuses (e.g. an approved activity's certificate approval).
+     - Tests: `approvals/tests/test_assign_general.py`; browser `approvals/tests/test_approvals_browser.py`
+       (every kind from the Dashboard's dialog at 1366 and 390 px, the inbox's Assign).

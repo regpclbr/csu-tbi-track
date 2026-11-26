@@ -35,7 +35,7 @@ KIND_HEADINGS = {ReportDraft.Kind.ACTIVITY_REPORT: "ACTIVITY REPORT",
                  ReportDraft.Kind.ACTIVITY_DESIGN: "ACTIVITY DESIGN",
                  ReportDraft.Kind.OTHER: "REPORT"}
 BLANK_LINE = "______________________________"
-DOCX_HEADING_COLOR = "1F6B3E"  # the primary green, like the PDF headings (ASSUMPTIONS 459)
+DOCX_HEADING_COLOR = "1A5C38"  # the primary green, like the PDF headings (ASSUMPTIONS 459, 465)
 
 
 def heading(version: ReportDraftVersion) -> str:

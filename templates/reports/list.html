@@ -1,12 +1,12 @@
 {% extends "layouts/app.html" %}
 {% comment %}
-/reports/ (reports.page_views.report_list): the ONE Reports page (ASSUMPTIONS 461-462). "What do you want to make?" is
-one list (reports/_kinds.html): the figures reports (reports/_form.html: the prompt box, the summary card, More settings;
-ASSUMPTIONS 384; the prompt box stays visible without scrolling at 1366x768), the reports written with the AI
-(reports/_generator_form.html) and, for one activity (?activity=, the activity page's Reports tab), the attendance forms.
-Notes and files can always guide the AI; every number comes from the system. Then "Past reports" (reports/_history.html):
-every output, newest first. The rules are in reports.services, reports.generator and registrations.attendance_forms;
-their messages appear under their fields. /reports/generator/ redirects here.
+/reports/ (reports.page_views.report_list): the ONE Reports page (ASSUMPTIONS 461-462, 467) in three steps on one screen:
+1 "What do you want to make?" (reports/_kinds.html: one list, every kind with a line of description), 2 "For which
+activity / period?" and 3 "Anything to add?" (only what the chosen kind needs, with defaults: reports/_form.html for the
+figures reports, reports/_generator_form.html for the reports written with the AI, the activity picker below for the
+attendance forms), one Generate button; format, sections and filters under a closed "Options". With the defaults a
+report takes three clicks: Reports, the kind, Generate. Then "Past reports" (reports/_history.html). The rules are in
+reports.services, reports.generator and registrations.attendance_forms; their messages appear under their fields.
 {% endcomment %}
 {% block page_actions %}
   {% if activity %}<a href="{% url 'activities:detail' activity.pk %}?tab=reports" class="btn btn-secondary">{% include "components/icon.html" with name="arrow-left" class="size-4" %}Back to the activity</a>{% endif %}
@@ -16,41 +16,57 @@ their messages appear under their fields. /reports/generator/ redirects here.
 <div class="space-y-6">
   {% if can_generate %}
     <section class="card p-0" id="new-report" aria-labelledby="new-report-title" data-report-group="{{ group }}">
-      <div class="space-y-3 px-6 pt-6">
-        <h2 id="new-report-title" class="card-title">What do you want to make?</h2>
-        {% include "reports/_kinds.html" %}
-      </div>
-      {% if group == "figures" %}
-        {# The prompt box and its summary card must stay inside 1366x768 (ASSUMPTIONS 384): no extra line above the form. #}
-        <p class="sr-only">{% if ai_fill_available %}Say what you need, check the settings, then generate.{% else %}Choose the sections, the period and the format.{% endif %} The file is made in the background.</p>
-        {% include "reports/_form.html" %}
-        {# ASSUMPTIONS 446: both Accomplishment reports stay; the same counts (reports.metrics), different documents. Below the form: the prompt box must fit 1366x768. #}
-        {% if kind == "figures-accomplishment" %}
-          <p class="notice notice-info mx-6 mb-6 text-sm" role="note" data-accomplishment-note>
-            These are the figures and tables. NAVIGATU's narrative Accomplishment Report (highlights per activity, objectives and accomplishments, photos) is under Written with AI:
-            <a class="link" href="{% url 'reports:list' %}?kind=accomplishment_report">Accomplishment Report</a>, with the same counts.
-          </p>
-        {% endif %}
-      {% elif group == "written" %}
-        <div class="px-6 pt-2 pb-6">{% include "reports/_generator_form.html" with form=gen_form %}</div>
-      {% else %}
-        <div class="px-6 pt-2 pb-6" data-attendance-forms>
-          <p class="text-sm text-slate-700">Made from the check-ins and pre-registrations with the participants' signatures, and saved on the activity as a document (an approved copy).</p>
-          <div class="mt-4 flex flex-wrap gap-2">
-            {% for form in attendance.items %}
-              {% if form.refused %}
-                <p class="notice notice-info w-full text-sm">{{ form.refused }}</p>
-              {% elif attendance.can_generate %}
-                <form method="post" action="{{ form.url }}">{% csrf_token %}
-                  <button type="submit" class="btn btn-primary">{% include "components/icon.html" with name="file-text" class="size-4" %}{{ form.label }}</button>
-                </form>
-              {% else %}
-                <p class="text-sm text-muted">Only members who create activities (or have this activity assigned) can generate it.</p>
-              {% endif %}
-            {% endfor %}
-          </div>
+      <div class="space-y-6 p-6">
+        <div data-step="1">
+          <h2 id="new-report-title" class="report-step"><span class="report-step-number" aria-hidden="true">1</span>What do you want to make?</h2>
+          {% include "reports/_kinds.html" %}
         </div>
-      {% endif %}
+        {% if group == "figures" %}
+          {% include "reports/_form.html" %}
+          {# ASSUMPTIONS 446: both Accomplishment reports stay; the same counts (reports.metrics), different documents. #}
+          {% if kind == "figures-accomplishment" %}
+            <p class="notice notice-info text-sm" role="note" data-accomplishment-note>
+              These are the figures and tables. NAVIGATU's narrative Accomplishment Report (highlights per activity, objectives and accomplishments, photos) is
+              <a class="link" href="{% url 'reports:list' %}?kind=accomplishment_report">Accomplishment Report</a> under Written with AI, with the same counts.
+            </p>
+          {% endif %}
+        {% elif group == "written" %}
+          {% include "reports/_generator_form.html" with form=gen_form %}
+        {% else %}
+          <div class="space-y-3" data-step="2" data-attendance-forms>
+            <h3 class="report-step"><span class="report-step-number" aria-hidden="true">2</span>For which activity?</h3>
+            <p class="text-sm text-slate-700">Made from the check-ins and pre-registrations with the participants' signatures, and saved on the activity as a document (an approved copy).</p>
+            {% if not attendance.can_generate %}
+              <p class="text-sm text-muted">Only members who create activities (or have this activity assigned) can generate it.</p>
+            {% elif activity %}
+              <div class="flex flex-wrap gap-2">
+                {% for form in attendance.items %}
+                  {% if form.refused %}
+                    <p class="notice notice-info w-full text-sm">{{ form.refused }}</p>
+                  {% else %}
+                    <form method="post" action="{{ form.url }}">{% csrf_token %}
+                      <button type="submit" id="report-generate" class="btn btn-primary">{% include "components/icon.html" with name="file-text" class="size-4" %}Generate</button>
+                    </form>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% elif attendance.choices %}
+              <form method="post" action="{% url 'reports:attendance_form' %}" class="flex flex-wrap items-end gap-3">{% csrf_token %}
+                <input type="hidden" name="kind" value="{{ kind }}">
+                <div class="min-w-0 grow basis-72">
+                  <label for="form-activity" class="field-label">Activity</label>
+                  <select id="form-activity" name="activity" class="field-input field-select">
+                    {% for item in attendance.choices %}<option value="{{ item.pk }}"{% if item.pk == attendance.chosen.pk %} selected{% endif %}>{{ item.title|truncatechars:70 }} ({{ item.status.name }}, {{ item.start_date|date:"M j, Y" }})</option>{% endfor %}
+                  </select>
+                </div>
+                <button type="submit" id="report-generate" class="btn btn-primary">{% include "components/icon.html" with name="file-text" class="size-4" %}Generate</button>
+              </form>
+            {% else %}
+              <p class="text-sm text-muted">No Ongoing or Conducted activity yet.</p>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
     </section>
   {% else %}
     <p class="flex items-start gap-2 rounded-2xl border border-line bg-white px-4 py-3 text-sm text-slate-700 shadow-card">

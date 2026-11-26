@@ -89,7 +89,7 @@ def _certificate_items(member: TBIMember, filters: dict) -> list[InboxItem]:
         items.append(InboxItem(
             CERTIFICATES, activity.title, f"{reverse('activities:detail', args=[activity.pk])}?tab=certificates",
             _moment(activity.certificates_prepared_at if not count else activity.end_date),
-            activity_id=activity.pk, activity_title=activity.title, detail=detail))
+            activity_id=activity.pk, activity_title=activity.title, detail=detail, extra={"target": activity.pk}))
     return items
 
 
@@ -102,7 +102,7 @@ def _submission_items(member: TBIMember, filters: dict) -> list[InboxItem]:
     return [InboxItem(SUBMISSION, row.title, reverse("approvals:detail", args=[row.pk]), row.submitted_at,
                       who=f"Submitted by {row.submitted_by.name}", activity_id=row.activity_id,
                       activity_title=row.activity.title if row.activity else "",
-                      detail=row.file_extension.upper())
+                      detail=row.file_extension.upper(), extra={"target": row.pk})
             for row in rows.order_by("submitted_at", "pk")[:ITEM_LIMIT]]
 
 
@@ -114,7 +114,7 @@ def _document_items(member: TBIMember, filters: dict) -> list[InboxItem]:
         rows = rows.filter(Q(title__icontains=filters["q"]) | Q(activity__title__icontains=filters["q"]))
     return [InboxItem(DOCUMENT, row.title, reverse("documents:detail", args=[row.pk]), row.uploaded_at,
                       who=f"Uploaded by {row.uploaded_by.name}", activity_id=row.activity_id,
-                      activity_title=row.activity.title, detail=row.document_type.name)
+                      activity_title=row.activity.title, detail=row.document_type.name, extra={"target": row.pk})
             for row in rows[:ITEM_LIMIT]]
 
 

@@ -122,15 +122,15 @@ def test_the_number_and_the_name_link_to_the_preview() -> None:
 
 # --- 459: green --------------------------------------------------------------------------------------------------------
 
-GREEN = "#1F6B3E"
+GREEN = "#1A5C38"
 
 
 def test_the_tokens_are_green_and_the_built_css_follows() -> None:
     source = (BASE / "frontend/tailwind/app.css").read_text(encoding="utf-8")
-    for token, value in (("frame-dark", "#0F4A2C"), ("frame-light", "#3F9A6B"), ("primary", GREEN), ("link", "#1E7244")):
+    for token, value in (("frame-dark", "#0B3D24"), ("frame-light", "#24603F"), ("primary", GREEN), ("link", "#1E6B42")):
         assert re.search(rf"--color-{token}:\s*{value};", source), token
     css = (BASE / "static/css/app.css").read_text(encoding="utf-8").lower()
-    assert "--color-frame-dark:#0f4a2c" in css and "--color-primary:#1f6b3e" in css and "2a4494" not in css
+    assert "--color-frame-dark:#0b3d24" in css and "--color-primary:#1a5c38" in css and "2a4494" not in css
 
 
 def test_the_report_pdfs_excel_and_docx_are_green() -> None:
@@ -152,4 +152,4 @@ def test_the_logo_tiles_are_on_the_dark_green() -> None:
 
     for name in ("favicon-32", "logo-96", "apple-touch-icon-180"):
         with Image.open(BASE / f"static/img/{name}.png") as image:
-            assert image.convert("RGB").getpixel((0, 0)) == (0x0F, 0x4A, 0x2C), name
+            assert image.convert("RGB").getpixel((0, 0)) == (0x0B, 0x3D, 0x24), name

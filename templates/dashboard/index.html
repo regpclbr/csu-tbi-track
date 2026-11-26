@@ -12,7 +12,7 @@ summary line is refreshed with them (hx-swap-oob in _body.html).
 {% endcomment %}
 {# The Dashboard's description is today's date (Manila); its one primary action is top right (ASSUMPTIONS 411). #}
 {% block page_description %}{{ layout.today|long_date }} · Here's what's happening at CSU-TBI{% endblock %}
-{% block page_actions %}{% if page.can_create_activity %}<a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}{% endblock %}
+{% block page_actions %}{% include "approvals/_assign_any.html" with general=general_assign next=request.get_full_path %}{% if page.can_create_activity %}<a href="{% url 'activities:create' %}" class="btn btn-primary">{% include "components/icon.html" with name="plus" class="size-4" %}New activity</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
   {# --- Welcome banner ------------------------------------------------------------------------- #}

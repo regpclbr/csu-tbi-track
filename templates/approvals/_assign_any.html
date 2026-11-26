@@ -1,0 +1,21 @@
+{% comment %}
+The general "Assign work" button and dialog (ASSUMPTIONS 468), on the Dashboard and the Approvals pages:
+{% include "approvals/_assign_any.html" with general=general_assign next=request.get_full_path %}
+`general` = True for a member with can_assign_work (nothing is shown otherwise). The form is loaded when the dialog
+opens (approvals:assign_any, HTMX), so the pages stay fast; without JavaScript the button is a link to the same form on
+its own page. A For-your-approval item opens it with its work chosen: $dispatch('assign-open', {kind, target}).
+{% endcomment %}
+{% if general %}
+<div x-data="{ open(detail) { detail = detail || {}; const query = new URLSearchParams({ next: '{{ next|escapejs }}', kind: detail.kind || '', target: detail.target || '' }); $refs.body.innerHTML = $refs.loading.innerHTML; htmx.ajax('GET', '{% url 'approvals:assign_any' %}?' + query.toString(), { target: $refs.body, swap: 'innerHTML' }); $refs.dialog.showModal(); }, close() { $refs.dialog.close() } }"
+     @assign-open.window="open($event.detail)">
+  <a href="{% url 'approvals:assign_any' %}?next={{ next|urlencode:'' }}" class="btn btn-secondary" x-ref="trigger" @click.prevent="open()" aria-haspopup="dialog" data-assign-any-trigger>
+    {% include "components/icon.html" with name="user-plus" class="size-4" %}Assign work</a>
+  <template x-ref="loading"><p class="flex items-center gap-2 text-sm text-muted" role="status">{% include "components/spinner.html" %} Loading…</p></template>
+  <dialog id="assign-any-dialog" x-ref="dialog" class="modal max-w-xl" aria-labelledby="assign-any-dialog-title" @close="$refs.trigger.focus()" @click.self="close()" data-assign-any-dialog>
+    <div class="p-6">
+      {% include "components/modal_header.html" with id="assign-any-dialog" title="Assign work to a member" %}
+      <div x-ref="body" id="assign-any-body"></div>
+    </div>
+  </dialog>
+</div>
+{% endif %}

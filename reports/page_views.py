@@ -17,15 +17,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from approvals import pages as approval_pages  # the Assign dialog (ASSUMPTIONS 437)
-from accounts.permissions import has_permission, is_htmx, staff_login_required
+from accounts.permissions import is_htmx, staff_login_required
 from activities.models import Activity
 
 from . import hub, pages, services
 from .models import GeneratedReport
-
-
-def _form_context(form: pages.ReportForm) -> dict:
-    return {"form": form, **pages.form_options(pages.today(), form)}
 
 
 def chosen_activity(request: HttpRequest) -> Activity | None:
@@ -75,21 +71,31 @@ def report_list(request: HttpRequest) -> HttpResponse:
 
 @staff_login_required
 @require_POST
-def fill_form(request: HttpRequest) -> HttpResponse:
-    """"Fill in the form" (ASSUMPTIONS 384): services.fill_report_form reads the typed request (same permission as
-    generating a report: PermissionDenied -> 403) and pages.apply_fill puts the checked settings into the form.
-    Nothing is saved. HTMX gets the form part again; without JavaScript the whole page comes back. A refusal is shown
-    under the box (200, so HTMX swaps it in)."""
-    today = pages.today()
-    form = pages.form_from_post(request.POST, today)
+def attendance_form(request: HttpRequest) -> HttpResponse:
+    """Step 2 of "Attendance form" / "Confirmation of Attendance" on the general Reports page (ASSUMPTIONS 467): the
+    activity chosen in the picker. The same rule as the Documents tab's buttons
+    (registrations.attendance_forms.generate_form: can_create_activity or the activity's assignment, PermissionDenied ->
+    403; refused_reason). Back to the Reports page with the kind and the activity chosen, and a message."""
+    from certificates.pdf import ImageUnreadable, NotAPdf
+    from registrations import attendance_forms
+
+    raw = request.POST.get("activity", "")
+    activity = get_object_or_404(Activity.objects.select_related("status"), pk=raw if raw.isdigit() else 0)
+    kind = request.POST.get("kind", "")
+    form_kind = {hub.FORM_ATTENDANCE: attendance_forms.ATTENDANCE, hub.FORM_CONFIRMATION: attendance_forms.CONFIRMATION}
+    if kind not in form_kind:
+        raise Http404("Unknown form.")
     try:
-        pages.apply_fill(form, services.fill_report_form(request.user, form.request_text,
-                                                         current_sections=form.sections), today)
+        document = attendance_forms.generate_form(request.user, activity, form_kind[kind])
+    except attendance_forms.FormError as error:
+        messages.error(request, str(error))
+    except (ImageUnreadable, NotAPdf, OSError):
+        messages.error(request, "The PDF could not be made. Run “python manage.py check_pdf” and try again.")
     except ValidationError as error:
-        form.fill_error = " ".join(error.message_dict.get("request_text", error.messages))
-    if is_htmx(request):
-        return render(request, "reports/_form.html", _form_context(form))
-    return _page(request, form)
+        messages.error(request, " ".join(error.messages))
+    else:
+        messages.success(request, f"“{document.title}” was generated and saved to the documents of {activity.title}.")
+    return redirect(hub.kind_url(kind, None))
 
 
 @staff_login_required

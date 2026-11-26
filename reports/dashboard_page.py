@@ -38,7 +38,7 @@ ATTENTION_TITLES_SHOWN = 2  # activity titles written under a grouped "Needs att
 # difference dE 15); the legend and the text table carry the numbers.
 # ASSUMPTIONS 459: the first colour is the primary green; the old green third slot became the former navy, so no two
 # neighbours look alike (checked for colour blindness, dE >= 15, accounts/tests/test_staff_layout.py).
-CATEGORY_COLORS = ["#1F6B3E", "#5AAFC8", "#2A4494", "#EDC06A", "#8C6BB1", "#6B7686", "#D98B7A", "#C7DCF2"]
+CATEGORY_COLORS = ["#1A5C38", "#5AAFC8", "#2A4494", "#EDC06A", "#8C6BB1", "#6B7686", "#D98B7A", "#C7DCF2"]
 DONUT_STROKE = 7  # the ring's width in the donut's SVG units (circumference 100)
 DONUT_GAP = 1.5  # space between two segments, same units
 

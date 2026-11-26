@@ -110,7 +110,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("POSTGRES_DB", "csu_tbi_track"),
+        # DATABASE_NAME switches Django to another database in the same container (ASSUMPTIONS 464: the user-testing
+        # database csu_tbi_testing), so the development data is never touched; empty = POSTGRES_DB.
+        "NAME": os.environ.get("DATABASE_NAME", "").strip() or os.environ.get("POSTGRES_DB", "csu_tbi_track"),
         "USER": os.environ.get("POSTGRES_USER", "csu_tbi"),
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", ""),
         "HOST": os.environ.get("POSTGRES_HOST", "127.0.0.1"),  # not "localhost": see .env.example
@@ -266,7 +268,9 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # Uploaded files live in MEDIA_ROOT but are NEVER served from MEDIA_URL (not even in DEBUG):
 # documents are downloaded only through documents.views.download_document, which checks the login.
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+# MEDIA_DIR (ASSUMPTIONS 464): another folder for the uploads, e.g. media_testing for the user-testing database, so
+# the real uploads in media\ stay as they are. Relative paths start at the project folder; empty = media.
+MEDIA_ROOT = BASE_DIR / (os.environ.get("MEDIA_DIR", "").strip() or "media")
 
 
 # --- Documents (Step 6) --------------------------------------------------------
@@ -345,7 +349,9 @@ CERTIFICATE_RETRY_MINUTE = 30
 # EMAIL_REAL_SENDING=True. Even with real sending, addresses in EMAIL_BLOCKED_DOMAINS (the demo
 # data) are never really emailed: they are printed instead (config/mail.py).
 EMAIL_REAL_SENDING = env_bool("EMAIL_REAL_SENDING", False)
-EMAIL_BLOCKED_DOMAINS = ["demo.example.com"]
+# example.com / .org / .net (and every subdomain, e.g. demo.example.com) are reserved names (RFC 2606): the demo and
+# user-testing staff accounts use them, so they are never really emailed, even with EMAIL_REAL_SENDING (ASSUMPTIONS 464).
+EMAIL_BLOCKED_DOMAINS = ["example.com", "example.org", "example.net"]
 
 SMTP_MAILER = {
     "BACKEND": "config.mail.GuardedSMTPBackend",
@@ -422,10 +428,6 @@ ASSISTANT_REQUEST_TIMEOUT_SECONDS = 60  # one Gemini request may take at most th
 # One question in total (all rounds, embeddings and retries). The assistant still answers inside the
 # web request, so keep this under the web server's timeout (e.g. gunicorn --timeout 120).
 ASSISTANT_QUESTION_TIMEOUT_SECONDS = 90
-# Reports -> New report, "Describe the report you want" (ASSUMPTIONS 384): Gemini only reads the request.
-REPORT_FORM_FILL_MAX_CHARS = 500  # longest request accepted
-REPORT_FORM_FILL_TIMEOUT_SECONDS = 30  # the whole "Fill in the form" call
-REPORT_FORM_FILL_MAX_PER_HOUR = 30  # per member (config.ratelimit)
 ASSISTANT_TOP_K = 6  # excerpts retrieved per search
 ASSISTANT_MIN_SIMILARITY = 0.55  # cosine similarity below this is "not relevant"
 ASSISTANT_HISTORY_MESSAGES = 6  # earlier chat messages sent as context (3 questions + answers)

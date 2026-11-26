@@ -14,7 +14,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
-from accounts.permissions import is_htmx, staff_login_required
+from accounts.permissions import Permission, has_permission, is_htmx, staff_login_required
 from activities import services as activity_services
 from activities.models import Activity
 from config.json import JsonResponse  # date-times in Manila time
@@ -62,7 +62,9 @@ def dashboard_page(request: HttpRequest) -> HttpResponse:
     activity_services.apply_automatic_statuses()
     page = build_dashboard(request.user, request.GET)
     template = "dashboard/_body.html" if is_htmx(request) else "dashboard/index.html"
-    return render(request, template, {"page_title": "Dashboard", "page": page, "partial": is_htmx(request)})
+    return render(request, template, {"page_title": "Dashboard", "page": page, "partial": is_htmx(request),
+                                      # ASSUMPTIONS 468: the general "Assign work" button (its form loads when opened)
+                                      "general_assign": has_permission(request.user, Permission.ASSIGN_WORK)})
 
 
 @staff_login_required

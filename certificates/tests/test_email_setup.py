@@ -48,7 +48,9 @@ def test_smtp_settings_come_from_env(reload_settings) -> None:
 @pytest.mark.parametrize(
     "address, blocked",
     [("a@demo.example.com", True), ("A@DEMO.Example.com", True), ("x@sub.demo.example.com", True),
-     ("Name <a@demo.example.com>", True), ("a@example.com", False), ("a@notdemo.example.com", False)],
+     ("Name <a@demo.example.com>", True), ("a@example.com", True), ("a@notdemo.example.com", True),
+     ("a@example.org", True), ("a@example.net", True), ("a@gmail.com", False), ("a@myexample.com", False),
+     ("a@example.com.ph", False), ("a@csu.edu.ph", False)],
 )
 def test_blocked_addresses(address, blocked) -> None:
     assert config_mail.is_blocked_address(address) is blocked
@@ -62,8 +64,8 @@ def _guarded_send(monkeypatch) -> tuple[int, list]:
     backend = config_mail.GuardedSMTPBackend(alias="test", host="localhost", port=25)
     messages = [
         EmailMessage("Only demo", "secret link x", "from@example.com", ["a@demo.example.com"]),
-        EmailMessage("Mixed", "x", "from@example.com", ["real@example.com", "b@demo.example.com"]),
-        EmailMessage("Real", "x", "from@example.com", ["c@example.com"]),
+        EmailMessage("Mixed", "x", "from@example.com", ["real@csu.edu.ph", "b@demo.example.com"]),
+        EmailMessage("Real", "x", "from@example.com", ["c@csu.edu.ph"]),
     ]
     return backend.send_messages(messages), sent
 
@@ -72,7 +74,7 @@ def test_guard_sends_real_recipients_and_prints_demo_ones_in_debug(monkeypatch, 
     settings.DEBUG = True
     count, sent = _guarded_send(monkeypatch)
     assert count == 3
-    assert [(m.subject, m.to) for m in sent] == [("Mixed", ["real@example.com"]), ("Real", ["c@example.com"])]
+    assert [(m.subject, m.to) for m in sent] == [("Mixed", ["real@csu.edu.ph"]), ("Real", ["c@csu.edu.ph"])]
     out = capsys.readouterr().out
     assert "Subject: Only demo" in out and "Subject: Mixed" in out and "Subject: Real" not in out
 
@@ -82,7 +84,7 @@ def test_guard_never_prints_demo_emails_without_debug(monkeypatch, capsys, caplo
     with caplog.at_level("INFO", logger="config.mail"):
         count, sent = _guarded_send(monkeypatch)
     assert count == 3  # still handled: the demo-only email counts as done
-    assert [(m.subject, m.to) for m in sent] == [("Mixed", ["real@example.com"]), ("Real", ["c@example.com"])]
+    assert [(m.subject, m.to) for m in sent] == [("Mixed", ["real@csu.edu.ph"]), ("Real", ["c@csu.edu.ph"])]
     assert capsys.readouterr().out == ""  # nothing printed
     assert "2 email(s) to a blocked demo domain were not sent." in caplog.text
     assert "secret link" not in caplog.text and "demo.example.com" not in caplog.text  # no body, no address

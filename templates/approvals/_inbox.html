@@ -22,6 +22,11 @@ document). Nothing is approved from here: the work is checked on its own page fi
           <p class="mt-1 text-xs text-muted">Since <time datetime="{{ item.since|date:'c' }}">{{ item.since|date:"M j, Y" }}</time></p>
         </div>
         <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {% if item.extra.assign_kind %}{# ASSUMPTIONS 468: opens the general Assign dialog with this work chosen #}
+            <button type="button" x-data class="btn btn-ghost btn-sm" data-inbox-assign="{{ item.extra.assign_kind }}"
+                    @click="$dispatch('assign-open', { kind: '{{ item.extra.assign_kind }}', target: '{{ item.extra.target }}' })">
+              {% include "components/icon.html" with name="user-plus" class="size-4" %}Assign<span class="sr-only"> {{ item.title }}</span></button>
+          {% endif %}
           <a href="{{ item.url }}" class="btn btn-secondary btn-sm btn-arrow">Open<span class="sr-only"> {{ item.title }}</span>{% include "components/icon.html" with name="arrow-right" class="size-4" %}</a>
         </div>
       </li>

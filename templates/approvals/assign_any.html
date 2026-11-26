@@ -1,0 +1,7 @@
+{% extends "layouts/app.html" %}
+{% comment %}The general "Assign work" form on its own page (without JavaScript; ASSUMPTIONS 468).{% endcomment %}
+{% block content %}
+<section class="card max-w-2xl p-6" aria-label="Assign work">
+  {% include "approvals/_assign_any_form.html" %}
+</section>
+{% endblock %}

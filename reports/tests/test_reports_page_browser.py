@@ -1,8 +1,9 @@
-﻿"""The one Reports page, the activity's Reports tab and the For payment cards in a real browser (Playwright +
+"""The one Reports page, the activity's Reports tab and the For payment cards in a real browser (Playwright +
 Chromium), ASSUMPTIONS 461-463. Opt-in:
     $env:BROWSER_TESTS = "1"; pytest -n 0 -s reports/tests/test_reports_page_browser.py; Remove-Item Env:BROWSER_TESTS
-At 1366 x 768 and 390 x 844 (touch): the "What do you want to make?" list and every kind's form fit without sideways
-scrolling, the figures form keeps its Generate button and notes reachable, the activity's Reports tab shows only the
+At 1366 x 768 and 390 x 844 (touch): the three steps (ASSUMPTIONS 467) and every kind's form fit without sideways
+scrolling, the figures form keeps its Generate button and notes reachable and Options closed, a report takes three clicks
+from the sidebar (Reports, the kind, Generate), the activity's Reports tab shows only the
 per-activity kinds, and the For payment cards (Documents page and Dashboard) show each activity's own Generate / Upload
 buttons, visible and not covering each other. The clock is fixed (no dependence on today's date)."""
 
@@ -81,12 +82,17 @@ def test_the_reports_page_and_the_activity_tab(live_server, make_member, make_ac
                 if fit["sideways"] or fit["wide"]:
                     problems.append(f"{label} {choice.key}: something scrolls sideways ({fit})")
             page.goto(f"{base}?kind=figures-accomplishment")
-            page.locator("summary", has_text="More settings").first.click()
+            # ASSUMPTIONS 467: step 3 (notes, files) is open; Options (format, sections, filters) starts closed.
             for selector in ("[name='notes']", "[name='report_files']"):
                 field = page.locator(selector).first
                 field.scroll_into_view_if_needed()
                 if not field.is_visible():
                     problems.append(f"{label}: {selector} should be reachable on the figures form")
+            if page.locator("[name='format']").first.is_visible():
+                problems.append(f"{label}: Options should start closed")
+            page.locator("#report-options summary").click()
+            if not page.locator("#report-options [name='included_sections']").first.is_visible():
+                problems.append(f"{label}: Options should open")
             button = page.get_by_role("button", name="Generate").last
             button.scroll_into_view_if_needed()
             if not button.is_visible():
@@ -109,6 +115,48 @@ def test_the_reports_page_and_the_activity_tab(live_server, make_member, make_ac
             fit = page.evaluate(FIT, "#new-report")
             if fit["sideways"] or fit["wide"]:
                 problems.append(f"{label}: the attendance forms overflow ({fit})")
+        browser.close()
+    assert not problems, "\n".join(problems)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_report_takes_three_clicks(live_server, make_member, make_activity, clock, monkeypatch) -> None:
+    """ASSUMPTIONS 467: the sidebar's Reports (1), a kind (2), Generate (3), with the defaults; nothing else to fill in."""
+    from playwright.sync_api import sync_playwright
+
+    from reports import services
+    from reports.models import GeneratedReport, ReportDraft
+
+    clock(timezone.make_aware(datetime(2026, 11, 26, 9, 0)))
+    monkeypatch.setattr(services, "queue_build", lambda report_id: None)
+    from reports import generator
+
+    monkeypatch.setattr(generator, "_queue", lambda version: None)
+    member = make_member("Admin Staff")
+    make_activity("Seaweed Processing Training", start=date(2026, 10, 20))
+    cookie = _cookie(member)
+    monkeypatch.setenv("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
+    problems = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        for label, context in _contexts(browser, live_server, cookie):
+            for kind, model in (("figures-participation", GeneratedReport), ("activity_report", ReportDraft)):
+                before = model.objects.count()
+                page = context.new_page()
+                page.goto(live_server.url + reverse("activities:list"))
+                if label.startswith("390"):  # the sidebar hides behind the menu button on a phone (not counted)
+                    page.get_by_role("button", name="Open the menu").click()
+                page.get_by_role("link", name="Reports", exact=True).first.click()  # click 1
+                page.wait_for_load_state()
+                page.locator(f"[data-kind='{kind}']").click()  # click 2
+                page.wait_for_load_state()
+                button = page.locator("#report-generate")
+                button.scroll_into_view_if_needed()
+                button.click()  # click 3
+                page.wait_for_load_state()
+                if model.objects.count() != before + 1:
+                    problems.append(f"{label} {kind}: three clicks should make the report ({page.url})")
+                page.close()
         browser.close()
     assert not problems, "\n".join(problems)
 
