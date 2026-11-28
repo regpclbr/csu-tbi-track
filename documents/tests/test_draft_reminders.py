@@ -151,11 +151,12 @@ def test_needs_attention_shows_them_on_the_draft(draft, clock) -> None:
     assert attention.attention_counts([activity])[activity.pk] >= 1
 
 
-def test_the_dashboard_numbers_still_leave_drafts_out(draft, clock) -> None:
-    """Owner decision (417): the dashboard's overdue count (S3) and its Needs attention rows stay Scheduled and later."""
+def test_the_dashboard_numbers_count_the_drafts_creation_documents(draft, clock) -> None:
+    """ASSUMPTIONS 472 (owner, replaces 417's "Drafts stay out"): the dashboard's overdue count (S3) and its Needs
+    attention rows count a flagged Draft's Activity Design and Request Letter, like the reminders."""
     draft()
     clock(OVERDUE)
     filters = metrics.ReportFilters(date(2026, 1, 1), date(2026, 12, 31))
-    assert metrics.documents_now(filters)["overdue"] == 0
+    assert metrics.documents_now(filters)["overdue"] == 2
     rows = metrics.document_attention(filters)
-    assert rows["overdue"] == [] and rows["due_soon"] == []
+    assert {row["document_type"] for row in rows["overdue"]} == {DESIGN, REQUEST}

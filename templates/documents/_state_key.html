@@ -1,0 +1,13 @@
+{% comment %}
+The colour key of the document states (ASSUMPTIONS 472): documents.pages.state_key() = the badge colours the checklist
+really uses, plus the red Overdue mark. Shown beside the Documents tab's checklist and on the Dashboard's list.
+{% endcomment %}
+<div class="rounded-2xl border border-line bg-slate-50 px-4 py-3" data-state-key>
+  <h3 class="caption font-semibold text-ink" id="{{ key_id|default:'state-key' }}-title">Colour key</h3>
+  <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-2" aria-labelledby="{{ key_id|default:'state-key' }}-title">
+    {% for state in state_key %}
+      <li class="flex items-center gap-2 text-sm text-slate-700">{% include "components/badge.html" with text=state.label tone=state.tone %}<span>{{ state.meaning }}</span></li>
+    {% endfor %}
+    <li class="flex items-center gap-2 text-sm text-slate-700"><span class="badge badge-danger">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}Overdue</span><span>Past the due date and not approved.</span></li>
+  </ul>
+</div>

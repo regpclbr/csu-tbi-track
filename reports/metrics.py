@@ -957,6 +957,18 @@ def _overdue(document_type: DocumentType, today: date) -> Q:
     return late
 
 
+def _counted_activities(document_type: DocumentType) -> Q:
+    """Which activities S3 and the dashboard's document rows look at for this type: every non-Draft activity, and
+    (ASSUMPTIONS 472, owner) a Draft created with its creation documents for its Activity Design and Request Letter,
+    which are due 5 days before the start like on a Scheduled activity. The reminders' scope
+    (documents.services.send_document_reminders, is_creation_type)."""
+    scope = ~Q(status__name=ActivityStatus.DRAFT)
+    if (document_type.is_active and document_type.is_required
+            and document_type.name in settings.DOCUMENT_TYPES_REQUIRED_AT_CREATION):
+        scope |= Q(creation_documents_required=True)
+    return scope
+
+
 def _all_approved(types: list[DocumentType]) -> Q:
     condition = Q()
     for document_type in types:
@@ -1038,14 +1050,16 @@ def upcoming_activities(filters: ReportFilters, now: datetime | None = None) -> 
 
 
 def documents_now(filters: ReportFilters, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
-    """S3: overdue (activity, required type) pairs in non-Draft activities (the reminder rule);
+    """S3: overdue (activity, required type) pairs (the reminder rule: non-Draft activities, and the creation documents
+    of a Draft created with them, _counted_activities, ASSUMPTIONS 472);
     S4: activity documents waiting for a reviewer, and returned to the uploader."""
     types = required_document_types() if types is None else types
     overdue = 0
     if types:
-        activities = _of_type(Activity.objects.exclude(status__name=ActivityStatus.DRAFT), filters)
+        activities = _of_type(Activity.objects.all(), filters)
         today = today_in_manila(now)
-        counts = activities.aggregate(**{f"overdue_{t.pk}": Count("pk", filter=_overdue(t, today)) for t in types})
+        counts = activities.aggregate(**{f"overdue_{t.pk}": Count("pk", filter=_overdue(t, today) & _counted_activities(t))
+                                         for t in types})
         overdue = sum(counts.values())
     review = _of_type(Document.objects.activity_documents(), filters, "activity__activity_type_id").aggregate(
         waiting=Count("pk", filter=Q(status__status_name=DocumentStatus.FOR_REVIEW, reviewed_at__isnull=True)),
@@ -1055,8 +1069,8 @@ def documents_now(filters: ReportFilters, now: datetime | None = None, types: li
 
 
 def document_attention(filters: ReportFilters, now: datetime | None = None, types: list[DocumentType] | None = None) -> dict:
-    """The dashboard's "Needs attention" document rows, as (activity, required type) pairs in non-Draft
-    activities of the type filter:
+    """The dashboard's "Needs attention" document rows, as (activity, required type) pairs in the activities S3 looks at
+    (_counted_activities: non-Draft, plus a flagged Draft's creation documents, ASSUMPTIONS 472) of the type filter:
     - "overdue": exactly the pairs S3 counts (past the due date, nothing Approved);
     - "due_soon": the "due soon" reminder rule (documents.services._reminder_kind): nothing uploaded
       and due within DOCUMENT_REMINDER_DAYS_BEFORE days (the due date itself included).
@@ -1065,7 +1079,7 @@ def document_attention(filters: ReportFilters, now: datetime | None = None, type
     types = required_document_types() if types is None else types
     today = today_in_manila(now)
     days_before = settings.DOCUMENT_REMINDER_DAYS_BEFORE
-    activities = _of_type(Activity.objects.exclude(status__name=ActivityStatus.DRAFT), filters)
+    activities = _of_type(Activity.objects.all(), filters)
     overdue, due_soon = [], []
     for document_type in types:
         reference, offset = document_type.due_reference, document_type.due_offset_days
@@ -1076,7 +1090,7 @@ def document_attention(filters: ReportFilters, now: datetime | None = None, type
         }) & ~Q(_uploaded(document_type)) & _applies(document_type) & _counts_now(document_type)
         late = _overdue(document_type, today)
         rows = (
-            activities.filter(late | soon)
+            activities.filter((late | soon) & _counted_activities(document_type))
             .annotate(is_overdue=ExpressionWrapper(late, output_field=BooleanField()), uploaded=_uploaded(document_type))
             .values("activity_id", "title", "start_date", "end_date", "is_overdue", "uploaded")
         )

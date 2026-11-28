@@ -3261,3 +3261,36 @@ Evaluation Summary (items 441 onwards).
      no `qcluster` (or `runserver`) on Windows against `csu_tbi_testing` (two workers would take the same tasks and write
      files to two places). Mock data: `uat exec web python manage.py seed_defense --yes-this-is-a-test-database`.
      docs/DEPLOY.md "Testing site (shared database server)"; tests in `config/tests/test_deploy_files.py`.
+
+472. **Documents to follow up, Drafts in the overdue count, the colour key, returned files checked again** (owner,
+     2026-11-28; no database, migration or ERD change).
+     - **Colour key:** the Documents tab's "Required documents" card shows the four states with the badge colours the
+       checklist really uses (`documents.pages.state_key()`: Missing grey, Waiting for review blue, Returned amber,
+       Approved green) and the red Overdue mark, one line each (`documents/_state_key.html`). The Dashboard's list
+       shows the same key.
+     - **Drafts in the overdue count:** S3 ("documents overdue") and the Dashboard's Needs attention document rows now
+       look at the same activities as the reminders (417): every non-Draft activity AND a Draft created with its
+       creation documents, for its Activity Design and Request Letter only (`metrics._counted_activities`; same in
+       `documents.services.counts_for_follow_up`). Old Drafts (creation_documents_required False) and a Draft's other
+       types still never count. The compliance report (Conducted activities only) and the Documents page's "Missing"
+       card are unchanged.
+     - **One list on the Dashboard:** "Documents to follow up" (`documents.services.documents_to_follow_up`, display
+       `reports.dashboard_page.documents_card`, template `dashboard/_documents_card.html`): every activity's missing
+       required documents (nothing uploaded, counting now: a payment document only once Conducted, in the scope above)
+       and every document waiting for review or returned, in one list built from `document_checklist()`'s rule
+       (`activity_document_overview`), overdue first, then the oldest due date. Filters: activity (the activities in
+       the list) and status (Missing / Waiting for review / Returned, with counts); unknown values are ignored. The
+       filters reload only the card (`reports:dashboard_documents`, HTMX; without JavaScript the Dashboard opens at the
+       card). It respects the Dashboard's activity type, not its date range (a "now" list). Missing -> Upload (the
+       activity's upload form with the type chosen); waiting -> Open; returned -> Replace (the document page). Nothing
+       is approved from the list. Any active staff member sees it.
+     - **Returned or unapproved: upload or replace again, checked again:** the Director (can_approve_documents) may now
+       unapprove ANY approved activity document, also an approved copy (432) (`unapprove_refused_reason`; still never
+       certificate evidence or a document an AI answer cites). It becomes Returned and the uploader is told. A
+       replacement of a waiting or returned document always waits for the Director's check (`replace_document_file`:
+       For Review stays in review; the approvers are notified), whatever the type's needs_review says, so a waiting file
+       cannot become an approved copy by being replaced again. While an activity has a document of a type that is
+       waiting or returned (`in_review_again`), a NEW upload of that type waits for the check too; once none is left,
+       uploads of a type without review are approved copies again. Approve / Return are offered for every waiting
+       document (`allowed_actions`, no longer only for reviewed types). Submissions to the Director already worked this
+       way (return / unapprove -> "Submit again" with a new file -> waiting again) and are unchanged.

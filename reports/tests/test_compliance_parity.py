@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from activities.models import Activity, ActivityStatus
 from documents.models import DocumentStatus, DocumentType
-from documents.services import document_checklist
+from documents.services import counts_for_follow_up, document_checklist
 from reports import metrics
 
 pytestmark = pytest.mark.django_db
@@ -118,10 +118,12 @@ def test_sql_matches_the_checklist_for_activities_created_with_documents(created
             for item in sorted(document_checklist(activity, now)["required"], key=lambda item: item.document_type.name)
         ]
         assert [(i["document_type"], i["state"], i["is_overdue"]) for i in sql[activity.pk]["items"]] == expected, activity.title
+    # ASSUMPTIONS 472: a Draft created with its creation documents counts its Activity Design and Request Letter.
     expected_overdue = sum(
         item.is_overdue
-        for activity in created_with_documents.exclude(status__name=ActivityStatus.DRAFT)
+        for activity in created_with_documents
         for item in document_checklist(activity, now)["required"]
+        if counts_for_follow_up(activity, item.document_type)
     )
     filters = metrics.ReportFilters(date(2026, 1, 1), date(2026, 12, 31))
     assert metrics.documents_now(filters, now)["overdue"] == expected_overdue
@@ -134,4 +136,7 @@ def test_waiting_files_are_overdue_only_on_the_old_activity(created_with_documen
     overdue = {(row["title"], row["document_type"]) for row in metrics.document_attention(
         metrics.ReportFilters(date(2026, 1, 1), date(2026, 12, 31)), now)["overdue"]}
     assert ("Old, waiting", "Activity Design") in overdue and ("Old, waiting", "Request Letter") in overdue
-    assert not any(title.startswith("New") and name in ("Activity Design", "Request Letter") for title, name in overdue)
+    assert not any(title in ("New, waiting", "New, approved") and name in ("Activity Design", "Request Letter")
+                   for title, name in overdue)
+    # ASSUMPTIONS 472: the flagged Draft with nothing uploaded now counts (due Oct 20, start - 5)
+    assert ("New Draft, nothing", "Activity Design") in overdue and ("New Draft, nothing", "Request Letter") in overdue

@@ -62,13 +62,24 @@ def test_unapprove_needs_a_reason_and_the_flag(approved_document, director, head
     assert Document.objects.get(pk=approved_document.pk).review_state == Document.APPROVED
 
 
-def test_an_approved_copy_is_never_unapproved(upload, view_only, director, scheduled, doc_type) -> None:
+def test_an_approved_copy_is_unapproved_and_its_new_file_is_checked_again(upload, view_only, director, scheduled,
+                                                                          doc_type) -> None:
+    """ASSUMPTIONS 472 (owner): the Director returns an approved copy; the uploader's replacement waits for the check."""
     DocumentType.objects.filter(pk=doc_type.pk).update(needs_review=False)
     copy = upload(view_only, scheduled, document_type=DocumentType.objects.get(pk=doc_type.pk))
     assert services.is_approved_copy(copy)
-    assert services.allowed_actions(director, copy)["unapprove"] is False
-    with pytest.raises(services.DocumentError, match="approved copy"):
-        services.unapprove_document(director, copy, "No")
+    assert services.allowed_actions(director, copy)["unapprove"] is True
+    copy = services.unapprove_document(director, copy, "Unsigned copy", now=TEST_NOW)
+    assert copy.review_state == Document.RETURNED and services.allowed_actions(view_only, copy)["replace"]
+    Notification.objects.all().delete()
+    copy = services.replace_document_file(view_only, copy, make_file("signed.pdf"))
+    copy.refresh_from_db()
+    assert copy.review_state == Document.WAITING_FOR_REVIEW and not services.is_approved_copy(copy)
+    assert Notification.objects.filter(type=Notification.DOCUMENT_WAITING_FOR_REVIEW, member=director).exists()
+    actions = services.allowed_actions(director, copy)
+    assert actions["approve"] and actions["return"]
+    services.approve_document(director, copy)
+    assert Document.objects.get(pk=copy.pk).review_state == Document.APPROVED
 
 
 def test_a_cited_document_is_not_unapproved(approved_document, director) -> None:

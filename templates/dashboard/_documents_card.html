@@ -1,0 +1,65 @@
+{% comment %}
+"Documents to follow up" (ASSUMPTIONS 472): reports.dashboard_page.documents_card = documents.services.documents_to_follow_up,
+every activity's missing, waiting and returned documents in one list, filtered by activity and state. The filters
+reload only this card (reports:dashboard_documents, HTMX); without JavaScript the form opens the Dashboard again.
+Nothing is counted or decided here.
+{% endcomment %}
+<section id="documents-follow-up" class="card scroll-mt-24 p-6 xl:col-span-2 xl:row-start-8" aria-labelledby="follow-up-title" data-follow-up-card>
+  <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0 grow basis-64">
+      <h2 id="follow-up-title" class="card-title flex items-center gap-2">{% include "components/icon.html" with name="file-check" class="size-5 text-primary" %}Documents to follow up</h2>
+      <p class="mt-1 text-sm text-muted">Missing required documents and files waiting for the Director's check or returned, for every activity.</p>
+    </div>
+    <form method="get" action="{% url 'home' %}" class="flex flex-wrap items-end gap-3"
+          hx-get="{% url 'reports:dashboard_documents' %}" hx-target="#documents-follow-up" hx-swap="outerHTML"
+          hx-trigger="change" hx-indicator="#follow-up-loading">
+      <input type="hidden" name="activity_type" value="{{ activity_type|default_if_none:'' }}">
+      <div class="min-w-0">
+        <label for="docs-activity" class="caption font-semibold text-ink">Activity</label>
+        <select id="docs-activity" name="docs_activity" class="field-input field-select mt-2 w-auto max-w-full">
+          <option value="">All activities</option>
+          {% for activity in card.activities %}<option value="{{ activity.pk }}"{% if activity.pk == card.chosen_activity %} selected{% endif %}>{{ activity.title|truncatechars:60 }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="min-w-0">
+        <label for="docs-state" class="caption font-semibold text-ink">Status</label>
+        <select id="docs-state" name="docs_state" class="field-input field-select mt-2 w-auto">
+          <option value="">All statuses</option>
+          {% for key, label, count in card.states %}<option value="{{ key }}"{% if key == card.chosen_state %} selected{% endif %}>{{ label }} ({{ count }})</option>{% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-secondary">Apply</button></noscript>
+      <span id="follow-up-loading" class="htmx-indicator items-center gap-2 text-sm text-muted">{% include "components/spinner.html" %} Updating…</span>
+    </form>
+  </div>
+
+  {% if card.lines %}
+    <div class="mb-4">{% include "documents/_state_key.html" with state_key=card.state_key key_id="follow-up-key" %}</div>
+    <ul class="space-y-2" x-data="{ all: false }">
+      {% for line in card.lines %}{% with row=line.row %}
+        <li class="hover-row flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 {% if row.is_overdue %}border-danger-line bg-danger-soft/60{% else %}border-line bg-white{% endif %}"
+            {% if forloop.counter > card.shown %}x-show="all" x-cloak{% endif %} data-follow-up-row="{{ row.state }}">
+          <div class="min-w-0 grow basis-64 [overflow-wrap:anywhere]">
+            <p class="font-semibold text-ink">{{ row.document_type.name }}{% if row.document %} · <span class="font-normal">{{ row.document.title }}</span>{% endif %}</p>
+            <p class="mt-1 text-sm text-muted"><a href="{% url 'activities:detail' row.activity.pk %}?tab=documents" class="link">{{ row.activity.title }}</a> · {{ row.activity.status.name }}{% if row.due_date %} · due {{ row.due_date|date:"M j, Y" }}{% endif %}{% if row.document %} · uploaded by {{ row.document.uploaded_by.name }}{% endif %}</p>
+          </div>
+          <div class="ml-auto flex flex-wrap items-center gap-2">
+            {% include "components/badge.html" with text=line.label tone=line.tone %}
+            {% if row.is_overdue %}<span class="badge badge-danger">{% include "components/icon.html" with name="triangle-alert" class="size-3.5" %}Overdue</span>{% endif %}
+            <a href="{{ line.url }}" class="btn btn-secondary btn-sm">{{ line.action }}<span class="sr-only"> {{ row.document_type.name }} of {{ row.activity.title }}</span></a>
+          </div>
+        </li>
+      {% endwith %}{% endfor %}
+      {% if card.hidden %}
+        <li class="pt-1 text-center">
+          <button type="button" class="link text-sm" @click="all = !all" :aria-expanded="all.toString()"
+                  x-text="all ? 'Show fewer' : 'Show {{ card.hidden }} more'">Show {{ card.hidden }} more</button>
+        </li>
+      {% endif %}
+    </ul>
+  {% elif card.total %}
+    {% include "components/empty_state.html" with icon="search" title="Nothing matches these filters" text="Choose another activity or status, or All." compact=True %}
+  {% else %}
+    {% include "components/empty_state.html" with icon="circle-check" title="Nothing to follow up" text="Every required document is uploaded and nothing waits for the Director's check." compact=True %}
+  {% endif %}
+</section>

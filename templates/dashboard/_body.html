@@ -154,6 +154,9 @@ next activity (beside the welcome banner, a filled block like the banner: ASSUMP
 </section>
 {% endif %}
 
+{# --- Documents to follow up (ASSUMPTIONS 472): every activity's missing / waiting / returned documents in one list --- #}
+{% include "dashboard/_documents_card.html" with card=page.documents activity_type=page.filters.activity_type_id %}
+
 {% with next=page.next_activity %}
 {# --- Spotlight beside the banner: "Happening now" or "Next activity" (reports.services.dashboard_spotlight) --- #}
 {% if next %}

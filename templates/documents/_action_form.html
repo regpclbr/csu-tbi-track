@@ -23,8 +23,9 @@ moves to it); success answers HX-Redirect. Without JavaScript it is a normal POS
     {% if errors.reason %}<p id="return-reason-error" class="field-error">{{ errors.reason }}</p>{% endif %}
   {% elif action == "unapprove" %}
     <ul class="mb-4 list-disc space-y-1 pl-6 text-sm text-slate-700">
-      <li>It goes back to Returned: {{ document.uploaded_by.name }} is told the reason and replaces the file.</li>
-      <li>It counts as not done in the checklist again (it can become overdue) and the AI Assistant stops using it.</li>
+      <li>It goes back to Returned: {{ document.uploaded_by.name }} is told the reason and replaces the file (or uploads a new one).</li>
+      <li>The new file waits for your check again before it counts as approved, also for a type that is normally saved as an approved copy.</li>
+      <li>It counts as not done in the checklist again (it can become overdue); the AI Assistant shows it as Returned.</li>
     </ul>
     <label for="unapprove-reason" class="text-sm font-semibold text-ink">Reason <span class="text-danger" aria-hidden="true">*</span></label>
     <textarea id="unapprove-reason" name="reason" rows="3" maxlength="{{ reason_max }}" required autofocus class="field-input mt-2"

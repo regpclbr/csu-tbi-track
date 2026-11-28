@@ -10,7 +10,7 @@ import json
 
 from django.core.exceptions import ValidationError
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_http_methods
 
@@ -21,7 +21,7 @@ from config.json import JsonResponse  # date-times in Manila time
 
 from . import services
 from .content import range_in_words
-from .dashboard_page import build_dashboard
+from .dashboard_page import build_dashboard, documents_card
 from .models import GeneratedReport
 
 
@@ -65,6 +65,18 @@ def dashboard_page(request: HttpRequest) -> HttpResponse:
     return render(request, template, {"page_title": "Dashboard", "page": page, "partial": is_htmx(request),
                                       # ASSUMPTIONS 468: the general "Assign work" button (its form loads when opened)
                                       "general_assign": has_permission(request.user, Permission.ASSIGN_WORK)})
+
+
+@staff_login_required
+@require_GET
+def dashboard_documents(request: HttpRequest) -> HttpResponse:
+    """The Dashboard's "Documents to follow up" card alone (ASSUMPTIONS 472), for its two filters (HTMX). Without HTMX
+    the same filters open the whole Dashboard at the card."""
+    if not is_htmx(request):
+        return redirect(f"{reverse('home')}?{request.GET.urlencode()}#documents-follow-up")
+    raw_type = request.GET.get("activity_type", "")
+    card = documents_card(request.GET, int(raw_type) if raw_type.isdigit() else None)
+    return render(request, "dashboard/_documents_card.html", {"card": card, "activity_type": raw_type})
 
 
 @staff_login_required

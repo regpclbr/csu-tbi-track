@@ -127,6 +127,7 @@ class DashboardPage:
     approvals: dict | None = None  # the "For your approval" card (approvals.inbox, ASSUMPTIONS 437); None = approves nothing
     payment: list = field(default_factory=list)  # "For payment (Supply Office)", one card per activity (ASSUMPTIONS 463)
     payment_total: int = 0
+    documents: dict = field(default_factory=dict)  # "Documents to follow up" (documents_card, ASSUMPTIONS 472)
 
     attention_shown: int = ATTENTION_SHOWN
 
@@ -228,6 +229,7 @@ def build_dashboard(member: TBIMember, params: dict, now: datetime | None = None
         approvals=approvals_card(member),
         assigned=assigned_card(member),
         **payment_card(member, now),
+        documents=documents_card(params, filters.activity_type_id, now),
     )
 
 
@@ -242,6 +244,57 @@ def payment_card(member: TBIMember, now: datetime | None = None) -> dict:
 
     rows = payment_missing(now)
     return {"payment": payment_cards(member, rows[:PAYMENT_SHOWN]), "payment_total": len(rows)}
+
+
+FOLLOW_UP_SHOWN = 8  # rows shown before "Show N more" on the Dashboard's "Documents to follow up"
+
+
+def documents_card(params, activity_type_id: int | None = None, now: datetime | None = None) -> dict:
+    """ASSUMPTIONS 472: the Dashboard's "Documents to follow up" (documents.services.documents_to_follow_up: every
+    activity's missing, waiting and returned documents in one list), with its two filters from the GET parameters
+    `docs_activity` (an activity in the list) and `docs_state` (Missing / Waiting for review / Returned). Unknown values
+    are ignored. Display only: the rows and their states come from the service."""
+    from documents import pages as document_pages
+    from documents.models import Document
+    from documents.services import FOLLOW_UP_STATES, MISSING_STATE, documents_to_follow_up
+
+    labels = {MISSING_STATE: document_pages.MISSING_LABEL, **document_pages.STATE_LABELS}
+    rows = documents_to_follow_up(now, activity_type_id)
+    activities = list({row.activity.pk: row.activity for row in rows}.values())
+    activities.sort(key=lambda activity: (activity.title.lower(), activity.pk))
+    raw_activity = str(params.get("docs_activity", "") or "")
+    chosen_activity = int(raw_activity) if raw_activity.isdigit() else None
+    if chosen_activity not in {activity.pk for activity in activities}:
+        chosen_activity = None
+    chosen_state = params.get("docs_state", "") or ""
+    if chosen_state not in FOLLOW_UP_STATES:
+        chosen_state = ""
+    counts = {state: sum(1 for row in rows if row.state == state
+                         and (chosen_activity is None or row.activity.pk == chosen_activity)) for state in FOLLOW_UP_STATES}
+    shown = [row for row in rows if (chosen_activity is None or row.activity.pk == chosen_activity)
+             and (not chosen_state or row.state == chosen_state)]
+    lines = []
+    for row in shown:
+        label, tone = labels[row.state]
+        if row.document is None:  # Missing: straight to the upload form with the type chosen
+            url = (f"{reverse('activities:detail', args=[row.activity.pk])}?"
+                   f"{urlencode({'tab': 'documents', 'type': row.document_type.pk})}#upload")
+            action = "Upload"
+        else:
+            url = f"{reverse('documents:detail', args=[row.document.pk])}?{urlencode({'next': reverse('home')})}"
+            action = "Replace" if row.state == Document.RETURNED else "Open"
+        lines.append({"row": row, "label": label, "tone": tone, "url": url, "action": action})
+    return {
+        "lines": lines,
+        "total": len(rows),
+        "hidden": max(0, len(lines) - FOLLOW_UP_SHOWN),
+        "shown": FOLLOW_UP_SHOWN,
+        "activities": activities,
+        "states": [(state, labels[state][0], counts[state]) for state in FOLLOW_UP_STATES],
+        "chosen_activity": chosen_activity,
+        "chosen_state": chosen_state,
+        "state_key": document_pages.state_key(),
+    }
 
 
 def assigned_card(member: TBIMember) -> list[dict]:

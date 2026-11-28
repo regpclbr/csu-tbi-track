@@ -33,6 +33,20 @@ MISSING_LABEL = ("Missing", "neutral")
 REVIEW_STATE_CHOICES = [(key, label) for key, (label, _) in STATE_LABELS.items()]
 
 
+def state_key() -> list[dict]:
+    """The colour key beside the checklist (ASSUMPTIONS 472): the four states with the badge colours they really use
+    (MISSING_LABEL / STATE_LABELS, never a second list of colours) and one line on what each means."""
+    meanings = {
+        MISSING_LABEL[0]: "Nothing uploaded yet.",
+        STATE_LABELS[Document.WAITING_FOR_REVIEW][0]: "Uploaded, waiting for the Director's check.",
+        STATE_LABELS[Document.RETURNED][0]: "Sent back: replace the file.",
+        STATE_LABELS[Document.APPROVED][0]: "Done: it counts as complete.",
+    }
+    states = [MISSING_LABEL, STATE_LABELS[Document.WAITING_FOR_REVIEW], STATE_LABELS[Document.RETURNED],
+              STATE_LABELS[Document.APPROVED]]
+    return [{"label": label, "tone": tone, "meaning": meanings[label]} for label, tone in states]
+
+
 def state_badge(document: Document) -> dict:
     label, tone = STATE_LABELS[document.review_state]
     return {"label": label, "tone": tone}
@@ -181,6 +195,7 @@ def documents_tab(request: HttpRequest, activity: Activity, upload: UploadForm |
     )
     return {
         "today": checklist["today"],
+        "state_key": state_key(),
         "required": required,
         "payment": payment,
         "payment_packet": {  # "Download payment packet": the reason replaces the button while refused

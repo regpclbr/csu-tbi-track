@@ -397,8 +397,9 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
 - Draft reminders (417): `send_document_reminders` also covers flagged Drafts, ONLY their Activity Design and Request Letter
   (`is_creation_type`), same rule and timing, to the creator AND every active Director
   (`notifications.services.active_directors`); Scheduled and later stay creator-only; other types / unflagged Drafts get none.
-  Needs attention (`activities.attention`) already shows them on Drafts. The dashboard (S3, `document_attention`) and the
-  compliance report keep leaving Drafts out.
+  Needs attention (`activities.attention`) already shows them on Drafts. Since ASSUMPTIONS 472 the dashboard's S3 and
+  `document_attention` count them too (`metrics._counted_activities` = the reminders' scope; `documents.services.
+  counts_for_follow_up` the same in Python); the compliance report and the Documents page's Missing card still leave Drafts out.
 - An upload of a type WITH needs_review waits for the Director (`notify_approvers`, in-app only, never the uploader); the
   Director may approve their own upload (ASSUMPTIONS 344, 406, 432). Other uploads are approved copies (no notification).
 - New activities (the form) with both documents: `create_activity_with_documents` → `change_status` in the same
@@ -439,6 +440,10 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   `PAYMENT_GENERATE_KINDS`; only opens the Reports page with activity + kind) else "Upload". The Evaluation Summary is NOT a
   payment document. Shown: Dashboard card (`dashboard_page.payment_card`, `PAYMENT_SHOWN` 4), Documents `?view=payment`,
   Generate buttons in the activity's payment group. The Dashboard's Needs attention has ONE payment line → that view.
+- Documents to follow up (ASSUMPTIONS 472): ONE Dashboard list of every activity's missing / waiting / returned documents
+  (`documents.services.documents_to_follow_up`, from `activity_document_overview`; display `dashboard_page.documents_card`,
+  filters `docs_activity` / `docs_state`, HTMX `reports:dashboard_documents`). The colour key (`documents.pages.state_key`,
+  `documents/_state_key.html`) sits beside the Documents tab's checklist and on that list.
 - `send_document_reminders()` creates NOTIFICATIONs; the partial unique constraint
   `unique_document_reminder` guarantees one per (member, activity, document type, type).
   Scheduled with `setup_schedules` (idempotent), run by `qcluster`.
@@ -538,8 +543,10 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
 - Unapprove (reason, notification, History): `certificates.services.unapprove_activity_certificates` (only while nothing
   is Issued; Approved -> waiting, PDFs removed), `approvals.services.unapprove_submission` (signed copy and saved document
   removed with the documents' guards, refused = nothing changes), `documents.services.unapprove_document` (chunks kept
-  since ASSUMPTIONS 438; needs_review
-  types only; never approved copies, evidence or a cited document; chunks removed).
+  since ASSUMPTIONS 438; any Approved activity document, approved copies too since 472; never evidence or a cited document).
+- Returned / unapproved documents are checked again (ASSUMPTIONS 472): replacing a For Review document always waits for
+  the Director (`replace_document_file`), and while a type is waiting or returned on an activity (`in_review_again`) a new
+  upload of it waits too, also for a type without needs_review. Approve / Return are offered for every waiting document.
 - Editing others' work: `documents.services.rename_document` (uploader or can_approve_documents, History), the Director may
   replace / delete others' waiting documents (`_may_change`), every form field change is a History row
   (`registrations.services._form_history`).
@@ -1237,6 +1244,9 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
 - Testing fixes (2026-11-24): time boxes typed freely (11:00, 1100, 1:30, 130, 9), tidied on leaving, AM/PM never
   overwritten; uploads are approved copies (DOCUMENT_TYPE.needs_review, default off), replace / delete by the uploader or
   the Director, History + audit (432). Database: documents 0008 (column) + 0009 (data). ERD: DOCUMENT_TYPE.needs_review.
+- Documents follow-up (2026-11-28, owner): colour key beside the checklist, flagged Drafts in the overdue count, one
+  Dashboard list of missing / waiting / returned documents with activity and status filters, returned or unapproved
+  documents (approved copies too) checked again after a new upload or replace (472). No database change, no migration.
 - Letterhead and defense data (2026-11-26, owner): the CSU letterhead on every office-style PDF, sample line on by
   default, F. Overall Assessment, budget in words (469); `seed_defense` (invented year of data, letterhead documents,
   `@demo.example.com`, only with the flag on a "test" / "demo" database) (470); the testing site on the shared database

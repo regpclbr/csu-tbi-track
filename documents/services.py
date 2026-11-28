@@ -314,7 +314,10 @@ def upload_document(
         raise ValidationError(problems)
     title = (title or "").strip() or document_type.name
 
-    reviewed = needs_review(document_type, related_certificate) and approved_by is None
+    # ASSUMPTIONS 472: while the Director has a document of this type returned (or unapproved) on this activity, a new
+    # upload of the type is checked again too, even when the type itself is not reviewed.
+    reviewed = approved_by is None and (needs_review(document_type, related_certificate)
+                                        or (related_certificate is None and in_review_again(activity, document_type)))
     document = Document(
         activity=activity,
         document_type=document_type,
@@ -348,6 +351,15 @@ def upload_document(
         _delete_stored_file(document.file_path.name)  # don't leave an orphan file behind
         raise
     return document
+
+
+def in_review_again(activity: Activity, document_type: DocumentType) -> bool:
+    """ASSUMPTIONS 472 (owner): the Director returned or unapproved a document of this type on this activity and it is
+    not approved again yet (a For Review activity document of the type). Uploads and replacements of the type then wait
+    for the Director's check, also for a type without review (approved copies)."""
+    return (Document.objects.activity_documents()
+            .filter(activity=activity, document_type=document_type, status__status_name=DocumentStatus.FOR_REVIEW)
+            .exists())
 
 
 OTHER_TITLE_REQUIRED = "Give this document a title, for example: MOA with ABC Corp."
@@ -694,9 +706,9 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
     """Replace the file of a document: the uploader of a For Review document (usually after it was returned), or the
     uploader or a member with can_approve_documents for an approved copy (ASSUMPTIONS 432).
 
-    Same row, title and type. An approved copy (or a waiting / returned document whose type no longer needs review)
-    stays / becomes Approved by System; a reviewed type clears reviewed_by/reviewed_at, so it waits for a reviewer
-    again. Either way the assistant chunks are removed and it is indexed again (ASSUMPTIONS 438), and a "Read this scan
+    Same row, title and type. An approved copy stays Approved by System; a waiting or returned document (also of a type
+    without review that the Director returned or unapproved, ASSUMPTIONS 472) clears reviewed_by/reviewed_at, so it
+    waits for the Director's check again and the approvers are told. Either way the assistant chunks are removed and it is indexed again (ASSUMPTIONS 438), and a "Read this scan
     with AI" tick is cleared. History + documents.audit for every replace.
     The old file is deleted only after the change is saved.
     """
@@ -709,7 +721,8 @@ def replace_document_file(member: TBIMember, document: Document, file: UploadedF
     with transaction.atomic():
         document = _locked(document)
         _ensure_can_change(member, document, "replace")
-        reviewed = needs_review(document.document_type, document.related_certificate)
+        # For Review (waiting or returned) = checked again (ASSUMPTIONS 472); only an approved copy stays approved.
+        reviewed = document.status.status_name == DocumentStatus.FOR_REVIEW
         old_name = document.file_path.name
         _save_file(document, file, extension, now)
         document.ai_scan_allowed_by = document.ai_scan_allowed_at = None  # a new file needs a new tick (ASSUMPTIONS 438)
@@ -845,8 +858,6 @@ def return_document(member: TBIMember, document: Document, reason: str, now: dat
 
 # --- Unapprove and rename (ASSUMPTIONS 437) -------------------------------------------------------
 
-UNAPPROVE_COPY_REFUSED = ("This is an approved copy (its type is not reviewed): replace or delete it instead of "
-                          "unapproving it.")
 UNAPPROVE_EVIDENCE_REFUSED = "Certificate evidence keeps its own review flow and cannot be unapproved here."
 UNAPPROVE_NOT_APPROVED = "Only an approved document can be unapproved."
 UNAPPROVE_CITED = ("An AI Assistant answer cites this document, so its approval cannot be taken back. Ask the uploader "
@@ -855,15 +866,14 @@ UNAPPROVED_HISTORY = "unapproved (returned to the uploader)"
 
 
 def unapprove_refused_reason(document: Document) -> str | None:
-    """Why the approval of `document` cannot be taken back, or None (the one rule). Only an Approved activity document
-    of a type that needs review; never an approved copy (replace / delete it), never certificate evidence, never a
-    document an AI answer cites (the answer's sources would point at an unapproved file)."""
+    """Why the approval of `document` cannot be taken back, or None (the one rule). Any Approved activity document: since
+    ASSUMPTIONS 472 (owner) also an approved copy, which the Director returns this way so that the uploader's new file
+    is checked again. Never certificate evidence, never a document an AI answer cites (the answer's sources would point
+    at an unapproved file)."""
     if document.related_certificate_id is not None:
         return UNAPPROVE_EVIDENCE_REFUSED
     if document.status.status_name != DocumentStatus.APPROVED:
         return UNAPPROVE_NOT_APPROVED
-    if not needs_review(document.document_type):
-        return UNAPPROVE_COPY_REFUSED
     if _cited(document):
         return UNAPPROVE_CITED
     return None
@@ -880,10 +890,10 @@ def clean_reason(reason: str, field: str = "reason") -> str:
 
 
 def unapprove_document(member: TBIMember, document: Document, reason: str, now: datetime | None = None) -> Document:
-    """Take back the approval of a document of a type that needs review (can_approve_documents, a reason required):
-    it becomes Returned (For Review, reviewed_by = this member, reviewed_at = now), so it counts as not done in the
+    """Take back the approval of a document, also an approved copy (ASSUMPTIONS 472; can_approve_documents, a reason
+    required): it becomes Returned (For Review, reviewed_by = this member, reviewed_at = now), so it counts as not done in the
     checklist again (it can become overdue; reminders already sent are not repeated) and the uploader replaces the
-    file. Its AI chunks stay (every review state is searchable since ASSUMPTIONS 438; its source card then says
+    file (replace_document_file / a new upload: it then waits for the Director's check again). Its AI chunks stay (every review state is searchable since ASSUMPTIONS 438; its source card then says
     "Returned"). An activity that was Scheduled
     automatically stays Scheduled. One History row ("Documents"), a documents.audit line and a notification to the
     uploader (unless they unapproved it themselves)."""
@@ -1026,17 +1036,16 @@ def allowed_actions(member: TBIMember, document: Document) -> dict[str, bool]:
     """What `member` may do with `document` right now (for the frontend; the services check again)."""
     for_review = document.status.status_name == DocumentStatus.FOR_REVIEW
     is_uploader = document.uploaded_by_id == member.pk
-    reviewed = needs_review(document.document_type, document.related_certificate)
-    # Approve / Return only for a type that needs review (ASSUMPTIONS 432); older waiting documents of other types are
-    # approved by migration documents/0009, a returned one is replaced by its uploader.
-    can_review = (for_review and reviewed and document.reviewed_at is None
+    # Approve / Return for any document waiting for a reviewer: a type that needs review (ASSUMPTIONS 432), or one the
+    # Director returned / unapproved and the uploader replaced (472). A returned one waits for its uploader.
+    can_review = (for_review and document.reviewed_at is None
                   and has_permission_for(member, Permission.APPROVE_DOCUMENTS, document))  # or its assignment (437)
     if can_review and is_uploader and not has_permission(member, Permission.APPROVE_DOCUMENTS):
         can_review = False  # an assignee never reviews their own upload
     changeable = (for_review or is_approved_copy(document)) and _may_change(member, document)
-    # ASSUMPTIONS 437: Unapprove for an Approved document of a reviewed type (an AI citation is checked on the click,
-    # like Delete, so the lists keep a fixed number of queries); Rename for the uploader or the Director.
-    unapprovable = (document.related_certificate_id is None and not for_review and reviewed
+    # ASSUMPTIONS 437, 472: Unapprove for any Approved activity document, approved copies too (an AI citation is checked
+    # on the click, like Delete, so the lists keep a fixed number of queries); Rename for the uploader or the Director.
+    unapprovable = (document.related_certificate_id is None and not for_review
                     and has_permission(member, Permission.APPROVE_DOCUMENTS))
     return {
         "approve": can_review,  # also the member's own upload (ASSUMPTIONS 344)
@@ -1338,6 +1347,63 @@ def payment_missing(now: datetime | None = None, activities: list[Activity] | No
         if missing:
             result.append(PaymentActivity(entry.activity, missing))
     return sorted(result, key=lambda row: (row.first_due, row.activity.pk))
+
+
+# --- Documents to follow up, every activity in one list (ASSUMPTIONS 472, the Dashboard) --------------------------------
+
+FOLLOW_UP_STATES = (MISSING_STATE, Document.WAITING_FOR_REVIEW, Document.RETURNED)
+
+
+@dataclass
+class FollowUpRow:
+    """One line of the Dashboard's "Documents to follow up": a required type with nothing uploaded (document None), or
+    one document waiting for the Director's review or returned to its uploader."""
+
+    activity: Activity
+    document_type: DocumentType
+    state: str  # one of FOLLOW_UP_STATES
+    due_date: date | None  # None: a document of a type that is not required for this activity
+    is_overdue: bool
+    document: Document | None = None
+
+
+def counts_for_follow_up(activity: Activity, document_type: DocumentType) -> bool:
+    """Whether a MISSING required type of this activity is followed up (the reminders' and S3's scope, ASSUMPTIONS 417,
+    472): every non-Draft activity; on a Draft only the Activity Design and Request Letter of a Draft created with them."""
+    return activity.status.name != ActivityStatus.DRAFT or is_creation_type(activity, document_type)
+
+
+def follow_up_activities(activity_type_id: int | None = None) -> QuerySet:
+    """The activities the list looks at: non-Draft ones, Drafts created with their creation documents, and any activity
+    with a document waiting or returned."""
+    in_review = Document.objects.activity_documents().filter(activity=OuterRef("pk"),
+                                                             status__status_name=DocumentStatus.FOR_REVIEW)
+    queryset = Activity.objects.filter(~Q(status__name=ActivityStatus.DRAFT) | Q(creation_documents_required=True)
+                                       | Exists(in_review))
+    if activity_type_id:
+        queryset = queryset.filter(activity_type_id=activity_type_id)
+    return queryset.select_related("status", "activity_type").order_by("start_date", "pk")
+
+
+def documents_to_follow_up(now: datetime | None = None, activity_type_id: int | None = None) -> list[FollowUpRow]:
+    """ASSUMPTIONS 472 (owner): every activity's missing required documents and its documents waiting for review or
+    returned, in ONE list, from document_checklist()'s own rule (activity_document_overview: two queries plus the
+    activities). Missing = nothing uploaded, counting now (a payment document only once Conducted) and in the
+    follow-up scope (counts_for_follow_up). Overdue first, then the oldest due date, the activity and the type."""
+    rows: list[FollowUpRow] = []
+    for entry in activity_document_overview(list(follow_up_activities(activity_type_id)), now):
+        activity = entry.activity
+        items = {item.document_type.pk: item for item in entry.required}
+        for item in entry.required:
+            if item.state == MISSING and item.counts_now and counts_for_follow_up(activity, item.document_type):
+                rows.append(FollowUpRow(activity, item.document_type, MISSING_STATE, item.due_date, item.is_overdue))
+        for document in entry.documents:
+            if document.review_state in (Document.WAITING_FOR_REVIEW, Document.RETURNED):
+                item = items.get(document.document_type_id)
+                rows.append(FollowUpRow(activity, document.document_type, document.review_state,
+                                        item.due_date if item else None, bool(item and item.is_overdue), document))
+    return sorted(rows, key=lambda row: (not row.is_overdue, row.due_date is None, row.due_date or date.max,
+                                         row.activity.title.lower(), row.activity.pk, row.document_type.name))
 
 
 # --- Reminders (run daily by Django-Q2; see documents/tasks.py) ----------------------------------

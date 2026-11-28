@@ -33,6 +33,7 @@ urlpatterns = [
     # One activity's evaluation summary, made on request (ASSUMPTIONS 401)
     path("activities/<int:activity_id>/evaluation-summary/<str:file_format>/", page_views.evaluation_summary,
          name="evaluation_summary"),
+    path("dashboard/documents/", views.dashboard_documents, name="dashboard_documents"),  # ASSUMPTIONS 472
     path("api/dashboard/", views.dashboard_api, name="api_dashboard"),
     path("api/options/", views.options_api, name="api_options"),
     path("api/activities/<int:activity_id>/evaluation/", views.activity_evaluation_api, name="api_activity_evaluation"),
