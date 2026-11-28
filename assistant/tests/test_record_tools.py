@@ -84,7 +84,9 @@ def test_participant_mix(activity, people) -> None:
     result = tools.get_participant_mix({"activity_id": activity.pk})
     groups = {row["group"]: (row["attended"], row["attended_share"]) for row in result["groups"]}
     assert groups["Faculty"] == (1, "25.0%") and groups["Incubatees"] == (3, "75.0%")
-    assert result["basis"] == "attended" and result["guideline_checked"] is True and result["within_guideline"] is True
+    assert result["basis"] == "attended" and result["guideline_checked"] is True
+    # ASSUMPTIONS 424 (confirmed 2026-11-28): Incubatees at most 70 %
+    assert result["within_guideline"] is False and result["problems"] == ["Incubatees 75% (at most 70%)"]
     no_names(result)
 
 

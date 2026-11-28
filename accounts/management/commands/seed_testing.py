@@ -624,7 +624,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _category_plan(categories: list[str], count: int) -> list[str]:
-        """Faculty at most about 20 %, the rest Incubatees and MSMEs (NAVIGATU's mix guideline, item 424)."""
+        """Faculty about 20 %, the rest spread over the other categories (NAVIGATU's mix guideline, item 424)."""
         others = [c for c in categories if c != "Faculty"] or categories
         plan = []
         for index in range(count):

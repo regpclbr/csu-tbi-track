@@ -191,7 +191,7 @@ def joined(names: list[str]) -> str:
 def _participants(details: Details) -> str:
     joined_names = joined(details.categories)
     return (f"{details.max_slots} participants: {joined_names}, selected through the online pre-registration of the CSU-TBI "
-            f"Track system. Faculty take at most 30% of the slots; incubatees and MSMEs at least 70% (NAVIGATU's "
+            f"Track system. Faculty take at most 30% and incubatees at most 70% of the participants (NAVIGATU's "
             f"guideline).")
 
 

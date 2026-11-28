@@ -763,8 +763,9 @@ and the Startups pages were removed (ASSUMPTIONS 458; a Chapter 5 recommendation
   only from `services.preset_range(key, year)`; Alpine only looks up the server's table (`pages.date_presets`). Title and
   download name come from the dates (`content.period_name` / `report_title`, `services.download_name`; no column):
   "Accomplishment Report - Q3 2026", "Semi-annual … - January to June 2026", "Annual … - 2026", else "… - <range>".
-- Participant mix (ASSUMPTIONS 424): `metrics.participant_mix` / `period_participant_mix` / `mix_check` (Faculty at most 30 %,
-  Incubatees + MSMEs at least 70 %, settings `PARTICIPANT_MIX_*`; attendees once anybody attended, else registrations; only
+- Participant mix (ASSUMPTIONS 424, confirmed by NAVIGATU 2026-11-28): `metrics.participant_mix` / `period_participant_mix` /
+  `mix_check` (Faculty at most 30 % AND Incubatees at most 70 % of ALL counted participants; MSMEs and other categories in
+  neither share, MSMEs still their own chart row; settings `PARTICIPANT_MIX_*`; attendees once anybody attended, else registrations; only
   activities open to Faculty and to Incubatees or MSMEs). Display only `reports.dashboard_page.mix_chart` +
   `components/participant_mix.html` (Overview and Dashboard). Needs attention warns (informational once Conducted); never
   blocks registration.
@@ -1352,7 +1353,6 @@ Still unanswered (the system keeps the current rule until then; details in the A
 - Letterhead (469): the official Bagong Pilipinas, SOCOTEC ISO 9001 and PAB mark files, and approval to use the CSU seal and letterhead on the system's documents (until then the sample line stays on).
 - Digital signatures (434): does the Supply Office accept the generated Attendance / Confirmation of Attendance with signatures given in the system?
 - Participant photos (435): how long may they be kept, and is a photo release needed before photos of people go into reports?
-- Participant mix (424): do MSMEs count with the Incubatees for the 70%?
 - Draft letters (448): NAVIGATU's own Request Letter (memorandum) and Activity Design templates, and who signs "Recommending Approval" / "Approved by".
 - Stamped signature (437): is the Director's stamped image (at "Noted:", PDF only) accepted, and is "Noted:" the right line?
 - Privacy (394, 414, 434, 438): the final notice text, the contact person / Data Protection Officer, retention of UAT data and signatures; may scanned attendance sheets (handwriting, signatures) be sent to Gemini to be read ("Read this scan with AI", per file)?

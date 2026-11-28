@@ -447,8 +447,10 @@ MIX_OTHER = "Other categories"
 
 
 def _mix_groups() -> list[str]:
-    """The rows of the mix, in order: Faculty, Incubatees, MSMEs (settings), then MIX_OTHER."""
-    return [settings.PARTICIPANT_MIX_FACULTY, *settings.PARTICIPANT_MIX_INCUBATEES, MIX_OTHER]
+    """The rows of the mix, in order: Faculty, Incubatees, MSMEs (settings), then MIX_OTHER. Only Faculty and the
+    Incubatees have a share in the guideline; MSMEs and MIX_OTHER count only in the total (confirmed 2026-11-28)."""
+    return [settings.PARTICIPANT_MIX_FACULTY, *settings.PARTICIPANT_MIX_INCUBATEES, *settings.PARTICIPANT_MIX_SHOWN,
+            MIX_OTHER]
 
 
 def _mix_group(category_name: str) -> str:
@@ -459,7 +461,7 @@ def _mix_group(category_name: str) -> str:
 
 
 def incubatee_group_name() -> str:
-    """"Incubatees and MSMEs": the categories counted together for the minimum."""
+    """"Incubatees": the categories in the Incubatees' share (at most PARTICIPANT_MIX_INCUBATEES_MAX_PERCENT %)."""
     names = settings.PARTICIPANT_MIX_INCUBATEES
     return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
 
@@ -467,24 +469,26 @@ def incubatee_group_name() -> str:
 def guideline_text() -> str:
     """NAVIGATU's guideline in words (shown next to every mix chart)."""
     return (f"NAVIGATU's guideline: {settings.PARTICIPANT_MIX_FACULTY} at most "
-            f"{settings.PARTICIPANT_MIX_FACULTY_MAX_PERCENT}%, {incubatee_group_name()} at least "
-            f"{settings.PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT}% (MSMEs count with the Incubatees until NAVIGATU "
-            "confirms).")
+            f"{settings.PARTICIPANT_MIX_FACULTY_MAX_PERCENT}% and {incubatee_group_name()} at most "
+            f"{settings.PARTICIPANT_MIX_INCUBATEES_MAX_PERCENT}% of the participants of an activity; MSMEs and other "
+            "participants are not counted in either share.")
 
 
 def mix_check(faculty: int, incubatees: int, total: int) -> dict | None:
-    """The one guideline check (integers only, never rounded first): Faculty at most PARTICIPANT_MIX_FACULTY_MAX_PERCENT %
-    and Incubatees + MSMEs at least PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT % of `total`. None when total is 0.
-    Returns {"within": bool, "problems": [short texts, e.g. "Faculty 45% (at most 30%)"]}."""
+    """The one guideline check (integers only, never rounded first; NAVIGATU, confirmed 2026-11-28): Faculty at most
+    PARTICIPANT_MIX_FACULTY_MAX_PERCENT % and Incubatees at most PARTICIPANT_MIX_INCUBATEES_MAX_PERCENT % of `total` =
+    ALL counted participants (MSMEs and other categories included; they are in neither share). Both are maximums, so
+    exactly 30 % / 70 % is inside. None when total is 0. Returns {"within": bool, "problems": [short texts, e.g.
+    "Faculty 45% (at most 30%)"]}; both problems are listed when both caps are exceeded."""
     if not total:
         return None
     faculty_max = settings.PARTICIPANT_MIX_FACULTY_MAX_PERCENT
-    incubatees_min = settings.PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT
+    incubatees_max = settings.PARTICIPANT_MIX_INCUBATEES_MAX_PERCENT
     problems = []
     if faculty * 100 > faculty_max * total:
         problems.append(f"{settings.PARTICIPANT_MIX_FACULTY} {round(100 * faculty / total)}% (at most {faculty_max}%)")
-    if incubatees * 100 < incubatees_min * total:
-        problems.append(f"{incubatee_group_name()} {round(100 * incubatees / total)}% (at least {incubatees_min}%)")
+    if incubatees * 100 > incubatees_max * total:
+        problems.append(f"{incubatee_group_name()} {round(100 * incubatees / total)}% (at most {incubatees_max}%)")
     return {"within": not problems, "problems": problems}
 
 
@@ -505,16 +509,18 @@ def _mix(counts: dict[str, dict[str, int]], checked: bool) -> dict:
     check = None
     if checked and basis:
         values = attended if basis == "attended" else registered
-        check = mix_check(values[0], sum(values[1:-1]), sum(values))
+        incubatees = sum(value for group, value in zip(groups, values) if group in settings.PARTICIPANT_MIX_INCUBATEES)
+        check = mix_check(values[0], incubatees, sum(values))
     return {"registered": sum(registered), "attended": sum(attended), "rows": rows, "basis": basis,
             "checked": checked, "check": check}
 
 
 def _guideline_applies(category_names: set[str]) -> bool:
     """The guideline is checked only for activities open to Faculty AND to Incubatees or MSMEs (owner decision
-    2026-11-22): a Faculty-only training is never "outside"."""
+    2026-11-22, kept 2026-11-28): a Faculty-only training is never "outside"."""
     groups = {_mix_group(name) for name in category_names}
-    return settings.PARTICIPANT_MIX_FACULTY in groups and bool(groups & set(settings.PARTICIPANT_MIX_INCUBATEES))
+    return settings.PARTICIPANT_MIX_FACULTY in groups and bool(
+        groups & {*settings.PARTICIPANT_MIX_INCUBATEES, *settings.PARTICIPANT_MIX_SHOWN})
 
 
 def participant_mix(activity_ids: list[int]) -> dict[int, dict]:

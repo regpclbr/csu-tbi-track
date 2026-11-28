@@ -1928,14 +1928,21 @@ Still 34 tables.
        stays open)"; the Evaluation tab says "… and stays open (no evaluation deadline)".
      - **ERD:** ACTIVITY.evaluation_deadline "nullable – empty = the evaluation stays open". Still 34 tables.
      - Tests: `registrations/tests/test_optional_evaluation_deadline.py`.
-424. **Participant mix and NAVIGATU's guideline** (NAVIGATU UAT; owner decisions 2026-11-22). No database or ERD change.
-     - **Guideline** (settings): Faculty at most 30 % (`PARTICIPANT_MIX_FACULTY_MAX_PERCENT`), Incubatees at least 70 %
-       (`PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT`). **MSMEs count with the Incubatees** for the 70 %
-       (`PARTICIPANT_MIX_INCUBATEES`) until NAVIGATU answers (open question, CLAUDE.md). Categories are matched by the seeded names
-       (they cannot be renamed); any added category is "Other categories" (shown, counted in the total, in neither group).
+424. **Participant mix and NAVIGATU's guideline** (NAVIGATU UAT; owner decisions 2026-11-22; **rule confirmed by NAVIGATU
+     2026-11-28**). No database or ERD change.
+     - **Guideline** (settings, confirmed 2026-11-28): per activity, Faculty **at most** 30 %
+       (`PARTICIPANT_MIX_FACULTY_MAX_PERCENT`) and Incubatees **at most** 70 % (`PARTICIPANT_MIX_INCUBATEES_MAX_PERCENT`,
+       replaces `_MIN_PERCENT`: Incubatees is no longer a minimum) of **all** counted participants of the activity (every
+       category). **MSMEs** (DTI staff and partner agencies included) and any other category are in **neither share**: no
+       longer grouped with the Incubatees (`PARTICIPANT_MIX_INCUBATEES = ["Incubatees"]`); MSMEs stay their own row in the
+       chart (`PARTICIPANT_MIX_SHOWN`). Examples (tests): 3 Faculty + 7 Incubatees within; 2 + 8 outside ("Incubatees 80%
+       (at most 70%)"); 3 + 6 + 1 MSME within; 2 + 5 + 3 MSMEs within; 4 + 6 outside ("Faculty 40% (at most 30%)"); when both
+       caps are exceeded both problems are listed. Before 2026-11-28 the rule was "Incubatees + MSMEs at least 70 %".
+       Categories are matched by the seeded names (they cannot be renamed); any added category is "Other categories"
+       (shown, counted in the total, in neither share).
      - **The numbers and the check** live only in `reports/metrics.py`: `participant_mix(activity_ids)` (two queries,
        registered and attended per group, whole percentages with `shares(units=100)`), `mix_check` (integers, never
-       rounded first: exactly 30 % / 70 % is inside), `period_participant_mix(filters)` (the dashboard: the period's
+       rounded first: exactly 30 % / 70 % is inside, both are maximums), `period_participant_mix(filters)` (the dashboard: the period's
        Conducted activities). The check uses **attendees once anybody is marked as attended, else registrations** (like
        the donut, item 403).
      - **Which activities are checked:** only those open to Faculty AND to Incubatees or MSMEs (a Faculty-only training is

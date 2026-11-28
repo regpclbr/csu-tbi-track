@@ -285,13 +285,15 @@ DOCUMENT_TYPES_AFTER_ACTIVITY = ["Accomplishment Report", "Certificate", "Evalua
 # Required uploads on the New activity form (ASSUMPTIONS 405, NAVIGATU): they exist when the activity is created. Only
 # active, required types with these names count (documents.services.creation_required_types).
 DOCUMENT_TYPES_REQUIRED_AT_CREATION = ["Activity Design", "Request Letter"]
-# Participant mix (ASSUMPTIONS 424, NAVIGATU guideline): at most 30 % Faculty and at least 70 % Incubatees. Until NAVIGATU
-# says how MSMEs count, they count WITH the Incubatees (owner decision 2026-11-22). Names of PARTICIPANT_CATEGORY rows
-# (the seeded names, which cannot be renamed). Only a warning: registration is never blocked.
+# Participant mix (ASSUMPTIONS 424, NAVIGATU guideline confirmed 2026-11-28): per activity, Faculty at most 30 % and
+# Incubatees at most 70 % of ALL counted participants (both are maximums). MSMEs (DTI and partner agencies included) and
+# any other category are in neither share: they are their own rows in the chart and count only in the total. Names of
+# PARTICIPANT_CATEGORY rows (the seeded names, which cannot be renamed). Only a warning: registration is never blocked.
 PARTICIPANT_MIX_FACULTY = "Faculty"
 PARTICIPANT_MIX_FACULTY_MAX_PERCENT = 30
-PARTICIPANT_MIX_INCUBATEES = ["Incubatees", "MSMEs"]  # counted together for the minimum
-PARTICIPANT_MIX_INCUBATEES_MIN_PERCENT = 70
+PARTICIPANT_MIX_INCUBATEES = ["Incubatees"]
+PARTICIPANT_MIX_INCUBATEES_MAX_PERCENT = 70
+PARTICIPANT_MIX_SHOWN = ["MSMEs"]  # own rows in the mix chart, in neither share
 # Payment documents for the Supply Office (ASSUMPTIONS 425, NAVIGATU UAT): required types needed after the activity
 # (due end date + 5, set in their DOCUMENT_TYPE rows). The Documents tab groups them under "For payment (Supply
 # Office)", they count in Needs attention, reminders and overdue numbers only once the activity is Conducted, and

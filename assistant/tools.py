@@ -105,7 +105,8 @@ TOOL_SPECS = [
         MIX_TOOL,
         "One activity's participant mix from the system's records: Faculty, Incubatees, MSMEs and other categories "
         "with counts and percentages (attendees once anybody attended, else registrations) and NAVIGATU's guideline "
-        "check (Faculty at most 30%, Incubatees and MSMEs at least 70%).",
+        "check (Faculty at most 30% and Incubatees at most 70% of all participants of the activity; MSMEs and other "
+        "participants are not counted in either share).",
         {"type": "object", "properties": {"activity_id": {"type": "integer"}}, "required": ["activity_id"]},
     ),
     ToolSpec(

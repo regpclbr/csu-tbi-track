@@ -60,7 +60,8 @@ def test_the_mix_before_attendance_leaves_cancelled_ones_out(make_activity, regi
     Registration.objects.filter(pk=register(activity, "Carla", category="Faculty").pk).update(cancelled_at=TEST_NOW)
     mix = metrics.participant_mix([activity.pk])[activity.pk]
     assert mix["basis"] == "registered" and mix["registered"] == 1
-    assert mix["check"]["within"] is True  # 0 % Faculty: the cancelled Faculty member does not count
+    # 0 % Faculty: the cancelled Faculty member does not count (only Ana, so 100 % Incubatees: over the 70 % cap, 424)
+    assert mix["check"]["problems"] == ["Incubatees 100% (at most 70%)"]
 
 
 def test_one_activitys_evaluation_numbers(mixed) -> None:
